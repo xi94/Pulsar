@@ -1,0 +1,27 @@
+---
+BasedOnStyle: LLVM
+UseTab: Always
+TabWidth: 4
+IndentWidth: 4
+ColumnLimit: 120
+AllowShortFunctionsOnASingleLine: Empty
+# A guard clause whose whole body is one short statement reads better on one line than as three.
+# WithoutElse rather than AllIfsAndElse: an if that has an else is a branch, not a guard, and both
+# halves of one belong in braces.
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakTemplateDeclarations: Yes
+PointerAlignment: Right
+ReferenceAlignment: Right
+SpaceBeforeParens: ControlStatements
+IndentCaseLabels: true
+NamespaceIndentation: None
+SortIncludes: false
+
+BreakBeforeBraces: WebKit
+BreakConstructorInitializers: BeforeComma
+BreakBeforeConceptDeclarations: Always
+
+BraceWrapping:
+  AfterFunction: false
+  BeforeLambdaBody: false

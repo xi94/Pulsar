@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  f4 already calls SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2) at runtime
+  (Window.cpp's window_create) before creating any window, which is normally enough on
+  Windows 10 1703+. But that runtime call is NOT the authoritative source Windows uses
+  to decide DPI handling for an unmanifested exe: Windows' own "fix scaling for apps"
+  compatibility heuristic (Settings > Display > Advanced scaling settings, on by
+  default) can silently force DPI virtualization â€” bitmap-stretching the whole rendered
+  frame to fill a scaled monitor â€” for any exe that doesn't declare awareness via an
+  embedded manifest, regardless of what it requests at runtime. That's a real, common
+  trap for exactly this class of bug: on a monitor scaled above 100%, the app renders at
+  the wrong (too small) physical resolution and Windows blur-upscales it to compensate,
+  which reads as both "blurry" and "smaller than it should be for its declared size" -
+  matching a direct user report where f4's own Font Size 16 measured *smaller* in real
+  screen pixels than File Pilot's Font Size 10 on a 125%-scaled monitor. A manifest-
+  declared dpiAwareness is what Microsoft's own docs list as the primary mechanism (the
+  runtime API is documented as a fallback for cases a manifest can't reach, e.g. a DLL);
+  embedding one here removes any dependency on load-order/compatibility-shim timing.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10/11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+    </application>
+  </compatibility>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <!-- Pre-1703 fallback, ignored wherever PerMonitorV2 above is understood. -->
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+    </windowsSettings>
+  </application>
+  <!--
+    Required for TaskDialogIndirect (core/crash_handler.cpp's own crash dialog) to actually
+    work - without a manifested dependency on the v6 common controls, TaskDialogIndirect binds
+    to the old (pre-XP) comctl32 that doesn't implement it at all and simply fails.
+  -->
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0"
+                        processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*" />
+    </dependentAssembly>
+  </dependency>
+</assembly>

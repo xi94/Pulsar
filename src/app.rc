@@ -1,0 +1,43 @@
+// The Windows file-version resource, which is what Explorer's Properties > Details tab reads.
+// Every name and number comes from core/app_identity.h, whose macros exist precisely so the
+// resource compiler - which has no C++ front end - and the running app cannot drift apart.
+#include "core/app_identity.h"
+#include "platform/resource.h"
+
+// The app icon Explorer shows for the .exe before the process is even running. The
+// lowest-numbered ICON resource is the default and this is the only one, so IDI_APP_ICON's
+// value only has to match window.cpp's LoadIconW call for the live window and taskbar icon.
+IDI_APP_ICON ICON "../resources/Pulsar.ico"
+
+1 VERSIONINFO
+ FILEVERSION PULSAR_VERSION_MAJOR,PULSAR_VERSION_MINOR,PULSAR_VERSION_PATCH,0
+ PRODUCTVERSION PULSAR_VERSION_MAJOR,PULSAR_VERSION_MINOR,PULSAR_VERSION_PATCH,0
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x0L
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        // 040904b0: langID 0x0409 (English - United States), charset 1200 (Unicode), matched by
+        // the VarFileInfo Translation block below, which is what tells Explorer which
+        // StringFileInfo block to read.
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", PULSAR_APP_NAME
+            // Deliberately describes this as a utility rather than anything game-shaped: this
+            // string is one of the things overlay injectors read when classifying a process.
+            VALUE "FileDescription", "Pulsar Account Manager"
+            VALUE "FileVersion", PULSAR_VERSION_STRING
+            VALUE "InternalName", PULSAR_APP_NAME
+            VALUE "OriginalFilename", PULSAR_EXE_NAME
+            VALUE "ProductName", PULSAR_APP_NAME
+            VALUE "ProductVersion", PULSAR_VERSION_STRING
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
