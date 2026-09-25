@@ -2,25 +2,25 @@
 
 #include "core/app_identity.h"
 
-CSingleInstanceGuard::CSingleInstanceGuard()
+SingleInstanceGuard::SingleInstanceGuard()
+	: m_mutex(CreateMutexW(nullptr, TRUE, single_instance_mutex_name))
+	, m_first_instance(m_mutex != nullptr && GetLastError() != ERROR_ALREADY_EXISTS)
 {
-	m_hMutex = CreateMutexW(nullptr, TRUE, kSingleInstanceMutexName);
-	m_bFirstInstance = m_hMutex != nullptr && GetLastError() != ERROR_ALREADY_EXISTS;
 }
 
-CSingleInstanceGuard::~CSingleInstanceGuard()
+SingleInstanceGuard::~SingleInstanceGuard()
 {
-	Release();
+	release();
 }
 
-void CSingleInstanceGuard::Release()
+void SingleInstanceGuard::release()
 {
-	if (m_hMutex == nullptr) return;
+	if (m_mutex == nullptr) return;
 
-	if (m_bFirstInstance) {
-		ReleaseMutex(m_hMutex);
+	if (m_first_instance) {
+		ReleaseMutex(m_mutex);
 	}
 
-	CloseHandle(m_hMutex);
-	m_hMutex = nullptr;
+	CloseHandle(m_mutex);
+	m_mutex = nullptr;
 }

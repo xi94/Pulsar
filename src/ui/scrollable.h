@@ -2,62 +2,51 @@
 
 #include "core/types.h"
 
-class CDrawList;
+class DrawList;
 
-constexpr float kScrollbarWidth = 8.0f;
-constexpr float kScrollbarMinThumbHeight = 24.0f;
-constexpr float kScrollbarWheelPixelsPerNotch = 48.0f;
+constexpr float scrollbar_width = 8.0f;
 
-/// A reusable component rather than a base class: a widget has a CScrollable rather than is
-/// one, since the carousel needs one only in two of its three view modes while the account
-/// modal always needs exactly one.
-///
-/// It holds no opinion about what it is scrolling - every method takes the content and visible
-/// heights as parameters rather than storing them.
-class CScrollable {
+struct ScrollGeometry {
+	Rect track;
+	float content_height;
+	float visible_height;
+};
+
+class Scrollable {
   public:
-	/// Eases the offset toward its target; call once per frame before Draw.
-	void Update(float deltaSeconds);
+	static bool is_needed(const ScrollGeometry &t_geometry);
 
-	/// `track` is the full vertical strip the thumb travels within. Draws and hit-tests nothing
-	/// when there is nothing to scroll - not a greyed-out bar, nothing at all - with IsVisible
-	/// as the single source of truth so drawing and hit-testing cannot disagree.
-	void Draw(CDrawList &drawList, Rect track, float contentHeight, float visibleHeight, Color thumbColor, float mouseX,
-			  float mouseY) const;
+	void update(float t_delta_seconds);
+	void draw(DrawList &t_draw_list, const ScrollGeometry &t_geometry, Color t_thumb, Vec2 t_mouse) const;
+	void draw_edge_fade(DrawList &t_draw_list, Rect t_area, const ScrollGeometry &t_geometry, Color t_edge) const;
 
-	/// True, and starts a drag, only if the click landed on the thumb and there is something to
-	/// scroll - so a caller can fall through to whatever is behind the track otherwise.
-	bool OnPointerDown(float x, float y, Rect track, float contentHeight, float visibleHeight);
-	void OnPointerMove(float y, Rect track, float contentHeight, float visibleHeight);
-	void OnPointerUp();
+	bool on_pointer_down(Vec2 t_point, const ScrollGeometry &t_geometry);
+	void on_pointer_move(float t_y, const ScrollGeometry &t_geometry);
+	void on_pointer_up();
+	void on_scroll(float t_wheel_delta, const ScrollGeometry &t_geometry);
 
-	void OnScroll(float wheelDelta, float contentHeight, float visibleHeight);
+	void scroll_by(float t_pixels, const ScrollGeometry &t_geometry);
+	void reveal(float t_top, float t_bottom, float t_view_top, float t_view_bottom, const ScrollGeometry &t_geometry);
 
-	/// Moves the target by a pixel amount, clamped - for a caller bringing something into view
-	/// rather than responding to a wheel notch.
-	void ScrollBy(float pixels, float contentHeight, float visibleHeight);
-
-	static bool IsVisible(float contentHeight, float visibleHeight);
-
-	/// For a consumer whose own release handling needs to tell "this ended a scrollbar drag"
-	/// apart from "this is a plain click behind the track" - OnPointerUp just clears the flag
-	/// rather than reporting what it was.
-	bool IsDragging() const
+	bool is_dragging() const
 	{
-		return m_bDragging;
+		return m_dragging;
 	}
 
-	/// Fades the area's content into `edgeColor` near its top and bottom. Content scrolled
-	/// against a clip rect is otherwise cut off mid-row with no cue that there is more of it.
-	/// The top only fades once something is actually scrolled out of view above, and the bottom
-	/// only while there is still more below.
-	void DrawEdgeFade(CDrawList &drawList, Rect area, float contentHeight, float visibleHeight, Color edgeColor) const;
+	bool is_over_track(Vec2 t_point, const ScrollGeometry &t_geometry) const
+	{
+		return is_needed(t_geometry) && t_geometry.track.contains(t_point);
+	}
 
-	float m_flScrollOffset = 0.0f;		 // animated, pixels
-	float m_flTargetScrollOffset = 0.0f; // where the offset eases toward
+	float offset() const
+	{
+		return m_offset;
+	}
 
   private:
-	bool m_bDragging = false;
-	float m_flDragStartPointerY = 0.0f;
-	float m_flDragStartScrollOffset = 0.0f;
+	float m_offset = 0.0f;
+	float m_target = 0.0f;
+	bool m_dragging = false;
+	float m_drag_start_y = 0.0f;
+	float m_drag_start_target = 0.0f;
 };

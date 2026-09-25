@@ -1,802 +1,865 @@
 #include "ui/account_modal.h"
 
-#include "core/profiler.h"
-
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdio>
+#include <span>
+#include <utility>
 
 #include <Windows.h>
 
-#include "core/animator.h"
+#include "core/animation.h"
+#include "core/profiler.h"
 #include "core/settings.h"
-#include "gfx/asset_manager.h"
+#include "gfx/assets.h"
+#include "gfx/draw_list.h"
+#include "gfx/font.h"
 #include "platform/window.h"
 #include "ui/controls.h"
-#include "ui/draw_list.h"
-#include "ui/layout.h"
 #include "ui/text.h"
+#include "ui/toasts.h"
 
 namespace {
-constexpr float kOpenEaseRate = 14.0f;
+constexpr float open_ease_rate = 14.0f;
 
-// The panel tracks the window's size, with an absolute ceiling so it does not balloon on a large
-// monitor. The 1.6875 aspect is flatter than 1.5, so it takes less vertical space. Both grow
-// with the font-size setting.
-constexpr float kPanelWidthFraction = 0.78f;
-constexpr float kPanelHeightFraction = 0.71f;
-constexpr float kPanelMaxWidthBase = 810.0f;
-constexpr float kPanelMaxHeightBase = 480.0f;
+constexpr float panel_width_fraction = 0.78f;
+constexpr float panel_height_fraction = 0.71f;
+constexpr Vec2 panel_max_size{810.0f, 480.0f};
+constexpr float reference_body_pixel_height = 24.0f;
+constexpr float panel_margin = 48.0f;
+constexpr float panel_closed_scale = 0.92f;
+constexpr float panel_border = 1.5f;
+constexpr float panel_radius = 16.0f;
 
-// Real baked pixels, matching the default font size the panel's base size was tuned at.
-constexpr float kReferenceBodyPixelHeight = 24.0f;
+constexpr float art_column_fraction = 0.35f;
+constexpr float art_separator_width = 2.0f;
+constexpr float close_badge_size = 40.0f;
+constexpr float close_badge_margin = 12.0f;
+constexpr float close_badge_icon_size = 18.0f;
 
-constexpr float kPanelMargin = 48.0f;
-constexpr float kPanelScaleMin = 0.92f;
-constexpr float kPanelBorderThickness = 1.5f;
-constexpr float kPanelRadius = 16.0f;
+constexpr float row_padding = 24.0f;
+constexpr float row_top_padding = 14.0f;
+constexpr float row_line_gap = 4.0f;
+constexpr float row_bottom_padding = 10.0f;
+constexpr float row_button_gap = 10.0f;
+constexpr float row_icon_inset = 5.0f;
+constexpr float confirm_pill_extra_width = 46.0f;
+constexpr float scrollbar_margin = 4.0f;
 
-constexpr float kLeftColumnFraction = 0.35f;
-constexpr float kSeparatorThickness = 2.0f;
+constexpr float action_button_width = 108.0f;
+constexpr float action_button_gap = 16.0f;
 
-constexpr float kCloseBadgeSize = 40.0f;
-constexpr float kCloseBadgeMargin = 12.0f;
-constexpr float kCloseBadgeIconSize = 18.0f;
+constexpr float field_label_gap = 8.0f;
+constexpr float field_group_gap = 26.0f;
+constexpr float field_radius = 8.0f;
+constexpr float reveal_button_size = 24.0f;
+constexpr float reveal_button_margin = 6.0f;
 
-constexpr float kRowPadding = 24.0f;
-constexpr float kRowTopPadding = 14.0f;
-constexpr float kRowLineGap = 4.0f;
-constexpr float kRowBottomPadding = 10.0f;
-constexpr float kRowButtonGap = 10.0f;
+constexpr float chip_icon_size = 16.0f;
+constexpr float chip_icon_inset = 10.0f;
+constexpr float chip_icon_gap = 7.0f;
+constexpr float chip_padding_right = 12.0f;
 
-constexpr float kActionButtonWidth = 108.0f;
+constexpr float ring_outer_radius = 40.0f;
+constexpr float ring_inner_radius = 32.0f;
+constexpr float ring_glow_margin = 22.0f;
+constexpr float ring_sweep_degrees = 112.0f;
+constexpr float ring_spin_degrees_per_second = 260.0f;
+constexpr u32 max_message_lines = 3;
 
-// The gap between two footer buttons. Their outer edges use the row padding instead, so the
-// primary action's right edge lands on the same column as the rows and fields above it.
-constexpr float kActionButtonGap = 16.0f;
+constexpr Color color_panel_border{74, 74, 80, 255};
+constexpr Color color_panel{24, 24, 27, 255};
+constexpr Color color_separator{48, 48, 53, 255};
+constexpr Color color_art_separator{90, 90, 96, 255};
+constexpr Color color_text_bright{232, 232, 236, 255};
+constexpr Color color_text_dim{150, 150, 156, 255};
+constexpr Color color_text_faint{130, 130, 136, 255};
+constexpr Color color_success{80, 200, 120, 255};
+constexpr Color color_error{220, 90, 80, 255};
+constexpr Color color_white{255, 255, 255, 255};
+constexpr Color color_hover_badge{56, 56, 62, 255};
+constexpr Color color_row_selected{58, 58, 62, 255};
+constexpr Color color_row_hover{38, 38, 43, 255};
+constexpr Color color_remove_hover{68, 42, 42, 255};
+constexpr Color color_neutral_button{46, 46, 52, 255};
+constexpr Color color_neutral_button_hover{60, 60, 66, 255};
+constexpr Color color_disabled_button{60, 58, 70, 255};
+constexpr Color color_delete_button{60, 45, 45, 255};
+constexpr Color color_scroll_thumb{120, 120, 128, 190};
+constexpr Color color_field_border{46, 46, 52, 255};
+constexpr Color color_field{24, 24, 27, 255};
+constexpr Color color_field_border_focused{225, 225, 230, 255};
+constexpr Color color_field_focused{42, 42, 46, 255};
 
-// The label sits close to its box; the larger gap comes after, before the next field's label.
-constexpr float kEditFieldLabelGap = 8.0f;
-constexpr float kEditFieldGroupGap = 26.0f;
-constexpr u32 kEditFieldCount = 3;
+struct FieldSpec {
+	const char *label;
+	u32 max_length;
+};
 
-constexpr float kVisibilityChipIconSize = 16.0f;
-constexpr float kVisibilityChipIconInset = 10.0f;
-constexpr float kVisibilityChipIconGap = 7.0f;
-constexpr float kVisibilityChipRightPadding = 12.0f;
+constexpr FieldSpec field_specs[]{
+	{"Note", sizeof(Account::note) - 1},
+	{"Username", sizeof(Account::username) - 1},
+	{"Password", sizeof(Account::password) - 1},
+};
 
-constexpr float kPasswordRevealButtonSize = 24.0f;
-constexpr float kScrollbarTrackMargin = 4.0f;
-
-constexpr float kIndicatorOuterRadius = 40.0f;
-constexpr float kIndicatorRingThickness = 8.0f;
-constexpr float kIndicatorInnerRadius = kIndicatorOuterRadius - kIndicatorRingThickness;
-constexpr float kIndicatorGlowMargin = 22.0f;
-constexpr float kIndicatorSweepDeg = 112.0f;
-constexpr float kIndicatorRotationDegPerSec = 260.0f;
-constexpr float kIndicatorFullSweepDeg = 360.0f;
-constexpr u32 kMaxLoginMessageLines = 3;
-
-constexpr Color kColorPanelBorder{74, 74, 80, 255};
-constexpr Color kColorPanelBg{24, 24, 27, 255};
-constexpr Color kColorSeparator{48, 48, 53, 255};
-constexpr Color kColorTextBright{232, 232, 236, 255};
-constexpr Color kColorTextDim{150, 150, 156, 255};
-constexpr Color kColorTextFaint{130, 130, 136, 255};
-constexpr Color kColorSuccess{80, 200, 120, 255};
-constexpr Color kColorError{220, 90, 80, 255};
-constexpr Color kColorWhite{255, 255, 255, 255};
-constexpr Color kColorHoverBadge{56, 56, 62, 255};
-constexpr Color kColorRowSelected{58, 58, 62, 255};
-constexpr Color kColorRowHover{38, 38, 43, 255};
-constexpr Color kColorRemoveHoverBg{68, 42, 42, 255};
-
-/// Inset so a row icon does not touch the edge of its circular hover badge.
-constexpr float kRowIconInset = 5.0f;
-
-/// Room for the armed pill's label beyond the round badge it grows out of.
-constexpr float kRowConfirmExtraWidth = 46.0f;
-
-constexpr Color kColorNeutralButton{46, 46, 52, 255};
-constexpr Color kColorNeutralButtonHover{60, 60, 66, 255};
-constexpr Color kColorDisabledButton{60, 58, 70, 255};
-constexpr Color kColorDeleteButton{60, 45, 45, 255};
-constexpr Color kColorScrollThumb{120, 120, 128, 190};
-constexpr Color kColorFieldBorder{46, 46, 52, 255};
-constexpr Color kColorFieldFill{24, 24, 27, 255};
-constexpr Color kColorFieldBorderFocused{225, 225, 230, 255};
-constexpr Color kColorFieldFillFocused{42, 42, 46, 255};
-
-float PanelMaxSizeScale(const CFontManager &fonts)
+float row_height(const Fonts &t_fonts)
 {
-	return std::max(1.0f, fonts.GetBody().GetPixelHeight() / kReferenceBodyPixelHeight);
+	return row_top_padding + t_fonts.body().line_height() + row_line_gap + t_fonts.secondary().line_height() +
+		   row_bottom_padding;
 }
 
-float RowHeightFor(const CFontManager &fonts)
+float header_height(const Fonts &t_fonts)
 {
-	return kRowTopPadding + fonts.GetBody().GetLineHeight() + kRowLineGap + fonts.GetSecondary().GetLineHeight() +
-		   kRowBottomPadding;
+	return t_fonts.body().line_height() + 20.0f;
 }
 
-// Body, not secondary: the section title is a real title treatment, not a caption.
-float HeaderHeightFor(const CFontManager &fonts)
+float footer_height(const Fonts &t_fonts)
 {
-	return fonts.GetBody().GetLineHeight() + 20.0f;
+	return std::max(56.0f, t_fonts.body().line_height() + 20.0f);
 }
 
-float FooterHeightFor(const CFontManager &fonts)
+float action_button_height(const Fonts &t_fonts)
 {
-	return std::max(56.0f, fonts.GetBody().GetLineHeight() + 20.0f);
+	return std::max(36.0f, t_fonts.body().line_height() + 14.0f);
 }
 
-// One size for every primary footer action.
-float ActionButtonHeightFor(const CFontManager &fonts)
+float field_input_height(const Fonts &t_fonts)
 {
-	return std::max(36.0f, fonts.GetBody().GetLineHeight() + 14.0f);
+	return std::max(34.0f, t_fonts.body().line_height() + 12.0f);
 }
 
-// Body, not secondary: the field holds a value the user typed, not a dim label.
-float EditFieldInputHeightFor(const CFontManager &fonts)
+float field_block_height(const Fonts &t_fonts)
 {
-	return std::max(34.0f, fonts.GetBody().GetLineHeight() + 12.0f);
+	return t_fonts.secondary().line_height() + field_label_gap + field_input_height(t_fonts) + field_group_gap;
 }
 
-float EditFieldBlockHeightFor(const CFontManager &fonts)
+float row_button_size(const Fonts &t_fonts)
 {
-	return fonts.GetSecondary().GetLineHeight() + kEditFieldLabelGap + EditFieldInputHeightFor(fonts) +
-		   kEditFieldGroupGap;
+	return std::max(28.0f, t_fonts.secondary().line_height() + 8.0f);
 }
 
-// Derived from font metrics, since a flat constant reads undersized at a larger font size.
-float RowButtonSizeFor(const CFontManager &fonts)
+Rect vertically_centered(Rect t_strip, float t_x, float t_width, float t_height)
 {
-	return std::max(28.0f, fonts.GetSecondary().GetLineHeight() + 8.0f);
+	return Rect{t_x, t_strip.y + (t_strip.h - t_height) * 0.5f, t_width, t_height};
 }
 
-// A mask of 0 means no explicit choice yet, which Account's accessor treats as "this banner
-// only" - so this counts it the same way, as one game.
-u32 VisibleGameCountFromMask(u16 mask)
+std::string_view game_count_text(u16 t_mask, char (&t_buffer)[16])
 {
-	if (mask == 0) return 1;
+	const int count = t_mask == 0 ? 1 : std::popcount(t_mask);
+	const int written = std::snprintf(t_buffer, sizeof(t_buffer), "%d %s", count, count == 1 ? "game" : "games");
 
-	u32 count = 0;
-	for (u32 b = 0; b < kCarouselMaxBanners; b += 1) {
-		if ((mask & (1u << b)) != 0) {
-			count += 1;
-		}
-	}
-
-	return count;
+	return std::string_view{t_buffer, static_cast<usize>(std::max(written, 0))};
 }
 
-// Shared by the chip's sizing and its drawing, so the two cannot disagree.
-std::string_view FormatVisibleGameCount(u16 mask, char *pOut, usize outCapacity)
+std::string_view stage_message(LoginStage t_stage)
 {
-	const u32 count = VisibleGameCountFromMask(mask);
-	const int written = std::snprintf(pOut, outCapacity, "%u %s", count, count == 1 ? "game" : "games");
-
-	return std::string_view{pOut, written > 0 ? static_cast<u64>(written) : 0};
-}
-
-// Layered semi-transparent rounded rects offset downward, so the panel reads as lifted.
-// This panel's field palette, applied over the shared chrome primitive. Which colours mean
-// "focused" is a panel decision, which is why Controls takes them rather than a bool.
-void DrawFieldChrome(CDrawList &drawList, Rect rect, bool highlighted, u8 alpha)
-{
-	constexpr float kFieldCornerRadius = 8.0f;
-
-	Controls::DrawFieldChrome(drawList, rect, kFieldCornerRadius,
-							  highlighted ? kColorFieldBorderFocused : kColorFieldBorder,
-							  highlighted ? kColorFieldFillFocused : kColorFieldFill, alpha);
-}
-
-void DrawAccentButton(CDrawList &drawList, const CFont &font, Rect rect, std::string_view label, Color accent,
-					  bool enabled, bool hovered, u8 alpha)
-{
-	Controls::DrawAccentButton(drawList, font, rect, label, accent, enabled, hovered, kColorDisabledButton,
-							   kColorTextDim, alpha);
-}
-
-void DrawNeutralButton(CDrawList &drawList, const CFont &font, Rect rect, std::string_view label, Color liftColor,
-					   Color restingFill, Color hoverFill, bool hovered, u8 alpha)
-{
-	Controls::DrawNeutralButton(drawList, font, rect, label, liftColor, restingFill, hoverFill, kColorTextBright,
-								hovered, alpha);
-}
-
-// Waiting covers both launching the client and waiting for its window, which the worker does not
-// distinguish either. The terminal two are a fallback: the progress view prefers the attempt's
-// own message whenever it has one.
-std::string_view LoginStageMessage(ELoginStage stage)
-{
-	switch (stage) {
-		case ELoginStage::Idle:
+	switch (t_stage) {
+		case LoginStage::idle:
 			return "";
-		case ELoginStage::WaitingForProcess:
+		case LoginStage::waiting_for_process:
 			return "Launching Riot Client...";
-		case ELoginStage::Connecting:
+		case LoginStage::connecting:
 			return "Waiting for Riot Client...";
-		case ELoginStage::Authenticating:
+		case LoginStage::authenticating:
 			return "Logging in...";
-		case ELoginStage::Launching:
+		case LoginStage::launching:
 			return "Launching game...";
-		case ELoginStage::Success:
+		case LoginStage::success:
 			return "Logged in!";
-		case ELoginStage::Error:
+		case LoginStage::error:
 			return "Something went wrong.";
-		case ELoginStage::Cancelled:
+		case LoginStage::cancelled:
 			return "Cancelled.";
 	}
 
 	return "";
 }
-} // namespace
-
-CAccountModal::CAccountModal(CCarousel *pCarousel, INotificationSink *pNotifications, const CFontManager &fonts,
-							 const CWindow &window, const Settings &settings, const CAssetManager &assets)
-	: m_pCarousel(pCarousel)
-	, m_pNotifications(pNotifications)
-	, m_fonts(fonts)
-	, m_window(window)
-	, m_settings(settings)
-	, m_assets(assets)
-	, m_gameSelect(fonts)
-{
-	m_editUsername.Init("");
-	m_editNote.Init("");
-	m_editPassword.Init("");
-	m_login.Init();
 }
 
-Rect CAccountModal::PanelRect() const
+AccountModal::AccountModal(Library &t_library, const Settings &t_settings, const Fonts &t_fonts, const Assets &t_assets,
+						   const Window &t_window, Toasts &t_toasts, CommandQueue &t_commands)
+	: m_library(t_library)
+	, m_settings(t_settings)
+	, m_fonts(t_fonts)
+	, m_assets(t_assets)
+	, m_window(t_window)
+	, m_toasts(t_toasts)
+	, m_commands(t_commands)
+	, m_visible_games(t_library, t_fonts)
 {
-	const float sizeScale = PanelMaxSizeScale(m_fonts);
-	const float panelMaxWidth = kPanelMaxWidthBase * sizeScale;
-	const float panelMaxHeight = kPanelMaxHeightBase * sizeScale;
+	for (u32 i = 0; i < field_count; i += 1) {
+		m_fields[i].set_max_length(field_specs[i].max_length);
+	}
+}
 
-	const auto windowW = static_cast<float>(m_window.GetWidth());
-	const auto windowH = static_cast<float>(m_window.GetHeight());
+bool AccountModal::has_game() const
+{
+	return m_game >= 0 && static_cast<u32>(m_game) < m_library.game_count();
+}
 
-	// The smallest of: a fraction of the window, the absolute ceiling, and whatever fits inside
-	// the margin.
-	float w = std::min({windowW * kPanelWidthFraction, panelMaxWidth, std::max(0.0f, windowW - kPanelMargin * 2.0f)});
-	float h = std::min({windowH * kPanelHeightFraction, panelMaxHeight, std::max(0.0f, windowH - kPanelMargin * 2.0f)});
+Rect AccountModal::panel_rect() const
+{
+	const float size_scale = std::max(1.0f, m_fonts.body().pixel_height() / reference_body_pixel_height);
+	const Vec2 max_size{panel_max_size.x * size_scale, panel_max_size.y * size_scale};
+	const Vec2 window = m_window.size();
 
-	// Whichever dimension binds wins; the other shrinks to match, so clamping never distorts
-	// the panel.
-	const float targetAspect = panelMaxWidth / panelMaxHeight;
-	if (w / h > targetAspect) {
-		w = h * targetAspect;
+	float width =
+		std::min({window.x * panel_width_fraction, max_size.x, std::max(0.0f, window.x - panel_margin * 2.0f)});
+	float height =
+		std::min({window.y * panel_height_fraction, max_size.y, std::max(0.0f, window.y - panel_margin * 2.0f)});
+
+	const float aspect = max_size.x / max_size.y;
+	if (width / height > aspect) {
+		width = height * aspect;
 	} else {
-		h = w / targetAspect;
+		height = width / aspect;
 	}
 
-	const float openScale = kPanelScaleMin + (1.0f - kPanelScaleMin) * m_flOpenAmount;
-	w *= openScale;
-	h *= openScale;
+	const float scale = panel_closed_scale + (1.0f - panel_closed_scale) * m_open_amount;
 
-	return Rect{(windowW - w) * 0.5f, (windowH - h) * 0.5f, w, h};
+	return Rect{0.0f, 0.0f, window.x, window.y}.centered(width * scale, height * scale);
 }
 
-CAccountModal::Layout CAccountModal::ComputeLayout() const
+AccountModal::Layout AccountModal::layout() const
 {
-	Layout layout{};
-	layout.Panel = PanelRect();
-	layout.Inner = RectInset(layout.Panel, kPanelBorderThickness);
+	Layout result{};
+	result.panel = panel_rect();
+	result.inner = result.panel.inset(panel_border);
 
-	const float footerHeight = FooterHeightFor(m_fonts);
-	layout.Content = Rect{layout.Inner.X, layout.Inner.Y, layout.Inner.W, layout.Inner.H - footerHeight};
-	layout.Footer = Rect{layout.Inner.X, layout.Inner.Y + layout.Inner.H - footerHeight, layout.Inner.W, footerHeight};
+	Rect content = result.inner;
+	result.footer = content.split_bottom(footer_height(m_fonts));
+	result.art_column = Rect{content.x, content.y, content.w * art_column_fraction, content.h};
 
-	layout.Left = Rect{layout.Content.X, layout.Content.Y, layout.Content.W * kLeftColumnFraction, layout.Content.H};
+	const float main_x = result.art_column.right() + art_separator_width;
+	result.main_column = Rect{main_x, content.y, content.right() - main_x, content.h};
 
-	const float rightX = layout.Left.X + layout.Left.W + kSeparatorThickness;
-	layout.Right = Rect{rightX, layout.Content.Y, layout.Content.X + layout.Content.W - rightX, layout.Content.H};
-
-	return layout;
+	return result;
 }
 
-bool CAccountModal::HasValidBanner() const
+AccountModal::AccountRows AccountModal::account_rows(const Layout &t_layout) const
 {
-	return m_nBannerIndex >= 0 && static_cast<u32>(m_nBannerIndex) < m_pCarousel->GetBannerCount();
-}
+	const Rect main = t_layout.main_column;
+	const float header = header_height(m_fonts);
 
-Rect CAccountModal::AccountsScrollRegionRect(Rect right) const
-{
-	const float headerHeight = HeaderHeightFor(m_fonts);
+	AccountRows rows{};
+	rows.region = Rect{main.x, main.y + header, main.w, main.h - header};
+	rows.row_height = row_height(m_fonts);
 
-	return Rect{right.X, right.Y + headerHeight, right.W, right.H - headerHeight};
-}
-
-Rect CAccountModal::AccountsScrollbarTrackRect(Rect scrollRegion) const
-{
-	return Rect{scrollRegion.X + scrollRegion.W - kScrollbarWidth - kScrollbarTrackMargin, scrollRegion.Y,
-				kScrollbarWidth, scrollRegion.H};
-}
-
-bool CAccountModal::BuildAccountListView(const Layout &layout, AccountListView &out) const
-{
-	out = AccountListView{};
-	out.ScrollRegion = AccountsScrollRegionRect(layout.Right);
-	out.ScrollbarTrack = AccountsScrollbarTrackRect(out.ScrollRegion);
-
-	if (!HasValidBanner()) return false;
-
-	out.Count = m_pCarousel->GetVisibleAccounts(static_cast<u32>(m_nBannerIndex), out.Refs);
-	out.RowHeight = RowHeightFor(m_fonts);
-
-	// No gap: the header's boundary line uses the row-divider colour, so it reads as one more
-	// separator in the sequence.
-	for (u32 i = 0; i < out.Count; i += 1) {
-		out.Tops[i] = static_cast<float>(i) * out.RowHeight;
+	if (has_game()) {
+		rows.accounts = m_library.visible_accounts(static_cast<u32>(m_game));
 	}
 
-	out.ContentHeight = static_cast<float>(out.Count) * out.RowHeight;
+	const Rect track{rows.region.right() - scrollbar_width - scrollbar_margin, rows.region.y, scrollbar_width,
+					 rows.region.h};
+	rows.scroll = ScrollGeometry{track, rows.accounts.count * rows.row_height, rows.region.h};
 
-	return true;
+	return rows;
 }
 
-Rect CAccountModal::RowRectAt(const Layout &layout, const AccountListView &view, u32 index) const
+Rect AccountModal::row_rect(const Layout &t_layout, const AccountRows &t_rows, u32 t_row) const
 {
-	const float headerHeight = HeaderHeightFor(m_fonts);
-	const float y = layout.Right.Y + headerHeight + view.Tops[index] - m_accountsScroll.m_flScrollOffset;
+	const Rect main = t_layout.main_column;
+	const float y = t_rows.region.y + t_row * t_rows.row_height - m_rows_scroll.offset();
 
-	return Rect{layout.Right.X + kRowPadding, y, layout.Right.W - kRowPadding * 2.0f, view.RowHeight};
+	return Rect{main.x + row_padding, y, main.w - row_padding * 2.0f, t_rows.row_height};
 }
 
-bool CAccountModal::IsRowVisible(const AccountListView &view, Rect row) const
+i32 AccountModal::row_at(const Layout &t_layout, const AccountRows &t_rows, Vec2 t_point) const
 {
-	return row.Y + row.H > view.ScrollRegion.Y && row.Y < view.ScrollRegion.Y + view.ScrollRegion.H;
-}
+	if (!t_rows.region.contains(t_point)) return -1;
 
-// Hit-testing knows nothing about the GPU clip rect, so the point is checked against the scroll
-// region: otherwise a click in the header could hit a row scrolled behind it.
-i32 CAccountModal::HitTestRow(const Layout &layout, const AccountListView &view, float x, float y) const
-{
-	if (!RectContainsPoint(view.ScrollRegion, x, y)) return -1;
-
-	for (u32 i = 0; i < view.Count; i += 1) {
-		const Rect row = RowRectAt(layout, view, i);
-
-		if (IsRowVisible(view, row) && RectContainsPoint(row, x, y)) return static_cast<i32>(i);
+	for (u32 i = 0; i < t_rows.accounts.count; i += 1) {
+		const Rect row = row_rect(t_layout, t_rows, i);
+		if (row.overlaps_vertically(t_rows.region) && row.contains(t_point)) return static_cast<i32>(i);
 	}
 
 	return -1;
 }
 
-const Account &CAccountModal::AccountAt(const AccountListView &view, u32 index) const
+Rect AccountModal::remove_button_rect(Rect t_row) const
 {
-	const VisibleAccountRef &ref = view.Refs[index];
+	const float size = row_button_size(m_fonts);
 
-	return m_pCarousel->GetBanner(ref.BannerIndex).Accounts[ref.AccountIndex];
+	return vertically_centered(t_row, t_row.right() - size, size, size);
 }
 
-Rect CAccountModal::CloseBadgeRect(Rect left) const
+Rect AccountModal::confirm_delete_rect(Rect t_row) const
 {
-	return Rect{left.X + kCloseBadgeMargin, left.Y + kCloseBadgeMargin, kCloseBadgeSize, kCloseBadgeSize};
+	const Rect remove = remove_button_rect(t_row);
+
+	return Rect{remove.x - confirm_pill_extra_width, remove.y, remove.w + confirm_pill_extra_width, remove.h};
 }
 
-// Login, Save and Back all share this rect, so the primary action always lands in the same
-// place whichever mode is showing.
-Rect CAccountModal::PrimaryButtonRect(Rect footer) const
+Rect AccountModal::edit_button_rect(Rect t_row) const
 {
-	const float height = ActionButtonHeightFor(m_fonts);
+	const Rect remove = remove_button_rect(t_row);
 
-	return Rect{footer.X + footer.W - kRowPadding - kActionButtonWidth, footer.Y + (footer.H - height) * 0.5f,
-				kActionButtonWidth, height};
+	return Rect{remove.x - row_button_gap - remove.w, remove.y, remove.w, remove.h};
 }
 
-Rect CAccountModal::RowRemoveButtonRect(Rect row) const
+Rect AccountModal::add_button_rect(Rect t_main) const
 {
-	const float size = RowButtonSizeFor(m_fonts);
+	const float size = row_button_size(m_fonts);
+	const Rect header{t_main.x, t_main.y, t_main.w, header_height(m_fonts)};
 
-	return Rect{row.X + row.W - size, row.Y + (row.H - size) * 0.5f, size, size};
+	return vertically_centered(header, t_main.right() - row_padding - size, size, size);
 }
 
-// The armed delete pill: the round remove badge stretched leftward to fit a label. Hit-testing
-// uses this while armed, so the whole visible target is clickable rather than just the circle it
-// grew from.
-Rect CAccountModal::RowConfirmDeleteRect(Rect row) const
+Rect AccountModal::primary_button_rect(Rect t_footer) const
 {
-	const Rect remove = RowRemoveButtonRect(row);
-
-	return Rect{remove.X - kRowConfirmExtraWidth, remove.Y, remove.W + kRowConfirmExtraWidth, remove.H};
+	return vertically_centered(t_footer, t_footer.right() - row_padding - action_button_width, action_button_width,
+							   action_button_height(m_fonts));
 }
 
-Rect CAccountModal::RowEditButtonRect(Rect row) const
+Rect AccountModal::cancel_button_rect(Rect t_primary) const
 {
-	const Rect remove = RowRemoveButtonRect(row);
-
-	return Rect{remove.X - kRowButtonGap - remove.W, remove.Y, remove.W, remove.H};
+	return Rect{t_primary.x - action_button_gap - action_button_width, t_primary.y, action_button_width, t_primary.h};
 }
 
-// A circular icon-only badge, matching the row buttons' convention for a secondary action.
-Rect CAccountModal::AddAccountButtonRect(Rect right) const
+Rect AccountModal::delete_button_rect(Rect t_footer) const
 {
-	const float headerHeight = HeaderHeightFor(m_fonts);
-	const float size = RowButtonSizeFor(m_fonts);
-
-	return Rect{right.X + right.W - kRowPadding - size, right.Y + (headerHeight - size) * 0.5f, size, size};
+	return vertically_centered(t_footer, t_footer.x + row_padding, action_button_width, action_button_height(m_fonts));
 }
 
-// The three blocks settle into the upper portion rather than leaving a dead gap before the
-// footer.
-Rect CAccountModal::EditFieldBlockRect(Rect right, u32 index) const
+Rect AccountModal::field_block_rect(Rect t_main, u32 t_field) const
 {
-	const float headerHeight = HeaderHeightFor(m_fonts);
-	const float blockHeight = EditFieldBlockHeightFor(m_fonts);
-	const float available = right.H - headerHeight;
-	const float offsetY = std::max(0.0f, (available - blockHeight * static_cast<float>(kEditFieldCount)) * 0.28f);
+	const float header = header_height(m_fonts);
+	const float block_height = field_block_height(m_fonts);
+	const float slack = std::max(0.0f, (t_main.h - header - block_height * field_count) * 0.28f);
 
-	return Rect{right.X + kRowPadding, right.Y + headerHeight + offsetY + static_cast<float>(index) * blockHeight,
-				right.W - kRowPadding * 2.0f, blockHeight};
+	return Rect{t_main.x + row_padding, t_main.y + header + slack + t_field * block_height,
+				t_main.w - row_padding * 2.0f, block_height};
 }
 
-// Anchored below the label rather than at the block's bottom, which piled all the slack above
-// the field instead of splitting it around.
-Rect CAccountModal::EditFieldInputRect(Rect block) const
+Rect AccountModal::field_input_rect(Rect t_main, u32 t_field) const
 {
-	const float labelHeight = m_fonts.GetSecondary().GetLineHeight();
+	const Rect block = field_block_rect(t_main, t_field);
 
-	return Rect{block.X, block.Y + labelHeight + kEditFieldLabelGap, block.W, EditFieldInputHeightFor(m_fonts)};
+	return Rect{block.x, block.y + m_fonts.secondary().line_height() + field_label_gap, block.w,
+				field_input_height(m_fonts)};
 }
 
-Rect CAccountModal::EditFieldInputRectAt(Rect right, u32 index) const
+Rect AccountModal::field_text_rect(Rect t_main, u32 t_field) const
 {
-	return EditFieldInputRect(EditFieldBlockRect(right, index));
+	Rect input = field_input_rect(t_main, t_field);
+
+	if (t_field == static_cast<u32>(EditField::password)) {
+		input.w -= reveal_button_size + reveal_button_margin;
+	}
+
+	return input;
 }
 
-// Top-right of the form's header, the same slot and height as the account list's add button, so
-// switching modes does not move the header's furniture. Sized to fit its content.
-Rect CAccountModal::VisibilityChipRect(Rect right) const
+Rect AccountModal::reveal_button_rect(Rect t_main) const
 {
-	const float headerHeight = HeaderHeightFor(m_fonts);
-	const float height = RowButtonSizeFor(m_fonts);
+	const Rect password = field_input_rect(t_main, static_cast<u32>(EditField::password));
 
-	char countBuffer[16];
-	const std::string_view countText = FormatVisibleGameCount(m_gameSelect.GetMask(), countBuffer, sizeof(countBuffer));
-	const float countTextW = TextWidth(m_fonts.GetSecondary(), countText);
-
-	const float width = kVisibilityChipIconInset + kVisibilityChipIconSize + kVisibilityChipIconGap + countTextW +
-						kVisibilityChipRightPadding;
-
-	return Rect{right.X + right.W - kRowPadding - width, right.Y + (headerHeight - height) * 0.5f, width, height};
+	return vertically_centered(password, password.right() - reveal_button_size - reveal_button_margin,
+							   reveal_button_size, reveal_button_size);
 }
 
-Rect CAccountModal::EditCancelButtonRect(Rect save) const
+Rect AccountModal::visibility_chip_rect(Rect t_main) const
 {
-	return Rect{save.X - kActionButtonGap - kActionButtonWidth, save.Y, kActionButtonWidth, save.H};
+	char buffer[16];
+	const float text = text_width(m_fonts.secondary(), game_count_text(m_visible_games.mask(), buffer));
+	const float width = chip_icon_inset + chip_icon_size + chip_icon_gap + text + chip_padding_right;
+	const float height = row_button_size(m_fonts);
+	const Rect header{t_main.x, t_main.y, t_main.w, header_height(m_fonts)};
+
+	return vertically_centered(header, t_main.right() - row_padding - width, width, height);
 }
 
-// Bottom-left of the footer, only shown when editing an existing row.
-Rect CAccountModal::EditDeleteButtonRect(Rect footer) const
+i32 AccountModal::focused_field() const
 {
-	const float height = ActionButtonHeightFor(m_fonts);
+	for (u32 i = 0; i < field_count; i += 1) {
+		if (m_fields[i].is_focused()) return static_cast<i32>(i);
+	}
 
-	return Rect{footer.X + kRowPadding, footer.Y + (footer.H - height) * 0.5f, kActionButtonWidth, height};
+	return -1;
 }
 
-Rect CAccountModal::PasswordRevealButtonRect(Rect passwordField) const
+void AccountModal::focus_field(i32 t_field)
 {
-	return Rect{passwordField.X + passwordField.W - kPasswordRevealButtonSize - 6.0f,
-				passwordField.Y + (passwordField.H - kPasswordRevealButtonSize) * 0.5f, kPasswordRevealButtonSize,
-				kPasswordRevealButtonSize};
+	for (u32 i = 0; i < field_count; i += 1) {
+		m_fields[i].set_focused(static_cast<i32>(i) == t_field);
+	}
 }
 
-bool CAccountModal::ResolveVisibleAccount(u32 bannerIndex, u32 queryIndex, VisibleAccountRef &out) const
+i32 AccountModal::field_at(Rect t_main, Vec2 t_point) const
 {
-	VisibleAccountRef refs[kCarouselMaxVisibleAccounts];
-	const u32 count = m_pCarousel->GetVisibleAccounts(bannerIndex, refs);
+	if (m_visible_games.is_open() || reveal_button_rect(t_main).contains(t_point)) return -1;
 
-	if (queryIndex >= count) return false;
+	for (u32 i = 0; i < field_count; i += 1) {
+		if (field_input_rect(t_main, i).contains(t_point)) return static_cast<i32>(i);
+	}
 
-	out = refs[queryIndex];
-
-	return true;
+	return -1;
 }
 
-void CAccountModal::StartLoginFor(u32 bannerIndex, u32 queryIndex)
+void AccountModal::open(i32 t_game)
 {
-	VisibleAccountRef ref{};
-	if (!ResolveVisibleAccount(bannerIndex, queryIndex, ref)) return;
-
-	const Account &account = m_pCarousel->GetBanner(ref.BannerIndex).Accounts[ref.AccountIndex];
-	m_login.Start(account.GetUsername(), account.m_szPassword, m_pCarousel->GetBanner(bannerIndex).Title);
+	m_open = true;
+	m_game = t_game;
+	m_mode = Mode::account_list;
+	m_rows_scroll = Scrollable{};
+	m_selected_row = -1;
 }
 
-void CAccountModal::RequestLogin(i32 bannerIndex, i32 queryIndex)
+void AccountModal::close()
 {
-	m_nSelectedAccountIndex = queryIndex;
-	m_mode = EAccountModalMode::LoginProgress;
-	m_flLoginElapsedSeconds = 0.0f;
+	m_open = false;
+	m_row_delete.disarm();
+	m_form_delete.disarm();
+}
 
-	if (m_login.IsActive() && !CLoginAttempt::IsTerminalStage(m_login.GetStage())) {
-		m_login.Cancel();
-		m_nPendingLoginBannerIndex = bannerIndex;
-		m_nPendingLoginQueryIndex = queryIndex;
+bool AccountModal::can_quick_login(i32 t_game, i32 t_row) const
+{
+	return t_game >= 0 && t_row >= 0 && m_library.visible_account(static_cast<u32>(t_game), static_cast<u32>(t_row));
+}
+
+void AccountModal::quick_login(i32 t_game, i32 t_row)
+{
+	open(t_game);
+	request_login(t_game, t_row);
+}
+
+const Account *AccountModal::account_at_row(i32 t_row) const
+{
+	if (!has_game() || t_row < 0) return nullptr;
+
+	const auto ref = m_library.visible_account(static_cast<u32>(m_game), static_cast<u32>(t_row));
+
+	return ref ? &m_library.account(*ref) : nullptr;
+}
+
+void AccountModal::start_adding()
+{
+	m_form_delete.disarm();
+	m_mode = Mode::edit_account;
+	m_edited_row = -1;
+
+	for (TextInput &input : m_fields) {
+		input.set_value("");
+	}
+
+	focus_field(static_cast<i32>(EditField::username));
+	field(EditField::password).set_masked(true);
+
+	m_visible_games.set_mask(static_cast<u16>(1u << m_game));
+	m_visible_games.close();
+}
+
+void AccountModal::start_editing(u32 t_row)
+{
+	m_row_delete.disarm();
+	m_form_delete.disarm();
+	m_mode = Mode::edit_account;
+	m_edited_row = static_cast<i32>(t_row);
+
+	u16 mask = 0;
+	if (const auto ref = m_library.visible_account(static_cast<u32>(m_game), t_row)) {
+		const Account &account = m_library.account(*ref);
+		field(EditField::note).set_value(account.note);
+		field(EditField::username).set_value(account.username);
+		field(EditField::password).set_value(account.password);
+		mask = account.visible_games(ref->game);
+	}
+
+	focus_field(static_cast<i32>(EditField::username));
+	field(EditField::password).set_masked(true);
+
+	m_visible_games.set_mask(mask);
+	m_visible_games.close();
+}
+
+bool AccountModal::can_save() const
+{
+	return !field(EditField::username).value().empty() && !field(EditField::password).value().empty();
+}
+
+void AccountModal::save_edit()
+{
+	m_mode = Mode::account_list;
+	if (!has_game()) return;
+
+	const auto game = static_cast<u32>(m_game);
+
+	if (m_edited_row < 0) {
+		Account account{.visible_game_mask = m_visible_games.mask()};
+		account.assign(field(EditField::username).value(), field(EditField::note).value(),
+					   field(EditField::password).value());
+
+		if (const auto added = m_library.add_account(game, account)) {
+			m_selected_row = static_cast<i32>(added->index);
+		} else {
+			notify("This game can't hold any more accounts.");
+		}
 
 		return;
 	}
 
-	m_nPendingLoginBannerIndex = -1;
-	m_nPendingLoginQueryIndex = -1;
-	StartLoginFor(static_cast<u32>(bannerIndex), static_cast<u32>(queryIndex));
-}
-
-void CAccountModal::Open(i32 bannerIndex)
-{
-	m_bIsOpen = true;
-	m_nBannerIndex = bannerIndex;
-	m_mode = EAccountModalMode::AccountList;
-
-	// A different banner has a different account count, so the old scroll position means
-	// nothing here.
-	m_accountsScroll = CScrollable{};
-	m_nSelectedAccountIndex = -1;
-}
-
-// Both latches are cleared on the way out, so reopening never lands on a button already armed
-// from a previous session with the panel.
-void CAccountModal::Close()
-{
-	m_bIsOpen = false;
-	m_rowDeleteConfirm.Disarm();
-	m_editDeleteConfirm.Disarm();
-}
-
-void CAccountModal::OpenForQuickLogin(i32 bannerIndex, i32 accountIndex)
-{
-	Open(bannerIndex);
-	RequestLogin(bannerIndex, accountIndex);
-}
-
-void CAccountModal::StartAddAccount()
-{
-	m_editDeleteConfirm.Disarm();
-	m_mode = EAccountModalMode::EditAccount;
-	m_nEditAccountIndex = -1;
-
-	m_editUsername.SetValue("");
-	m_editNote.SetValue("");
-	m_editPassword.SetValue("");
-	m_editUsername.m_bFocused = true;
-	m_editNote.m_bFocused = false;
-	m_editPassword.m_bFocused = false;
-	m_bEditPasswordRevealed = false;
-
-	// Explicitly this banner's bit rather than a raw 0, which would leave the chip claiming one
-	// game while the popup showed nothing checked. It is also the row the popup protects, so a
-	// new account cannot end up visible nowhere.
-	const u16 initialMask = m_nBannerIndex >= 0 ? static_cast<u16>(1u << m_nBannerIndex) : 0;
-
-	// Open then immediately close: this seeds the popup's working mask without showing it, which
-	// its persist-across-reopen contract allows.
-	m_gameSelect.Open(initialMask, &m_pCarousel->GetBanner(0), m_pCarousel->GetBannerCount(), Rect{}, Rect{});
-	m_gameSelect.Close();
-}
-
-void CAccountModal::StartEditAccount(u32 queryIndex)
-{
-	m_rowDeleteConfirm.Disarm();
-	m_editDeleteConfirm.Disarm();
-	m_mode = EAccountModalMode::EditAccount;
-	m_nEditAccountIndex = static_cast<i32>(queryIndex);
-
-	u16 mask = 0;
-	VisibleAccountRef ref{};
-
-	if (m_nBannerIndex >= 0 && ResolveVisibleAccount(static_cast<u32>(m_nBannerIndex), queryIndex, ref)) {
-		const Account &account = m_pCarousel->GetBanner(ref.BannerIndex).Accounts[ref.AccountIndex];
-		m_editUsername.SetValue(account.GetUsername());
-		m_editNote.SetValue(account.GetNote());
-		m_editPassword.SetValue(account.m_szPassword);
-		mask = account.GetEffectiveVisibleMask(ref.BannerIndex);
-	}
-
-	m_editUsername.m_bFocused = true;
-	m_editNote.m_bFocused = false;
-	m_editPassword.m_bFocused = false;
-	m_bEditPasswordRevealed = false;
-
-	// Seeded the same way as adding - see StartAddAccount.
-	m_gameSelect.Open(mask, &m_pCarousel->GetBanner(0), m_pCarousel->GetBannerCount(), Rect{}, Rect{});
-	m_gameSelect.Close();
-}
-
-bool CAccountModal::CanSaveEditedAccount() const
-{
-	return !m_editUsername.GetValue().empty() && !m_editPassword.GetValue().empty();
-}
-
-bool CAccountModal::GetAccountCopyFields(u32 queryIndex, const char *&outUsername, const char *&outPassword) const
-{
-	VisibleAccountRef ref{};
-	if (m_nBannerIndex < 0 || !ResolveVisibleAccount(static_cast<u32>(m_nBannerIndex), queryIndex, ref)) {
-		return false;
-	}
-
-	const Account &account = m_pCarousel->GetBanner(ref.BannerIndex).Accounts[ref.AccountIndex];
-	outUsername = account.m_szUsername;
-	outPassword = account.m_szPassword;
-
-	return true;
-}
-
-void CAccountModal::RemoveAccountRow(u32 queryIndex)
-{
-	VisibleAccountRef ref{};
-	if (m_nBannerIndex < 0 || !ResolveVisibleAccount(static_cast<u32>(m_nBannerIndex), queryIndex, ref)) return;
-
-	m_pCarousel->RemoveAccount(ref.BannerIndex, ref.AccountIndex);
-
-	const auto removed = static_cast<i32>(queryIndex);
-	if (m_nSelectedAccountIndex == removed) {
-		m_nSelectedAccountIndex = -1;
-	} else if (m_nSelectedAccountIndex > removed) {
-		m_nSelectedAccountIndex -= 1;
+	if (const auto ref = m_library.visible_account(game, static_cast<u32>(m_edited_row))) {
+		Account &account = m_library.account(*ref);
+		account.assign(field(EditField::username).value(), field(EditField::note).value(),
+					   field(EditField::password).value());
+		account.visible_game_mask = m_visible_games.mask();
 	}
 }
 
-// True while either delete button is waiting on its second click.
-bool CAccountModal::IsDeleteArmed() const
+void AccountModal::delete_edited_account()
 {
-	return m_rowDeleteConfirm.IsArmedAny() || m_editDeleteConfirm.IsArmedAny();
+	m_mode = Mode::account_list;
+	if (!has_game()) return;
+
+	if (const auto ref = m_library.visible_account(static_cast<u32>(m_game), static_cast<u32>(m_edited_row))) {
+		m_library.remove_account(*ref);
+	}
+
+	m_selected_row = -1;
 }
 
-// The prompt and the button share one deadline, so the bar running out and the button disarming
-// are the same event rather than two clocks that happen to be set to the same number.
-void CAccountModal::NotifyDeleteArmed() const
+void AccountModal::remove_row(u32 t_row)
 {
-	if (m_pNotifications != nullptr) {
-		m_pNotifications->NotifyDeadline("Click again to delete this account.", CConfirmLatch::kWindowSeconds);
+	const auto ref = m_library.visible_account(static_cast<u32>(m_game), t_row);
+	if (!ref) return;
+
+	m_library.remove_account(*ref);
+
+	const auto removed = static_cast<i32>(t_row);
+	if (m_selected_row == removed) {
+		m_selected_row = -1;
+	} else if (m_selected_row > removed) {
+		m_selected_row -= 1;
 	}
 }
 
-// A no-op when the owner supplied no sink, so no call site has to guard itself.
-void CAccountModal::Notify(std::string_view message) const
+void AccountModal::confirm_row_delete(u32 t_row)
 {
-	if (m_pNotifications != nullptr) {
-		m_pNotifications->Notify(Notification{.Message = message});
+	if (m_row_delete.confirm(static_cast<i32>(t_row))) {
+		remove_row(t_row);
+		notify("Account deleted.");
+	} else {
+		notify_delete_armed();
 	}
 }
 
-PendingHit CAccountModal::ConsumePendingRightClickRow()
+void AccountModal::notify(std::string_view t_message)
 {
-	const PendingHit pending = m_pendingRightClickRow;
-	m_pendingRightClickRow = PendingHit{};
-
-	return pending;
+	m_toasts.notify(Notification{.message = t_message});
 }
 
-// Both latches run every frame regardless of mode: an armed delete has to expire on its own even
-// while the form it belongs to is not the one on screen.
-void CAccountModal::Update(float deltaSeconds)
+void AccountModal::notify_delete_armed()
 {
-	m_flOpenAmount = CAnimator::EaseToward(m_flOpenAmount, m_bIsOpen ? 1.0f : 0.0f, kOpenEaseRate, deltaSeconds);
+	m_toasts.notify_countdown("Click again to delete this account.", ConfirmLatch::window_seconds);
+}
 
-	const bool wasArmed = IsDeleteArmed();
-	m_rowDeleteConfirm.Update(deltaSeconds);
-	m_editDeleteConfirm.Update(deltaSeconds);
+void AccountModal::request_login(i32 t_game, i32 t_row)
+{
+	m_selected_row = t_row;
+	m_mode = Mode::login_progress;
+	m_login_seconds = 0.0f;
 
-	// The prompt is cleared the moment nothing is armed any more, however that happened - a
-	// commit, a click elsewhere, or the window simply running out.
-	if (wasArmed && !IsDeleteArmed()) {
-		if (m_pNotifications != nullptr) {
-			m_pNotifications->DismissDeadline();
-		}
+	if (m_login.is_active() && !LoginAttempt::is_terminal(m_login.stage())) {
+		m_login.cancel();
+		m_queued_login_game = t_game;
+		m_queued_login_row = t_row;
+		return;
 	}
 
-	if (!m_bIsOpen && m_flOpenAmount < 0.002f) {
-		m_flOpenAmount = 0.0f;
-		m_nBannerIndex = -1; // fully closed; the next open sets it fresh
+	m_queued_login_game = -1;
+	m_queued_login_row = -1;
+	start_login(t_game, t_row);
+}
+
+void AccountModal::start_login(i32 t_game, i32 t_row)
+{
+	const auto ref = m_library.visible_account(static_cast<u32>(t_game), static_cast<u32>(t_row));
+	if (!ref) return;
+
+	const Account &account = m_library.account(*ref);
+	m_login.start(account.username, account.password, m_library.game(static_cast<u32>(t_game)).title);
+}
+
+void AccountModal::update(float t_delta_seconds)
+{
+	m_open_amount = animation::ease_toward(m_open_amount, m_open ? 1.0f : 0.0f, open_ease_rate, t_delta_seconds);
+
+	if (!m_open && m_open_amount == 0.0f) {
+		m_game = -1;
+	}
+
+	const bool was_armed = m_row_delete.is_armed() || m_form_delete.is_armed();
+	m_row_delete.update(t_delta_seconds);
+	m_form_delete.update(t_delta_seconds);
+
+	if (was_armed && !m_row_delete.is_armed() && !m_form_delete.is_armed()) {
+		m_toasts.dismiss_countdown();
 	}
 
 	switch (m_mode) {
-		case EAccountModalMode::AccountList:
-			m_accountsScroll.Update(deltaSeconds);
+		case Mode::account_list:
+			m_rows_scroll.update(t_delta_seconds);
 			break;
 
-		case EAccountModalMode::LoginProgress:
-			m_flLoginElapsedSeconds += deltaSeconds;
+		case Mode::login_progress:
+			m_login_seconds += t_delta_seconds;
 			break;
 
-		case EAccountModalMode::EditAccount:
-			m_editUsername.Update(deltaSeconds);
-			m_editNote.Update(deltaSeconds);
-			m_editPassword.Update(deltaSeconds);
+		case Mode::edit_account:
+			for (TextInput &input : m_fields) {
+				input.update(t_delta_seconds);
+			}
+
 			break;
 	}
 
-	// The popup is a plain member rather than a stack entry, so nothing gates its mouse or
-	// advances its animation unless this does it. The position is already gated by the owner.
-	m_gameSelect.SetMouseGated(false, m_flMouseX, m_flMouseY);
-	m_gameSelect.Update(deltaSeconds);
+	m_visible_games.update(t_delta_seconds);
+	m_login.update();
 
-	// Regardless of mode: the join is instantaneous once the worker reaches a terminal stage.
-	m_login.Update();
+	if (has_queued_login() && !m_login.is_active()) {
+		const i32 game = std::exchange(m_queued_login_game, -1);
+		const i32 row = std::exchange(m_queued_login_row, -1);
 
-	// IsActive goes false once Update retires the worker, or its watchdog abandons a wedged one,
-	// so a queued request always starts eventually.
-	if (HasPendingLogin() && !m_login.IsActive()) {
-		const i32 bannerIndex = m_nPendingLoginBannerIndex;
-		const i32 queryIndex = m_nPendingLoginQueryIndex;
-
-		m_nPendingLoginBannerIndex = -1;
-		m_nPendingLoginQueryIndex = -1;
-		m_flLoginElapsedSeconds = 0.0f;
-
-		StartLoginFor(static_cast<u32>(bannerIndex), static_cast<u32>(queryIndex));
+		m_login_seconds = 0.0f;
+		start_login(game, row);
 	}
 }
 
-bool CAccountModal::OnPointerDown(float x, float y)
+bool AccountModal::on_pointer_down(Vec2 t_point)
 {
-	if (!IsBlocking() || m_mode != EAccountModalMode::AccountList) return IsBlocking();
+	if (!is_blocking()) return false;
 
-	const Layout layout = ComputeLayout();
+	const Layout current = layout();
 
-	AccountListView view;
-	if (!BuildAccountListView(layout, view)) return true;
+	if (m_mode == Mode::edit_account) {
+		const i32 pressed = field_at(current.main_column, t_point);
 
-	m_accountsScroll.OnPointerDown(x, y, view.ScrollbarTrack, view.ContentHeight, view.ScrollRegion.H);
+		if (pressed >= 0) {
+			focus_field(pressed);
+			m_fields[pressed].on_pointer_down(m_fonts.body(), field_text_rect(current.main_column, pressed), t_point.x);
+		}
+	} else if (m_mode == Mode::account_list) {
+		m_rows_scroll.on_pointer_down(t_point, account_rows(current).scroll);
+	}
 
 	return true;
 }
 
-bool CAccountModal::OnPointerMove(float x, float y)
+bool AccountModal::on_pointer_move(Vec2 t_point)
 {
-	if (!m_accountsScroll.IsDragging()) return IsBlocking();
+	if (!is_blocking()) return false;
 
-	const Layout layout = ComputeLayout();
+	const Layout current = layout();
 
-	AccountListView view;
-	if (!BuildAccountListView(layout, view)) return IsBlocking();
+	for (u32 i = 0; i < field_count; i += 1) {
+		if (m_fields[i].is_selecting()) {
+			m_fields[i].on_pointer_move(m_fonts.body(), field_text_rect(current.main_column, i), t_point.x);
+		}
+	}
 
-	m_accountsScroll.OnPointerMove(y, view.ScrollbarTrack, view.ContentHeight, view.ScrollRegion.H);
+	if (m_rows_scroll.is_dragging()) {
+		m_rows_scroll.on_pointer_move(t_point.y, account_rows(current).scroll);
+	}
 
 	return true;
 }
 
-// Arrow keys walk the rows, Enter logs the selected one in, and Delete arms the same two-step
-// confirm the row's own button uses. Edit is left to the mouse: it opens a form, and a form is not
-// something to land in by mistake while arrowing through a list.
-//
-// False for anything else, so a key this list has no use for still reaches the rest of OnKeyDown.
-bool CAccountModal::HandleAccountListKey(u32 keyCode)
+bool AccountModal::on_pointer_up(Vec2 t_point)
 {
-	AccountListView view;
-	if (!BuildAccountListView(ComputeLayout(), view) || view.Count == 0) return false;
+	if (m_rows_scroll.is_dragging()) {
+		m_rows_scroll.on_pointer_up();
+		return true;
+	}
 
-	const auto lastIndex = static_cast<i32>(view.Count) - 1;
+	if (!is_blocking()) return false;
 
-	switch (keyCode) {
+	bool ended_text_selection = false;
+	for (TextInput &input : m_fields) {
+		ended_text_selection = ended_text_selection || input.is_selecting();
+		input.on_pointer_up();
+	}
+
+	if (ended_text_selection) return true;
+
+	const Layout current = layout();
+	const bool clicked_away = !current.panel.contains(t_point);
+	const bool clicked_close = Rect{current.art_column.x + close_badge_margin,
+									current.art_column.y + close_badge_margin, close_badge_size, close_badge_size}
+								   .contains(t_point);
+
+	if (m_mode != Mode::login_progress && (clicked_away || clicked_close)) {
+		close();
+		return true;
+	}
+
+	switch (m_mode) {
+		case Mode::account_list:
+			if (has_game()) {
+				handle_list_click(current, t_point);
+			}
+
+			break;
+
+		case Mode::login_progress:
+			if (primary_button_rect(current.footer).contains(t_point)) {
+				m_queued_login_game = -1;
+				m_queued_login_row = -1;
+				m_login.cancel();
+				m_mode = Mode::account_list;
+			}
+
+			break;
+
+		case Mode::edit_account:
+			handle_edit_click(current, t_point);
+			break;
+	}
+
+	return true;
+}
+
+void AccountModal::handle_list_click(const Layout &t_layout, Vec2 t_point)
+{
+	if (add_button_rect(t_layout.main_column).contains(t_point)) {
+		start_adding();
+		return;
+	}
+
+	const AccountRows rows = account_rows(t_layout);
+
+	if (rows.region.contains(t_point)) {
+		for (u32 i = 0; i < rows.accounts.count; i += 1) {
+			const Rect row = row_rect(t_layout, rows, i);
+			if (!row.overlaps_vertically(rows.region)) continue;
+
+			const bool armed = m_row_delete.is_armed(static_cast<i32>(i));
+			if ((armed ? confirm_delete_rect(row) : remove_button_rect(row)).contains(t_point)) {
+				confirm_row_delete(i);
+				return;
+			}
+
+			if (!armed && edit_button_rect(row).contains(t_point)) {
+				start_editing(i);
+				return;
+			}
+		}
+
+		m_selected_row = row_at(t_layout, rows, t_point);
+	}
+
+	if (m_selected_row >= 0 && primary_button_rect(t_layout.footer).contains(t_point)) {
+		request_login(m_game, m_selected_row);
+	}
+}
+
+void AccountModal::handle_edit_click(const Layout &t_layout, Vec2 t_point)
+{
+	const Rect main = t_layout.main_column;
+
+	if (m_visible_games.is_open()) {
+		if (!m_visible_games.on_pointer_down(t_point)) {
+			m_visible_games.close();
+		}
+
+		return;
+	}
+
+	const Rect chip = visibility_chip_rect(main);
+	if (chip.contains(t_point)) {
+		m_visible_games.open(chip, main);
+		return;
+	}
+
+	if (reveal_button_rect(main).contains(t_point)) {
+		TextInput &password = field(EditField::password);
+		password.set_masked(!password.is_masked());
+		return;
+	}
+
+	focus_field(-1);
+
+	const Rect save = primary_button_rect(t_layout.footer);
+
+	if (cancel_button_rect(save).contains(t_point)) {
+		m_mode = Mode::account_list;
+	} else if (can_save() && save.contains(t_point)) {
+		save_edit();
+	} else if (m_edited_row >= 0 && delete_button_rect(t_layout.footer).contains(t_point)) {
+		if (m_form_delete.confirm(0)) {
+			delete_edited_account();
+			notify("Account deleted.");
+		} else {
+			notify_delete_armed();
+		}
+	}
+}
+
+bool AccountModal::on_right_click(Vec2 t_point)
+{
+	if (!is_blocking()) return false;
+
+	const Layout current = layout();
+
+	if (m_mode == Mode::edit_account) {
+		const i32 clicked = field_at(current.main_column, t_point);
+
+		if (clicked >= 0) {
+			focus_field(clicked);
+			m_fields[clicked].on_right_click(m_fonts.body(), field_text_rect(current.main_column, clicked), t_point.x);
+			m_commands.push(
+				Command{.type = CommandType::show_text_menu, .position = t_point, .text_input = &m_fields[clicked]});
+		}
+	} else if (m_mode == Mode::account_list && has_game()) {
+		const i32 row = row_at(current, account_rows(current), t_point);
+
+		if (row >= 0) {
+			m_commands.push(Command{.type = CommandType::show_account_menu, .index = row, .position = t_point});
+		}
+	}
+
+	return true;
+}
+
+bool AccountModal::on_scroll(Vec2, float t_wheel_delta)
+{
+	if (!is_blocking()) return false;
+
+	if (m_mode == Mode::account_list) {
+		m_rows_scroll.on_scroll(t_wheel_delta, account_rows(layout()).scroll);
+	}
+
+	return true;
+}
+
+bool AccountModal::handle_list_key(u32 t_key)
+{
+	const Layout current = layout();
+	const AccountRows rows = account_rows(current);
+	if (rows.accounts.count == 0) return false;
+
+	switch (t_key) {
 		case VK_UP:
 		case VK_DOWN: {
-			// From -1, either direction starts at the top rather than wrapping to the bottom: the
-			// first arrow press after opening should land somewhere predictable.
-			const i32 delta = keyCode == VK_DOWN ? 1 : -1;
-			m_nSelectedAccountIndex =
-				m_nSelectedAccountIndex < 0 ? 0 : std::clamp(m_nSelectedAccountIndex + delta, 0, lastIndex);
+			const i32 step = t_key == VK_DOWN ? 1 : -1;
+			const i32 last = static_cast<i32>(rows.accounts.count) - 1;
+			m_selected_row = m_selected_row < 0 ? 0 : std::clamp(m_selected_row + step, 0, last);
 
-			ScrollSelectedRowIntoView(view);
+			const Rect row = row_rect(current, rows, static_cast<u32>(m_selected_row));
+			m_rows_scroll.reveal(row.y, row.bottom(), rows.region.y, rows.region.bottom(), rows.scroll);
 			return true;
 		}
 
 		case VK_RETURN:
-			if (m_nSelectedAccountIndex >= 0) {
-				RequestLogin(m_nBannerIndex, m_nSelectedAccountIndex);
+			if (m_selected_row >= 0) {
+				request_login(m_game, m_selected_row);
 			}
 
 			return true;
 
 		case VK_DELETE:
-			if (m_nSelectedAccountIndex >= 0) {
-				if (m_rowDeleteConfirm.ClickArmedOrCommit(m_nSelectedAccountIndex)) {
-					RemoveAccountRow(static_cast<u32>(m_nSelectedAccountIndex));
-					Notify("Account deleted.");
-				} else {
-					NotifyDeleteArmed();
-				}
+			if (m_selected_row >= 0) {
+				confirm_row_delete(static_cast<u32>(m_selected_row));
 			}
 
 			return true;
@@ -806,862 +869,464 @@ bool CAccountModal::HandleAccountListKey(u32 keyCode)
 	}
 }
 
-// Nudges the list just far enough that the selected row is fully visible, measured against where
-// the scroll is heading rather than where it is - holding an arrow key would otherwise correct
-// against a still-moving offset and overshoot on every press.
-void CAccountModal::ScrollSelectedRowIntoView(const AccountListView &view)
+bool AccountModal::on_key_down(u32 t_key)
 {
-	if (m_nSelectedAccountIndex < 0) return;
+	if (!is_blocking()) return false;
 
-	const Rect row = RowRectAt(ComputeLayout(), view, static_cast<u32>(m_nSelectedAccountIndex));
-	const float settleShift = m_accountsScroll.m_flScrollOffset - m_accountsScroll.m_flTargetScrollOffset;
-	const float top = row.Y + settleShift;
+	if (t_key == VK_ESCAPE) {
+		if (m_mode == Mode::edit_account) {
+			m_mode = Mode::account_list;
+		} else if (m_mode == Mode::account_list && m_selected_row >= 0) {
+			m_selected_row = -1;
+		} else if (m_mode == Mode::account_list) {
+			close();
+		}
 
-	const float above = view.ScrollRegion.Y - top;
-	const float below = (top + row.H) - (view.ScrollRegion.Y + view.ScrollRegion.H);
-
-	if (above > 0.0f) {
-		m_accountsScroll.ScrollBy(-above, view.ContentHeight, view.ScrollRegion.H);
-	} else if (below > 0.0f) {
-		m_accountsScroll.ScrollBy(below, view.ContentHeight, view.ScrollRegion.H);
-	}
-}
-
-bool CAccountModal::HandleAccountListClick(const Layout &layout, float x, float y)
-{
-	if (RectContainsPoint(AddAccountButtonRect(layout.Right), x, y)) {
-		StartAddAccount();
 		return true;
 	}
 
-	AccountListView view;
-	if (!BuildAccountListView(layout, view)) return true;
-
-	if (RectContainsPoint(view.ScrollRegion, x, y)) {
-		for (u32 i = 0; i < view.Count; i += 1) {
-			const Rect row = RowRectAt(layout, view, i);
-			if (!IsRowVisible(view, row)) continue;
-
-			// An armed row answers over its whole pill, and answers first: the pill overlaps the
-			// edit button, and while a delete is pending that button is not what is on screen.
-			const bool armed = m_rowDeleteConfirm.IsArmed(static_cast<i32>(i));
-			const Rect deleteRect = armed ? RowConfirmDeleteRect(row) : RowRemoveButtonRect(row);
-
-			if (RectContainsPoint(deleteRect, x, y)) {
-				if (m_rowDeleteConfirm.ClickArmedOrCommit(static_cast<i32>(i))) {
-					RemoveAccountRow(i);
-					Notify("Account deleted.");
-				} else {
-					NotifyDeleteArmed();
-				}
-
-				return true;
-			}
-
-			if (!armed && RectContainsPoint(RowEditButtonRect(row), x, y)) {
-				StartEditAccount(i);
-				return true;
-			}
+	if (m_mode == Mode::account_list) {
+		handle_list_key(t_key);
+	} else if (m_mode == Mode::edit_account && t_key == VK_TAB) {
+		focus_field((focused_field() + 1) % static_cast<i32>(field_count));
+	} else if (m_mode == Mode::edit_account) {
+		for (TextInput &input : m_fields) {
+			input.on_key_down(t_key);
 		}
-
-		// Clicking the gaps between rows, or the empty space below the last one, deselects.
-		m_nSelectedAccountIndex = HitTestRow(layout, view, x, y);
-	}
-
-	if (m_nSelectedAccountIndex >= 0 && RectContainsPoint(PrimaryButtonRect(layout.Footer), x, y)) {
-		RequestLogin(m_nBannerIndex, m_nSelectedAccountIndex);
 	}
 
 	return true;
 }
 
-// Cancel and Back share the primary button's rect and both return to the account list. Cancel is
-// a real interrupt the worker notices within about one poll interval, and a no-op once the
-// attempt has finished.
-bool CAccountModal::HandleLoginProgressClick(const Layout &layout, float x, float y)
+bool AccountModal::on_char(u32 t_character)
 {
-	if (RectContainsPoint(PrimaryButtonRect(layout.Footer), x, y)) {
-		m_nPendingLoginBannerIndex = -1;
-		m_nPendingLoginQueryIndex = -1;
-		m_login.Cancel();
-		m_mode = EAccountModalMode::AccountList;
+	if (!is_blocking()) return false;
+
+	if (m_mode == Mode::edit_account) {
+		for (TextInput &input : m_fields) {
+			input.on_char(t_character);
+		}
 	}
 
 	return true;
 }
 
-void CAccountModal::SaveEditedAccount()
+CursorKind AccountModal::list_cursor(const Layout &t_layout) const
 {
-	if (!HasValidBanner()) {
-		m_mode = EAccountModalMode::AccountList;
-		return;
+	if (add_button_rect(t_layout.main_column).contains(m_mouse)) return CursorKind::hand;
+
+	const AccountRows rows = account_rows(t_layout);
+	if (row_at(t_layout, rows, m_mouse) >= 0 || m_rows_scroll.is_over_track(m_mouse, rows.scroll)) {
+		return CursorKind::hand;
 	}
 
-	const auto bannerIndex = static_cast<u32>(m_nBannerIndex);
-	const bool adding = m_nEditAccountIndex < 0;
+	const bool over_login = primary_button_rect(t_layout.footer).contains(m_mouse);
 
-	if (adding) {
-		m_pCarousel->AddAccount(bannerIndex, m_editUsername.GetValue(), m_editNote.GetValue(),
-								m_editPassword.GetValue());
+	return m_selected_row >= 0 && !m_login.is_active() && over_login ? CursorKind::hand : CursorKind::arrow;
+}
 
-		Banner &banner = m_pCarousel->GetBanner(bannerIndex);
-		const u32 savedIndex = banner.AccountCount - 1;
+CursorKind AccountModal::edit_cursor(const Layout &t_layout) const
+{
+	const Rect main = t_layout.main_column;
 
-		// Account::Init always resets the mask, so the form's working mask is written back
-		// afterwards rather than threaded through it.
-		banner.Accounts[savedIndex].m_uVisibleBannerMask = m_gameSelect.GetMask();
+	if (m_visible_games.is_open()) return m_visible_games.cursor(m_mouse);
+	if (visibility_chip_rect(main).contains(m_mouse) || reveal_button_rect(main).contains(m_mouse)) {
+		return CursorKind::hand;
+	}
 
-		// A new account is the last of this banner's, which is where the query places it too.
-		m_nSelectedAccountIndex = static_cast<i32>(savedIndex);
+	if (field_at(main, m_mouse) >= 0) return CursorKind::ibeam;
+
+	const Rect save = primary_button_rect(t_layout.footer);
+	const bool over_button = cancel_button_rect(save).contains(m_mouse) || (can_save() && save.contains(m_mouse)) ||
+							 (m_edited_row >= 0 && delete_button_rect(t_layout.footer).contains(m_mouse));
+
+	return over_button ? CursorKind::hand : CursorKind::arrow;
+}
+
+CursorKind AccountModal::cursor() const
+{
+	if (!is_blocking()) return CursorKind::arrow;
+	if (m_rows_scroll.is_dragging()) return CursorKind::drag;
+
+	for (const TextInput &input : m_fields) {
+		if (input.is_selecting()) return CursorKind::ibeam;
+	}
+
+	const Layout current = layout();
+	const Rect close_badge{current.art_column.x + close_badge_margin, current.art_column.y + close_badge_margin,
+						   close_badge_size, close_badge_size};
+
+	if (m_mode != Mode::login_progress && close_badge.contains(m_mouse)) return CursorKind::hand;
+
+	switch (m_mode) {
+		case Mode::account_list:
+			return has_game() ? list_cursor(current) : CursorKind::arrow;
+
+		case Mode::login_progress:
+			return primary_button_rect(current.footer).contains(m_mouse) ? CursorKind::hand : CursorKind::arrow;
+
+		case Mode::edit_account:
+			return edit_cursor(current);
+	}
+
+	return CursorKind::arrow;
+}
+
+void AccountModal::draw_chrome(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const
+{
+	const Game &game = m_library.game(static_cast<u32>(m_game));
+	const Rect art = t_layout.art_column;
+
+	controls::draw_panel_shadow(t_draw_list, t_layout.panel, panel_radius, m_open_amount);
+	t_draw_list.add_bordered_rect(t_layout.panel, rounded(panel_radius), faded(color_panel, t_alpha),
+								  faded(color_panel_border, t_alpha), panel_border);
+
+	const float highlight_inset = scaled_radius(panel_radius);
+	t_draw_list.add_rect(
+		Rect{t_layout.inner.x + highlight_inset, t_layout.inner.y, t_layout.inner.w - highlight_inset * 2.0f, 1.0f},
+		faded(Color{255, 255, 255, 22}, t_alpha));
+
+	if (game.banner != nullptr) {
+		t_draw_list.add_image(art, game.banner, faded(color_white, t_alpha),
+							  rounded(panel_radius - panel_border, 0.0f, 0.0f, 0.0f),
+							  cover_uv(art.w / art.h, game.banner->aspect()));
 	} else {
-		VisibleAccountRef ref{};
-		if (ResolveVisibleAccount(bannerIndex, static_cast<u32>(m_nEditAccountIndex), ref)) {
-			m_pCarousel->UpdateAccount(ref.BannerIndex, ref.AccountIndex, m_editUsername.GetValue(),
-									   m_editNote.GetValue(), m_editPassword.GetValue());
-			m_pCarousel->GetBanner(ref.BannerIndex).Accounts[ref.AccountIndex].m_uVisibleBannerMask =
-				m_gameSelect.GetMask();
-		}
+		t_draw_list.add_rect(art, faded(game.accent, t_alpha));
 	}
 
-	m_mode = EAccountModalMode::AccountList;
+	t_draw_list.add_rect(Rect{art.right(), art.y, art_separator_width, art.h}, faded(color_art_separator, t_alpha));
+
+	const Rect badge{art.x + close_badge_margin, art.y + close_badge_margin, close_badge_size, close_badge_size};
+	const auto badge_alpha = static_cast<u8>(badge.contains(m_mouse) ? 210 : 170);
+
+	t_draw_list.add_rounded_rect(badge, rounded(badge.w * 0.5f), faded(Color{20, 20, 22, badge_alpha}, t_alpha));
+	controls::draw_icon(t_draw_list, badge.centered(close_badge_icon_size, close_badge_icon_size),
+						m_assets.get(Asset::icon_arrow_back), faded(color_white, t_alpha));
 }
 
-void CAccountModal::DeleteEditedAccount()
+void AccountModal::draw_section_title(DrawList &t_draw_list, Rect t_main, std::string_view t_title, u8 t_alpha) const
 {
-	if (HasValidBanner()) {
-		VisibleAccountRef ref{};
-		if (ResolveVisibleAccount(static_cast<u32>(m_nBannerIndex), static_cast<u32>(m_nEditAccountIndex), ref)) {
-			m_pCarousel->RemoveAccount(ref.BannerIndex, ref.AccountIndex);
-		}
+	const Font &font = m_fonts.body();
+	const Rect header{t_main.x, t_main.y, t_main.w, header_height(m_fonts)};
 
-		m_nSelectedAccountIndex = -1;
-	}
-
-	m_mode = EAccountModalMode::AccountList;
+	draw_text(t_draw_list, font, Vec2{t_main.x + row_padding, font.centered_baseline(header)}, t_title,
+			  faded(color_text_bright, t_alpha));
+	t_draw_list.add_rect(Rect{t_main.x + row_padding, header.bottom(), t_main.w - row_padding * 2.0f, 1.0f},
+						 faded(color_separator, t_alpha));
 }
 
-bool CAccountModal::HandleEditAccountClick(const Layout &layout, float x, float y)
+void AccountModal::draw_account_row(DrawList &t_draw_list, Rect t_main, Rect t_row, const Account &t_account,
+									bool t_selected, float t_delete_armed, u8 t_alpha) const
 {
-	// The popup takes priority over everything else in the form while open: a click either
-	// toggles one of its rows or, missing it entirely, closes it.
-	if (m_gameSelect.IsBlocking()) {
-		if (!m_gameSelect.OnPointerDown(x, y)) {
-			m_gameSelect.Close();
-		}
+	const Rect highlight{t_row.x - 8.0f, t_row.y + 3.0f, t_row.w + 16.0f, t_row.h - 6.0f};
 
-		return true;
+	if (t_selected) {
+		t_draw_list.add_rounded_rect(highlight, rounded(10.0f), faded(color_row_selected, t_alpha));
+		t_draw_list.add_rounded_rect(Rect{t_main.x + 8.0f, highlight.y, 3.0f, highlight.h}, rounded(1.5f),
+									 faded(m_settings.accent, t_alpha));
+	} else if (highlight.contains(m_mouse)) {
+		t_draw_list.add_rounded_rect(highlight, rounded(10.0f), faded(color_row_hover, t_alpha));
 	}
 
-	const Rect chip = VisibilityChipRect(layout.Right);
-	if (RectContainsPoint(chip, x, y)) {
-		// Clamped to the form column, not the panel: the panel's height includes the footer, so
-		// the popup could spill past the separator above the Delete and Save buttons.
-		m_gameSelect.Open(m_gameSelect.GetMask(), &m_pCarousel->GetBanner(0), m_pCarousel->GetBannerCount(), chip,
-						  layout.Right);
-		return true;
-	}
-
-	const Rect noteField = EditFieldInputRectAt(layout.Right, 0);
-	const Rect usernameField = EditFieldInputRectAt(layout.Right, 1);
-	const Rect passwordField = EditFieldInputRectAt(layout.Right, 2);
-
-	if (RectContainsPoint(PasswordRevealButtonRect(passwordField), x, y)) {
-		m_bEditPasswordRevealed = !m_bEditPasswordRevealed;
-		return true;
-	}
-
-	m_editNote.m_bFocused = RectContainsPoint(noteField, x, y);
-	m_editUsername.m_bFocused = RectContainsPoint(usernameField, x, y);
-	m_editPassword.m_bFocused = RectContainsPoint(passwordField, x, y);
-
-	// Click-to-position within a field is not implemented; re-setting the value puts the cursor
-	// at the end, which is a reasonable default.
-	CTextInput *const fields[]{&m_editNote, &m_editUsername, &m_editPassword};
-	for (CTextInput *pField : fields) {
-		if (pField->m_bFocused) {
-			pField->SetValue(pField->GetValue());
-		}
-	}
-
-	const Rect save = PrimaryButtonRect(layout.Footer);
-
-	if (RectContainsPoint(EditCancelButtonRect(save), x, y)) {
-		m_mode = EAccountModalMode::AccountList;
-	} else if (CanSaveEditedAccount() && RectContainsPoint(save, x, y)) {
-		SaveEditedAccount();
-	} else if (m_nEditAccountIndex >= 0 && RectContainsPoint(EditDeleteButtonRect(layout.Footer), x, y)) {
-		if (m_editDeleteConfirm.ClickArmedOrCommit(0)) {
-			DeleteEditedAccount();
-			Notify("Account deleted.");
-		} else {
-			NotifyDeleteArmed();
-		}
-	}
-
-	return true;
-}
-
-bool CAccountModal::OnPointerUp(float x, float y)
-{
-	if (m_accountsScroll.IsDragging()) {
-		m_accountsScroll.OnPointerUp();
-		return true;
-	}
-
-	if (!IsBlocking()) return false;
-
-	const Layout layout = ComputeLayout();
-
-	// A login in flight cannot be dismissed by clicking away; Cancel is the only way out.
-	const bool loggingIn = m_mode == EAccountModalMode::LoginProgress;
-
-	if (!loggingIn &&
-		(RectContainsPoint(CloseBadgeRect(layout.Left), x, y) || !RectContainsPoint(layout.Panel, x, y))) {
-		Close();
-		return true;
-	}
-
-	switch (m_mode) {
-		case EAccountModalMode::AccountList:
-			return !HasValidBanner() || HandleAccountListClick(layout, x, y);
-
-		case EAccountModalMode::LoginProgress:
-			return HandleLoginProgressClick(layout, x, y);
-
-		case EAccountModalMode::EditAccount:
-			return HandleEditAccountClick(layout, x, y);
-	}
-
-	return true;
-}
-
-ECursorKind CAccountModal::AccountListCursor(const Layout &layout) const
-{
-	if (RectContainsPoint(AddAccountButtonRect(layout.Right), m_flMouseX, m_flMouseY)) return ECursorKind::Hand;
-
-	AccountListView view;
-	if (!BuildAccountListView(layout, view)) return ECursorKind::Arrow;
-
-	if (RectContainsPoint(view.ScrollRegion, m_flMouseX, m_flMouseY)) {
-		if (HitTestRow(layout, view, m_flMouseX, m_flMouseY) >= 0) return ECursorKind::Hand;
-
-		if (CScrollable::IsVisible(view.ContentHeight, view.ScrollRegion.H) &&
-			RectContainsPoint(view.ScrollbarTrack, m_flMouseX, m_flMouseY)) {
-			return ECursorKind::Hand;
-		}
-	}
-
-	if (m_nSelectedAccountIndex >= 0 && !m_login.IsActive() &&
-		RectContainsPoint(PrimaryButtonRect(layout.Footer), m_flMouseX, m_flMouseY)) {
-		return ECursorKind::Hand;
-	}
-
-	return ECursorKind::Arrow;
-}
-
-ECursorKind CAccountModal::EditAccountCursor(const Layout &layout) const
-{
-	// Consulted directly and ahead of the form underneath, exactly as the click path does.
-	if (m_gameSelect.IsBlocking()) return m_gameSelect.GetDesiredCursor();
-
-	if (RectContainsPoint(VisibilityChipRect(layout.Right), m_flMouseX, m_flMouseY)) return ECursorKind::Hand;
-
-	const Rect noteField = EditFieldInputRectAt(layout.Right, 0);
-	const Rect usernameField = EditFieldInputRectAt(layout.Right, 1);
-	const Rect passwordField = EditFieldInputRectAt(layout.Right, 2);
-
-	// The reveal button sits inside the password field, so it has to answer first.
-	if (RectContainsPoint(PasswordRevealButtonRect(passwordField), m_flMouseX, m_flMouseY)) {
-		return ECursorKind::Hand;
-	}
-
-	if (RectContainsPoint(noteField, m_flMouseX, m_flMouseY) ||
-		RectContainsPoint(usernameField, m_flMouseX, m_flMouseY) ||
-		RectContainsPoint(passwordField, m_flMouseX, m_flMouseY)) {
-		return ECursorKind::IBeam;
-	}
-
-	const Rect save = PrimaryButtonRect(layout.Footer);
-
-	if (RectContainsPoint(EditCancelButtonRect(save), m_flMouseX, m_flMouseY)) return ECursorKind::Hand;
-
-	if (CanSaveEditedAccount() && RectContainsPoint(save, m_flMouseX, m_flMouseY)) return ECursorKind::Hand;
-
-	if (m_nEditAccountIndex >= 0 && RectContainsPoint(EditDeleteButtonRect(layout.Footer), m_flMouseX, m_flMouseY)) {
-		return ECursorKind::Hand;
-	}
-
-	return ECursorKind::Arrow;
-}
-
-ECursorKind CAccountModal::GetDesiredCursor() const
-{
-	if (!IsBlocking()) return ECursorKind::Arrow;
-
-	if (m_accountsScroll.IsDragging()) return ECursorKind::Drag;
-
-	const Layout layout = ComputeLayout();
-
-	// The close badge does nothing while a login is in flight, so it should not look clickable.
-	if (m_mode != EAccountModalMode::LoginProgress &&
-		RectContainsPoint(CloseBadgeRect(layout.Left), m_flMouseX, m_flMouseY)) {
-		return ECursorKind::Hand;
-	}
-
-	switch (m_mode) {
-		case EAccountModalMode::AccountList:
-			return HasValidBanner() ? AccountListCursor(layout) : ECursorKind::Arrow;
-
-		case EAccountModalMode::LoginProgress:
-			return RectContainsPoint(PrimaryButtonRect(layout.Footer), m_flMouseX, m_flMouseY) ? ECursorKind::Hand
-																							   : ECursorKind::Arrow;
-
-		case EAccountModalMode::EditAccount:
-			return EditAccountCursor(layout);
-	}
-
-	return ECursorKind::Arrow;
-}
-
-bool CAccountModal::OnRightPointerUp(float x, float y)
-{
-	if (!IsBlocking()) return false;
-
-	if (m_mode != EAccountModalMode::AccountList || !HasValidBanner()) return true;
-
-	const Layout layout = ComputeLayout();
-
-	AccountListView view;
-	if (!BuildAccountListView(layout, view)) return true;
-
-	m_pendingRightClickRow = PendingHitFromHitTest(HitTestRow(layout, view, x, y));
-
-	return true;
-}
-
-bool CAccountModal::OnScroll(float x, float y, float wheelDelta)
-{
-	if (!IsBlocking()) return false;
-
-	if (m_mode != EAccountModalMode::AccountList) return true;
-
-	const Layout layout = ComputeLayout();
-
-	AccountListView view;
-	if (BuildAccountListView(layout, view)) {
-		m_accountsScroll.OnScroll(wheelDelta, view.ContentHeight, view.ScrollRegion.H);
-	}
-
-	return true;
-}
-
-bool CAccountModal::OnKeyDown(u32 keyCode)
-{
-	if (!IsBlocking()) return false;
-
-	if (keyCode == VK_ESCAPE) {
-		if (m_mode == EAccountModalMode::EditAccount) {
-			// Backs out to the list rather than closing the modal outright.
-			m_mode = EAccountModalMode::AccountList;
-		} else if (m_mode == EAccountModalMode::AccountList) {
-			if (m_nSelectedAccountIndex >= 0) {
-				m_nSelectedAccountIndex = -1;
-			} else {
-				Close();
-			}
-		}
-
-		return true;
-	}
-
-	if (m_mode == EAccountModalMode::AccountList && HandleAccountListKey(keyCode)) return true;
-
-	if (m_mode != EAccountModalMode::EditAccount) return true;
-
-	// Tab walks the fields in the order they are drawn, wrapping around.
-	if (keyCode == VK_TAB) {
-		if (m_editNote.m_bFocused) {
-			m_editNote.m_bFocused = false;
-			m_editUsername.m_bFocused = true;
-		} else if (m_editUsername.m_bFocused) {
-			m_editUsername.m_bFocused = false;
-			m_editPassword.m_bFocused = true;
-		} else if (m_editPassword.m_bFocused) {
-			m_editPassword.m_bFocused = false;
-			m_editNote.m_bFocused = true;
-		}
-
-		return true;
-	}
-
-	// Each is a no-op on an unfocused field, so calling all three routes to whichever is
-	// focused without an if-chain.
-	m_editUsername.OnKey(keyCode);
-	m_editNote.OnKey(keyCode);
-	m_editPassword.OnKey(keyCode);
-
-	return true;
-}
-
-bool CAccountModal::OnChar(u32 character)
-{
-	if (!IsBlocking()) return false;
-
-	if (m_mode != EAccountModalMode::EditAccount) return true;
-
-	m_editUsername.OnChar(character);
-	m_editNote.OnChar(character);
-	m_editPassword.OnChar(character);
-
-	return true;
-}
-
-void CAccountModal::DrawSectionTitle(CDrawList &drawList, Rect right, std::string_view title, u8 alpha) const
-{
-	const CFont &body = m_fonts.GetBody();
-	const float headerHeight = HeaderHeightFor(m_fonts);
-	const float baselineY = right.Y + headerHeight * 0.5f + (body.GetAscent() + body.GetDescent()) * 0.5f;
-
-	DrawText(drawList, body, right.X + kRowPadding, baselineY, title, ColorScaleAlpha(kColorTextBright, alpha));
-
-	// Closes the header off from whatever is below it.
-	drawList.AddRectFilled(right.X + kRowPadding, right.Y + headerHeight, right.W - kRowPadding * 2.0f, 1.0f,
-						   ColorScaleAlpha(kColorSeparator, alpha));
-}
-
-void CAccountModal::DrawAddAccountButton(CDrawList &drawList, Rect right, u8 alpha) const
-{
-	constexpr float kIconSize = 24.0f;
-
-	const Rect button = AddAccountButtonRect(right);
-	const bool hovered = RectContainsPoint(button, m_flMouseX, m_flMouseY);
-
-	if (hovered) {
-		Controls::DrawCircularHover(drawList, button, m_settings.m_clrAccent, kColorHoverBadge, alpha);
-	}
-
-	const Rect icon{button.X + (button.W - kIconSize) * 0.5f, button.Y + (button.H - kIconSize) * 0.5f, kIconSize,
-					kIconSize};
-	Controls::DrawIcon(drawList, icon, m_assets.Get(EAsset::IconAdd),
-					   ColorScaleAlpha(hovered ? kColorTextBright : kColorTextDim, alpha));
-}
-
-void CAccountModal::DrawAccountRow(CDrawList &drawList, Rect right, Rect row, const Account &account, bool isSelected,
-								   float deleteArmedAmount, u8 alpha) const
-{
-	// Inset rather than bled past the row's top, so the first row's highlight is not clipped.
-	const Rect hoverRect{row.X - 8.0f, row.Y + 3.0f, row.W + 16.0f, row.H - 6.0f};
-	const bool hovered = !isSelected && RectContainsPoint(hoverRect, m_flMouseX, m_flMouseY);
-
-	if (isSelected) {
-		// The left indicator bar is the only accent-coloured part of a selected row.
-		drawList.AddRectRoundedFilled(hoverRect.X, hoverRect.Y, hoverRect.W, hoverRect.H,
-									  CDrawList::UniformRadii(10.0f), ColorScaleAlpha(kColorRowSelected, alpha));
-		drawList.AddRectRoundedFilled(right.X + 8.0f, hoverRect.Y, 3.0f, hoverRect.H, CDrawList::UniformRadii(1.5f),
-									  ColorScaleAlpha(m_settings.m_clrAccent, alpha));
-	} else if (hovered) {
-		drawList.AddRectRoundedFilled(hoverRect.X, hoverRect.Y, hoverRect.W, hoverRect.H,
-									  CDrawList::UniformRadii(10.0f), ColorScaleAlpha(kColorRowHover, alpha));
-	}
-
-	const CFont &body = m_fonts.GetBody();
-	const CFont &secondary = m_fonts.GetSecondary();
-	const std::string_view note = account.GetNote();
-
-	// A row with a note centres the username-and-note pair as a block; one without centres the
-	// username alone, level with the buttons on the right. The two therefore sit the username's
-	// baseline in different places, which is the better trade: a lone username pinned to the
-	// block position sits visibly high of the icons beside it.
-	const float blockHeight = body.GetLineHeight() + kRowLineGap + secondary.GetLineHeight();
-	const float blockY = row.Y + (row.H - blockHeight) * 0.5f;
-	const float centeredBaselineY = row.Y + row.H * 0.5f + (body.GetAscent() + body.GetDescent()) * 0.5f;
-	const float usernameBaselineY = note.empty() ? centeredBaselineY : blockY + body.GetAscent();
-
-	DrawText(drawList, body, row.X, usernameBaselineY, account.GetUsername(), ColorScaleAlpha(kColorTextBright, alpha));
+	const Font &body = m_fonts.body();
+	const Font &secondary = m_fonts.secondary();
+	const std::string_view note = t_account.note;
+
+	const float block_height = body.line_height() + row_line_gap + secondary.line_height();
+	const float block_y = t_row.y + (t_row.h - block_height) * 0.5f;
+	const float username_baseline = note.empty() ? body.centered_baseline(t_row) : block_y + body.ascent();
+
+	draw_text(t_draw_list, body, Vec2{t_row.x, username_baseline}, t_account.username,
+			  faded(color_text_bright, t_alpha));
 
 	if (!note.empty()) {
-		const float noteBaselineY = blockY + body.GetLineHeight() + kRowLineGap + secondary.GetAscent();
-		DrawText(drawList, secondary, row.X, noteBaselineY, note, ColorScaleAlpha(kColorTextDim, alpha));
+		const float note_baseline = block_y + body.line_height() + row_line_gap + secondary.ascent();
+		draw_text(t_draw_list, secondary, Vec2{t_row.x, note_baseline}, note, faded(color_text_dim, t_alpha));
 	}
 
-	drawList.AddRectFilled(row.X, row.Y + row.H - 1.0f, row.W, 1.0f, ColorScaleAlpha(kColorSeparator, alpha));
+	t_draw_list.add_rect(Rect{t_row.x, t_row.bottom() - 1.0f, t_row.w, 1.0f}, faded(color_separator, t_alpha));
 
-	const Rect editRect = RowEditButtonRect(row);
-	const Rect removeRect = RowRemoveButtonRect(row);
-	const bool hoverEdit = RectContainsPoint(editRect, m_flMouseX, m_flMouseY);
-	const bool hoverRemove = RectContainsPoint(removeRect, m_flMouseX, m_flMouseY);
+	const Rect edit = edit_button_rect(t_row);
+	const Rect remove = remove_button_rect(t_row);
+	const Texture *edit_icon = m_assets.get(Asset::icon_edit);
 
-	// Armed, the round X badge grows into a labelled red pill saying what the next click does. A
-	// colour change alone was not enough - it reads as a hover state, which is exactly the thing it
-	// must not be confused with.
-	if (deleteArmedAmount > 0.01f) {
-		const Rect pill = RowConfirmDeleteRect(row);
-		const auto armedAlpha = static_cast<u8>(static_cast<float>(alpha) * deleteArmedAmount);
-		const auto fadingAlpha = static_cast<u8>(static_cast<float>(alpha) * (1.0f - deleteArmedAmount));
+	if (t_delete_armed > 0.01f) {
+		const Rect pill = confirm_delete_rect(t_row);
+		const auto armed_alpha = static_cast<u8>(t_alpha * t_delete_armed);
+		const auto fading_alpha = static_cast<u8>(t_alpha * (1.0f - t_delete_armed));
 
-		drawList.AddRectRoundedFilled(pill.X, pill.Y, pill.W, pill.H, CDrawList::UniformRadii(pill.H * 0.5f),
-									  ColorScaleAlpha(kColorError, armedAlpha));
-		DrawCenteredText(drawList, m_fonts.GetSecondary(), pill.X, pill.Y, pill.W, pill.H, "Delete?",
-						 ColorScaleAlpha(ColorForegroundOn(kColorError), armedAlpha));
-
-		// The edit button has no meaning while a delete is pending, so it fades out rather than
-		// sitting there inviting a click that would only cancel the confirm.
-		Controls::DrawIcon(drawList, RectInset(editRect, kRowIconInset), m_assets.Get(EAsset::IconEdit),
-						   ColorScaleAlpha(kColorTextDim, fadingAlpha));
+		t_draw_list.add_rounded_rect(pill, rounded(pill.h * 0.5f), faded(color_error, armed_alpha));
+		draw_text_centered(t_draw_list, secondary, pill, "Delete?", faded(foreground_on(color_error), armed_alpha));
+		controls::draw_icon(t_draw_list, edit.inset(row_icon_inset), edit_icon, faded(color_text_dim, fading_alpha));
 		return;
 	}
 
-	if (hoverEdit) {
-		Controls::DrawCircularHover(drawList, editRect, m_settings.m_clrAccent, kColorHoverBadge, alpha);
+	const bool edit_hovered = edit.contains(m_mouse);
+	const bool remove_hovered = remove.contains(m_mouse);
+
+	if (edit_hovered) {
+		controls::draw_circular_hover(t_draw_list, edit, m_settings.accent, color_hover_badge, t_alpha);
 	}
 
-	if (hoverRemove) {
-		Controls::DrawCircularHover(drawList, removeRect, kColorError, kColorRemoveHoverBg, alpha);
+	if (remove_hovered) {
+		controls::draw_circular_hover(t_draw_list, remove, color_error, color_remove_hover, t_alpha);
 	}
 
-	Controls::DrawIcon(drawList, RectInset(editRect, kRowIconInset), m_assets.Get(EAsset::IconEdit),
-					   ColorScaleAlpha(hoverEdit ? kColorTextBright : kColorTextDim, alpha));
-
-	// Remove has no embedded icon yet, so its glyph stays hand-drawn.
-	Controls::DrawXGlyph(drawList, removeRect, ColorScaleAlpha(hoverRemove ? kColorError : kColorTextDim, alpha));
+	controls::draw_icon(t_draw_list, edit.inset(row_icon_inset), edit_icon,
+						faded(edit_hovered ? color_text_bright : color_text_dim, t_alpha));
+	controls::draw_x(t_draw_list, remove, faded(remove_hovered ? color_error : color_text_dim, t_alpha));
 }
 
-void CAccountModal::DrawAccountList(CDrawList &drawList, const Layout &layout, u8 alpha) const
+void AccountModal::draw_account_list(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const
 {
-	DrawSectionTitle(drawList, layout.Right, "Accounts", alpha);
-	DrawAddAccountButton(drawList, layout.Right, alpha);
+	const Rect main = t_layout.main_column;
+	draw_section_title(t_draw_list, main, "Accounts", t_alpha);
 
-	AccountListView view;
-	if (!BuildAccountListView(layout, view)) return;
+	const Rect add = add_button_rect(main);
+	const bool add_hovered = add.contains(m_mouse);
 
-	// Real GPU-side clipping, so a row scrolled halfway behind the header genuinely cannot
-	// paint outside the region.
-	drawList.PushClipRect(view.ScrollRegion);
-
-	for (u32 i = 0; i < view.Count; i += 1) {
-		const Rect row = RowRectAt(layout, view, i);
-		if (!IsRowVisible(view, row)) continue;
-
-		const bool isSelected = static_cast<i32>(i) == m_nSelectedAccountIndex;
-		DrawAccountRow(drawList, layout.Right, row, AccountAt(view, i), isSelected,
-					   m_rowDeleteConfirm.ArmedAmount(static_cast<i32>(i)), alpha);
+	if (add_hovered) {
+		controls::draw_circular_hover(t_draw_list, add, m_settings.accent, color_hover_badge, t_alpha);
 	}
 
-	drawList.PopClipRect();
+	controls::draw_icon(t_draw_list, add.centered(24.0f, 24.0f), m_assets.get(Asset::icon_add),
+						faded(add_hovered ? color_text_bright : color_text_dim, t_alpha));
 
-	m_accountsScroll.DrawEdgeFade(drawList, view.ScrollRegion, view.ContentHeight, view.ScrollRegion.H,
-								  ColorScaleAlpha(kColorPanelBg, alpha));
-	m_accountsScroll.Draw(drawList, view.ScrollbarTrack, view.ContentHeight, view.ScrollRegion.H,
-						  ColorScaleAlpha(kColorScrollThumb, alpha), m_flMouseX, m_flMouseY);
+	const AccountRows rows = account_rows(t_layout);
+	t_draw_list.push_clip(rows.region);
+
+	for (u32 i = 0; i < rows.accounts.count; i += 1) {
+		const Rect row = row_rect(t_layout, rows, i);
+		if (!row.overlaps_vertically(rows.region)) continue;
+
+		draw_account_row(t_draw_list, main, row, m_library.account(rows.accounts.refs[i]),
+						 static_cast<i32>(i) == m_selected_row, m_row_delete.armed_amount(static_cast<i32>(i)),
+						 t_alpha);
+	}
+
+	t_draw_list.pop_clip();
+
+	m_rows_scroll.draw_edge_fade(t_draw_list, rows.region, rows.scroll, faded(color_panel, t_alpha));
+	m_rows_scroll.draw(t_draw_list, rows.scroll, faded(color_scroll_thumb, t_alpha), m_mouse);
 }
 
-void CAccountModal::DrawLoginProgress(CDrawList &drawList, Rect right, u8 alpha) const
+void AccountModal::draw_login_progress(DrawList &t_draw_list, Rect t_main, u8 t_alpha) const
 {
-	const ELoginStage stage = m_login.GetStage();
+	const LoginStage stage = m_login.stage();
+	const bool finished = !has_queued_login() && LoginAttempt::is_terminal(stage);
+	const Vec2 center{t_main.center().x, t_main.center().y - 24.0f};
 
-	// A queued restart is still in flight to the user, so the attempt it cancelled must not
-	// flash its terminal ring on the way through.
-	const bool pending = HasPendingLogin();
-	const bool terminal = !pending && CLoginAttempt::IsTerminalStage(stage);
-
-	const float cx = right.X + right.W * 0.5f;
-	const float cy = right.Y + right.H * 0.5f - 24.0f;
-
-	Color stageColor = m_settings.m_clrAccent;
-	if (terminal && stage == ELoginStage::Success) {
-		stageColor = kColorSuccess;
-	} else if (terminal && stage == ELoginStage::Error) {
-		stageColor = kColorError;
+	Color ring_color = m_settings.accent;
+	if (finished && stage == LoginStage::success) {
+		ring_color = color_success;
+	} else if (finished && stage == LoginStage::error) {
+		ring_color = color_error;
 	}
 
-	// A breathing bloom while in flight; a terminal stage holds it steady so the ring reads as
-	// settled the instant it lands.
-	const float glowPulse = terminal ? 1.0f : 0.55f + 0.45f * (0.5f + 0.5f * std::sin(m_flLoginElapsedSeconds * 2.6f));
-	const float glowStrength = 0.85f * glowPulse * (static_cast<float>(alpha) / 255.0f);
+	const float pulse = finished ? 1.0f : 0.55f + 0.45f * (0.5f + 0.5f * std::sin(m_login_seconds * 2.6f));
+	const float glow_strength = 0.85f * pulse * (t_alpha / 255.0f);
+	const float spin = std::fmod(m_login_seconds * ring_spin_degrees_per_second, 360.0f);
+	const float start_degrees = finished ? 0.0f : spin - 90.0f - ring_sweep_degrees;
+	const float sweep_degrees = finished ? 360.0f : ring_sweep_degrees;
 
-	// A terminal stage draws a full solid ring; an in-flight one draws a rotating comet tail.
-	// Either way this is one draw call, with the shader doing the rest per pixel.
-	const float sweepAngleDeg = terminal ? kIndicatorFullSweepDeg : kIndicatorSweepDeg;
-	const float spin = std::fmod(m_flLoginElapsedSeconds * kIndicatorRotationDegPerSec, 360.0f);
-	const float startAngleDeg = terminal ? 0.0f : spin - 90.0f - kIndicatorSweepDeg;
+	t_draw_list.add_circular_progress(center, ring_outer_radius, ring_inner_radius, ring_glow_margin, start_degrees,
+									  sweep_degrees, glow_strength, faded(ring_color, t_alpha));
 
-	drawList.AddCircularProgress(cx, cy, kIndicatorOuterRadius, kIndicatorInnerRadius, kIndicatorGlowMargin,
-								 startAngleDeg, sweepAngleDeg, glowStrength, ColorScaleAlpha(stageColor, alpha));
+	if (finished) {
+		const Color glyph = faded(color_text_bright, t_alpha);
 
-	if (terminal) {
-		const Color glyphColor = ColorScaleAlpha(kColorTextBright, alpha);
-
-		if (stage == ELoginStage::Success) {
-			drawList.AddLine(cx - 13.0f, cy, cx - 3.0f, cy + 11.0f, 4.0f, glyphColor);
-			drawList.AddLine(cx - 3.0f, cy + 11.0f, cx + 15.0f, cy - 11.0f, 4.0f, glyphColor);
+		if (stage == LoginStage::success) {
+			t_draw_list.add_line({center.x - 13.0f, center.y}, {center.x - 3.0f, center.y + 11.0f}, 4.0f, glyph);
+			t_draw_list.add_line({center.x - 3.0f, center.y + 11.0f}, {center.x + 15.0f, center.y - 11.0f}, 4.0f,
+								 glyph);
 		} else {
-			drawList.AddLine(cx - 11.0f, cy - 11.0f, cx + 11.0f, cy + 11.0f, 4.0f, glyphColor);
-			drawList.AddLine(cx - 11.0f, cy + 11.0f, cx + 11.0f, cy - 11.0f, 4.0f, glyphColor);
+			t_draw_list.add_line({center.x - 11.0f, center.y - 11.0f}, {center.x + 11.0f, center.y + 11.0f}, 4.0f,
+								 glyph);
+			t_draw_list.add_line({center.x - 11.0f, center.y + 11.0f}, {center.x + 11.0f, center.y - 11.0f}, 4.0f,
+								 glyph);
 		}
 	}
 
-	// The attempt's message - Riot's error text, or whatever else the worker set - replaces the
-	// generic stage label as soon as there is one, and is empty until then.
-	std::string_view message = pending ? "Switching account..." : LoginStageMessage(stage);
-	if (terminal && !m_login.GetTerminalMessage().empty()) {
-		message = m_login.GetTerminalMessage();
+	std::string_view message = has_queued_login() ? "Switching account..." : stage_message(stage);
+	if (finished && !m_login.terminal_message().empty()) {
+		message = m_login.terminal_message();
 	}
 
-	// Wrapped: a real backend error is wider than this column at any normal font size.
-	const CFont &body = m_fonts.GetBody();
-	const float maxMessageWidth = std::max(right.W - kRowPadding * 2.0f, 40.0f);
+	const Font &font = m_fonts.body();
+	std::string_view lines[max_message_lines];
+	const u32 line_count = wrap_text(font, message, std::max(t_main.w - row_padding * 2.0f, 40.0f), lines);
 
-	std::string_view messageLines[kMaxLoginMessageLines];
-	const u32 lineCount = WrapText(body, message, maxMessageWidth, messageLines, kMaxLoginMessageLines);
-
-	float lineY = cy + kIndicatorOuterRadius + 40.0f;
-	for (u32 i = 0; i < lineCount; i += 1) {
-		DrawText(drawList, body, cx - TextWidth(body, messageLines[i]) * 0.5f, lineY, messageLines[i],
-				 ColorScaleAlpha(kColorTextBright, alpha));
-		lineY += body.GetLineHeight();
+	float baseline = center.y + ring_outer_radius + 40.0f;
+	for (const std::string_view line : std::span{lines, line_count}) {
+		draw_text(t_draw_list, font, Vec2{center.x - text_width(font, line) * 0.5f, baseline}, line,
+				  faded(color_text_bright, t_alpha));
+		baseline += font.line_height();
 	}
 }
 
-void CAccountModal::DrawEditField(CDrawList &drawList, Rect block, const char *pLabel, const CTextInput &input,
-								  bool masked, u8 alpha) const
+void AccountModal::draw_visibility_chip(DrawList &t_draw_list, Rect t_main, u8 t_alpha) const
 {
-	const CFont &secondary = m_fonts.GetSecondary();
-	DrawText(drawList, secondary, block.X, block.Y + secondary.GetAscent(), pLabel,
-			 ColorScaleAlpha(kColorTextFaint, alpha));
+	const Rect chip = visibility_chip_rect(t_main);
+	const bool hovered = chip.contains(m_mouse);
+	const Color content = faded(hovered ? color_text_bright : color_text_dim, t_alpha);
 
-	// A neutral focus ring rather than an accent one: a typed value's box only needs to show
-	// which field is active.
-	const Rect field = EditFieldInputRect(block);
-	DrawFieldChrome(drawList, field, input.m_bFocused, alpha);
+	controls::draw_field(t_draw_list, chip, field_radius, hovered ? color_field_border_focused : color_field_border,
+						 hovered ? color_field_focused : color_field, t_alpha);
 
-	// Body, not secondary - this is the value the user is reading and typing.
-	input.Draw(drawList, m_fonts.GetBody(), field.X, field.Y, field.W, field.H,
-			   ColorScaleAlpha(kColorTextBright, alpha), ColorScaleAlpha(kColorTextBright, alpha), masked);
+	const Rect icon{chip.x + chip_icon_inset, chip.y + (chip.h - chip_icon_size) * 0.5f, chip_icon_size,
+					chip_icon_size};
+	controls::draw_icon(t_draw_list, icon, m_assets.get(Asset::icon_list_arrow), content);
+
+	char buffer[16];
+	const Font &font = m_fonts.secondary();
+	draw_text(t_draw_list, font, Vec2{icon.right() + chip_icon_gap, font.centered_baseline(chip)},
+			  game_count_text(m_visible_games.mask(), buffer), content);
 }
 
-// A pill carrying an icon and the visible-game count, in the header opposite the title. Always
-// bordered and filled, like an unfocused field: a chip only visible on hover is easy to miss.
-void CAccountModal::DrawVisibilityChip(CDrawList &drawList, Rect right, u8 alpha) const
+void AccountModal::draw_edit_form(DrawList &t_draw_list, Rect t_main, u8 t_alpha)
 {
-	const Rect chip = VisibilityChipRect(right);
-	const bool hovered = RectContainsPoint(chip, m_flMouseX, m_flMouseY);
-	const Color contentColor = ColorScaleAlpha(hovered ? kColorTextBright : kColorTextDim, alpha);
+	draw_section_title(t_draw_list, t_main, m_edited_row < 0 ? "Add Account" : "Edit Account", t_alpha);
 
-	DrawFieldChrome(drawList, chip, hovered, alpha);
+	const Font &label_font = m_fonts.secondary();
+	const Color text = faded(color_text_bright, t_alpha);
 
-	const Rect icon{chip.X + kVisibilityChipIconInset, chip.Y + (chip.H - kVisibilityChipIconSize) * 0.5f,
-					kVisibilityChipIconSize, kVisibilityChipIconSize};
-	Controls::DrawIcon(drawList, icon, m_assets.Get(EAsset::IconListArrow), contentColor);
+	for (u32 i = 0; i < field_count; i += 1) {
+		const Rect block = field_block_rect(t_main, i);
+		const Rect input = field_input_rect(t_main, i);
+		const bool focused = m_fields[i].is_focused();
 
-	char countBuffer[16];
-	const std::string_view countText = FormatVisibleGameCount(m_gameSelect.GetMask(), countBuffer, sizeof(countBuffer));
-
-	const CFont &secondary = m_fonts.GetSecondary();
-	const float baselineY = chip.Y + chip.H * 0.5f + (secondary.GetAscent() + secondary.GetDescent()) * 0.5f;
-	DrawText(drawList, secondary, icon.X + icon.W + kVisibilityChipIconGap, baselineY, countText, contentColor);
-}
-
-void CAccountModal::DrawEditAccount(CDrawList &drawList, Rect right, u8 alpha)
-{
-	DrawSectionTitle(drawList, right, m_nEditAccountIndex < 0 ? "Add Account" : "Edit Account", alpha);
-
-	// Note first: it is what identifies an account to the person reading the list. The block
-	// index is the only thing that orders these, and every hit-test reads the same indices.
-	DrawEditField(drawList, EditFieldBlockRect(right, 0), "Note", m_editNote, false, alpha);
-	DrawEditField(drawList, EditFieldBlockRect(right, 1), "Username", m_editUsername, false, alpha);
-	DrawEditField(drawList, EditFieldBlockRect(right, 2), "Password", m_editPassword, !m_bEditPasswordRevealed, alpha);
-
-	const Rect reveal = PasswordRevealButtonRect(EditFieldInputRectAt(right, 2));
-	const bool hoverReveal = RectContainsPoint(reveal, m_flMouseX, m_flMouseY);
-	Controls::DrawEyeGlyph(drawList, m_assets, reveal, m_bEditPasswordRevealed,
-						   ColorScaleAlpha(hoverReveal ? kColorTextBright : kColorTextDim, alpha));
-
-	DrawVisibilityChip(drawList, right, alpha);
-
-	// After the fields, so its popup layers over them.
-	m_gameSelect.Draw(drawList);
-}
-
-// While Save is disabled the helper line says why, rather than describing the form in general.
-void CAccountModal::DrawEditFooter(CDrawList &drawList, Rect footer, u8 alpha)
-{
-	const CFont &body = m_fonts.GetBody();
-	const CFont &secondary = m_fonts.GetSecondary();
-	const bool editingExisting = m_nEditAccountIndex >= 0;
-
-	std::string_view helperText = editingExisting ? "Edit the account's details" : "Fill in the new account's details";
-
-	if (!CanSaveEditedAccount()) {
-		const bool noUsername = m_editUsername.GetValue().empty();
-		const bool noPassword = m_editPassword.GetValue().empty();
-		helperText = noUsername && noPassword ? "Username and password are required"
-											  : (noUsername ? "Username is required" : "Password is required");
+		draw_text(t_draw_list, label_font, Vec2{block.x, block.y + label_font.ascent()}, field_specs[i].label,
+				  faded(color_text_faint, t_alpha));
+		controls::draw_field(t_draw_list, input, field_radius,
+							 focused ? color_field_border_focused : color_field_border,
+							 focused ? color_field_focused : color_field, t_alpha);
+		m_fields[i].draw(t_draw_list, m_fonts.body(), field_text_rect(t_main, i), text, text);
 	}
 
-	// Starts past the Delete button when it is showing, so the two never overlap.
-	const float helperX =
-		editingExisting ? EditDeleteButtonRect(footer).X + kActionButtonWidth + kRowPadding : footer.X + kRowPadding;
-	const float baselineY = footer.Y + footer.H * 0.5f + (secondary.GetAscent() + secondary.GetDescent()) * 0.5f;
-	DrawText(drawList, secondary, helperX, baselineY, helperText, ColorScaleAlpha(kColorTextFaint, alpha));
+	const Rect reveal = reveal_button_rect(t_main);
+	controls::draw_eye(t_draw_list, m_assets, reveal, !field(EditField::password).is_masked(),
+					   faded(reveal.contains(m_mouse) ? color_text_bright : color_text_dim, t_alpha));
 
-	const Rect save = PrimaryButtonRect(footer);
-	const bool saveEnabled = CanSaveEditedAccount();
-	const bool hoverSave = saveEnabled && RectContainsPoint(save, m_flMouseX, m_flMouseY);
-	DrawAccentButton(drawList, body, save, "Save", m_settings.m_clrAccent, saveEnabled, hoverSave, alpha);
+	draw_visibility_chip(t_draw_list, t_main, t_alpha);
+	m_visible_games.draw(t_draw_list, m_mouse);
+}
 
-	const Rect cancel = EditCancelButtonRect(save);
-	DrawNeutralButton(drawList, body, cancel, "Cancel", kColorTextBright, kColorNeutralButton, kColorNeutralButtonHover,
-					  RectContainsPoint(cancel, m_flMouseX, m_flMouseY), alpha);
+void AccountModal::draw_edit_footer(DrawList &t_draw_list, Rect t_footer, u8 t_alpha) const
+{
+	const Font &body = m_fonts.body();
+	const Font &secondary = m_fonts.secondary();
+	const bool editing = m_edited_row >= 0;
+	const bool missing_username = field(EditField::username).value().empty();
+	const bool missing_password = field(EditField::password).value().empty();
 
-	if (editingExisting) {
-		// Armed, the button stops being a neutral one with red text and becomes a solid red one
-		// asking a question. Nothing else on screen changes, which is the point of a confirm that
-		// lives in the button rather than in a dialog.
-		const Rect del = EditDeleteButtonRect(footer);
-		const float armed = m_editDeleteConfirm.ArmedAmount(0);
-		const Color fill = ColorLerp(kColorDeleteButton, kColorError, armed);
-		const Color hoverFill = ColorLerp(ColorLighten(kColorError, 20), ColorLighten(kColorError, 40), armed);
-		const Color label = ColorLerp(kColorError, ColorForegroundOn(kColorError), armed);
-
-		DrawNeutralButton(drawList, body, del, armed > 0.5f ? "Delete?" : "Delete", label, fill, hoverFill,
-						  RectContainsPoint(del, m_flMouseX, m_flMouseY), alpha);
-
-		// A ring around the armed button, so it reads as a live prompt rather than a button that
-		// merely got redder. Drawn over the fill, inset by its own thickness so it sits inside.
-		if (armed > 0.01f) {
-			constexpr float kArmedRingThickness = 1.5f;
-
-			drawList.AddRectRoundedBordered(
-				del.X, del.Y, del.W, del.H, CDrawList::UniformRadii(8.0f), Color{0, 0, 0, 0},
-				ColorScaleAlpha(ColorLighten(kColorError, 60), static_cast<u8>(alpha * armed)), kArmedRingThickness);
-		}
+	std::string_view hint = editing ? "Edit the account's details" : "Fill in the new account's details";
+	if (missing_username && missing_password) {
+		hint = "Username and password are required";
+	} else if (missing_username) {
+		hint = "Username is required";
+	} else if (missing_password) {
+		hint = "Password is required";
 	}
+
+	const float hint_x = editing ? delete_button_rect(t_footer).right() + row_padding : t_footer.x + row_padding;
+	draw_text(t_draw_list, secondary, Vec2{hint_x, secondary.centered_baseline(t_footer)}, hint,
+			  faded(color_text_faint, t_alpha));
+
+	const Rect save = primary_button_rect(t_footer);
+	controls::draw_accent_button(t_draw_list, body, save, "Save", m_settings.accent, can_save(),
+								 can_save() && save.contains(m_mouse), color_disabled_button, color_text_dim, t_alpha);
+
+	const Rect cancel = cancel_button_rect(save);
+	const controls::ButtonColors neutral{color_neutral_button, color_neutral_button_hover, color_text_bright,
+										 color_text_bright};
+	controls::draw_button(t_draw_list, body, cancel, "Cancel", neutral, cancel.contains(m_mouse), t_alpha);
+
+	if (!editing) return;
+
+	const Rect del = delete_button_rect(t_footer);
+	const float armed = m_form_delete.armed_amount(0);
+	const controls::ButtonColors delete_colors{
+		mix(color_delete_button, color_error, armed),
+		mix(lightened(color_error, 20), lightened(color_error, 40), armed),
+		color_text_bright,
+		mix(color_error, foreground_on(color_error), armed),
+	};
+
+	if (armed > 0.01f) {
+		constexpr float ring_thickness = 1.5f;
+		t_draw_list.add_rounded_rect(del.inset(-ring_thickness), rounded(8.0f + ring_thickness),
+									 faded(lightened(color_error, 60), static_cast<u8>(t_alpha * armed)));
+	}
+
+	controls::draw_button(t_draw_list, body, del, armed > 0.5f ? "Delete?" : "Delete", delete_colors,
+						  del.contains(m_mouse), t_alpha);
 }
 
-void CAccountModal::DrawLoginProgressFooter(CDrawList &drawList, Rect footer, u8 alpha)
+void AccountModal::draw_footer(DrawList &t_draw_list, Rect t_footer, u8 t_alpha) const
 {
-	const CFont &body = m_fonts.GetBody();
-	const CFont &secondary = m_fonts.GetSecondary();
-	const bool terminal = !HasPendingLogin() && CLoginAttempt::IsTerminalStage(m_login.GetStage());
+	const Font &body = m_fonts.body();
+	const Font &secondary = m_fonts.secondary();
+	const float hint_baseline = secondary.centered_baseline(t_footer);
+	const Rect primary = primary_button_rect(t_footer);
 
-	const float baselineY = footer.Y + footer.H * 0.5f + (secondary.GetAscent() + secondary.GetDescent()) * 0.5f;
-	DrawText(drawList, secondary, footer.X + kRowPadding, baselineY, terminal ? "" : "Logging in...",
-			 ColorScaleAlpha(kColorTextFaint, alpha));
-
-	// The same rect the Login button occupies in the list, and the same action: back to the list.
-	const Rect button = PrimaryButtonRect(footer);
-	DrawNeutralButton(drawList, body, button, terminal ? "Back" : "Cancel", kColorTextBright, kColorNeutralButton,
-					  kColorNeutralButtonHover, RectContainsPoint(button, m_flMouseX, m_flMouseY), alpha);
-}
-
-void CAccountModal::DrawAccountListFooter(CDrawList &drawList, Rect footer, u8 alpha)
-{
-	const CFont &body = m_fonts.GetBody();
-	const CFont &secondary = m_fonts.GetSecondary();
-
-	const float baselineY = footer.Y + footer.H * 0.5f + (secondary.GetAscent() + secondary.GetDescent()) * 0.5f;
-	DrawText(drawList, secondary, footer.X + kRowPadding, baselineY, "Select an account to log in",
-			 ColorScaleAlpha(kColorTextFaint, alpha));
-
-	// Not gated on an attempt being active: pressing Login during one replaces it.
-	const Rect button = PrimaryButtonRect(footer);
-	const bool enabled = m_nSelectedAccountIndex >= 0;
-	const bool hovered = enabled && RectContainsPoint(button, m_flMouseX, m_flMouseY);
-	DrawAccentButton(drawList, body, button, "Login", m_settings.m_clrAccent, enabled, hovered, alpha);
-}
-
-void CAccountModal::DrawFooter(CDrawList &drawList, Rect footer, u8 alpha)
-{
-	drawList.AddRectFilled(footer.X, footer.Y, footer.W, 1.0f, ColorScaleAlpha(kColorSeparator, alpha));
+	t_draw_list.add_rect(Rect{t_footer.x, t_footer.y, t_footer.w, 1.0f}, faded(color_separator, t_alpha));
 
 	switch (m_mode) {
-		case EAccountModalMode::EditAccount:
-			DrawEditFooter(drawList, footer, alpha);
+		case Mode::edit_account:
+			draw_edit_footer(t_draw_list, t_footer, t_alpha);
 			break;
 
-		case EAccountModalMode::LoginProgress:
-			DrawLoginProgressFooter(drawList, footer, alpha);
-			break;
+		case Mode::login_progress: {
+			const bool finished = !has_queued_login() && LoginAttempt::is_terminal(m_login.stage());
+			const controls::ButtonColors neutral{color_neutral_button, color_neutral_button_hover, color_text_bright,
+												 color_text_bright};
 
-		case EAccountModalMode::AccountList:
-			DrawAccountListFooter(drawList, footer, alpha);
+			draw_text(t_draw_list, secondary, Vec2{t_footer.x + row_padding, hint_baseline},
+					  finished ? "" : "Logging in...", faded(color_text_faint, t_alpha));
+			controls::draw_button(t_draw_list, body, primary, finished ? "Back" : "Cancel", neutral,
+								  primary.contains(m_mouse), t_alpha);
 			break;
+		}
+
+		case Mode::account_list: {
+			const bool can_login = m_selected_row >= 0;
+
+			draw_text(t_draw_list, secondary, Vec2{t_footer.x + row_padding, hint_baseline},
+					  "Select an account to log in", faded(color_text_faint, t_alpha));
+			controls::draw_accent_button(t_draw_list, body, primary, "Login", m_settings.accent, can_login,
+										 can_login && primary.contains(m_mouse), color_disabled_button, color_text_dim,
+										 t_alpha);
+			break;
+		}
 	}
 }
 
-void CAccountModal::DrawPanelChrome(CDrawList &drawList, const Layout &layout, const Banner &banner, u8 alpha) const
-{
-	Controls::DrawPanelShadow(drawList, layout.Panel, kPanelRadius, m_flOpenAmount);
-
-	drawList.AddRectRoundedFilled(layout.Panel.X, layout.Panel.Y, layout.Panel.W, layout.Panel.H,
-								  CDrawList::UniformRadii(kPanelRadius), ColorScaleAlpha(kColorPanelBorder, alpha));
-	drawList.AddRectRoundedFilled(layout.Inner.X, layout.Inner.Y, layout.Inner.W, layout.Inner.H,
-								  CDrawList::UniformRadii(kPanelRadius - kPanelBorderThickness),
-								  ColorScaleAlpha(kColorPanelBg, alpha));
-
-	// A faint top-edge highlight, which reads better than a drop shadow against a dark backdrop.
-	// Inset by the effective corner radius so it stops exactly where the curve starts.
-	const float highlightInset = CDrawList::ScaledRadius(kPanelRadius);
-	drawList.AddRectFilled(layout.Inner.X + highlightInset, layout.Inner.Y, layout.Inner.W - highlightInset * 2.0f,
-						   1.0f, ColorScaleAlpha(Color{255, 255, 255, 22}, alpha));
-
-	// Rounded only on its top-left, matching the panel's corner there. Through the scaled radii,
-	// so an art corner cannot stay notched while the panel squares off.
-	const Rect left = layout.Left;
-	if (banner.pTexture != nullptr) {
-		const CornerRadii imageRadii = CDrawList::Radii(kPanelRadius - kPanelBorderThickness, 0.0f, 0.0f, 0.0f);
-		const UvRect uv = CDrawList::ComputeCoverUv(left.W, left.H, banner.TextureAspect, 1.0f);
-
-		drawList.AddRectRoundedTexturedUv(left.X, left.Y, left.W, left.H, imageRadii, uv.U0, uv.V0, uv.U1, uv.V1,
-										  banner.pTexture, ColorScaleAlpha(kColorWhite, alpha));
-	} else {
-		drawList.AddRectFilled(left.X, left.Y, left.W, left.H, ColorScaleAlpha(banner.Accent, alpha));
-	}
-
-	drawList.AddRectFilled(left.X + left.W, left.Y, kSeparatorThickness, left.H,
-						   ColorScaleAlpha(Color{90, 90, 96, 255}, alpha));
-
-	// Close: a back arrow in a circular dark badge floating over the art's top-left corner.
-	const Rect badge = CloseBadgeRect(left);
-	const bool hovered = RectContainsPoint(badge, m_flMouseX, m_flMouseY);
-	const auto badgeAlpha = static_cast<u8>(hovered ? 210 : 170);
-
-	drawList.AddRectRoundedFilled(badge.X, badge.Y, badge.W, badge.H, CDrawList::UniformRadii(badge.W * 0.5f),
-								  ColorScaleAlpha(Color{20, 20, 22, badgeAlpha}, alpha));
-
-	const Rect badgeIcon{badge.X + (badge.W - kCloseBadgeIconSize) * 0.5f,
-						 badge.Y + (badge.H - kCloseBadgeIconSize) * 0.5f, kCloseBadgeIconSize, kCloseBadgeIconSize};
-	Controls::DrawIcon(drawList, badgeIcon, m_assets.Get(EAsset::IconArrowBack), ColorScaleAlpha(kColorWhite, alpha));
-}
-
-void CAccountModal::Draw(CDrawList &drawList)
+void AccountModal::draw(DrawList &t_draw_list)
 {
 	PULSAR_PROFILE_SCOPE("AccountModal.Draw");
 
-	if (m_flOpenAmount <= 0.001f || !HasValidBanner()) return;
+	if (m_open_amount <= 0.001f || !has_game()) return;
 
-	const auto alpha = static_cast<u8>(255.0f * m_flOpenAmount);
-	const auto windowW = static_cast<float>(m_window.GetWidth());
-	const auto windowH = static_cast<float>(m_window.GetHeight());
+	const auto alpha = static_cast<u8>(255.0f * m_open_amount);
+	const Vec2 window = m_window.size();
+	t_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y}, Color{0, 0, 0, static_cast<u8>(160.0f * m_open_amount)});
 
-	drawList.AddRectFilled(0.0f, 0.0f, windowW, windowH, Color{0, 0, 0, static_cast<u8>(160.0f * m_flOpenAmount)});
-
-	const Layout layout = ComputeLayout();
-	DrawPanelChrome(drawList, layout, m_pCarousel->GetBanner(static_cast<u32>(m_nBannerIndex)), alpha);
+	const Layout current = layout();
+	draw_chrome(t_draw_list, current, alpha);
 
 	switch (m_mode) {
-		case EAccountModalMode::AccountList:
-			DrawAccountList(drawList, layout, alpha);
+		case Mode::account_list:
+			draw_account_list(t_draw_list, current, alpha);
 			break;
 
-		case EAccountModalMode::LoginProgress:
-			DrawLoginProgress(drawList, layout.Right, alpha);
+		case Mode::login_progress:
+			draw_login_progress(t_draw_list, current.main_column, alpha);
 			break;
 
-		case EAccountModalMode::EditAccount:
-			DrawEditAccount(drawList, layout.Right, alpha);
+		case Mode::edit_account:
+			draw_edit_form(t_draw_list, current.main_column, alpha);
 			break;
 	}
 
-	DrawFooter(drawList, layout.Footer, alpha);
+	draw_footer(t_draw_list, current.footer, alpha);
 }

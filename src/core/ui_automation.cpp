@@ -10,592 +10,412 @@
 #include <TlHelp32.h>
 
 #include "core/debug_log.h"
+#include "core/thread_util.h"
 
-namespace {
 using Microsoft::WRL::ComPtr;
 
-constexpr const char *kLogCategory = "uia";
+namespace {
+constexpr const char *log_category = "uia";
+constexpr auto lookup_timeout = std::chrono::milliseconds(5000);
+constexpr u32 max_abandoned_lookups = 2;
+constexpr LONG min_real_window_width = 50;
 
-// Short enough that a control appearing "as soon as it can" does not feel like a stall, long
-// enough not to burn a core spinning on UI Automation calls, which are not cheap.
-constexpr u32 kPollIntervalMs = 100;
-
-// The bounds here are real, from a captured log of the hang this exists for: an ordinary
-// lookup against a settled Riot Client returns in well under 250ms, while the one that wedged
-// was still inside the provider 39 seconds later. Five seconds is comfortably past the
-// slowest legitimate first contact and still leaves room for the caller's next poll.
-constexpr auto kUiaCallTimeout = std::chrono::milliseconds(5000);
-
-// Each abandoned lookup permanently strands one OS thread inside the provider, so this is
-// really "how many threads one login attempt may leak". A provider that has failed to answer
-// twice is not about to start.
-constexpr u32 kMaxAbandonedCalls = 2;
-
-// Heap-allocated and co-owned by the caller and the throwaway thread: an abandoned thread that
-// finally returns minutes later must write into memory it still owns, not into a dead frame.
-struct BoundedLookupResult {
-	ComPtr<IUIAutomationElement> Element;
+struct LookupResult {
+	ComPtr<IUIAutomationElement> element;
 };
 
-// A VARIANT holding a copy of pText, released on scope exit.
-struct CAutoVariantString {
-	VARIANT Value;
-
-	explicit CAutoVariantString(const wchar_t *pText)
+class VariantString {
+  public:
+	explicit VariantString(const wchar_t *t_text)
 	{
-		VariantInit(&Value);
-		Value.vt = VT_BSTR;
-		Value.bstrVal = SysAllocString(pText);
+		VariantInit(&m_value);
+		m_value.vt = VT_BSTR;
+		m_value.bstrVal = SysAllocString(t_text);
 	}
 
-	~CAutoVariantString()
+	~VariantString()
 	{
-		VariantClear(&Value);
+		VariantClear(&m_value);
 	}
 
-	CAutoVariantString(const CAutoVariantString &) = delete;
-	CAutoVariantString &operator=(const CAutoVariantString &) = delete;
+	VariantString(const VariantString &) = delete;
+	VariantString &operator=(const VariantString &) = delete;
+
+	const VARIANT &get() const
+	{
+		return m_value;
+	}
+
+  private:
+	VARIANT m_value;
 };
 
-VARIANT VariantFromControlType(CONTROLTYPEID controlType)
+VARIANT variant_from_control_type(CONTROLTYPEID t_control_type)
 {
 	VARIANT value;
 	VariantInit(&value);
 	value.vt = VT_I4;
-	value.lVal = controlType;
+	value.lVal = t_control_type;
 
 	return value;
 }
 
-// A fresh snapshot every call rather than a cache, since a process tree can change - a crashed
-// and relaunched subprocess - for as long as a caller keeps polling.
-std::vector<DWORD> CollectDescendantProcessIds(DWORD rootProcessId)
+std::vector<DWORD> process_tree(DWORD t_root_process_id)
 {
-	std::vector<DWORD> result{rootProcessId};
+	std::vector<DWORD> tree{t_root_process_id};
 
 	const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-	if (snapshot == INVALID_HANDLE_VALUE) return result;
+	if (snapshot == INVALID_HANDLE_VALUE) return tree;
 
-	std::vector<std::pair<DWORD, DWORD>> parentChildPairs;
+	std::vector<std::pair<DWORD, DWORD>> parent_child_pairs;
 	PROCESSENTRY32W entry{.dwSize = sizeof(entry)};
 
 	if (Process32FirstW(snapshot, &entry)) {
 		do {
-			parentChildPairs.emplace_back(entry.th32ParentProcessID, entry.th32ProcessID);
+			parent_child_pairs.emplace_back(entry.th32ParentProcessID, entry.th32ProcessID);
 		} while (Process32NextW(snapshot, &entry));
 	}
 
 	CloseHandle(snapshot);
 
-	// Repeated passes over the fixed snapshot until one adds nothing - a breadth-first walk
-	// outward from the root, which always terminates because the snapshot is finite.
-	bool addedAny = true;
-	while (addedAny) {
-		addedAny = false;
+	const auto in_tree = [&tree](DWORD t_process_id) { return std::ranges::find(tree, t_process_id) != tree.end(); };
 
-		for (const auto &[parentProcessId, processId] : parentChildPairs) {
-			const bool parentInSet = std::find(result.begin(), result.end(), parentProcessId) != result.end();
-			const bool alreadyInSet = std::find(result.begin(), result.end(), processId) != result.end();
+	for (bool grew = true; grew;) {
+		grew = false;
 
-			if (parentInSet && !alreadyInSet) {
-				result.push_back(processId);
-				addedAny = true;
+		for (const auto &[parent, child] : parent_child_pairs) {
+			if (in_tree(parent) && !in_tree(child)) {
+				tree.push_back(child);
+				grew = true;
 			}
 		}
 	}
 
-	return result;
+	return tree;
 }
 
-struct FindWindowState {
-	const std::vector<DWORD> *pCandidateProcessIds;
-	HWND Result;
+struct WindowSearch {
+	const std::vector<DWORD> *process_ids;
+	HWND found;
 };
 
-BOOL CALLBACK FindTopLevelWindowProc(HWND hWnd, LPARAM lParam)
+BOOL CALLBACK find_top_level_window_proc(HWND t_window, LPARAM t_search)
 {
-	auto *pState = reinterpret_cast<FindWindowState *>(lParam);
+	auto &search = *reinterpret_cast<WindowSearch *>(t_search);
 
-	DWORD windowProcessId = 0;
-	GetWindowThreadProcessId(hWnd, &windowProcessId);
+	DWORD process_id = 0;
+	GetWindowThreadProcessId(t_window, &process_id);
 
-	const auto &candidates = *pState->pCandidateProcessIds;
-	if (std::find(candidates.begin(), candidates.end(), windowProcessId) == candidates.end()) return TRUE;
+	if (std::ranges::find(*search.process_ids, process_id) == search.process_ids->end()) return TRUE;
+	if (GetWindow(t_window, GW_OWNER) != nullptr || !IsWindowVisible(t_window)) return TRUE;
 
-	// An owner rules out a dialog or tooltip; invisible rules out the hidden helper windows
-	// some frameworks create before their real UI is ready.
-	if (GetWindow(hWnd, GW_OWNER) != nullptr || !IsWindowVisible(hWnd)) return TRUE;
-
-	// Chromium-derived helper processes create tiny windows for internal purposes.
 	RECT rect;
-	if (GetWindowRect(hWnd, &rect) && (rect.right - rect.left) < 50) return TRUE;
+	if (GetWindowRect(t_window, &rect) && rect.right - rect.left < min_real_window_width) return TRUE;
 
-	pState->Result = hWnd;
+	search.found = t_window;
 
 	return FALSE;
 }
 
-// Runs one cross-process lookup on a throwaway thread, setting bOutAbandoned if the thread had
-// to be let go still running. The thread joins the MTA itself, and fn is copied into it, so an
-// abandoned thread still holds its own references and can never touch a released interface.
-template <typename TFunc>
-ComPtr<IUIAutomationElement> RunBoundedLookup(const char *pLabel, TFunc fn, bool &bOutAbandoned)
+template <typename Lookup>
+ComPtr<IUIAutomationElement> run_bounded_lookup(const char *t_label, Lookup t_lookup, bool &t_out_abandoned)
 {
-	auto pResult = std::make_shared<BoundedLookupResult>();
+	auto result = std::make_shared<LookupResult>();
 
-	std::thread worker([pResult, fn]() {
-		const HRESULT comResult = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-		fn(pResult->Element);
+	std::thread worker([result, t_lookup]() {
+		const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+		t_lookup(result->element);
 
-		if (comResult == S_OK || comResult == S_FALSE) {
+		if (com_result == S_OK || com_result == S_FALSE) {
 			CoUninitialize();
 		}
 	});
 
-	const DebugLog::CScope scope(kLogCategory, "%s", pLabel);
+	const debug_log::Scope scope(log_category, "%s", t_label);
 
-	if (WaitForSingleObject(worker.native_handle(), static_cast<DWORD>(kUiaCallTimeout.count())) == WAIT_OBJECT_0) {
-		worker.join();
-		bOutAbandoned = false;
-		return std::move(pResult->Element);
+	t_out_abandoned = !wait_for_thread(worker, lookup_timeout);
+	join_or_abandon(worker, std::chrono::milliseconds{0});
+
+	if (t_out_abandoned) {
+		debug_log::write(log_category, "ABANDONED %s after %lldms - the provider never answered", t_label,
+						 lookup_timeout.count());
+		return nullptr;
 	}
 
-	worker.detach();
-	bOutAbandoned = true;
-	DebugLog::Write(kLogCategory, "ABANDONED %s after %llums - the provider never answered", pLabel,
-					static_cast<unsigned long long>(kUiaCallTimeout.count()));
-
-	return nullptr;
+	return std::move(result->element);
 }
 
-// Retries fn every kPollIntervalMs until it returns a valid element or timeoutMs elapses.
-template <typename TFunc>
-CUiElement PollForElement(u32 timeoutMs, TFunc fn)
+template <typename Pattern>
+ComPtr<Pattern> pattern_of(const ComPtr<IUIAutomationElement> &t_element, PATTERNID t_pattern_id)
 {
-	const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+	ComPtr<Pattern> pattern;
+	if (FAILED(t_element->GetCurrentPatternAs(t_pattern_id, IID_PPV_ARGS(&pattern)))) return nullptr;
 
-	for (;;) {
-		CUiElement found = fn();
-		if (found.IsValid()) return found;
-
-		if (std::chrono::steady_clock::now() >= deadline) return CUiElement{};
-
-		std::this_thread::sleep_for(std::chrono::milliseconds(kPollIntervalMs));
-	}
+	return pattern;
 }
-} // namespace
+}
 
-CUiElement::CUiElement(ComPtr<IUIAutomationElement> pElement)
-	: m_pElement(std::move(pElement))
+UiElement::UiElement(ComPtr<IUIAutomationElement> t_element)
+	: m_element(std::move(t_element))
 {
 }
 
-bool CUiElement::SetValue(const wchar_t *pText) const
+bool UiElement::set_value(const wchar_t *t_text) const
 {
-	if (!IsValid()) return false;
+	if (!is_valid()) return false;
 
-	ComPtr<IUIAutomationValuePattern> pValuePattern;
-	if (FAILED(m_pElement->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&pValuePattern))) ||
-		pValuePattern == nullptr) {
-		DebugLog::Write(kLogCategory, "SetValue: element has no ValuePattern - caller falls back to keystrokes");
+	const auto value_pattern = pattern_of<IUIAutomationValuePattern>(m_element, UIA_ValuePatternId);
+	if (value_pattern == nullptr) {
+		debug_log::write(log_category, "SetValue: element has no ValuePattern - caller falls back to keystrokes");
 		return false;
 	}
 
-	// Never logs pText: this is the call the account password goes through.
-	const DebugLog::CScope scope(kLogCategory, "ValuePattern::SetValue");
+	// Never log t_text: account passwords go through here.
+	const debug_log::Scope scope(log_category, "ValuePattern::SetValue");
 
-	BSTR bstrText = SysAllocString(pText);
-	const HRESULT hr = pValuePattern->SetValue(bstrText);
-	SysFreeString(bstrText);
+	BSTR text = SysAllocString(t_text);
+	const HRESULT result = value_pattern->SetValue(text);
+	SysFreeString(text);
 
-	if (FAILED(hr)) {
-		// E_ACCESSDENIED is the classic sign of the target running elevated while this process
-		// does not: UIPI blocks the write, and the keystroke fallback for the same reason.
-		DebugLog::Write(kLogCategory, "ValuePattern::SetValue FAILED hr=0x%08lX", static_cast<unsigned long>(hr));
+	if (FAILED(result)) {
+		debug_log::write(log_category, "ValuePattern::SetValue FAILED hr=0x%08lX", static_cast<unsigned long>(result));
 	}
 
-	return SUCCEEDED(hr);
+	return SUCCEEDED(result);
 }
 
-bool CUiElement::Invoke() const
+bool UiElement::invoke() const
 {
-	if (!IsValid()) return false;
+	if (!is_valid()) return false;
 
-	ComPtr<IUIAutomationInvokePattern> pInvokePattern;
-	if (FAILED(m_pElement->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&pInvokePattern))) ||
-		pInvokePattern == nullptr) {
-		return false;
+	const auto invoke_pattern = pattern_of<IUIAutomationInvokePattern>(m_element, UIA_InvokePatternId);
+	if (invoke_pattern == nullptr) return false;
+
+	const debug_log::Scope scope(log_category, "InvokePattern::Invoke");
+	const HRESULT result = invoke_pattern->Invoke();
+
+	if (FAILED(result)) {
+		debug_log::write(log_category, "InvokePattern::Invoke FAILED hr=0x%08lX", static_cast<unsigned long>(result));
 	}
 
-	const DebugLog::CScope scope(kLogCategory, "InvokePattern::Invoke");
-	const HRESULT hr = pInvokePattern->Invoke();
+	return SUCCEEDED(result);
+}
 
-	if (FAILED(hr)) {
-		DebugLog::Write(kLogCategory, "InvokePattern::Invoke FAILED hr=0x%08lX", static_cast<unsigned long>(hr));
+bool UiElement::focus() const
+{
+	if (!is_valid()) return false;
+
+	const debug_log::Scope scope(log_category, "IUIAutomationElement::SetFocus");
+	const HRESULT result = m_element->SetFocus();
+
+	if (FAILED(result)) {
+		debug_log::write(log_category, "SetFocus FAILED hr=0x%08lX", static_cast<unsigned long>(result));
 	}
 
-	return SUCCEEDED(hr);
+	return SUCCEEDED(result);
 }
 
-bool CUiElement::SetFocus() const
+bool UiElement::has_keyboard_focus() const
 {
-	if (!IsValid()) return false;
+	BOOL focused = FALSE;
 
-	const DebugLog::CScope scope(kLogCategory, "IUIAutomationElement::SetFocus");
-	const HRESULT hr = m_pElement->SetFocus();
+	return is_valid() && SUCCEEDED(m_element->get_CurrentHasKeyboardFocus(&focused)) && focused;
+}
 
-	if (FAILED(hr)) {
-		DebugLog::Write(kLogCategory, "SetFocus FAILED hr=0x%08lX", static_cast<unsigned long>(hr));
+UiAutomation::~UiAutomation()
+{
+	shutdown();
+}
+
+void UiAutomation::keep_process_mta_alive()
+{
+	static CO_MTA_USAGE_COOKIE cookie = nullptr;
+	if (cookie != nullptr) return;
+
+	const HRESULT result = CoIncrementMTAUsage(&cookie);
+	debug_log::write(log_category, "CoIncrementMTAUsage hr=0x%08lX (process-wide MTA %s)",
+					 static_cast<unsigned long>(result),
+					 SUCCEEDED(result) ? "held open" : "NOT held - apartment will be torn down between attempts");
+}
+
+bool UiAutomation::init()
+{
+	if (m_automation != nullptr) return true;
+
+	if (!m_com_initialized) {
+		const debug_log::Scope scope(log_category, "CoInitializeEx(COINIT_MULTITHREADED)");
+		const HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+		m_com_initialized = result == S_OK || result == S_FALSE;
+
+		debug_log::write(log_category, "CoInitializeEx hr=0x%08lX (%s)", static_cast<unsigned long>(result),
+						 m_com_initialized ? "in the MTA" : "NOT initialised by us");
 	}
 
-	return SUCCEEDED(hr);
+	const debug_log::Scope scope(log_category, "CoCreateInstance(CLSID_CUIAutomation)");
+	const HRESULT result =
+		CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&m_automation));
+
+	debug_log::write(log_category, "CoCreateInstance(CLSID_CUIAutomation) hr=0x%08lX after %llums",
+					 static_cast<unsigned long>(result), scope.elapsed_ms());
+
+	return SUCCEEDED(result);
 }
 
-bool CUiElement::HasKeyboardFocus() const
+void UiAutomation::shutdown()
 {
-	if (!IsValid()) return false;
-
-	BOOL hasFocus = FALSE;
-
-	return SUCCEEDED(m_pElement->get_CurrentHasKeyboardFocus(&hasFocus)) && hasFocus != FALSE;
-}
-
-bool CUiElement::GetName(std::wstring &outName) const
-{
-	if (!IsValid()) return false;
-
-	BSTR bstrName = nullptr;
-	if (FAILED(m_pElement->get_CurrentName(&bstrName)) || bstrName == nullptr) return false;
-
-	outName.assign(bstrName, SysStringLen(bstrName));
-	SysFreeString(bstrName);
-
-	return true;
-}
-
-bool CUiElement::GetAutomationId(std::wstring &outAutomationId) const
-{
-	if (!IsValid()) return false;
-
-	BSTR bstrId = nullptr;
-	if (FAILED(m_pElement->get_CurrentAutomationId(&bstrId)) || bstrId == nullptr) return false;
-
-	outAutomationId.assign(bstrId, SysStringLen(bstrId));
-	SysFreeString(bstrId);
-
-	return true;
-}
-
-CUiAutomation::~CUiAutomation()
-{
-	Shutdown();
-}
-
-void CUiAutomation::KeepProcessMtaAlive()
-{
-	// The MTA exists only while at least one thread is in it, and every CUiAutomation lives on a
-	// short-lived worker, so the last Shutdown tears the whole apartment down and the next
-	// attempt rebuilds it. CoIncrementMTAUsage holds it open without joining any thread, which is
-	// why the render thread can call it. The cookie is never released.
-	static CO_MTA_USAGE_COOKIE s_cookie = nullptr;
-	if (s_cookie != nullptr) return;
-
-	const HRESULT hr = CoIncrementMTAUsage(&s_cookie);
-	DebugLog::Write(kLogCategory, "CoIncrementMTAUsage hr=0x%08lX (process-wide MTA %s)",
-					static_cast<unsigned long>(hr),
-					SUCCEEDED(hr) ? "held open" : "NOT held - apartment will be torn down between attempts");
-}
-
-bool CUiAutomation::Init()
-{
-	if (m_pAutomation != nullptr) return true;
-
-	if (m_bComInitialized) {
-		// A previous Init took the COM reference but failed to create the interface. Balancing
-		// it is Shutdown's job; taking a second one here would leak it.
-		DebugLog::Write(kLogCategory, "Init retried after a failed one - reusing the existing COM reference");
-	} else {
-		// RPC_E_CHANGED_MODE means this thread already joined a single-threaded apartment
-		// itself. Nothing to balance, and not a hard failure: UI Automation generally still
-		// works against whatever apartment is active.
-		const DebugLog::CScope comScope(kLogCategory, "CoInitializeEx(COINIT_MULTITHREADED)");
-		const HRESULT comResult = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-		m_bComInitialized = comResult == S_OK || comResult == S_FALSE;
-
-		DebugLog::Write(kLogCategory, "CoInitializeEx hr=0x%08lX (%s)", static_cast<unsigned long>(comResult),
-						comResult == S_OK	   ? "joined the MTA"
-						: comResult == S_FALSE ? "already in a compatible apartment"
-											   : "NOT initialised by us");
+	if (m_automation != nullptr) {
+		const debug_log::Scope scope(log_category, "release IUIAutomation");
+		m_automation.Reset();
 	}
 
-	// The one call in this flow that has actually been suspected of hanging when login attempts
-	// come in quick succession - scoped so the watchdog names it if it ever does.
-	const DebugLog::CScope createScope(kLogCategory, "CoCreateInstance(CLSID_CUIAutomation)");
-	const HRESULT hr =
-		CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&m_pAutomation));
-
-	DebugLog::Write(kLogCategory, "CoCreateInstance(CLSID_CUIAutomation) hr=0x%08lX after %llums",
-					static_cast<unsigned long>(hr), static_cast<unsigned long long>(createScope.ElapsedMs()));
-
-	return SUCCEEDED(hr);
-}
-
-void CUiAutomation::Shutdown()
-{
-	if (m_pAutomation == nullptr && !m_bComInitialized) return;
-
-	// Scoped separately because they fail differently: releasing the last reference to a
-	// cross-process proxy is itself a call into the target, and CoUninitialize can block
-	// draining the apartment's RPC work.
-	{
-		const DebugLog::CScope scope(kLogCategory, "release IUIAutomation");
-		m_pAutomation.Reset();
-	}
-
-	if (m_bComInitialized) {
-		const DebugLog::CScope scope(kLogCategory, "CoUninitialize");
+	if (m_com_initialized) {
+		const debug_log::Scope scope(log_category, "CoUninitialize");
 		CoUninitialize();
-		m_bComInitialized = false;
+		m_com_initialized = false;
 	}
 }
 
-CUiElement CUiAutomation::FinishBoundedLookup(ComPtr<IUIAutomationElement> pFound, bool bAbandoned) const
+HWND UiAutomation::find_top_level_window(u32 t_process_id)
 {
-	if (!bAbandoned) return pFound != nullptr ? CUiElement{std::move(pFound)} : CUiElement{};
+	const std::vector<DWORD> process_ids = process_tree(t_process_id);
 
-	m_abandonedCallCount += 1;
+	WindowSearch search{.process_ids = &process_ids, .found = nullptr};
+	EnumWindows(find_top_level_window_proc, reinterpret_cast<LPARAM>(&search));
 
-	if (m_abandonedCallCount >= kMaxAbandonedCalls && !m_bWedged) {
-		m_bWedged = true;
-		DebugLog::Write(kLogCategory,
-						"GIVING UP on this target - %u lookup(s) abandoned; every later one now fails immediately",
-						m_abandonedCallCount);
-	}
-
-	return CUiElement{};
+	return search.found;
 }
 
-HWND CUiAutomation::FindTopLevelWindow(u32 processId)
+HWND UiAutomation::find_window_by_title(const wchar_t *t_title)
 {
-	const std::vector<DWORD> candidateProcessIds = CollectDescendantProcessIds(static_cast<DWORD>(processId));
-
-	FindWindowState state{.pCandidateProcessIds = &candidateProcessIds, .Result = nullptr};
-	EnumWindows(FindTopLevelWindowProc, reinterpret_cast<LPARAM>(&state));
-
-	return state.Result;
+	return FindWindowW(nullptr, t_title);
 }
 
-HWND CUiAutomation::FindWindowByName(const wchar_t *pTitle)
+UiElement UiAutomation::element_from_window(HWND t_window) const
 {
-	return FindWindowW(nullptr, pTitle);
-}
+	if (m_automation == nullptr || t_window == nullptr || m_wedged) return {};
 
-CUiElement CUiAutomation::WaitForWindowByProcessId(u32 processId, u32 timeoutMs) const
-{
-	return PollForElement(timeoutMs, [this, processId] {
-		const HWND hWnd = FindTopLevelWindow(processId);
-		return hWnd != nullptr ? ElementFromWindow(hWnd) : CUiElement{};
-	});
-}
-
-CUiElement CUiAutomation::WaitForWindowByName(const wchar_t *pTitle, u32 timeoutMs) const
-{
-	return PollForElement(timeoutMs, [this, pTitle] {
-		const HWND hWnd = FindWindowByName(pTitle);
-		return hWnd != nullptr ? ElementFromWindow(hWnd) : CUiElement{};
-	});
-}
-
-CUiElement CUiAutomation::ElementFromWindow(HWND hWnd) const
-{
-	if (m_pAutomation == nullptr || hWnd == nullptr || m_bWedged) return CUiElement{};
-
-	// This is the call that has to wake the target's accessibility provider up - a Chromium
-	// client builds its whole tree on first contact - and the one confirmed to have sat inside
-	// the provider for 39 seconds with no way out.
 	char label[64];
-	_snprintf_s(label, _TRUNCATE, "ElementFromHandle(hwnd=0x%p)", hWnd);
+	_snprintf_s(label, _TRUNCATE, "ElementFromHandle(hwnd=0x%p)", t_window);
 
-	bool bAbandoned = false;
-	auto pFound = RunBoundedLookup(
+	bool abandoned = false;
+	auto found = run_bounded_lookup(
 		label,
-		[pAutomation = m_pAutomation, hWnd](ComPtr<IUIAutomationElement> &outElement) {
-			pAutomation->ElementFromHandle(hWnd, &outElement);
+		[automation = m_automation, t_window](ComPtr<IUIAutomationElement> &t_out) {
+			automation->ElementFromHandle(t_window, &t_out);
 		},
-		bAbandoned);
+		abandoned);
 
-	return FinishBoundedLookup(std::move(pFound), bAbandoned);
+	return finish_bounded_lookup(std::move(found), abandoned);
 }
 
-// Walking another process's whole UI tree node by node over COM is the most expensive call
-// this class makes, so it goes through RunBoundedLookup like everything else here.
-CUiElement CUiAutomation::FindFirstWithCondition(const CUiElement &root, ComPtr<IUIAutomationCondition> pCondition,
-												 const char *pLabel) const
+UiElement UiAutomation::find_descendant(const UiElement &t_root, const wchar_t *t_name) const
 {
-	bool bAbandoned = false;
-	auto pFound = RunBoundedLookup(
-		pLabel,
-		[pRoot = root.Get(), pCondition](ComPtr<IUIAutomationElement> &outElement) {
-			pRoot->FindFirst(TreeScope_Descendants, pCondition.Get(), &outElement);
-		},
-		bAbandoned);
+	if (!can_search(t_root)) return {};
 
-	return FinishBoundedLookup(std::move(pFound), bAbandoned);
+	const VariantString name(t_name);
+
+	ComPtr<IUIAutomationCondition> condition;
+	if (FAILED(m_automation->CreatePropertyCondition(UIA_NamePropertyId, name.get(), &condition))) return {};
+
+	char label[192];
+	_snprintf_s(label, _TRUNCATE, "FindFirst(Name=%ls)", t_name);
+
+	return find_first(t_root, std::move(condition), label);
 }
 
-bool CUiAutomation::CanSearch(const CUiElement &root) const
+UiElement UiAutomation::find_descendant(const UiElement &t_root, const wchar_t *t_name,
+										CONTROLTYPEID t_control_type) const
 {
-	return m_pAutomation != nullptr && root.IsValid() && !m_bWedged;
-}
+	if (!can_search(t_root)) return {};
 
-CUiElement CUiAutomation::FindFirstDescendantByAutomationId(const CUiElement &root, const wchar_t *pAutomationId) const
-{
-	if (!CanSearch(root)) return CUiElement{};
+	const VariantString name(t_name);
 
-	const CAutoVariantString value(pAutomationId);
+	ComPtr<IUIAutomationCondition> name_condition;
+	ComPtr<IUIAutomationCondition> type_condition;
+	ComPtr<IUIAutomationCondition> both;
 
-	ComPtr<IUIAutomationCondition> pCondition;
-	if (FAILED(m_pAutomation->CreatePropertyCondition(UIA_AutomationIdPropertyId, value.Value, &pCondition)) ||
-		pCondition == nullptr) {
-		return CUiElement{};
+	if (FAILED(m_automation->CreatePropertyCondition(UIA_NamePropertyId, name.get(), &name_condition)) ||
+		FAILED(m_automation->CreatePropertyCondition(UIA_ControlTypePropertyId,
+													 variant_from_control_type(t_control_type), &type_condition)) ||
+		FAILED(m_automation->CreateAndCondition(name_condition.Get(), type_condition.Get(), &both))) {
+		return {};
 	}
 
 	char label[192];
-	_snprintf_s(label, _TRUNCATE, "FindFirst(AutomationId=%ls)", pAutomationId);
+	_snprintf_s(label, _TRUNCATE, "FindFirst(Name=%ls, ControlType=%d)", t_name, static_cast<int>(t_control_type));
 
-	return FindFirstWithCondition(root, std::move(pCondition), label);
+	return find_first(t_root, std::move(both), label);
 }
 
-CUiElement CUiAutomation::FindFirstDescendantByName(const CUiElement &root, const wchar_t *pName) const
+void UiAutomation::type_text(const wchar_t *t_text) const
 {
-	if (!CanSearch(root)) return CUiElement{};
-
-	const CAutoVariantString value(pName);
-
-	ComPtr<IUIAutomationCondition> pCondition;
-	if (FAILED(m_pAutomation->CreatePropertyCondition(UIA_NamePropertyId, value.Value, &pCondition)) ||
-		pCondition == nullptr) {
-		return CUiElement{};
-	}
-
-	char label[192];
-	_snprintf_s(label, _TRUNCATE, "FindFirst(Name=%ls)", pName);
-
-	return FindFirstWithCondition(root, std::move(pCondition), label);
-}
-
-CUiElement CUiAutomation::FindFirstDescendantByControlType(const CUiElement &root, CONTROLTYPEID controlType) const
-{
-	if (!CanSearch(root)) return CUiElement{};
-
-	ComPtr<IUIAutomationCondition> pCondition;
-	if (FAILED(m_pAutomation->CreatePropertyCondition(UIA_ControlTypePropertyId, VariantFromControlType(controlType),
-													  &pCondition)) ||
-		pCondition == nullptr) {
-		return CUiElement{};
-	}
-
-	char label[64];
-	_snprintf_s(label, _TRUNCATE, "FindFirst(ControlType=%d)", static_cast<int>(controlType));
-
-	return FindFirstWithCondition(root, std::move(pCondition), label);
-}
-
-CUiElement CUiAutomation::FindFirstDescendantByNameAndControlType(const CUiElement &root, const wchar_t *pName,
-																  CONTROLTYPEID controlType) const
-{
-	if (!CanSearch(root)) return CUiElement{};
-
-	const CAutoVariantString nameValue(pName);
-
-	ComPtr<IUIAutomationCondition> pNameCondition;
-	if (FAILED(m_pAutomation->CreatePropertyCondition(UIA_NamePropertyId, nameValue.Value, &pNameCondition)) ||
-		pNameCondition == nullptr) {
-		return CUiElement{};
-	}
-
-	ComPtr<IUIAutomationCondition> pTypeCondition;
-	if (FAILED(m_pAutomation->CreatePropertyCondition(UIA_ControlTypePropertyId, VariantFromControlType(controlType),
-													  &pTypeCondition)) ||
-		pTypeCondition == nullptr) {
-		return CUiElement{};
-	}
-
-	ComPtr<IUIAutomationCondition> pAndCondition;
-	if (FAILED(m_pAutomation->CreateAndCondition(pNameCondition.Get(), pTypeCondition.Get(), &pAndCondition)) ||
-		pAndCondition == nullptr) {
-		return CUiElement{};
-	}
-
-	char label[192];
-	_snprintf_s(label, _TRUNCATE, "FindFirst(Name=%ls, ControlType=%d)", pName, static_cast<int>(controlType));
-
-	return FindFirstWithCondition(root, std::move(pAndCondition), label);
-}
-
-CUiElement CUiAutomation::WaitForDescendantByAutomationId(const CUiElement &root, const wchar_t *pAutomationId,
-														  u32 timeoutMs) const
-{
-	return PollForElement(timeoutMs, [&] { return FindFirstDescendantByAutomationId(root, pAutomationId); });
-}
-
-CUiElement CUiAutomation::WaitForDescendantByName(const CUiElement &root, const wchar_t *pName, u32 timeoutMs) const
-{
-	return PollForElement(timeoutMs, [&] { return FindFirstDescendantByName(root, pName); });
-}
-
-CUiElement CUiAutomation::WaitForDescendantByControlType(const CUiElement &root, CONTROLTYPEID controlType,
-														 u32 timeoutMs) const
-{
-	return PollForElement(timeoutMs, [&] { return FindFirstDescendantByControlType(root, controlType); });
-}
-
-CUiElement CUiAutomation::WaitForDescendantByNameAndControlType(const CUiElement &root, const wchar_t *pName,
-																CONTROLTYPEID controlType, u32 timeoutMs) const
-{
-	return PollForElement(timeoutMs, [&] { return FindFirstDescendantByNameAndControlType(root, pName, controlType); });
-}
-
-void CUiAutomation::SendKeystrokes(const wchar_t *pText) const
-{
-	// Counted rather than logged per character, and the text itself never logged: this is the
-	// path an account password takes when a field has no ValuePattern. A non-zero rejected
-	// count means SendInput was refused outright - UIPI, or the secure desktop - which
-	// otherwise surfaces as an unexplained timeout several steps later.
 	u32 sent = 0;
 	u32 rejected = 0;
 
-	for (const wchar_t *pChar = pText; *pChar != L'\0'; pChar += 1) {
-		INPUT input[2]{};
-		input[0].type = INPUT_KEYBOARD;
-		input[0].ki.wScan = static_cast<WORD>(*pChar);
-		input[0].ki.dwFlags = KEYEVENTF_UNICODE;
-		input[1] = input[0];
-		input[1].ki.dwFlags |= KEYEVENTF_KEYUP;
+	for (const wchar_t *character = t_text; *character != L'\0'; character += 1) {
+		INPUT inputs[2]{};
+		inputs[0].type = INPUT_KEYBOARD;
+		inputs[0].ki.wScan = static_cast<WORD>(*character);
+		inputs[0].ki.dwFlags = KEYEVENTF_UNICODE;
+		inputs[1] = inputs[0];
+		inputs[1].ki.dwFlags |= KEYEVENTF_KEYUP;
 
-		if (SendInput(2, input, sizeof(INPUT)) == 2) {
+		if (SendInput(2, inputs, sizeof(INPUT)) == 2) {
 			sent += 1;
 		} else {
 			rejected += 1;
 		}
 	}
 
-	DebugLog::Write(kLogCategory, "SendKeystrokes: %u character(s) sent, %u rejected%s", sent, rejected,
-					rejected != 0 ? " - SendInput was blocked (elevation/UIPI?)" : "");
+	debug_log::write(log_category, "type_text: %u character(s) sent, %u rejected%s", sent, rejected,
+					 rejected != 0 ? " - SendInput was blocked (elevation/UIPI?)" : "");
 }
 
-void CUiAutomation::SendKey(WORD virtualKeyCode) const
+void UiAutomation::press_key(WORD t_virtual_key) const
 {
-	INPUT input[2]{};
-	input[0].type = INPUT_KEYBOARD;
-	input[0].ki.wVk = virtualKeyCode;
-	input[1] = input[0];
-	input[1].ki.dwFlags = KEYEVENTF_KEYUP;
+	INPUT inputs[2]{};
+	inputs[0].type = INPUT_KEYBOARD;
+	inputs[0].ki.wVk = t_virtual_key;
+	inputs[1] = inputs[0];
+	inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
 
-	const UINT inserted = SendInput(2, input, sizeof(INPUT));
+	const UINT inserted = SendInput(2, inputs, sizeof(INPUT));
 
-	// Worth its own line because this is the VK_RETURN that submits the form: if it does not
-	// land, nothing does, and the attempt times out waiting for a result it never asked for.
-	DebugLog::Write(kLogCategory, "SendKey(vk=0x%02X): %u of 2 event(s) inserted%s", virtualKeyCode, inserted,
-					inserted != 2 ? " - SendInput was blocked (elevation/UIPI?)" : "");
+	debug_log::write(log_category, "press_key(vk=0x%02X): %u of 2 event(s) inserted%s", t_virtual_key, inserted,
+					 inserted != 2 ? " - SendInput was blocked (elevation/UIPI?)" : "");
+}
+
+bool UiAutomation::can_search(const UiElement &t_root) const
+{
+	return m_automation != nullptr && t_root.is_valid() && !m_wedged;
+}
+
+UiElement UiAutomation::find_first(const UiElement &t_root, ComPtr<IUIAutomationCondition> t_condition,
+								   const char *t_label) const
+{
+	bool abandoned = false;
+	auto found = run_bounded_lookup(
+		t_label,
+		[root = t_root.com(), t_condition](ComPtr<IUIAutomationElement> &t_out) {
+			root->FindFirst(TreeScope_Descendants, t_condition.Get(), &t_out);
+		},
+		abandoned);
+
+	return finish_bounded_lookup(std::move(found), abandoned);
+}
+
+UiElement UiAutomation::finish_bounded_lookup(ComPtr<IUIAutomationElement> t_found, bool t_abandoned) const
+{
+	if (!t_abandoned) return t_found != nullptr ? UiElement{std::move(t_found)} : UiElement{};
+
+	m_abandoned_call_count += 1;
+
+	if (m_abandoned_call_count >= max_abandoned_lookups && !m_wedged) {
+		m_wedged = true;
+		debug_log::write(log_category,
+						 "GIVING UP on this target - %u lookup(s) abandoned; every later one now fails immediately",
+						 m_abandoned_call_count);
+	}
+
+	return {};
 }

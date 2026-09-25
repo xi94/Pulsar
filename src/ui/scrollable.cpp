@@ -2,144 +2,135 @@
 
 #include <algorithm>
 
-#include "core/animator.h"
-#include "ui/draw_list.h"
+#include "core/animation.h"
+#include "gfx/draw_list.h"
 
 namespace {
-constexpr float kScrollableEaseRate = 16.0f;
-constexpr float kEdgeFadeHeight = 28.0f;
+constexpr float ease_rate = 16.0f;
+constexpr float pixels_per_notch = 48.0f;
+constexpr float min_thumb_height = 24.0f;
+constexpr float thumb_grab_margin = 4.0f;
+constexpr float edge_fade_height = 28.0f;
+constexpr float edge_fade_overshoot = 4.0f;
 
-float MaxScroll(float contentHeight, float visibleHeight)
+float max_offset(const ScrollGeometry &t_geometry)
 {
-	return std::max(0.0f, contentHeight - visibleHeight);
+	return std::max(0.0f, t_geometry.content_height - t_geometry.visible_height);
 }
 
-float ThumbHeightFor(Rect track, float contentHeight, float visibleHeight)
+float thumb_height(const ScrollGeometry &t_geometry)
 {
-	return std::max(kScrollbarMinThumbHeight, track.H * (visibleHeight / contentHeight));
+	return std::max(min_thumb_height, t_geometry.track.h * t_geometry.visible_height / t_geometry.content_height);
 }
 
-// Shared by dragging and drawing so the two can never drift apart.
-Rect ThumbRectFor(float scrollOffset, Rect track, float contentHeight, float visibleHeight)
+Rect thumb_rect(float t_offset, const ScrollGeometry &t_geometry)
 {
-	const float maxOffset = MaxScroll(contentHeight, visibleHeight);
-	const float thumbHeight = ThumbHeightFor(track, contentHeight, visibleHeight);
-	const float travel = track.H - thumbHeight;
-	const float t = maxOffset > 0.0f ? std::clamp(scrollOffset / maxOffset, 0.0f, 1.0f) : 0.0f;
+	const float scrollable = max_offset(t_geometry);
+	const float height = thumb_height(t_geometry);
+	const float progress = scrollable > 0.0f ? std::clamp(t_offset / scrollable, 0.0f, 1.0f) : 0.0f;
+	const Rect &track = t_geometry.track;
 
-	return Rect{track.X, track.Y + travel * t, track.W, thumbHeight};
+	return Rect{track.x, track.y + (track.h - height) * progress, track.w, height};
 }
 
-// A generous grab target around a thin visual element, shared by the click hit-test and the
-// hover highlight so the widget never invites a click wider than what registers one.
-Rect ThumbHitRectFor(float scrollOffset, Rect track, float contentHeight, float visibleHeight)
+Rect thumb_grab_rect(float t_offset, const ScrollGeometry &t_geometry)
 {
-	const Rect thumb = ThumbRectFor(scrollOffset, track, contentHeight, visibleHeight);
-
-	return Rect{thumb.X - 4.0f, thumb.Y, thumb.W + 8.0f, thumb.H};
+	return thumb_rect(t_offset, t_geometry).inset(-thumb_grab_margin, 0.0f);
 }
-} // namespace
-
-void CScrollable::Update(float deltaSeconds)
-{
-	m_flScrollOffset =
-		CAnimator::EaseToward(m_flScrollOffset, m_flTargetScrollOffset, kScrollableEaseRate, deltaSeconds);
 }
 
-bool CScrollable::IsVisible(float contentHeight, float visibleHeight)
+bool Scrollable::is_needed(const ScrollGeometry &t_geometry)
 {
-	return contentHeight > visibleHeight + 0.5f;
+	return t_geometry.content_height > t_geometry.visible_height + 0.5f;
 }
 
-void CScrollable::Draw(CDrawList &drawList, Rect track, float contentHeight, float visibleHeight, Color thumbColor,
-					   float mouseX, float mouseY) const
+void Scrollable::update(float t_delta_seconds)
 {
-	if (!IsVisible(contentHeight, visibleHeight)) return;
-
-	const Rect thumb = ThumbRectFor(m_flScrollOffset, track, contentHeight, visibleHeight);
-	const Rect hitRect = ThumbHitRectFor(m_flScrollOffset, track, contentHeight, visibleHeight);
-	const bool hovered = m_bDragging || RectContainsPoint(hitRect, mouseX, mouseY);
-	const Color color = hovered ? ColorLighten(thumbColor, 40) : thumbColor;
-
-	drawList.AddRectRoundedFilled(thumb.X, thumb.Y, thumb.W, thumb.H, CDrawList::UniformRadii(thumb.W * 0.5f), color);
+	m_offset = animation::ease_toward(m_offset, m_target, ease_rate, t_delta_seconds);
 }
 
-bool CScrollable::OnPointerDown(float x, float y, Rect track, float contentHeight, float visibleHeight)
+void Scrollable::draw(DrawList &t_draw_list, const ScrollGeometry &t_geometry, Color t_thumb, Vec2 t_mouse) const
 {
-	if (!IsVisible(contentHeight, visibleHeight)) return false;
+	if (!is_needed(t_geometry)) return;
 
-	if (!RectContainsPoint(ThumbHitRectFor(m_flTargetScrollOffset, track, contentHeight, visibleHeight), x, y)) {
-		return false;
+	const Rect thumb = thumb_rect(m_offset, t_geometry);
+	const bool hovered = m_dragging || thumb_grab_rect(m_offset, t_geometry).contains(t_mouse);
+
+	t_draw_list.add_rounded_rect(thumb, rounded(thumb.w * 0.5f), hovered ? lightened(t_thumb, 40) : t_thumb);
+}
+
+void Scrollable::draw_edge_fade(DrawList &t_draw_list, Rect t_area, const ScrollGeometry &t_geometry,
+								Color t_edge) const
+{
+	if (!is_needed(t_geometry)) return;
+
+	const float fade_height = std::min(edge_fade_height, t_area.h * 0.5f);
+	const Color clear = faded(t_edge, 0);
+
+	t_draw_list.push_clip(t_area);
+
+	if (m_offset > 0.5f) {
+		t_draw_list.add_rect(Rect{t_area.x, t_area.y - edge_fade_overshoot, t_area.w, edge_fade_overshoot}, t_edge);
+		t_draw_list.add_gradient(Rect{t_area.x, t_area.y, t_area.w, fade_height}, t_edge, t_edge, clear, clear);
 	}
 
-	m_bDragging = true;
-	m_flDragStartPointerY = y;
-	m_flDragStartScrollOffset = m_flTargetScrollOffset;
+	if (m_offset < max_offset(t_geometry) - 0.5f) {
+		t_draw_list.add_gradient(Rect{t_area.x, t_area.bottom() - fade_height, t_area.w, fade_height}, clear, clear,
+								 t_edge, t_edge);
+		t_draw_list.add_rect(Rect{t_area.x, t_area.bottom(), t_area.w, edge_fade_overshoot}, t_edge);
+	}
+
+	t_draw_list.pop_clip();
+}
+
+bool Scrollable::on_pointer_down(Vec2 t_point, const ScrollGeometry &t_geometry)
+{
+	if (!is_needed(t_geometry) || !thumb_grab_rect(m_target, t_geometry).contains(t_point)) return false;
+
+	m_dragging = true;
+	m_drag_start_y = t_point.y;
+	m_drag_start_target = m_target;
 
 	return true;
 }
 
-void CScrollable::OnPointerMove(float y, Rect track, float contentHeight, float visibleHeight)
+void Scrollable::on_pointer_move(float t_y, const ScrollGeometry &t_geometry)
 {
-	if (!m_bDragging) return;
+	if (!m_dragging) return;
 
-	const float travel = track.H - ThumbHeightFor(track, contentHeight, visibleHeight);
-	const float maxOffset = MaxScroll(contentHeight, visibleHeight);
-	if (travel <= 0.0f || maxOffset <= 0.0f) return;
+	const float travel = t_geometry.track.h - thumb_height(t_geometry);
+	const float scrollable = max_offset(t_geometry);
+	if (travel <= 0.0f || scrollable <= 0.0f) return;
 
-	const float deltaPixels = y - m_flDragStartPointerY;
-	m_flTargetScrollOffset =
-		std::clamp(m_flDragStartScrollOffset + deltaPixels * (maxOffset / travel), 0.0f, maxOffset);
-
-	// 1:1 tracking while dragging, same as every other drag in this project.
-	m_flScrollOffset = m_flTargetScrollOffset;
+	m_target = std::clamp(m_drag_start_target + (t_y - m_drag_start_y) * scrollable / travel, 0.0f, scrollable);
+	m_offset = m_target;
 }
 
-void CScrollable::OnPointerUp()
+void Scrollable::on_pointer_up()
 {
-	m_bDragging = false;
+	m_dragging = false;
 }
 
-void CScrollable::OnScroll(float wheelDelta, float contentHeight, float visibleHeight)
+void Scrollable::on_scroll(float t_wheel_delta, const ScrollGeometry &t_geometry)
 {
-	const float maxOffset = MaxScroll(contentHeight, visibleHeight);
-	m_flTargetScrollOffset =
-		std::clamp(m_flTargetScrollOffset - wheelDelta * kScrollbarWheelPixelsPerNotch, 0.0f, maxOffset);
+	scroll_by(-t_wheel_delta * pixels_per_notch, t_geometry);
 }
 
-void CScrollable::ScrollBy(float pixels, float contentHeight, float visibleHeight)
+void Scrollable::scroll_by(float t_pixels, const ScrollGeometry &t_geometry)
 {
-	const float maxOffset = MaxScroll(contentHeight, visibleHeight);
-	m_flTargetScrollOffset = std::clamp(m_flTargetScrollOffset + pixels, 0.0f, maxOffset);
+	m_target = std::clamp(m_target + t_pixels, 0.0f, max_offset(t_geometry));
 }
 
-void CScrollable::DrawEdgeFade(CDrawList &drawList, Rect area, float contentHeight, float visibleHeight,
-							   Color edgeColor) const
+void Scrollable::reveal(float t_top, float t_bottom, float t_view_top, float t_view_bottom,
+						const ScrollGeometry &t_geometry)
 {
-	if (!IsVisible(contentHeight, visibleHeight)) return;
+	const float settle_shift = m_offset - m_target;
+	const float hidden_above = t_view_top - (t_top + settle_shift);
+	const float hidden_below = (t_bottom + settle_shift) - t_view_bottom;
 
-	const float fadeHeight = std::min(kEdgeFadeHeight, area.H * 0.5f);
-	const Color clear = ColorScaleAlpha(edgeColor, 0);
-	const float maxOffset = MaxScroll(contentHeight, visibleHeight);
-
-	// The overshoot strips close a rounding gap: the caller's clip rect and this fade's
-	// geometry can land on slightly different physical pixels, leaving a sliver of unfaded
-	// content right at the edge. A solid strip past the edge covers it either way, and the
-	// gradient's slope still starts exactly on the boundary.
-	constexpr float kOvershoot = 4.0f;
-
-	drawList.PushClipRect(area);
-
-	if (m_flScrollOffset > 0.5f) {
-		drawList.AddRectFilled(area.X, area.Y - kOvershoot, area.W, kOvershoot, edgeColor);
-		drawList.AddRectGradientCorners(area.X, area.Y, area.W, fadeHeight, edgeColor, edgeColor, clear, clear);
+	if (hidden_above > 0.0f) {
+		scroll_by(-hidden_above, t_geometry);
+	} else if (hidden_below > 0.0f) {
+		scroll_by(hidden_below, t_geometry);
 	}
-
-	if (m_flScrollOffset < maxOffset - 0.5f) {
-		drawList.AddRectGradientCorners(area.X, area.Y + area.H - fadeHeight, area.W, fadeHeight, clear, clear,
-										edgeColor, edgeColor);
-		drawList.AddRectFilled(area.X, area.Y + area.H, area.W, kOvershoot, edgeColor);
-	}
-
-	drawList.PopClipRect();
 }

@@ -1,1576 +1,1196 @@
 #include "ui/settings_panel.h"
 
-#include "core/profiler.h"
-
-#include "core/str.h"
-
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <numbers>
 
 #include <Windows.h>
 
-#include "core/animator.h"
-#include "gfx/asset_manager.h"
+#include "core/animation.h"
+#include "core/profiler.h"
+#include "core/str.h"
+#include "gfx/assets.h"
+#include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "platform/window.h"
 #include "ui/controls.h"
-#include "ui/draw_list.h"
-#include "ui/layout.h"
 #include "ui/text.h"
 
 namespace {
-constexpr float kPanelOpenEaseRate = 16.0f;
-constexpr float kToggleEaseRate = 18.0f;
+constexpr float open_ease_rate = 16.0f;
+constexpr float toggle_ease_rate = 18.0f;
+constexpr float value_ease_rate = 16.0f;
+constexpr float reset_appear_rate = 20.0f;
+constexpr float reset_spin_rate = 6.0f;
 
-// Close to the toggle rate, so a row's control and its neighbours settle at the same pace.
-constexpr float kValueEaseRate = 16.0f;
+constexpr Vec2 panel_max_size{570.0f, 480.0f};
+constexpr float reference_body_pixel_height = 24.0f;
+constexpr float reference_secondary_pixel_height = 20.0f;
+constexpr float panel_margin = 48.0f;
+constexpr float panel_closed_scale = 0.94f;
+constexpr float panel_radius = 16.0f;
+constexpr float panel_border = 1.5f;
 
-// Grows in lockstep with the font-size setting, so bigger text gets more room than it needs
-// rather than being clipped.
-constexpr float kPanelMaxWidthBase = 570.0f;
+constexpr float row_padding_x = 26.0f;
+constexpr float close_size = 26.0f;
+constexpr float label_top_gap = 14.0f;
+constexpr float label_line_gap = 6.0f;
+constexpr float label_bottom_gap = 16.0f;
+constexpr float label_control_gap = 16.0f;
+constexpr float highlight_inset_x = 12.0f;
+constexpr float highlight_radius = 8.0f;
+constexpr float heading_top_gap = 22.0f;
+constexpr float heading_bottom_gap = 8.0f;
+constexpr float scrollbar_margin = 4.0f;
 
-// A comfortable viewport, not "tall enough for every row" - the list scrolls once it overflows.
-constexpr float kPanelMaxHeightBase = 480.0f;
+constexpr float reset_button_size = 28.0f;
+constexpr float reset_button_gap = 10.0f;
+constexpr float reset_icon_size = 18.0f;
 
-// Real baked pixels, which already include the display-scale factor, matching the default
-// nominal sizes in Settings.
-constexpr float kReferenceBodyPixelHeight = 24.0f;
-constexpr float kReferenceSecondaryPixelHeight = 20.0f;
+constexpr float slider_track_width = 130.0f;
+constexpr float slider_bar_height = 6.0f;
+constexpr float slider_thumb_radius = 8.0f;
+constexpr float slider_readout_gap = 8.0f;
+constexpr float slider_readout_width = 48.0f;
+constexpr float knob_ring = 1.5f;
 
-constexpr float kPanelMargin = 48.0f;
-constexpr float kPanelScaleMin = 0.94f;
-constexpr float kPanelRadius = 16.0f;
-constexpr float kPanelBorderThickness = 1.5f;
+constexpr float animation_speed_min = 0.25f;
+constexpr float animation_speed_max = 3.0f;
+constexpr float corner_roundness_min = 0.0f;
+constexpr float corner_roundness_max = 1.5f;
+constexpr float font_size_min = 10.0f;
+constexpr float font_size_max = 24.0f;
+constexpr float secondary_font_size_min = 8.0f;
+constexpr float secondary_font_size_max = 18.0f;
 
-constexpr float kRowPaddingX = 26.0f;
-constexpr float kCloseSize = 26.0f;
+constexpr Color color_background{26, 26, 29, 255};
+constexpr Color color_border{70, 70, 76, 255};
+constexpr Color color_text{224, 224, 228, 255};
+constexpr Color color_text_dim{140, 140, 146, 255};
+constexpr Color color_separator{58, 58, 64, 255};
+constexpr Color color_control{40, 40, 45, 255};
+constexpr Color color_toggle_off{70, 70, 76, 255};
+constexpr Color color_row_hover{36, 36, 41, 255};
+constexpr Color color_reset_idle{150, 150, 158, 255};
+constexpr Color color_reset_hover{64, 64, 72, 255};
+constexpr Color color_scroll_thumb{120, 120, 128, 190};
 
-// Gaps rather than a fixed row height, so raising them spaces the list out without clipping.
-constexpr float kRowLabelTopGap = 14.0f;
-constexpr float kRowLabelLineGap = 6.0f;
-constexpr float kRowLabelBottomGap = 16.0f;
+const Settings default_settings{};
 
-// Inset from the row padding, so the highlight reads as a band rather than a full-bleed stripe.
-constexpr float kRowHighlightInsetX = 12.0f;
-constexpr float kRowHighlightRadius = 8.0f;
-
-constexpr float kResetButtonSize = 28.0f;
-constexpr float kResetButtonGap = 10.0f;
-constexpr float kResetIconSize = 18.0f;
-constexpr float kResetAppearRate = 20.0f;
-
-// Slower than the fade, so the turn is still visible when the eye lands on it.
-constexpr float kResetSpinRate = 6.0f;
-constexpr float kTwoPi = 6.28318530717958647692f;
-
-// The breathing room above a heading is what actually does the grouping work.
-constexpr float kSectionHeaderTopGap = 22.0f;
-constexpr float kSectionHeaderBottomGap = 8.0f;
-
-constexpr float kSliderTrackWidth = 130.0f;
-constexpr float kSliderTrackVisualHeight = 6.0f;
-constexpr float kSliderThumbRadius = 8.0f;
-constexpr float kSliderValueLabelGap = 8.0f;
-
-// Fixed rather than measured, so the reset button left of it does not shuffle as digits change.
-constexpr float kSliderValueLabelWidth = 48.0f;
-
-constexpr float kAnimationSpeedMin = 0.25f;
-constexpr float kAnimationSpeedMax = 3.0f;
-
-// 1.0 is the design radius and 0 squares everything off. The ceiling is 1.5 because the
-// rounded-rect builder clamps each radius to half the shorter side, and past roughly 1.5 most
-// shapes are already at that limit.
-constexpr float kCornerRoundnessMin = 0.0f;
-constexpr float kCornerRoundnessMax = 1.5f;
-
-// Nominal settings units, not baked pixels.
-constexpr float kFontSizeMin = 10.0f;
-constexpr float kFontSizeMax = 24.0f;
-
-// Independently tunable, with a lower ceiling: secondary labels body content rather than
-// rivalling it.
-constexpr float kSecondaryFontSizeMin = 8.0f;
-constexpr float kSecondaryFontSizeMax = 18.0f;
-
-// Keeps a knob a distinct object rather than dissolving into whatever it sits on.
-constexpr float kKnobRingThickness = 1.5f;
-
-constexpr Color kColorBg{26, 26, 29, 255};
-constexpr Color kColorBorder{70, 70, 76, 255};
-constexpr Color kColorText{224, 224, 228, 255};
-constexpr Color kColorTextDim{140, 140, 146, 255};
-constexpr Color kColorSeparator{58, 58, 64, 255};
-constexpr Color kColorControlBg{40, 40, 45, 255};
-constexpr Color kColorToggleOff{70, 70, 76, 255};
-constexpr Color kColorRowHover{36, 36, 41, 255};
-constexpr Color kColorResetIdle{150, 150, 158, 255};
-constexpr Color kColorResetHoverBg{64, 64, 72, 255};
-constexpr Color kColorScrollThumb{120, 120, 128, 190};
-
-// Every size derives from the active pFonts' glyph metrics, so a larger font grows rows to fit.
-// Both faces matter: descriptions are set in the independently adjustable secondary face, and
-// scaling off body alone leaves the panel too narrow for them.
-float PanelMaxSizeScale(const CFontManager *pFonts)
+float fraction_in(float t_value, float t_min, float t_max)
 {
-	const float bodyScale = pFonts->GetBody().GetPixelHeight() / kReferenceBodyPixelHeight;
-	const float secondaryScale = pFonts->GetSecondary().GetPixelHeight() / kReferenceSecondaryPixelHeight;
-
-	return std::max(1.0f, std::max(bodyScale, secondaryScale));
+	return std::clamp((t_value - t_min) / (t_max - t_min), 0.0f, 1.0f);
 }
 
-float HeaderHeightFor(const CFontManager *pFonts)
+float value_at(float t_fraction, float t_min, float t_max)
 {
-	return pFonts->GetBody().GetLineHeight() + 20.0f;
+	return t_min + std::clamp(t_fraction, 0.0f, 1.0f) * (t_max - t_min);
 }
 
-float FooterHeightFor(const CFontManager *pFonts)
+float header_height(const Fonts &t_fonts)
 {
-	return std::max(32.0f, pFonts->GetSecondary().GetLineHeight() + 16.0f);
+	return t_fonts.body().line_height() + 20.0f;
 }
 
-// A row is exactly its title-plus-description stack.
-float RowHeightFor(const CFontManager *pFonts)
+float footer_height(const Fonts &t_fonts)
 {
-	return kRowLabelTopGap + pFonts->GetBody().GetLineHeight() + kRowLabelLineGap +
-		   pFonts->GetSecondary().GetLineHeight() + kRowLabelBottomGap;
+	return std::max(32.0f, t_fonts.secondary().line_height() + 16.0f);
 }
 
-float SectionHeaderHeightFor(const CFontManager *pFonts)
+float row_height(const Fonts &t_fonts)
 {
-	return kSectionHeaderTopGap + pFonts->GetSecondary().GetLineHeight() + kSectionHeaderBottomGap;
+	return label_top_gap + t_fonts.body().line_height() + label_line_gap + t_fonts.secondary().line_height() +
+		   label_bottom_gap;
 }
 
-// Body rather than secondary: every control this sizes holds a value the user reads or types.
-float RowControlHeightFor(const CFontManager *pFonts)
+float heading_height(const Fonts &t_fonts)
 {
-	return std::max(34.0f, pFonts->GetBody().GetLineHeight() + 12.0f);
+	return heading_top_gap + t_fonts.secondary().line_height() + heading_bottom_gap;
 }
 
-float RowTitleBaselineY(Rect row, const CFontManager *pFonts)
+float control_height(const Fonts &t_fonts)
 {
-	return row.Y + kRowLabelTopGap + pFonts->GetBody().GetAscent();
+	return std::max(34.0f, t_fonts.body().line_height() + 12.0f);
 }
 
-float RowDescriptionBaselineY(Rect row, const CFontManager *pFonts)
+float title_baseline(Rect t_row, const Fonts &t_fonts)
 {
-	return row.Y + kRowLabelTopGap + pFonts->GetBody().GetLineHeight() + kRowLabelLineGap +
-		   pFonts->GetSecondary().GetAscent();
+	return t_row.y + label_top_gap + t_fonts.body().ascent();
 }
 
-// The midpoint between the two text baselines, not the row's box centre: the title line is
-// usually taller, so centring on the box pulls controls visibly toward it.
-float RowControlCenterY(Rect row, const CFontManager *pFonts)
+float description_baseline(Rect t_row, const Fonts &t_fonts)
 {
-	return (RowTitleBaselineY(row, pFonts) + RowDescriptionBaselineY(row, pFonts)) * 0.5f;
+	return t_row.y + label_top_gap + t_fonts.body().line_height() + label_line_gap + t_fonts.secondary().ascent();
 }
 
-Rect PanelRect(float openAmount, float windowW, float windowH, const CFontManager *pFonts)
+float control_center_y(Rect t_row, const Fonts &t_fonts)
 {
-	const float sizeScale = PanelMaxSizeScale(pFonts);
-	const float panelMaxWidth = kPanelMaxWidthBase * sizeScale;
-	const float panelMaxHeight = kPanelMaxHeightBase * sizeScale;
-
-	float w = std::min(panelMaxWidth, std::max(0.0f, windowW - kPanelMargin * 2.0f));
-	float h = std::min(panelMaxHeight, std::max(0.0f, windowH - kPanelMargin * 2.0f));
-
-	const float targetAspect = panelMaxWidth / panelMaxHeight;
-	if (w / h > targetAspect) {
-		w = h * targetAspect;
-	} else {
-		h = w / targetAspect;
-	}
-
-	const float openScale = kPanelScaleMin + (1.0f - kPanelScaleMin) * openAmount;
-	w *= openScale;
-	h *= openScale;
-
-	return Rect{(windowW - w) * 0.5f, (windowH - h) * 0.5f, w, h};
+	return (title_baseline(t_row, t_fonts) + description_baseline(t_row, t_fonts)) * 0.5f;
 }
 
-// Sized off its own constant, so it stays a comfortable click target at any font size.
-Rect CloseRect(Rect panel, const CFontManager *pFonts)
+Rect right_aligned_control(Rect t_row, const Fonts &t_fonts, float t_width, float t_height)
 {
-	const float headerHeight = HeaderHeightFor(pFonts);
-
-	return Rect{panel.X + panel.W - 14.0f - kCloseSize, panel.Y + (headerHeight - kCloseSize) * 0.5f, kCloseSize,
-				kCloseSize};
+	return Rect{t_row.right() - row_padding_x - t_width, control_center_y(t_row, t_fonts) - t_height * 0.5f, t_width,
+				t_height};
 }
 
-// A thin strip inset from the scroll region's right edge. Whether anything is drawn or
-// hit-tested there is CScrollable's decision.
-Rect ScrollbarTrackRect(Rect scrollRegion)
+Rect close_button_rect(Rect t_panel, const Fonts &t_fonts)
 {
-	constexpr float kTrackMargin = 4.0f;
-
-	return Rect{scrollRegion.X + scrollRegion.W - kScrollbarWidth - kTrackMargin, scrollRegion.Y, kScrollbarWidth,
-				scrollRegion.H};
+	return Rect{t_panel.right() - 14.0f - close_size, t_panel.y + (header_height(t_fonts) - close_size) * 0.5f,
+				close_size, close_size};
 }
 
-/// The band a row's hover highlight actually paints, which is narrower than the row itself. Rows
-/// span the full scroll region, so the scrollbar track sits inside the right-hand inset - testing
-/// the row rect would light a row up while the pointer is on the scrollbar.
-Rect RowHighlightRect(Rect row)
+Rect font_field_rect(Rect t_row, const Fonts &t_fonts)
 {
-	return Rect{row.X + kRowHighlightInsetX, row.Y, row.W - kRowHighlightInsetX * 2.0f, row.H};
+	constexpr float width = 190.0f;
+	const float height = control_height(t_fonts);
+
+	return Rect{t_row.right() - row_padding_x - width, t_row.y + (t_row.h - height) * 0.5f, width, height};
 }
 
-/// Cheap cull before drawing or hit-testing; the clip is what stops a partially visible row
-/// painting outside the region.
-bool RowInView(Rect row, Rect scrollRegion)
+Rect stepper_rect(Rect t_row, const Fonts &t_fonts)
 {
-	return !(row.Y + row.H <= scrollRegion.Y || row.Y >= scrollRegion.Y + scrollRegion.H);
+	return right_aligned_control(t_row, t_fonts, 108.0f, 28.0f);
 }
 
-Rect FontFieldRect(Rect row, const CFontManager *pFonts)
+Rect stepper_minus(Rect t_stepper)
 {
-	constexpr float kW = 190.0f;
-
-	const float h = RowControlHeightFor(pFonts);
-
-	return Rect{row.X + row.W - kRowPaddingX - kW, row.Y + (row.H - h) * 0.5f, kW, h};
+	return Rect{t_stepper.x, t_stepper.y, t_stepper.h, t_stepper.h};
 }
 
-// The stepper's bounding rect; the two button rects below carve out of this same rect, so
-// drawing and hit-testing cannot disagree.
-Rect StepperRect(Rect row, const CFontManager *pFonts)
+Rect stepper_plus(Rect t_stepper)
 {
-	constexpr float kW = 108.0f;
-	constexpr float kH = 28.0f;
-
-	return Rect{row.X + row.W - kRowPaddingX - kW, RowControlCenterY(row, pFonts) - kH * 0.5f, kW, kH};
+	return Rect{t_stepper.right() - t_stepper.h, t_stepper.y, t_stepper.h, t_stepper.h};
 }
 
-Rect StepperMinusRect(Rect stepper)
+Rect toggle_rect(Rect t_row, const Fonts &t_fonts)
 {
-	return Rect{stepper.X, stepper.Y, stepper.H, stepper.H};
+	return right_aligned_control(t_row, t_fonts, 40.0f, 22.0f);
 }
 
-Rect StepperPlusRect(Rect stepper)
+Rect swatch_rect(Rect t_row, const Fonts &t_fonts)
 {
-	return Rect{stepper.X + stepper.W - stepper.H, stepper.Y, stepper.H, stepper.H};
+	return right_aligned_control(t_row, t_fonts, 40.0f, 24.0f);
 }
 
-Rect ToggleRect(Rect row, const CFontManager *pFonts)
+Rect master_password_button_rect(Rect t_row, const Fonts &t_fonts)
 {
-	constexpr float kW = 40.0f;
-	constexpr float kH = 22.0f;
-
-	return Rect{row.X + row.W - kRowPaddingX - kW, RowControlCenterY(row, pFonts) - kH * 0.5f, kW, kH};
+	return right_aligned_control(t_row, t_fonts, 140.0f, control_height(t_fonts));
 }
 
-// Also the anchor the colour picker positions itself against.
-Rect SwatchRect(Rect row, const CFontManager *pFonts)
+Rect slider_track_rect(Rect t_row, const Fonts &t_fonts)
 {
-	constexpr float kW = 40.0f;
-	constexpr float kH = 24.0f;
-
-	return Rect{row.X + row.W - kRowPaddingX - kW, RowControlCenterY(row, pFonts) - kH * 0.5f, kW, kH};
+	return right_aligned_control(t_row, t_fonts, slider_track_width, 22.0f);
 }
 
-Rect MasterPasswordButtonRect(Rect row, const CFontManager *pFonts)
+Rect slider_control_rect(Rect t_row, const Fonts &t_fonts)
 {
-	constexpr float kW = 140.0f;
+	const Rect track = slider_track_rect(t_row, t_fonts);
+	const float readout = slider_readout_gap + slider_readout_width;
 
-	const float h = RowControlHeightFor(pFonts);
-
-	return Rect{row.X + row.W - kRowPaddingX - kW, RowControlCenterY(row, pFonts) - h * 0.5f, kW, h};
+	return Rect{track.x - readout, track.y, track.w + readout, track.h};
 }
 
-// The draggable track only, at a fixed width regardless of font size. Taller than the visual
-// bar itself, for an easier grab target.
-Rect SliderTrackRect(Rect row, const CFontManager *pFonts)
+Rect reset_button_rect(Rect t_control, Rect t_row, const Fonts &t_fonts)
 {
-	constexpr float kH = 22.0f;
-
-	return Rect{row.X + row.W - kRowPaddingX - kSliderTrackWidth, RowControlCenterY(row, pFonts) - kH * 0.5f,
-				kSliderTrackWidth, kH};
+	return Rect{t_control.x - reset_button_gap - reset_button_size,
+				control_center_y(t_row, t_fonts) - reset_button_size * 0.5f, reset_button_size, reset_button_size};
 }
 
-// The track plus the reserved space its readout occupies, so the reset button lands left of
-// the readout rather than on top of it.
-Rect SliderControlRect(Rect row, const CFontManager *pFonts)
+float label_right_edge(Rect t_control, Rect t_row, const Fonts &t_fonts)
 {
-	const Rect track = SliderTrackRect(row, pFonts);
-	const float reserved = kSliderValueLabelGap + kSliderValueLabelWidth;
-
-	return Rect{track.X - reserved, track.Y, track.W + reserved, track.H};
+	return reset_button_rect(t_control, t_row, t_fonts).x - label_control_gap;
 }
 
-// Derived from the control rather than pinned to a fixed column, so it stays adjacent to the
-// thing it restores whether that is a wide text field or a narrow toggle.
-Rect ResetButtonRect(Rect control, Rect row, const CFontManager *pFonts)
+void draw_row_label(DrawList &t_draw_list, const Fonts &t_fonts, Rect t_row, const char *t_title,
+					const char *t_description, float t_right_edge, u8 t_alpha)
 {
-	return Rect{control.X - kResetButtonGap - kResetButtonSize,
-				RowControlCenterY(row, pFonts) - kResetButtonSize * 0.5f, kResetButtonSize, kResetButtonSize};
+	const float x = t_row.x + row_padding_x;
+
+	draw_text_truncated(t_draw_list, t_fonts.body(), Vec2{x, title_baseline(t_row, t_fonts)}, t_title, t_right_edge - x,
+						faded(color_text, t_alpha));
+	draw_text_truncated(t_draw_list, t_fonts.secondary(), Vec2{x, description_baseline(t_row, t_fonts)}, t_description,
+						t_right_edge - x, faded(color_text_dim, t_alpha));
 }
 
-// Always leaves room for the reset button, which comes and goes as a value moves on and off its
-// default. A label that re-flowed each time would be far more distracting.
-float LabelRightEdge(Rect control, Rect row, const CFontManager *pFonts)
+void draw_heading(DrawList &t_draw_list, const Fonts &t_fonts, Rect t_strip, const char *t_title, u8 t_alpha)
 {
-	constexpr float kLabelControlGap = 16.0f;
+	constexpr float text_gap = 10.0f;
+	constexpr float lead_width = 16.0f;
 
-	return ResetButtonRect(control, row, pFonts).X - kLabelControlGap;
-}
+	const Font &font = t_fonts.secondary();
+	const float baseline = t_strip.bottom() - heading_bottom_gap - (font.line_height() - font.ascent());
+	const float rule_y = baseline - (font.ascent() + font.descent()) * 0.5f;
+	const float lead_x = t_strip.x + row_padding_x;
+	const float text_x = lead_x + lead_width + text_gap;
+	const float rule_x = text_x + text_width(font, t_title) + text_gap;
+	const float rule_right = t_strip.right() - row_padding_x;
+	const Color rule_color = faded(color_separator, t_alpha);
 
-float AnimationSpeedToT(float speed)
-{
-	return std::clamp((speed - kAnimationSpeedMin) / (kAnimationSpeedMax - kAnimationSpeedMin), 0.0f, 1.0f);
-}
+	t_draw_list.add_rect(Rect{lead_x, rule_y, lead_width, 1.0f}, rule_color);
+	draw_text(t_draw_list, font, Vec2{text_x, baseline}, t_title, faded(color_text, t_alpha));
 
-float AnimationSpeedFromT(float t)
-{
-	return kAnimationSpeedMin + std::clamp(t, 0.0f, 1.0f) * (kAnimationSpeedMax - kAnimationSpeedMin);
-}
-
-float CornerRoundnessToT(float roundness)
-{
-	return std::clamp((roundness - kCornerRoundnessMin) / (kCornerRoundnessMax - kCornerRoundnessMin), 0.0f, 1.0f);
-}
-
-float CornerRoundnessFromT(float t)
-{
-	return kCornerRoundnessMin + std::clamp(t, 0.0f, 1.0f) * (kCornerRoundnessMax - kCornerRoundnessMin);
-}
-
-// The panel has no dedicated close-icon asset, unlike the title bar's.
-// Ellipsized to where the label column ends, since at a large font size the text does reach the
-// control. The caller passes that edge, since only it knows which control the row has.
-void DrawRowLabel(CDrawList &drawList, const CFontManager *pFonts, Rect row, const char *pTitle,
-				  const char *pDescription, float labelRightEdge, u8 alpha)
-{
-	const float labelX = row.X + kRowPaddingX;
-	const float maxWidth = labelRightEdge - labelX;
-
-	DrawTextEllipsized(drawList, pFonts->GetBody(), labelX, RowTitleBaselineY(row, pFonts), pTitle, maxWidth,
-					   ColorScaleAlpha(kColorText, alpha));
-	DrawTextEllipsized(drawList, pFonts->GetSecondary(), labelX, RowDescriptionBaselineY(row, pFonts), pDescription,
-					   maxWidth, ColorScaleAlpha(kColorTextDim, alpha));
-}
-
-// The group's name between two rules. Bottom-aligned within its strip, so the first heading -
-// whose strip is shorter - sits the same distance above its first row as every other one.
-//
-// The rule lands on the text's visual centre: the baseline minus half of ascent plus descent,
-// since descent is negative. The difference of the two is a different quantity and sits high.
-void DrawSectionHeader(CDrawList &drawList, const CFontManager *pFonts, Rect rect, const char *pTitle, u8 alpha)
-{
-	constexpr float kTextRuleGap = 10.0f;
-	constexpr float kLeadRuleWidth = 16.0f;
-
-	const CFont &secondary = pFonts->GetSecondary();
-	const std::string_view title = pTitle;
-	const float baselineY =
-		rect.Y + rect.H - kSectionHeaderBottomGap - (secondary.GetLineHeight() - secondary.GetAscent());
-	const float centerY = baselineY - (secondary.GetAscent() + secondary.GetDescent()) * 0.5f;
-
-	// The stub gives every heading the same left edge as the rows beneath it.
-	const float leadX = rect.X + kRowPaddingX;
-	drawList.AddRectFilled(leadX, centerY, kLeadRuleWidth, 1.0f, ColorScaleAlpha(kColorSeparator, alpha));
-
-	const float textX = leadX + kLeadRuleWidth + kTextRuleGap;
-	DrawText(drawList, secondary, textX, baselineY, title, ColorScaleAlpha(kColorText, alpha));
-
-	const float ruleX = textX + TextWidth(secondary, title) + kTextRuleGap;
-	const float ruleRight = rect.X + rect.W - kRowPaddingX;
-
-	if (ruleRight > ruleX) {
-		drawList.AddRectFilled(ruleX, centerY, ruleRight - ruleX, 1.0f, ColorScaleAlpha(kColorSeparator, alpha));
+	if (rule_right > rule_x) {
+		t_draw_list.add_rect(Rect{rule_x, rule_y, rule_right - rule_x, 1.0f}, rule_color);
 	}
 }
 
-// Present only while its row is off its default, so the button appearing is the signal that
-// there is something to restore. The spin winds back counter-clockwise.
-void DrawResetButton(CDrawList &drawList, const CTexture *pIcon, Rect rect, float appearAmount, float spinAmount,
-					 bool hovered, u8 alpha)
+void draw_knob(DrawList &t_draw_list, Rect t_knob, Color t_fill, u8 t_alpha)
 {
-	if (appearAmount <= 0.01f || pIcon == nullptr) return;
+	t_draw_list.add_bordered_rect(t_knob, rounded(t_knob.w * 0.5f), faded(t_fill, t_alpha),
+								  faded(outline_on(t_fill), t_alpha), knob_ring);
+}
 
-	const auto fade = static_cast<u8>(static_cast<float>(alpha) * appearAmount);
+void draw_toggle(DrawList &t_draw_list, Rect t_toggle, float t_on, Color t_accent, u8 t_alpha)
+{
+	const Color track = mix(color_toggle_off, t_accent, t_on);
+	t_draw_list.add_rounded_rect(t_toggle, rounded(t_toggle.h * 0.5f), faded(track, t_alpha));
 
-	if (hovered) {
-		drawList.AddRectRoundedFilled(rect.X, rect.Y, rect.W, rect.H, CDrawList::UniformRadii(7.0f),
-									  ColorScaleAlpha(kColorResetHoverBg, fade));
+	const float knob_size = t_toggle.h - 6.0f;
+	const Rect knob{t_toggle.x + 3.0f + (t_toggle.w - t_toggle.h) * t_on, t_toggle.y + 3.0f, knob_size, knob_size};
+	draw_knob(t_draw_list, knob, foreground_on(track), t_alpha);
+}
+
+void draw_slider(DrawList &t_draw_list, const Font &t_font, Rect t_track, float t_fraction, std::string_view t_readout,
+				 Color t_accent, u8 t_alpha)
+{
+	const float center_y = t_track.center().y;
+	const float readout_x = t_track.x - slider_readout_gap - text_width(t_font, t_readout);
+
+	draw_text(t_draw_list, t_font, Vec2{readout_x, t_font.centered_baseline(t_track)}, t_readout,
+			  faded(color_text, t_alpha));
+
+	const Rect bar{t_track.x, center_y - slider_bar_height * 0.5f, t_track.w, slider_bar_height};
+	const Rect filled{bar.x, bar.y, bar.w * std::clamp(t_fraction, 0.0f, 1.0f), bar.h};
+
+	t_draw_list.add_rounded_rect(bar, rounded(slider_bar_height * 0.5f), faded(color_toggle_off, t_alpha));
+	if (filled.w > 0.0f) {
+		t_draw_list.add_rounded_rect(filled, rounded(slider_bar_height * 0.5f), faded(t_accent, t_alpha));
 	}
 
-	drawList.AddRectTexturedRotated(
-		rect.X + (rect.W - kResetIconSize) * 0.5f, rect.Y + (rect.H - kResetIconSize) * 0.5f, kResetIconSize,
-		kResetIconSize, -spinAmount * kTwoPi, pIcon, ColorScaleAlpha(hovered ? kColorText : kColorResetIdle, fade));
+	const Rect knob{filled.right() - slider_thumb_radius, center_y - slider_thumb_radius, slider_thumb_radius * 2.0f,
+					slider_thumb_radius * 2.0f};
+	draw_knob(t_draw_list, knob, foreground_on(t_accent), t_alpha);
 }
 
-// A ring outside with the fill inset within it, so the knob keeps the footprint it had.
-void DrawKnob(CDrawList &drawList, float x, float y, float size, Color fill, u8 alpha)
+void draw_stepper(DrawList &t_draw_list, const Font &t_font, Rect t_stepper, float t_value, u8 t_alpha)
 {
-	drawList.AddRectRoundedFilled(x, y, size, size, CDrawList::UniformRadii(size * 0.5f),
-								  ColorScaleAlpha(ColorOutlineOn(fill), alpha));
+	const Rect minus = stepper_minus(t_stepper);
+	const Rect plus = stepper_plus(t_stepper);
+	const Color glyph = faded(color_text, t_alpha);
 
-	const float inner = size - kKnobRingThickness * 2.0f;
-	drawList.AddRectRoundedFilled(x + kKnobRingThickness, y + kKnobRingThickness, inner, inner,
-								  CDrawList::UniformRadii(inner * 0.5f), ColorScaleAlpha(fill, alpha));
-}
+	t_draw_list.add_rounded_rect(minus, rounded(6.0f), faded(color_control, t_alpha));
+	t_draw_list.add_rounded_rect(plus, rounded(6.0f), faded(color_control, t_alpha));
 
-// onAmount is already eased by the caller, so the switch animates rather than snapping.
-void DrawToggle(CDrawList &drawList, Rect rect, float onAmount, Color accent, u8 alpha)
-{
-	const Color track = ColorLerp(kColorToggleOff, accent, onAmount);
-	drawList.AddRectRoundedFilled(rect.X, rect.Y, rect.W, rect.H, CDrawList::UniformRadii(rect.H * 0.5f),
-								  ColorScaleAlpha(track, alpha));
-
-	// Contrasted against the track it sits on, which is itself mid-lerp toward the accent - a
-	// white knob disappears entirely on a bright one.
-	const float dotSize = rect.H - 6.0f;
-	const float dotX = rect.X + 3.0f + (rect.W - rect.H) * onAmount;
-	DrawKnob(drawList, dotX, rect.Y + 3.0f, dotSize, ColorForegroundOn(track), alpha);
-}
-
-// track is the hit rect, t is where the thumb sits, and valueText is the readout drawn in
-// reserved space to its left. Both are passed in, since the two sliders this serves measure
-// different things and neither range belongs in a drawing function.
-void DrawSlider(CDrawList &drawList, const CFont &font, Rect track, float t, std::string_view valueText, Color accent,
-				u8 alpha)
-{
-	const float trackCenterY = track.Y + track.H * 0.5f;
-	const float textBaselineY = trackCenterY + (font.GetAscent() + font.GetDescent()) * 0.5f;
-
-	DrawText(drawList, font, track.X - kSliderValueLabelGap - TextWidth(font, valueText), textBaselineY, valueText,
-			 ColorScaleAlpha(kColorText, alpha));
-
-	const float barY = track.Y + (track.H - kSliderTrackVisualHeight) * 0.5f;
-	const CornerRadii barRadii = CDrawList::UniformRadii(kSliderTrackVisualHeight * 0.5f);
-	drawList.AddRectRoundedFilled(track.X, barY, track.W, kSliderTrackVisualHeight, barRadii,
-								  ColorScaleAlpha(kColorToggleOff, alpha));
-
-	const float fillW = track.W * std::clamp(t, 0.0f, 1.0f);
-	if (fillW > 0.0f) {
-		drawList.AddRectRoundedFilled(track.X, barY, fillW, kSliderTrackVisualHeight, barRadii,
-									  ColorScaleAlpha(accent, alpha));
-	}
-
-	// Contrasted against the accent, since the thumb rides the end of the filled part.
-	DrawKnob(drawList, track.X + fillW - kSliderThumbRadius, trackCenterY - kSliderThumbRadius,
-			 kSliderThumbRadius * 2.0f, ColorForegroundOn(accent), alpha);
-}
-
-// Shared by both font-size rows. Rounded rather than truncated, since this is an eased display
-// copy that spends most of a reset animation between two integers.
-void DrawStepper(CDrawList &drawList, const CFont &font, Rect rect, float value, u8 alpha)
-{
-	const Rect minus = StepperMinusRect(rect);
-	const Rect plus = StepperPlusRect(rect);
-	const Color glyphColor = ColorScaleAlpha(kColorText, alpha);
-
-	drawList.AddRectRoundedFilled(minus.X, minus.Y, minus.W, minus.H, CDrawList::UniformRadii(6.0f),
-								  ColorScaleAlpha(kColorControlBg, alpha));
-	drawList.AddRectRoundedFilled(plus.X, plus.Y, plus.W, plus.H, CDrawList::UniformRadii(6.0f),
-								  ColorScaleAlpha(kColorControlBg, alpha));
-
-	const float mcx = minus.X + minus.W * 0.5f;
-	const float mcy = minus.Y + minus.H * 0.5f;
-	drawList.AddLine(mcx - 6.0f, mcy, mcx + 6.0f, mcy, 2.0f, glyphColor);
-
-	const float pcx = plus.X + plus.W * 0.5f;
-	const float pcy = plus.Y + plus.H * 0.5f;
-	drawList.AddLine(pcx - 6.0f, pcy, pcx + 6.0f, pcy, 2.0f, glyphColor);
-	drawList.AddLine(pcx, pcy - 6.0f, pcx, pcy + 6.0f, 2.0f, glyphColor);
+	const Vec2 minus_center = minus.center();
+	const Vec2 plus_center = plus.center();
+	t_draw_list.add_line({minus_center.x - 6.0f, minus_center.y}, {minus_center.x + 6.0f, minus_center.y}, 2.0f, glyph);
+	t_draw_list.add_line({plus_center.x - 6.0f, plus_center.y}, {plus_center.x + 6.0f, plus_center.y}, 2.0f, glyph);
+	t_draw_list.add_line({plus_center.x, plus_center.y - 6.0f}, {plus_center.x, plus_center.y + 6.0f}, 2.0f, glyph);
 
 	char buffer[8];
-	const int written = std::snprintf(buffer, sizeof(buffer), "%d", static_cast<int>(std::lround(value)));
-	const std::string_view text{buffer, written > 0 ? static_cast<u64>(written) : 0};
+	const int written = std::snprintf(buffer, sizeof(buffer), "%d", static_cast<int>(std::lround(t_value)));
+	const Rect number{minus.right(), t_stepper.y, plus.x - minus.right(), t_stepper.h};
 
-	const float middleX = minus.X + minus.W;
-	const float middleW = plus.X - middleX;
-	const float baselineY = rect.Y + rect.H * 0.5f + (font.GetAscent() + font.GetDescent()) * 0.5f;
-
-	DrawText(drawList, font, middleX + (middleW - TextWidth(font, text)) * 0.5f, baselineY, text, glyphColor);
+	draw_text_centered(t_draw_list, t_font, number, std::string_view{buffer, static_cast<usize>(std::max(written, 0))},
+					   glyph);
 }
 
-// The persisted name only moves once a bake actually succeeds; it never just mirrors whatever
-// is currently typed, or a bad in-flight edit would be written to disk.
-void SyncAppliedFontName(Settings *pSettings, std::string_view value)
+void draw_reset_button(DrawList &t_draw_list, const Texture *t_icon, Rect t_button, float t_visible, float t_spin,
+					   bool t_hovered, u8 t_alpha)
 {
-	CopyTo(value, pSettings->m_szFontName, sizeof(pSettings->m_szFontName));
-}
-} // namespace
+	if (t_visible <= 0.01f) return;
 
-// Header and footer are carved off the border-inset rect; whatever remains is the clipped,
-// scrollable strip the row stack lives in.
-struct CSettingsPanel::PanelLayout {
-	Rect Panel;
-	Rect Inner;
-	Rect Header;
-	Rect Footer;
-	Rect ScrollRegion;
-};
+	const auto alpha = static_cast<u8>(t_alpha * t_visible);
 
-// Every row's rect, built by walking one splitting cursor down the scroll region, so rows and
-// headings can never overlap however many exist. ContentHeight is the sum of every strip,
-// independent of the scroll offset.
-struct CSettingsPanel::Rows {
-	Rect SectionAppearance;
-	Rect Font;
-	Rect FontSize;
-	Rect SecondaryFontSize;
-	Rect Accent;
-	Rect CornerRoundness;
-
-	Rect SectionMotion;
-	Rect Animations;
-	Rect AnimationSpeed;
-
-	Rect SectionPrivacy;
-	Rect Notifications;
-	Rect ExcludeFromCapture;
-	Rect BlockOverlayInjection;
-	Rect CloseToTray;
-
-	Rect SectionSecurity;
-	Rect MasterPassword;
-
-	float ContentHeight;
-};
-
-Rect CSettingsPanel::ResetTargetRowRect(const Rows &rows, ESettingsResetTarget target)
-{
-	switch (target) {
-		case ESettingsResetTarget::Font:
-			return rows.Font;
-		case ESettingsResetTarget::FontSize:
-			return rows.FontSize;
-		case ESettingsResetTarget::SecondaryFontSize:
-			return rows.SecondaryFontSize;
-		case ESettingsResetTarget::Accent:
-			return rows.Accent;
-		case ESettingsResetTarget::CornerRoundness:
-			return rows.CornerRoundness;
-		case ESettingsResetTarget::Animations:
-			return rows.Animations;
-		case ESettingsResetTarget::AnimationSpeed:
-			return rows.AnimationSpeed;
-		case ESettingsResetTarget::Notifications:
-			return rows.Notifications;
-
-		case ESettingsResetTarget::ExcludeFromCapture:
-			return rows.ExcludeFromCapture;
-
-		case ESettingsResetTarget::BlockOverlayInjection:
-			return rows.BlockOverlayInjection;
-		case ESettingsResetTarget::CloseToTray:
-			return rows.CloseToTray;
-		case ESettingsResetTarget::Count:
-			break;
+	if (t_hovered) {
+		t_draw_list.add_rounded_rect(t_button, rounded(7.0f), faded(color_reset_hover, alpha));
 	}
 
-	return Rect{};
+	t_draw_list.add_rotated_image(t_button.centered(reset_icon_size, reset_icon_size),
+								  -t_spin * 2.0f * std::numbers::pi_v<float>, t_icon,
+								  faded(t_hovered ? color_text : color_reset_idle, alpha));
+}
 }
 
-Rect CSettingsPanel::ResetTargetControlRect(const Rows &rows, ESettingsResetTarget target, const CFontManager *pFonts)
+const SettingsPanel::Toggle SettingsPanel::toggles[toggle_count]{
+	{&Settings::show_notifications, &Rows::notifications, "Notifications",
+	 "Confirms saves, deletions and resets in the bottom-left corner."},
+	{&Settings::animations_enabled, &Rows::animations, "Animations",
+	 "Applies animations to popups, scrolling, and the caret."},
+	{&Settings::hide_accounts_from_capture, &Rows::hide_from_capture, "Hide From Screen Capture",
+	 "Excludes the account list from screenshots and screen sharing."},
+	{&Settings::block_overlay_injection, &Rows::block_overlay_injection, "Block Overlay Injection",
+	 "Keeps Discord's overlay and hook-based keyloggers out. Disables IMEs; restart to apply."},
+	{&Settings::close_to_tray, &Rows::close_to_tray, "Close To Tray",
+	 "Closing hides the app to the system tray instead of quitting."},
+};
+
+SettingsPanel::SettingsPanel(Settings &t_settings, Fonts &t_fonts, Renderer &t_renderer, const Window &t_window,
+							 const Assets &t_assets, CommandQueue &t_commands)
+	: m_settings(t_settings)
+	, m_fonts(t_fonts)
+	, m_renderer(t_renderer)
+	, m_window(t_window)
+	, m_assets(t_assets)
+	, m_commands(t_commands)
 {
-	switch (target) {
-		case ESettingsResetTarget::Font:
-			return FontFieldRect(rows.Font, pFonts);
-		case ESettingsResetTarget::FontSize:
-			return StepperRect(rows.FontSize, pFonts);
-		case ESettingsResetTarget::SecondaryFontSize:
-			return StepperRect(rows.SecondaryFontSize, pFonts);
-		case ESettingsResetTarget::Accent:
-			return SwatchRect(rows.Accent, pFonts);
-		case ESettingsResetTarget::CornerRoundness:
-			return SliderControlRect(rows.CornerRoundness, pFonts);
-		case ESettingsResetTarget::Animations:
-			return ToggleRect(rows.Animations, pFonts);
-		case ESettingsResetTarget::AnimationSpeed:
-			return SliderControlRect(rows.AnimationSpeed, pFonts);
-		case ESettingsResetTarget::Notifications:
-			return ToggleRect(rows.Notifications, pFonts);
+	sync_with_settings();
+}
 
-		case ESettingsResetTarget::ExcludeFromCapture:
-			return ToggleRect(rows.ExcludeFromCapture, pFonts);
+void SettingsPanel::sync_with_settings()
+{
+	m_font_name.set_value(m_settings.font_name);
 
-		case ESettingsResetTarget::BlockOverlayInjection:
-			return ToggleRect(rows.BlockOverlayInjection, pFonts);
-		case ESettingsResetTarget::CloseToTray:
-			return ToggleRect(rows.CloseToTray, pFonts);
-		case ESettingsResetTarget::Count:
-			break;
+	m_font_size_shown = m_settings.font_size;
+	m_secondary_font_size_shown = m_settings.secondary_font_size;
+	m_animation_speed_shown = m_settings.animation_speed;
+	m_corner_roundness_shown = m_settings.corner_roundness;
+	m_accent_shown[0] = m_settings.accent.r;
+	m_accent_shown[1] = m_settings.accent.g;
+	m_accent_shown[2] = m_settings.accent.b;
+
+	for (u32 i = 0; i < toggle_count; i += 1) {
+		m_toggles_shown[i] = m_settings.*toggles[i].value ? 1.0f : 0.0f;
+	}
+}
+
+void SettingsPanel::open()
+{
+	m_open = true;
+}
+
+void SettingsPanel::close()
+{
+	m_open = false;
+	m_font_name.set_focused(false);
+	m_color_picker.close();
+	m_tooltip.reset();
+}
+
+SettingsPanel::Layout SettingsPanel::layout() const
+{
+	const Vec2 window = m_window.size();
+	const float size_scale = std::max({1.0f, m_fonts.body().pixel_height() / reference_body_pixel_height,
+									   m_fonts.secondary().pixel_height() / reference_secondary_pixel_height});
+	const Vec2 max_size{panel_max_size.x * size_scale, panel_max_size.y * size_scale};
+
+	float width = std::min(max_size.x, std::max(0.0f, window.x - panel_margin * 2.0f));
+	float height = std::min(max_size.y, std::max(0.0f, window.y - panel_margin * 2.0f));
+
+	const float aspect = max_size.x / max_size.y;
+	if (width / height > aspect) {
+		width = height * aspect;
+	} else {
+		height = width / aspect;
 	}
 
-	return Rect{};
+	const float scale = panel_closed_scale + (1.0f - panel_closed_scale) * m_open_amount;
+
+	Layout result{};
+	result.panel = Rect{0.0f, 0.0f, window.x, window.y}.centered(width * scale, height * scale);
+	result.inner = result.panel.inset(panel_border);
+
+	Rect remaining = result.inner;
+	result.header = remaining.split_top(header_height(m_fonts));
+	result.footer = remaining.split_bottom(footer_height(m_fonts));
+	result.rows_region = remaining;
+
+	return result;
 }
 
-Rect CSettingsPanel::ResetTargetButtonRect(const Rows &rows, ESettingsResetTarget target, const CFontManager *pFonts)
+SettingsPanel::Rows SettingsPanel::rows(const Layout &t_layout) const
 {
-	return ResetButtonRect(ResetTargetControlRect(rows, target, pFonts), ResetTargetRowRect(rows, target), pFonts);
-}
+	const float row = row_height(m_fonts);
+	const float heading = heading_height(m_fonts);
 
-CSettingsPanel::CSettingsPanel(CFontManager *pFonts, Settings *pSettings, const CWindow &window, IRenderer *pRenderer,
-							   const CAssetManager &assets)
-	: m_pFonts(pFonts)
-	, m_pSettings(pSettings)
-	, m_window(window)
-	, m_pRenderer(pRenderer)
-	, m_assets(assets)
-{
-	m_fontNameInput.Init(m_pSettings->m_szFontName);
-
-	// Seeded from the real values rather than left at zero: these exist only to make a change
-	// animate, so the first frame must already show the truth.
-	m_flFontSizeDisplay = m_pSettings->m_flFontPixelSize;
-	m_flSecondaryFontSizeDisplay = m_pSettings->m_flSecondaryFontPixelSize;
-	m_flAnimationSpeedDisplay = m_pSettings->m_flAnimationSpeed;
-	m_flCornerRoundnessDisplay = m_pSettings->m_flCornerRoundness;
-	m_flAccentDisplayR = static_cast<float>(m_pSettings->m_clrAccent.R);
-	m_flAccentDisplayG = static_cast<float>(m_pSettings->m_clrAccent.G);
-	m_flAccentDisplayB = static_cast<float>(m_pSettings->m_clrAccent.B);
-}
-
-CSettingsPanel::PanelLayout CSettingsPanel::Layout() const
-{
-	const auto windowW = static_cast<float>(m_window.GetWidth());
-	const auto windowH = static_cast<float>(m_window.GetHeight());
-
-	PanelLayout layout{};
-	layout.Panel = PanelRect(m_flOpenAmount, windowW, windowH, m_pFonts);
-	layout.Inner = RectInset(layout.Panel, kPanelBorderThickness);
-
-	Rect cursor = layout.Inner;
-	layout.Header = RectSplitTop(cursor, HeaderHeightFor(m_pFonts));
-	layout.Footer = RectSplitBottom(cursor, FooterHeightFor(m_pFonts));
-	layout.ScrollRegion = cursor;
-
-	return layout;
-}
-
-// Rows are grouped under section headings rather than listed in one undifferentiated stack:
-// what a setting affects is the only ordering a reader can navigate by. The first heading gets
-// a smaller top gap, since it has no preceding group to separate from.
-CSettingsPanel::Rows CSettingsPanel::RowsFor(const PanelLayout &layout) const
-{
-	const float rowHeight = RowHeightFor(m_pFonts);
-	const float sectionHeight = SectionHeaderHeightFor(m_pFonts);
-
-	Rect cursor{layout.ScrollRegion.X, layout.ScrollRegion.Y - m_rowsScroll.m_flScrollOffset, layout.ScrollRegion.W,
+	Rect cursor{t_layout.rows_region.x, t_layout.rows_region.y - m_rows_scroll.offset(), t_layout.rows_region.w,
 				1.0e6f};
-	const float startY = cursor.Y;
+	const float top = cursor.y;
 
-	Rows rows{};
-	rows.SectionAppearance = RectSplitTop(cursor, sectionHeight - kSectionHeaderTopGap * 0.5f);
-	rows.Font = RectSplitTop(cursor, rowHeight);
-	rows.FontSize = RectSplitTop(cursor, rowHeight);
-	rows.SecondaryFontSize = RectSplitTop(cursor, rowHeight);
-	rows.Accent = RectSplitTop(cursor, rowHeight);
-	rows.CornerRoundness = RectSplitTop(cursor, rowHeight);
-	rows.Notifications = RectSplitTop(cursor, rowHeight);
+	Rows result{};
+	result.appearance_heading = cursor.split_top(heading - heading_top_gap * 0.5f);
+	result.font = cursor.split_top(row);
+	result.font_size = cursor.split_top(row);
+	result.secondary_font_size = cursor.split_top(row);
+	result.accent = cursor.split_top(row);
+	result.corner_roundness = cursor.split_top(row);
+	result.notifications = cursor.split_top(row);
 
-	rows.SectionMotion = RectSplitTop(cursor, sectionHeight);
-	rows.Animations = RectSplitTop(cursor, rowHeight);
-	rows.AnimationSpeed = RectSplitTop(cursor, rowHeight);
+	result.motion_heading = cursor.split_top(heading);
+	result.animations = cursor.split_top(row);
+	result.animation_speed = cursor.split_top(row);
 
-	rows.SectionPrivacy = RectSplitTop(cursor, sectionHeight);
-	rows.ExcludeFromCapture = RectSplitTop(cursor, rowHeight);
-	rows.BlockOverlayInjection = RectSplitTop(cursor, rowHeight);
-	rows.CloseToTray = RectSplitTop(cursor, rowHeight);
+	result.privacy_heading = cursor.split_top(heading);
+	result.hide_from_capture = cursor.split_top(row);
+	result.block_overlay_injection = cursor.split_top(row);
+	result.close_to_tray = cursor.split_top(row);
 
-	rows.SectionSecurity = RectSplitTop(cursor, sectionHeight);
-	rows.MasterPassword = RectSplitTop(cursor, rowHeight);
+	result.security_heading = cursor.split_top(heading);
+	result.master_password = cursor.split_top(row);
 
-	rows.ContentHeight = cursor.Y - startY;
+	result.content_height = cursor.y - top;
 
-	return rows;
+	return result;
 }
 
-void CSettingsPanel::ApplyFontSettings()
+ScrollGeometry SettingsPanel::rows_scroll(const Layout &t_layout, const Rows &t_rows) const
 {
-	if (m_pFonts->ApplyBody(m_pRenderer, m_fontNameInput.GetValue(), m_pSettings->m_flFontPixelSize,
-							m_pSettings->m_flSecondaryFontPixelSize, m_window.GetDpiScale())) {
-		SyncAppliedFontName(m_pSettings, m_fontNameInput.GetValue());
+	const Rect region = t_layout.rows_region;
+	const Rect track{region.right() - scrollbar_width - scrollbar_margin, region.y, scrollbar_width, region.h};
+
+	return ScrollGeometry{track, t_rows.content_height, region.h};
+}
+
+bool SettingsPanel::is_on_screen(const Layout &t_layout, Rect t_row) const
+{
+	return t_row.overlaps_vertically(t_layout.rows_region);
+}
+
+bool SettingsPanel::hits(const Layout &t_layout, Rect t_row, Rect t_control, Vec2 t_point) const
+{
+	return is_on_screen(t_layout, t_row) && t_layout.rows_region.contains(t_point) && t_control.contains(t_point);
+}
+
+bool SettingsPanel::is_font_field_hit(const Layout &t_layout, const Rows &t_rows, Vec2 t_point) const
+{
+	return !m_color_picker.is_open() && hits(t_layout, t_rows.font, font_field_rect(t_rows.font, m_fonts), t_point);
+}
+
+Rect SettingsPanel::reset_row(const Rows &t_rows, ResettableSetting t_setting) const
+{
+	switch (t_setting) {
+		case ResettableSetting::font:
+			return t_rows.font;
+		case ResettableSetting::font_size:
+			return t_rows.font_size;
+		case ResettableSetting::secondary_font_size:
+			return t_rows.secondary_font_size;
+		case ResettableSetting::accent:
+			return t_rows.accent;
+		case ResettableSetting::corner_roundness:
+			return t_rows.corner_roundness;
+		case ResettableSetting::animations:
+			return t_rows.animations;
+		case ResettableSetting::animation_speed:
+			return t_rows.animation_speed;
+		case ResettableSetting::notifications:
+			return t_rows.notifications;
+		case ResettableSetting::hide_from_capture:
+			return t_rows.hide_from_capture;
+		case ResettableSetting::block_overlay_injection:
+			return t_rows.block_overlay_injection;
+		case ResettableSetting::close_to_tray:
+			return t_rows.close_to_tray;
+		case ResettableSetting::count:
+			break;
 	}
+
+	return Rect{};
 }
 
-bool CSettingsPanel::IsRowControlHit(const PanelLayout &layout, Rect row, Rect control, float x, float y) const
+Rect SettingsPanel::reset_control(const Rows &t_rows, ResettableSetting t_setting) const
 {
-	return RowInView(row, layout.ScrollRegion) && RectContainsPoint(control, x, y);
+	const Rect row = reset_row(t_rows, t_setting);
+
+	switch (t_setting) {
+		case ResettableSetting::font:
+			return font_field_rect(row, m_fonts);
+		case ResettableSetting::font_size:
+		case ResettableSetting::secondary_font_size:
+			return stepper_rect(row, m_fonts);
+		case ResettableSetting::accent:
+			return swatch_rect(row, m_fonts);
+		case ResettableSetting::corner_roundness:
+		case ResettableSetting::animation_speed:
+			return slider_control_rect(row, m_fonts);
+		case ResettableSetting::animations:
+		case ResettableSetting::notifications:
+		case ResettableSetting::hide_from_capture:
+		case ResettableSetting::block_overlay_injection:
+		case ResettableSetting::close_to_tray:
+			return toggle_rect(row, m_fonts);
+		case ResettableSetting::count:
+			break;
+	}
+
+	return Rect{};
 }
 
-void CSettingsPanel::Open()
+Rect SettingsPanel::reset_button(const Rows &t_rows, ResettableSetting t_setting) const
 {
-	m_bOpen = true;
+	return reset_button_rect(reset_control(t_rows, t_setting), reset_row(t_rows, t_setting), m_fonts);
 }
 
-void CSettingsPanel::Close()
+bool SettingsPanel::is_default(ResettableSetting t_setting) const
 {
-	m_bOpen = false;
-	m_fontNameInput.m_bFocused = false;
-	m_colorPicker.Close();
+	const Settings &defaults = default_settings;
+	const auto same = [](float t_a, float t_b) { return std::fabs(t_a - t_b) < 0.001f; };
 
-	// Nothing left on screen for a bubble to point at.
-	m_tooltip.Reset();
-}
-
-bool CSettingsPanel::IsTargetAtDefault(ESettingsResetTarget target) const
-{
-	// Straight off a default-constructed record: Settings' member initializers are the one
-	// place a default is stated, and a copy here would drift.
-	const Settings defaults;
-	constexpr float kEpsilon = 0.001f;
-
-	switch (target) {
-		case ESettingsResetTarget::Font:
-			// Both the applied name and whatever is typed: an un-applied edit sitting in the
-			// box is exactly what a reset is for.
-			return std::strcmp(m_pSettings->m_szFontName, defaults.m_szFontName) == 0 &&
-				   m_fontNameInput.GetValue() == std::string_view{defaults.m_szFontName};
-
-		case ESettingsResetTarget::FontSize:
-			return std::fabs(m_pSettings->m_flFontPixelSize - defaults.m_flFontPixelSize) < kEpsilon;
-
-		case ESettingsResetTarget::SecondaryFontSize:
-			return std::fabs(m_pSettings->m_flSecondaryFontPixelSize - defaults.m_flSecondaryFontPixelSize) < kEpsilon;
-
-		case ESettingsResetTarget::Accent:
-			return m_pSettings->m_clrAccent.R == defaults.m_clrAccent.R &&
-				   m_pSettings->m_clrAccent.G == defaults.m_clrAccent.G &&
-				   m_pSettings->m_clrAccent.B == defaults.m_clrAccent.B &&
-				   m_pSettings->m_clrAccent.A == defaults.m_clrAccent.A;
-
-		case ESettingsResetTarget::CornerRoundness:
-			return std::fabs(m_pSettings->m_flCornerRoundness - defaults.m_flCornerRoundness) < kEpsilon;
-
-		case ESettingsResetTarget::Animations:
-			return m_pSettings->m_bAnimationsEnabled == defaults.m_bAnimationsEnabled;
-
-		case ESettingsResetTarget::AnimationSpeed:
-			return std::fabs(m_pSettings->m_flAnimationSpeed - defaults.m_flAnimationSpeed) < kEpsilon;
-
-		case ESettingsResetTarget::Notifications:
-			return m_pSettings->m_bShowNotifications == defaults.m_bShowNotifications;
-
-		case ESettingsResetTarget::ExcludeFromCapture:
-			return m_pSettings->m_bExcludeAccountListFromCapture == defaults.m_bExcludeAccountListFromCapture;
-
-		case ESettingsResetTarget::BlockOverlayInjection:
-			return m_pSettings->m_bBlockOverlayInjection == defaults.m_bBlockOverlayInjection;
-
-		case ESettingsResetTarget::CloseToTray:
-			return m_pSettings->m_bCloseToTray == defaults.m_bCloseToTray;
-
-		case ESettingsResetTarget::Count:
+	switch (t_setting) {
+		case ResettableSetting::font:
+			return std::strcmp(m_settings.font_name, defaults.font_name) == 0 &&
+				   m_font_name.value() == defaults.font_name;
+		case ResettableSetting::font_size:
+			return same(m_settings.font_size, defaults.font_size);
+		case ResettableSetting::secondary_font_size:
+			return same(m_settings.secondary_font_size, defaults.secondary_font_size);
+		case ResettableSetting::accent:
+			return std::memcmp(&m_settings.accent, &defaults.accent, sizeof(Color)) == 0;
+		case ResettableSetting::corner_roundness:
+			return same(m_settings.corner_roundness, defaults.corner_roundness);
+		case ResettableSetting::animations:
+			return m_settings.animations_enabled == defaults.animations_enabled;
+		case ResettableSetting::animation_speed:
+			return same(m_settings.animation_speed, defaults.animation_speed);
+		case ResettableSetting::notifications:
+			return m_settings.show_notifications == defaults.show_notifications;
+		case ResettableSetting::hide_from_capture:
+			return m_settings.hide_accounts_from_capture == defaults.hide_accounts_from_capture;
+		case ResettableSetting::block_overlay_injection:
+			return m_settings.block_overlay_injection == defaults.block_overlay_injection;
+		case ResettableSetting::close_to_tray:
+			return m_settings.close_to_tray == defaults.close_to_tray;
+		case ResettableSetting::count:
 			break;
 	}
 
 	return true;
 }
 
-void CSettingsPanel::ResetTargetToDefault(ESettingsResetTarget target)
+void SettingsPanel::reset(ResettableSetting t_setting)
 {
-	const Settings defaults;
+	const Settings &defaults = default_settings;
 
-	switch (target) {
-		case ESettingsResetTarget::Font:
-			// The default face can be missing on a machine too, so it goes through the same
-			// apply-then-sync rule.
-			m_fontNameInput.SetValue(defaults.m_szFontName);
-			ApplyFontSettings();
+	switch (t_setting) {
+		case ResettableSetting::font:
+			m_font_name.set_value(defaults.font_name);
+			apply_fonts();
 			break;
-
-		case ESettingsResetTarget::FontSize:
-			m_pSettings->m_flFontPixelSize = defaults.m_flFontPixelSize;
-			ApplyFontSettings();
+		case ResettableSetting::font_size:
+			m_settings.font_size = defaults.font_size;
+			apply_fonts();
 			break;
-
-		case ESettingsResetTarget::SecondaryFontSize:
-			m_pSettings->m_flSecondaryFontPixelSize = defaults.m_flSecondaryFontPixelSize;
-			ApplyFontSettings();
+		case ResettableSetting::secondary_font_size:
+			m_settings.secondary_font_size = defaults.secondary_font_size;
+			apply_fonts();
 			break;
-
-		case ESettingsResetTarget::Accent:
-			m_pSettings->m_clrAccent = defaults.m_clrAccent;
-			// The picker would be showing the colour that just stopped being current.
-			m_colorPicker.Close();
+		case ResettableSetting::accent:
+			m_settings.accent = defaults.accent;
+			m_color_picker.close();
 			break;
-
-		case ESettingsResetTarget::CornerRoundness:
-			// No immediate scale change: Update drives the real scale from the eased copy, so
-			// leaving this alone is what animates the reset instead of snapping.
-			m_pSettings->m_flCornerRoundness = defaults.m_flCornerRoundness;
+		case ResettableSetting::corner_roundness:
+			m_settings.corner_roundness = defaults.corner_roundness;
 			break;
-
-		case ESettingsResetTarget::Animations:
-			m_pSettings->m_bAnimationsEnabled = defaults.m_bAnimationsEnabled;
-			CAnimator::SetEnabled(m_pSettings->m_bAnimationsEnabled);
+		case ResettableSetting::animations:
+			m_settings.animations_enabled = defaults.animations_enabled;
+			animation::set_enabled(m_settings.animations_enabled);
 			break;
-
-		case ESettingsResetTarget::AnimationSpeed:
-			m_pSettings->m_flAnimationSpeed = defaults.m_flAnimationSpeed;
-			CAnimator::SetSpeed(m_pSettings->m_flAnimationSpeed);
+		case ResettableSetting::animation_speed:
+			m_settings.animation_speed = defaults.animation_speed;
+			animation::set_speed(m_settings.animation_speed);
 			break;
-
-		case ESettingsResetTarget::Notifications:
-			m_pSettings->m_bShowNotifications = defaults.m_bShowNotifications;
+		case ResettableSetting::notifications:
+			m_settings.show_notifications = defaults.show_notifications;
 			break;
-
-		case ESettingsResetTarget::ExcludeFromCapture:
-			m_pSettings->m_bExcludeAccountListFromCapture = defaults.m_bExcludeAccountListFromCapture;
+		case ResettableSetting::hide_from_capture:
+			m_settings.hide_accounts_from_capture = defaults.hide_accounts_from_capture;
 			break;
-
-		case ESettingsResetTarget::BlockOverlayInjection:
-			m_pSettings->m_bBlockOverlayInjection = defaults.m_bBlockOverlayInjection;
+		case ResettableSetting::block_overlay_injection:
+			m_settings.block_overlay_injection = defaults.block_overlay_injection;
 			break;
-
-		case ESettingsResetTarget::CloseToTray:
-			m_pSettings->m_bCloseToTray = defaults.m_bCloseToTray;
+		case ResettableSetting::close_to_tray:
+			m_settings.close_to_tray = defaults.close_to_tray;
 			break;
-
-		case ESettingsResetTarget::Count:
+		case ResettableSetting::count:
 			return;
 	}
 
-	m_aResetSpinAmount[static_cast<u64>(target)] = 1.0f;
+	m_reset_spin[static_cast<u32>(t_setting)] = 1.0f;
 }
 
-void CSettingsPanel::Update(float deltaSeconds)
+void SettingsPanel::apply_fonts()
 {
-	m_flOpenAmount = CAnimator::EaseToward(m_flOpenAmount, m_bOpen ? 1.0f : 0.0f, kPanelOpenEaseRate, deltaSeconds);
-	if (!m_bOpen && m_flOpenAmount < 0.002f) {
-		m_flOpenAmount = 0.0f;
-	}
-
-	// These snap instantly when animations are switched off, since EaseToward respects that
-	// flag itself.
-	m_flAnimationsToggleAmount = CAnimator::EaseToward(
-		m_flAnimationsToggleAmount, m_pSettings->m_bAnimationsEnabled ? 1.0f : 0.0f, kToggleEaseRate, deltaSeconds);
-	m_flCloseToTrayToggleAmount = CAnimator::EaseToward(
-		m_flCloseToTrayToggleAmount, m_pSettings->m_bCloseToTray ? 1.0f : 0.0f, kToggleEaseRate, deltaSeconds);
-	m_flNotificationsToggleAmount = CAnimator::EaseToward(
-		m_flNotificationsToggleAmount, m_pSettings->m_bShowNotifications ? 1.0f : 0.0f, kToggleEaseRate, deltaSeconds);
-
-	m_flBlockOverlayInjectionToggleAmount =
-		CAnimator::EaseToward(m_flBlockOverlayInjectionToggleAmount,
-							  m_pSettings->m_bBlockOverlayInjection ? 1.0f : 0.0f, kToggleEaseRate, deltaSeconds);
-
-	m_flExcludeFromCaptureToggleAmount = CAnimator::EaseToward(
-		m_flExcludeFromCaptureToggleAmount, m_pSettings->m_bExcludeAccountListFromCapture ? 1.0f : 0.0f,
-		kToggleEaseRate, deltaSeconds);
-
-	m_flFontSizeDisplay =
-		CAnimator::EaseToward(m_flFontSizeDisplay, m_pSettings->m_flFontPixelSize, kValueEaseRate, deltaSeconds);
-	m_flSecondaryFontSizeDisplay = CAnimator::EaseToward(
-		m_flSecondaryFontSizeDisplay, m_pSettings->m_flSecondaryFontPixelSize, kValueEaseRate, deltaSeconds);
-
-	// A slider being dragged is the one exception: easing there would make the thumb trail the
-	// cursor, which reads as lag rather than as animation.
-	m_flAnimationSpeedDisplay = m_animationSpeedDrag.IsPressed()
-									? m_pSettings->m_flAnimationSpeed
-									: CAnimator::EaseToward(m_flAnimationSpeedDisplay, m_pSettings->m_flAnimationSpeed,
-															kValueEaseRate, deltaSeconds);
-	m_flCornerRoundnessDisplay =
-		m_cornerRoundnessDrag.IsPressed()
-			? m_pSettings->m_flCornerRoundness
-			: CAnimator::EaseToward(m_flCornerRoundnessDisplay, m_pSettings->m_flCornerRoundness, kValueEaseRate,
-									deltaSeconds);
-
-	// The one display copy that also drives the real thing, so a reset travels back as if the
-	// slider were dragged there. Runs whether the panel is open or not.
-	CDrawList::SetCornerRoundnessScale(m_flCornerRoundnessDisplay);
-
-	m_flAccentDisplayR = CAnimator::EaseToward(m_flAccentDisplayR, static_cast<float>(m_pSettings->m_clrAccent.R),
-											   kValueEaseRate, deltaSeconds);
-	m_flAccentDisplayG = CAnimator::EaseToward(m_flAccentDisplayG, static_cast<float>(m_pSettings->m_clrAccent.G),
-											   kValueEaseRate, deltaSeconds);
-	m_flAccentDisplayB = CAnimator::EaseToward(m_flAccentDisplayB, static_cast<float>(m_pSettings->m_clrAccent.B),
-											   kValueEaseRate, deltaSeconds);
-
-	UpdateResetButtons(deltaSeconds);
-
-	m_fontNameInput.Update(deltaSeconds);
-	m_rowsScroll.Update(deltaSeconds);
-	m_tooltip.Update(deltaSeconds);
-}
-
-void CSettingsPanel::UpdateResetButtons(float deltaSeconds)
-{
-	const PanelLayout layout = Layout();
-	const Rows rows = RowsFor(layout);
-
-	// A closed panel has no hover to speak of, and the picker's popup covers rows the cursor
-	// would otherwise look like it is over.
-	const bool pointerLive =
-		IsBlocking() && !m_colorPicker.IsBlocking() && RectContainsPoint(layout.ScrollRegion, m_flMouseX, m_flMouseY);
-
-	for (u64 i = 0; i < static_cast<u64>(ESettingsResetTarget::Count); i += 1) {
-		const auto target = static_cast<ESettingsResetTarget>(i);
-		const bool atDefault = IsTargetAtDefault(target);
-
-		// Shown only while it would do something: its presence is the signal that there is
-		// something to restore.
-		const float appearTarget = IsBlocking() && !atDefault ? 1.0f : 0.0f;
-		m_aResetAppearAmount[i] =
-			CAnimator::EaseToward(m_aResetAppearAmount[i], appearTarget, kResetAppearRate, deltaSeconds);
-		m_aResetSpinAmount[i] = CAnimator::EaseToward(m_aResetSpinAmount[i], 0.0f, kResetSpinRate, deltaSeconds);
-
-		if (m_aResetSpinAmount[i] < 0.002f) {
-			m_aResetSpinAmount[i] = 0.0f;
-		}
-
-		if (!pointerLive || atDefault || !RowInView(ResetTargetRowRect(rows, target), layout.ScrollRegion)) {
-			continue;
-		}
-
-		const Rect button = ResetTargetButtonRect(rows, target, m_pFonts);
-		if (RectContainsPoint(button, m_flMouseX, m_flMouseY)) {
-			m_tooltip.Request("Restore default setting.", button);
-		}
+	if (m_fonts.load(m_renderer, m_font_name.value(), m_settings.font_size, m_settings.secondary_font_size,
+					 m_window.dpi_scale())) {
+		copy_to(m_font_name.value(), m_settings.font_name);
 	}
 }
 
-void CSettingsPanel::ApplyAnimationSpeedFromPointer(Rect track, float x)
+void SettingsPanel::apply_animation_speed(Rect t_track, float t_x)
 {
-	m_pSettings->m_flAnimationSpeed = AnimationSpeedFromT((x - track.X) / track.W);
-	CAnimator::SetSpeed(m_pSettings->m_flAnimationSpeed);
+	m_settings.animation_speed = value_at((t_x - t_track.x) / t_track.w, animation_speed_min, animation_speed_max);
+	animation::set_speed(m_settings.animation_speed);
 }
 
-void CSettingsPanel::ApplyCornerRoundnessFromPointer(Rect track, float x)
+void SettingsPanel::apply_corner_roundness(Rect t_track, float t_x)
 {
-	m_pSettings->m_flCornerRoundness = CornerRoundnessFromT((x - track.X) / track.W);
-
-	// Applied live while dragging - the whole UI rounds off under the cursor.
-	CDrawList::SetCornerRoundnessScale(m_pSettings->m_flCornerRoundness);
+	m_settings.corner_roundness = value_at((t_x - t_track.x) / t_track.w, corner_roundness_min, corner_roundness_max);
+	set_corner_roundness(m_settings.corner_roundness);
 }
 
-bool CSettingsPanel::OnPointerDown(float x, float y)
+void SettingsPanel::step_font_size(Rect t_stepper, float &t_value, float t_min, float t_max, Vec2 t_point)
 {
-	if (!IsBlocking()) return false;
-
-	const PanelLayout layout = Layout();
-	const Rows rows = RowsFor(layout);
-
-	if (m_rowsScroll.OnPointerDown(x, y, ScrollbarTrackRect(layout.ScrollRegion), rows.ContentHeight,
-								   layout.ScrollRegion.H)) {
-		return true;
+	if (stepper_minus(t_stepper).contains(t_point)) {
+		t_value = std::max(t_min, t_value - 1.0f);
+		apply_fonts();
+	} else if (stepper_plus(t_stepper).contains(t_point)) {
+		t_value = std::min(t_max, t_value + 1.0f);
+		apply_fonts();
 	}
-
-	if (m_colorPicker.OnPointerDown(x, y)) {
-		m_pSettings->m_clrAccent = m_colorPicker.GetCurrentColor();
-		return true;
-	}
-
-	const Rect speedTrack = SliderTrackRect(rows.AnimationSpeed, m_pFonts);
-	if (IsRowControlHit(layout, rows.AnimationSpeed, speedTrack, x, y)) {
-		m_animationSpeedDrag.Begin(x, y);
-		ApplyAnimationSpeedFromPointer(speedTrack, x);
-		return true;
-	}
-
-	const Rect roundnessTrack = SliderTrackRect(rows.CornerRoundness, m_pFonts);
-	if (IsRowControlHit(layout, rows.CornerRoundness, roundnessTrack, x, y)) {
-		m_cornerRoundnessDrag.Begin(x, y);
-		ApplyCornerRoundnessFromPointer(roundnessTrack, x);
-		return true;
-	}
-
-	// Swallow every other press while open.
-	return true;
 }
 
-bool CSettingsPanel::OnPointerMove(float x, float y)
+void SettingsPanel::update(float t_delta_seconds)
 {
-	if (!IsBlocking()) return false;
+	m_open_amount = animation::ease_toward(m_open_amount, m_open ? 1.0f : 0.0f, open_ease_rate, t_delta_seconds);
 
-	const PanelLayout layout = Layout();
-	const Rows rows = RowsFor(layout);
-
-	// A no-op unless a thumb drag is actually in progress - the function guards itself.
-	m_rowsScroll.OnPointerMove(y, ScrollbarTrackRect(layout.ScrollRegion), rows.ContentHeight, layout.ScrollRegion.H);
-
-	if (m_colorPicker.IsDragging()) {
-		m_colorPicker.OnPointerMove(x, y);
-		m_pSettings->m_clrAccent = m_colorPicker.GetCurrentColor();
+	for (u32 i = 0; i < toggle_count; i += 1) {
+		const float target = m_settings.*toggles[i].value ? 1.0f : 0.0f;
+		m_toggles_shown[i] = animation::ease_toward(m_toggles_shown[i], target, toggle_ease_rate, t_delta_seconds);
 	}
 
-	if (m_animationSpeedDrag.IsPressed()) {
-		m_animationSpeedDrag.Update(x, y);
-		ApplyAnimationSpeedFromPointer(SliderTrackRect(rows.AnimationSpeed, m_pFonts), x);
-	}
-
-	if (m_cornerRoundnessDrag.IsPressed()) {
-		m_cornerRoundnessDrag.Update(x, y);
-		ApplyCornerRoundnessFromPointer(SliderTrackRect(rows.CornerRoundness, m_pFonts), x);
-	}
-
-	return true;
-}
-
-bool CSettingsPanel::OnPointerUp(float x, float y)
-{
-	if (!IsBlocking()) return false;
-
-	const bool wasDraggingScrollbar = m_rowsScroll.IsDragging();
-	m_rowsScroll.OnPointerUp();
-
-	const bool wasDraggingColor = m_colorPicker.IsDragging();
-	m_colorPicker.OnPointerUp(x, y);
-
-	const bool wasDraggingSlider = m_animationSpeedDrag.IsPressed() || m_cornerRoundnessDrag.IsPressed();
-	m_animationSpeedDrag.End();
-	m_cornerRoundnessDrag.End();
-
-	if (wasDraggingScrollbar || wasDraggingColor || wasDraggingSlider) return true;
-
-	return HandleClick(x, y);
-}
-
-ECursorKind CSettingsPanel::GetDesiredCursor() const
-{
-	if (!IsBlocking()) return ECursorKind::Arrow;
-
-	if (m_rowsScroll.IsDragging() || m_colorPicker.IsDragging() || m_animationSpeedDrag.IsPressed() ||
-		m_cornerRoundnessDrag.IsPressed()) {
-		return ECursorKind::Drag;
-	}
-
-	// The picker is a plain member rather than a stack entry, so its cursor is forwarded here.
-	if (m_colorPicker.IsBlocking()) {
-		const ECursorKind pickerCursor = m_colorPicker.GetDesiredCursor();
-		if (pickerCursor != ECursorKind::Arrow) return pickerCursor;
-	}
-
-	const PanelLayout layout = Layout();
-
-	if (RectContainsPoint(CloseRect(layout.Panel, m_pFonts), m_flMouseX, m_flMouseY)) return ECursorKind::Hand;
-
-	if (!RectContainsPoint(layout.ScrollRegion, m_flMouseX, m_flMouseY)) return ECursorKind::Arrow;
-
-	const Rows rows = RowsFor(layout);
-
-	// Same order as the click dispatch: a reset button sits inside its row, so it answers first.
-	for (u64 i = 0; i < static_cast<u64>(ESettingsResetTarget::Count); i += 1) {
-		const auto target = static_cast<ESettingsResetTarget>(i);
-		if (IsTargetAtDefault(target)) continue;
-
-		if (IsRowControlHit(layout, ResetTargetRowRect(rows, target), ResetTargetButtonRect(rows, target, m_pFonts),
-							m_flMouseX, m_flMouseY)) {
-			return ECursorKind::Hand;
-		}
-	}
-
-	if (IsRowControlHit(layout, rows.Font, FontFieldRect(rows.Font, m_pFonts), m_flMouseX, m_flMouseY)) {
-		return ECursorKind::IBeam;
-	}
-
-	const Rect fontSizeStepper = StepperRect(rows.FontSize, m_pFonts);
-	const Rect secondaryStepper = StepperRect(rows.SecondaryFontSize, m_pFonts);
-
-	// Only the buttons are clickable, not the number between them.
-	const struct {
-		Rect Row;
-		Rect Control;
-	} handTargets[]{
-		{rows.FontSize, StepperMinusRect(fontSizeStepper)},
-		{rows.FontSize, StepperPlusRect(fontSizeStepper)},
-		{rows.SecondaryFontSize, StepperMinusRect(secondaryStepper)},
-		{rows.SecondaryFontSize, StepperPlusRect(secondaryStepper)},
-		{rows.Animations, ToggleRect(rows.Animations, m_pFonts)},
-		{rows.Notifications, ToggleRect(rows.Notifications, m_pFonts)},
-		{rows.ExcludeFromCapture, ToggleRect(rows.ExcludeFromCapture, m_pFonts)},
-		{rows.BlockOverlayInjection, ToggleRect(rows.BlockOverlayInjection, m_pFonts)},
-		{rows.CloseToTray, ToggleRect(rows.CloseToTray, m_pFonts)},
-		{rows.AnimationSpeed, SliderTrackRect(rows.AnimationSpeed, m_pFonts)},
-		{rows.CornerRoundness, SliderTrackRect(rows.CornerRoundness, m_pFonts)},
-		{rows.Accent, SwatchRect(rows.Accent, m_pFonts)},
-		{rows.MasterPassword, MasterPasswordButtonRect(rows.MasterPassword, m_pFonts)},
+	const auto ease_value = [t_delta_seconds](float t_shown, float t_actual) {
+		return animation::ease_toward(t_shown, t_actual, value_ease_rate, t_delta_seconds);
 	};
 
-	for (const auto &target : handTargets) {
-		if (IsRowControlHit(layout, target.Row, target.Control, m_flMouseX, m_flMouseY)) return ECursorKind::Hand;
+	m_font_size_shown = ease_value(m_font_size_shown, m_settings.font_size);
+	m_secondary_font_size_shown = ease_value(m_secondary_font_size_shown, m_settings.secondary_font_size);
+	m_animation_speed_shown = m_animation_speed_drag.is_pressed()
+								  ? m_settings.animation_speed
+								  : ease_value(m_animation_speed_shown, m_settings.animation_speed);
+	m_corner_roundness_shown = m_corner_roundness_drag.is_pressed()
+								   ? m_settings.corner_roundness
+								   : ease_value(m_corner_roundness_shown, m_settings.corner_roundness);
+
+	set_corner_roundness(m_corner_roundness_shown);
+
+	const u8 accent[3]{m_settings.accent.r, m_settings.accent.g, m_settings.accent.b};
+	for (u32 channel = 0; channel < 3; channel += 1) {
+		m_accent_shown[channel] = ease_value(m_accent_shown[channel], accent[channel]);
 	}
 
-	if (CScrollable::IsVisible(rows.ContentHeight, layout.ScrollRegion.H) &&
-		RectContainsPoint(ScrollbarTrackRect(layout.ScrollRegion), m_flMouseX, m_flMouseY)) {
-		return ECursorKind::Hand;
-	}
+	update_reset_buttons(t_delta_seconds);
 
-	return ECursorKind::Arrow;
+	m_font_name.update(t_delta_seconds);
+	m_rows_scroll.update(t_delta_seconds);
+	m_tooltip.update(t_delta_seconds);
 }
 
-bool CSettingsPanel::HandleResetButtonClick(const PanelLayout &layout, const Rows &rows, float x, float y)
+void SettingsPanel::update_reset_buttons(float t_delta_seconds)
 {
-	if (m_colorPicker.IsBlocking()) return false;
+	const Layout current = layout();
+	const Rows current_rows = rows(current);
+	const bool pointer_live = is_blocking() && !m_color_picker.is_open() && current.rows_region.contains(m_mouse);
 
-	for (u64 i = 0; i < static_cast<u64>(ESettingsResetTarget::Count); i += 1) {
-		const auto target = static_cast<ESettingsResetTarget>(i);
-		if (IsTargetAtDefault(target)) continue;
+	for (u32 i = 0; i < resettable_count; i += 1) {
+		const auto setting = static_cast<ResettableSetting>(i);
+		const bool at_default = is_default(setting);
 
-		if (IsRowControlHit(layout, ResetTargetRowRect(rows, target), ResetTargetButtonRect(rows, target, m_pFonts), x,
-							y)) {
-			ResetTargetToDefault(target);
-			return true;
+		m_reset_visible[i] = animation::ease_toward(m_reset_visible[i], is_blocking() && !at_default ? 1.0f : 0.0f,
+													reset_appear_rate, t_delta_seconds);
+		m_reset_spin[i] = animation::ease_toward(m_reset_spin[i], 0.0f, reset_spin_rate, t_delta_seconds);
+
+		const Rect button = reset_button(current_rows, setting);
+		if (pointer_live && !at_default && is_on_screen(current, reset_row(current_rows, setting)) &&
+			button.contains(m_mouse)) {
+			m_tooltip.request("Restore default setting.", button);
 		}
 	}
-
-	return false;
 }
 
-bool CSettingsPanel::HandleAccentSwatchClick(const PanelLayout &layout, const Rows &rows, float x, float y)
+bool SettingsPanel::on_pointer_down(Vec2 t_point)
 {
-	const Rect swatch = SwatchRect(rows.Accent, m_pFonts);
+	if (!is_blocking()) return false;
 
-	if (IsRowControlHit(layout, rows.Accent, swatch, x, y)) {
-		if (m_colorPicker.IsBlocking()) {
-			m_colorPicker.Close();
-		} else {
-			m_colorPicker.Open(m_pSettings->m_clrAccent, swatch, static_cast<float>(m_window.GetWidth()),
-							   static_cast<float>(m_window.GetHeight()));
-		}
+	const Layout current = layout();
+	const Rows current_rows = rows(current);
 
+	if (m_rows_scroll.on_pointer_down(t_point, rows_scroll(current, current_rows))) return true;
+
+	if (m_color_picker.on_pointer_down(t_point)) {
+		m_settings.accent = m_color_picker.color();
 		return true;
 	}
 
-	// Click-anywhere-else closes; the colour was already applied live while dragging. A click
-	// inside the popup was consumed by the picker itself.
-	if (m_colorPicker.IsBlocking()) {
-		m_colorPicker.Close();
+	const Rect speed_track = slider_track_rect(current_rows.animation_speed, m_fonts);
+	if (hits(current, current_rows.animation_speed, speed_track, t_point)) {
+		m_animation_speed_drag.begin(t_point);
+		apply_animation_speed(speed_track, t_point.x);
 		return true;
 	}
 
-	return false;
-}
-
-void CSettingsPanel::HandleStepperClick(Rect stepper, float &value, float minValue, float maxValue, float x, float y)
-{
-	if (RectContainsPoint(StepperMinusRect(stepper), x, y)) {
-		value = std::max(minValue, value - 1.0f);
-		ApplyFontSettings();
-	} else if (RectContainsPoint(StepperPlusRect(stepper), x, y)) {
-		value = std::min(maxValue, value + 1.0f);
-		ApplyFontSettings();
-	}
-}
-
-bool CSettingsPanel::HandleClick(float x, float y)
-{
-	const PanelLayout layout = Layout();
-
-	if (RectContainsPoint(CloseRect(layout.Panel, m_pFonts), x, y) || !RectContainsPoint(layout.Panel, x, y)) {
-		Close();
+	const Rect roundness_track = slider_track_rect(current_rows.corner_roundness, m_fonts);
+	if (hits(current, current_rows.corner_roundness, roundness_track, t_point)) {
+		m_corner_roundness_drag.begin(t_point);
+		apply_corner_roundness(roundness_track, t_point.x);
 		return true;
 	}
 
-	const Rows rows = RowsFor(layout);
-
-	// A click in the header or footer can never hit a row.
-	if (!RectContainsPoint(layout.ScrollRegion, x, y)) return true;
-
-	if (HandleResetButtonClick(layout, rows, x, y)) return true;
-
-	const bool clickedFontField = IsRowControlHit(layout, rows.Font, FontFieldRect(rows.Font, m_pFonts), x, y);
-	m_fontNameInput.m_bFocused = clickedFontField;
-
-	if (clickedFontField) {
-		// Click-to-position is not implemented; the end is a reasonable default.
-		m_fontNameInput.SetValue(m_fontNameInput.GetValue());
-	}
-
-	if (RowInView(rows.FontSize, layout.ScrollRegion)) {
-		HandleStepperClick(StepperRect(rows.FontSize, m_pFonts), m_pSettings->m_flFontPixelSize, kFontSizeMin,
-						   kFontSizeMax, x, y);
-	}
-
-	if (RowInView(rows.SecondaryFontSize, layout.ScrollRegion)) {
-		HandleStepperClick(StepperRect(rows.SecondaryFontSize, m_pFonts), m_pSettings->m_flSecondaryFontPixelSize,
-						   kSecondaryFontSizeMin, kSecondaryFontSizeMax, x, y);
-	}
-
-	if (IsRowControlHit(layout, rows.Animations, ToggleRect(rows.Animations, m_pFonts), x, y)) {
-		m_pSettings->m_bAnimationsEnabled = !m_pSettings->m_bAnimationsEnabled;
-		CAnimator::SetEnabled(m_pSettings->m_bAnimationsEnabled);
-	}
-
-	if (IsRowControlHit(layout, rows.Notifications, ToggleRect(rows.Notifications, m_pFonts), x, y)) {
-		m_pSettings->m_bShowNotifications = !m_pSettings->m_bShowNotifications;
-	}
-
-	if (IsRowControlHit(layout, rows.ExcludeFromCapture, ToggleRect(rows.ExcludeFromCapture, m_pFonts), x, y)) {
-		m_pSettings->m_bExcludeAccountListFromCapture = !m_pSettings->m_bExcludeAccountListFromCapture;
-	}
-
-	// Only read at startup, so the toggle records an intent for the next launch rather than
-	// doing anything now. The row's own description is what says so.
-	if (IsRowControlHit(layout, rows.BlockOverlayInjection, ToggleRect(rows.BlockOverlayInjection, m_pFonts), x, y)) {
-		m_pSettings->m_bBlockOverlayInjection = !m_pSettings->m_bBlockOverlayInjection;
-	}
-
-	if (IsRowControlHit(layout, rows.CloseToTray, ToggleRect(rows.CloseToTray, m_pFonts), x, y)) {
-		m_pSettings->m_bCloseToTray = !m_pSettings->m_bCloseToTray;
-	}
-
-	// The sliders are dragged rather than clicked - see OnPointerDown and OnPointerMove.
-
-	if (HandleAccentSwatchClick(layout, rows, x, y)) return true;
-
-	if (IsRowControlHit(layout, rows.MasterPassword, MasterPasswordButtonRect(rows.MasterPassword, m_pFonts), x, y)) {
-		// Closed here, not just latched: the owner is about to take the whole app over with the
-		// setup screen.
-		m_bResetPasswordRequestedThisFrame = true;
-		Close();
+	if (is_font_field_hit(current, current_rows, t_point)) {
+		m_font_name.set_focused(true);
+		m_font_name.on_pointer_down(m_fonts.body(), font_field_rect(current_rows.font, m_fonts), t_point.x);
 	}
 
 	return true;
 }
 
-bool CSettingsPanel::OnScroll(float x, float y, float wheelDelta)
+bool SettingsPanel::on_pointer_move(Vec2 t_point)
 {
-	if (!IsBlocking()) return false;
+	if (!is_blocking()) return false;
 
-	const PanelLayout layout = Layout();
-	const Rows rows = RowsFor(layout);
+	const Layout current = layout();
+	const Rows current_rows = rows(current);
 
-	m_rowsScroll.OnScroll(wheelDelta, rows.ContentHeight, layout.ScrollRegion.H);
+	m_rows_scroll.on_pointer_move(t_point.y, rows_scroll(current, current_rows));
 
-	return true;
-}
-
-bool CSettingsPanel::OnChar(u32 character)
-{
-	if (!IsBlocking()) return false;
-
-	// A no-op on an unfocused field, so this is safe to call unconditionally.
-	m_fontNameInput.OnChar(character);
-
-	return true;
-}
-
-bool CSettingsPanel::OnKeyDown(u32 keyCode)
-{
-	if (!IsBlocking()) return false;
-
-	if (keyCode == VK_ESCAPE) {
-		Close();
-		return true;
+	if (m_color_picker.is_dragging()) {
+		m_color_picker.on_pointer_move(t_point);
+		m_settings.accent = m_color_picker.color();
 	}
 
-	if (!m_fontNameInput.m_bFocused) return true;
+	if (m_animation_speed_drag.is_pressed()) {
+		m_animation_speed_drag.update(t_point);
+		apply_animation_speed(slider_track_rect(current_rows.animation_speed, m_fonts), t_point.x);
+	}
 
-	if (keyCode == VK_RETURN) {
-		ApplyFontSettings();
-	} else {
-		m_fontNameInput.OnKey(keyCode);
+	if (m_corner_roundness_drag.is_pressed()) {
+		m_corner_roundness_drag.update(t_point);
+		apply_corner_roundness(slider_track_rect(current_rows.corner_roundness, m_fonts), t_point.x);
+	}
+
+	if (m_font_name.is_selecting()) {
+		m_font_name.on_pointer_move(m_fonts.body(), font_field_rect(current_rows.font, m_fonts), t_point.x);
 	}
 
 	return true;
 }
 
-bool CSettingsPanel::ConsumeResetPasswordRequested()
+bool SettingsPanel::on_pointer_up(Vec2 t_point)
 {
-	const bool requested = m_bResetPasswordRequestedThisFrame;
-	m_bResetPasswordRequestedThisFrame = false;
+	if (!is_blocking()) return false;
 
-	return requested;
+	const bool ended_drag = m_rows_scroll.is_dragging() || m_color_picker.is_dragging() ||
+							m_animation_speed_drag.is_pressed() || m_corner_roundness_drag.is_pressed() ||
+							m_font_name.is_selecting();
+
+	m_rows_scroll.on_pointer_up();
+	m_color_picker.on_pointer_up();
+	m_animation_speed_drag.end();
+	m_corner_roundness_drag.end();
+	m_font_name.on_pointer_up();
+
+	if (!ended_drag) {
+		handle_click(t_point);
+	}
+
+	return true;
 }
 
-void CSettingsPanel::DrawChrome(CDrawList &drawList, const PanelLayout &layout, u8 alpha) const
+void SettingsPanel::handle_click(Vec2 t_point)
 {
-	const auto windowW = static_cast<float>(m_window.GetWidth());
-	const auto windowH = static_cast<float>(m_window.GetHeight());
-	const CFont &body = m_pFonts->GetBody();
-	const CFont &secondary = m_pFonts->GetSecondary();
+	const Layout current = layout();
+	const Rect close_button = close_button_rect(current.panel, m_fonts);
 
-	drawList.AddRectFilled(0.0f, 0.0f, windowW, windowH, Color{0, 0, 0, static_cast<u8>(140.0f * m_flOpenAmount)});
-
-	drawList.AddRectRoundedFilled(layout.Panel.X, layout.Panel.Y, layout.Panel.W, layout.Panel.H,
-								  CDrawList::UniformRadii(kPanelRadius), ColorScaleAlpha(kColorBorder, alpha));
-	drawList.AddRectRoundedFilled(layout.Inner.X, layout.Inner.Y, layout.Inner.W, layout.Inner.H,
-								  CDrawList::UniformRadii(kPanelRadius - kPanelBorderThickness),
-								  ColorScaleAlpha(kColorBg, alpha));
-
-	const float headerBaselineY =
-		layout.Header.Y + layout.Header.H * 0.5f + (body.GetAscent() + body.GetDescent()) * 0.5f;
-	DrawText(drawList, body, layout.Header.X + kRowPaddingX, headerBaselineY, "Settings",
-			 ColorScaleAlpha(kColorText, alpha));
-
-	const Rect close = CloseRect(layout.Panel, m_pFonts);
-	const bool hoverClose = RectContainsPoint(close, m_flMouseX, m_flMouseY);
-	Controls::DrawXGlyph(drawList, close, ColorScaleAlpha(hoverClose ? kColorText : kColorTextDim, alpha));
-
-	drawList.AddRectFilled(layout.Header.X + kRowPaddingX, layout.Header.Y + layout.Header.H,
-						   layout.Header.W - kRowPaddingX * 2.0f, 1.0f, ColorScaleAlpha(kColorSeparator, alpha));
-
-	drawList.AddRectFilled(layout.Footer.X + kRowPaddingX, layout.Footer.Y, layout.Footer.W - kRowPaddingX * 2.0f, 1.0f,
-						   ColorScaleAlpha(kColorSeparator, alpha));
-
-	const float footerBaselineY =
-		layout.Footer.Y + layout.Footer.H * 0.5f + (secondary.GetAscent() + secondary.GetDescent()) * 0.5f;
-	DrawText(drawList, secondary, layout.Footer.X + kRowPaddingX, footerBaselineY, "Escape to dismiss",
-			 ColorScaleAlpha(kColorTextDim, alpha));
-}
-
-// Painted before any row content, so every label and control lands on top of it. Not eased: a
-// highlight that fades behind a moving cursor trails the thing it marks.
-void CSettingsPanel::DrawRowHoverHighlight(CDrawList &drawList, const PanelLayout &layout, const Rows &rows,
-										   u8 alpha) const
-{
-	if (!IsBlocking() || m_colorPicker.IsBlocking() ||
-		!RectContainsPoint(layout.ScrollRegion, m_flMouseX, m_flMouseY)) {
+	if (close_button.contains(t_point) || !current.panel.contains(t_point)) {
+		close();
 		return;
 	}
 
-	const Rect hoverableRows[]{
-		rows.Font,
-		rows.FontSize,
-		rows.SecondaryFontSize,
-		rows.Accent,
-		rows.CornerRoundness,
-		rows.Notifications,
-		rows.Animations,
-		rows.AnimationSpeed,
-		rows.ExcludeFromCapture,
-		rows.BlockOverlayInjection,
-		rows.CloseToTray,
-		rows.MasterPassword,
-	};
+	if (!current.rows_region.contains(t_point)) return;
 
-	for (const Rect &row : hoverableRows) {
-		const Rect highlight = RowHighlightRect(row);
-		if (!RowInView(row, layout.ScrollRegion) || !RectContainsPoint(highlight, m_flMouseX, m_flMouseY)) continue;
+	const Rows current_rows = rows(current);
 
-		drawList.AddRectRoundedFilled(highlight.X, highlight.Y, highlight.W, highlight.H,
-									  CDrawList::UniformRadii(kRowHighlightRadius),
-									  ColorScaleAlpha(kColorRowHover, alpha));
-		break;
+	for (u32 i = 0; i < resettable_count && !m_color_picker.is_open(); i += 1) {
+		const auto setting = static_cast<ResettableSetting>(i);
+
+		if (!is_default(setting) &&
+			hits(current, reset_row(current_rows, setting), reset_button(current_rows, setting), t_point)) {
+			reset(setting);
+			return;
+		}
+	}
+
+	m_font_name.set_focused(false);
+
+	if (is_on_screen(current, current_rows.font_size)) {
+		step_font_size(stepper_rect(current_rows.font_size, m_fonts), m_settings.font_size, font_size_min,
+					   font_size_max, t_point);
+	}
+
+	if (is_on_screen(current, current_rows.secondary_font_size)) {
+		step_font_size(stepper_rect(current_rows.secondary_font_size, m_fonts), m_settings.secondary_font_size,
+					   secondary_font_size_min, secondary_font_size_max, t_point);
+	}
+
+	for (const Toggle &toggle : toggles) {
+		const Rect row = current_rows.*toggle.row;
+
+		if (hits(current, row, toggle_rect(row, m_fonts), t_point)) {
+			m_settings.*toggle.value = !(m_settings.*toggle.value);
+			animation::set_enabled(m_settings.animations_enabled);
+		}
+	}
+
+	const Rect swatch = swatch_rect(current_rows.accent, m_fonts);
+	if (hits(current, current_rows.accent, swatch, t_point)) {
+		if (m_color_picker.is_open()) {
+			m_color_picker.close();
+		} else {
+			m_color_picker.open(m_settings.accent, swatch, m_window.size());
+		}
+
+		return;
+	}
+
+	if (m_color_picker.is_open()) {
+		m_color_picker.close();
+		return;
+	}
+
+	const Rect reset_password = master_password_button_rect(current_rows.master_password, m_fonts);
+	if (hits(current, current_rows.master_password, reset_password, t_point)) {
+		m_commands.push(Command{.type = CommandType::request_new_master_password});
+		close();
 	}
 }
 
-void CSettingsPanel::DrawSectionHeaders(CDrawList &drawList, const PanelLayout &layout, const Rows &rows,
-										u8 alpha) const
+bool SettingsPanel::on_right_click(Vec2 t_point)
 {
+	if (!is_blocking()) return false;
+
+	const Layout current = layout();
+	const Rows current_rows = rows(current);
+
+	if (is_font_field_hit(current, current_rows, t_point)) {
+		m_font_name.set_focused(true);
+		m_font_name.on_right_click(m_fonts.body(), font_field_rect(current_rows.font, m_fonts), t_point.x);
+		m_commands.push(Command{.type = CommandType::show_text_menu, .position = t_point, .text_input = &m_font_name});
+	}
+
+	return true;
+}
+
+bool SettingsPanel::on_scroll(Vec2, float t_wheel_delta)
+{
+	if (!is_blocking()) return false;
+
+	const Layout current = layout();
+	m_rows_scroll.on_scroll(t_wheel_delta, rows_scroll(current, rows(current)));
+
+	return true;
+}
+
+bool SettingsPanel::on_key_down(u32 t_key)
+{
+	if (!is_blocking()) return false;
+
+	if (t_key == VK_ESCAPE) {
+		close();
+	} else if (m_font_name.is_focused() && t_key == VK_RETURN) {
+		apply_fonts();
+	} else {
+		m_font_name.on_key_down(t_key);
+	}
+
+	return true;
+}
+
+bool SettingsPanel::on_char(u32 t_character)
+{
+	if (!is_blocking()) return false;
+
+	m_font_name.on_char(t_character);
+
+	return true;
+}
+
+CursorKind SettingsPanel::cursor() const
+{
+	if (!is_blocking()) return CursorKind::arrow;
+
+	const bool dragging = m_rows_scroll.is_dragging() || m_color_picker.is_dragging() ||
+						  m_animation_speed_drag.is_pressed() || m_corner_roundness_drag.is_pressed();
+	if (dragging) return CursorKind::drag;
+	if (m_font_name.is_selecting()) return CursorKind::ibeam;
+
+	if (m_color_picker.is_open()) {
+		const CursorKind picker = m_color_picker.cursor(m_mouse);
+		if (picker != CursorKind::arrow) return picker;
+	}
+
+	const Layout current = layout();
+	const Rect close_button = close_button_rect(current.panel, m_fonts);
+
+	if (close_button.contains(m_mouse)) return CursorKind::hand;
+	if (!current.rows_region.contains(m_mouse)) return CursorKind::arrow;
+
+	const Rows current_rows = rows(current);
+
+	for (u32 i = 0; i < resettable_count; i += 1) {
+		const auto setting = static_cast<ResettableSetting>(i);
+
+		if (!is_default(setting) &&
+			hits(current, reset_row(current_rows, setting), reset_button(current_rows, setting), m_mouse)) {
+			return CursorKind::hand;
+		}
+	}
+
+	if (is_font_field_hit(current, current_rows, m_mouse)) return CursorKind::ibeam;
+
+	const Rect font_size = stepper_rect(current_rows.font_size, m_fonts);
+	const Rect secondary_size = stepper_rect(current_rows.secondary_font_size, m_fonts);
+
 	const struct {
-		Rect Strip;
-		const char *pTitle;
-	} sections[]{
-		{rows.SectionAppearance, "Appearance"},
-		{rows.SectionMotion, "Motion"},
-		{rows.SectionPrivacy, "Privacy"},
-		{rows.SectionSecurity, "Security"},
+		Rect row;
+		Rect control;
+	} clickable[]{
+		{current_rows.font_size, stepper_minus(font_size)},
+		{current_rows.font_size, stepper_plus(font_size)},
+		{current_rows.secondary_font_size, stepper_minus(secondary_size)},
+		{current_rows.secondary_font_size, stepper_plus(secondary_size)},
+		{current_rows.animation_speed, slider_track_rect(current_rows.animation_speed, m_fonts)},
+		{current_rows.corner_roundness, slider_track_rect(current_rows.corner_roundness, m_fonts)},
+		{current_rows.accent, swatch_rect(current_rows.accent, m_fonts)},
+		{current_rows.master_password, master_password_button_rect(current_rows.master_password, m_fonts)},
 	};
 
-	for (const auto &section : sections) {
-		if (RowInView(section.Strip, layout.ScrollRegion)) {
-			DrawSectionHeader(drawList, m_pFonts, section.Strip, section.pTitle, alpha);
+	for (const auto &target : clickable) {
+		if (hits(current, target.row, target.control, m_mouse)) return CursorKind::hand;
+	}
+
+	for (const Toggle &toggle : toggles) {
+		const Rect row = current_rows.*toggle.row;
+		if (hits(current, row, toggle_rect(row, m_fonts), m_mouse)) return CursorKind::hand;
+	}
+
+	return m_rows_scroll.is_over_track(m_mouse, rows_scroll(current, current_rows)) ? CursorKind::hand
+																					: CursorKind::arrow;
+}
+
+void SettingsPanel::draw_chrome(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const
+{
+	const Font &body = m_fonts.body();
+	const Font &secondary = m_fonts.secondary();
+	const Vec2 window = m_window.size();
+
+	t_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y}, Color{0, 0, 0, static_cast<u8>(140.0f * m_open_amount)});
+	t_draw_list.add_bordered_rect(t_layout.panel, rounded(panel_radius), faded(color_background, t_alpha),
+								  faded(color_border, t_alpha), panel_border);
+
+	draw_text(t_draw_list, body, Vec2{t_layout.header.x + row_padding_x, body.centered_baseline(t_layout.header)},
+			  "Settings", faded(color_text, t_alpha));
+
+	const Rect close_button = close_button_rect(t_layout.panel, m_fonts);
+	controls::draw_x(t_draw_list, close_button,
+					 faded(close_button.contains(m_mouse) ? color_text : color_text_dim, t_alpha));
+
+	const float rule_width = t_layout.header.w - row_padding_x * 2.0f;
+	t_draw_list.add_rect(Rect{t_layout.header.x + row_padding_x, t_layout.header.bottom(), rule_width, 1.0f},
+						 faded(color_separator, t_alpha));
+	t_draw_list.add_rect(Rect{t_layout.footer.x + row_padding_x, t_layout.footer.y, rule_width, 1.0f},
+						 faded(color_separator, t_alpha));
+
+	draw_text(t_draw_list, secondary,
+			  Vec2{t_layout.footer.x + row_padding_x, secondary.centered_baseline(t_layout.footer)},
+			  "Escape to dismiss", faded(color_text_dim, t_alpha));
+}
+
+void SettingsPanel::draw_row_highlight(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows,
+									   u8 t_alpha) const
+{
+	if (!is_blocking() || m_color_picker.is_open() || !t_layout.rows_region.contains(m_mouse)) return;
+
+	const Rect hoverable[]{
+		t_rows.font,
+		t_rows.font_size,
+		t_rows.secondary_font_size,
+		t_rows.accent,
+		t_rows.corner_roundness,
+		t_rows.notifications,
+		t_rows.animations,
+		t_rows.animation_speed,
+		t_rows.hide_from_capture,
+		t_rows.block_overlay_injection,
+		t_rows.close_to_tray,
+		t_rows.master_password,
+	};
+
+	for (const Rect &row : hoverable) {
+		const Rect highlight = row.inset(highlight_inset_x, 0.0f);
+		if (!is_on_screen(t_layout, row) || !highlight.contains(m_mouse)) continue;
+
+		t_draw_list.add_rounded_rect(highlight, rounded(highlight_radius), faded(color_row_hover, t_alpha));
+		return;
+	}
+}
+
+void SettingsPanel::draw_headings(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const
+{
+	const struct {
+		Rect strip;
+		const char *title;
+	} headings[]{
+		{t_rows.appearance_heading, "Appearance"},
+		{t_rows.motion_heading, "Motion"},
+		{t_rows.privacy_heading, "Privacy"},
+		{t_rows.security_heading, "Security"},
+	};
+
+	for (const auto &heading : headings) {
+		if (is_on_screen(t_layout, heading.strip)) {
+			draw_heading(t_draw_list, m_fonts, heading.strip, heading.title, t_alpha);
 		}
 	}
 }
 
-void CSettingsPanel::DrawAppearanceRows(CDrawList &drawList, const PanelLayout &layout, const Rows &rows, u8 alpha)
+void SettingsPanel::draw_appearance(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha)
 {
-	const CFont &body = m_pFonts->GetBody();
-	const Color accent = m_pSettings->m_clrAccent;
+	const Font &body = m_fonts.body();
+	const Color accent = m_settings.accent;
 
-	if (RowInView(rows.Font, layout.ScrollRegion)) {
-		const Rect field = FontFieldRect(rows.Font, m_pFonts);
-		DrawRowLabel(drawList, m_pFonts, rows.Font, "Font", "The system font file applied to the UI.",
-					 LabelRightEdge(field, rows.Font, m_pFonts), alpha);
+	if (is_on_screen(t_layout, t_rows.font)) {
+		const Rect field = font_field_rect(t_rows.font, m_fonts);
+		const bool focused = m_font_name.is_focused();
 
-		// A border ring rather than a tinted fill, which read as ambiguous about which field
-		// was active.
-		const bool focused = m_fontNameInput.m_bFocused;
-		drawList.AddRectRoundedFilled(field.X, field.Y, field.W, field.H, CDrawList::UniformRadii(6.0f),
-									  ColorScaleAlpha(focused ? accent : kColorControlBg, alpha));
-		drawList.AddRectRoundedFilled(field.X + 1.5f, field.Y + 1.5f, field.W - 3.0f, field.H - 3.0f,
-									  CDrawList::UniformRadii(5.0f),
-									  ColorScaleAlpha(focused ? ColorLerp(kColorBg, accent, 0.25f) : kColorBg, alpha));
-
-		m_fontNameInput.Draw(drawList, body, field.X, field.Y, field.W, field.H, ColorScaleAlpha(kColorText, alpha),
-							 ColorScaleAlpha(accent, alpha), false);
+		draw_row_label(t_draw_list, m_fonts, t_rows.font, "Font", "The system font file applied to the UI.",
+					   label_right_edge(field, t_rows.font, m_fonts), t_alpha);
+		t_draw_list.add_bordered_rect(field, rounded(6.0f),
+									  faded(focused ? mix(color_background, accent, 0.25f) : color_background, t_alpha),
+									  faded(focused ? accent : color_control, t_alpha), 1.5f);
+		m_font_name.draw(t_draw_list, body, field, faded(color_text, t_alpha), faded(accent, t_alpha));
 	}
 
-	if (RowInView(rows.FontSize, layout.ScrollRegion)) {
-		const Rect stepper = StepperRect(rows.FontSize, m_pFonts);
-		DrawRowLabel(drawList, m_pFonts, rows.FontSize, "Font Size", "Determines the scale of the whole UI.",
-					 LabelRightEdge(stepper, rows.FontSize, m_pFonts), alpha);
-		DrawStepper(drawList, body, stepper, m_flFontSizeDisplay, alpha);
+	if (is_on_screen(t_layout, t_rows.font_size)) {
+		const Rect stepper = stepper_rect(t_rows.font_size, m_fonts);
+		draw_row_label(t_draw_list, m_fonts, t_rows.font_size, "Font Size", "Determines the scale of the whole UI.",
+					   label_right_edge(stepper, t_rows.font_size, m_fonts), t_alpha);
+		draw_stepper(t_draw_list, body, stepper, m_font_size_shown, t_alpha);
 	}
 
-	if (RowInView(rows.SecondaryFontSize, layout.ScrollRegion)) {
-		const Rect stepper = StepperRect(rows.SecondaryFontSize, m_pFonts);
-		DrawRowLabel(drawList, m_pFonts, rows.SecondaryFontSize, "Secondary Font Size",
-					 "Scale of labels/hints and other small text.",
-					 LabelRightEdge(stepper, rows.SecondaryFontSize, m_pFonts), alpha);
-		DrawStepper(drawList, body, stepper, m_flSecondaryFontSizeDisplay, alpha);
+	if (is_on_screen(t_layout, t_rows.secondary_font_size)) {
+		const Rect stepper = stepper_rect(t_rows.secondary_font_size, m_fonts);
+		draw_row_label(t_draw_list, m_fonts, t_rows.secondary_font_size, "Secondary Font Size",
+					   "Scale of labels/hints and other small text.",
+					   label_right_edge(stepper, t_rows.secondary_font_size, m_fonts), t_alpha);
+		draw_stepper(t_draw_list, body, stepper, m_secondary_font_size_shown, t_alpha);
 	}
 
-	if (RowInView(rows.Accent, layout.ScrollRegion)) {
-		const Rect swatch = SwatchRect(rows.Accent, m_pFonts);
-		DrawRowLabel(drawList, m_pFonts, rows.Accent, "Accent Color",
-					 "Click to pick the selection/button accent color.", LabelRightEdge(swatch, rows.Accent, m_pFonts),
-					 alpha);
+	if (is_on_screen(t_layout, t_rows.accent)) {
+		const Rect swatch = swatch_rect(t_rows.accent, m_fonts);
+		const Color shown{static_cast<u8>(std::lround(m_accent_shown[0])),
+						  static_cast<u8>(std::lround(m_accent_shown[1])),
+						  static_cast<u8>(std::lround(m_accent_shown[2])), accent.a};
 
-		// The eased copy, so restoring the default travels there instead of cutting.
-		const Color swatchColor{
-			static_cast<u8>(std::lround(m_flAccentDisplayR)),
-			static_cast<u8>(std::lround(m_flAccentDisplayG)),
-			static_cast<u8>(std::lround(m_flAccentDisplayB)),
-			accent.A,
-		};
-
-		drawList.AddRectRoundedFilled(swatch.X, swatch.Y, swatch.W, swatch.H, CDrawList::UniformRadii(6.0f),
-									  ColorScaleAlpha(swatchColor, alpha));
-	}
-
-	if (RowInView(rows.CornerRoundness, layout.ScrollRegion)) {
-		DrawRowLabel(
-			drawList, m_pFonts, rows.CornerRoundness, "Corner Roundness", "How round those corners actually are.",
-			LabelRightEdge(SliderControlRect(rows.CornerRoundness, m_pFonts), rows.CornerRoundness, m_pFonts), alpha);
-
-		// A percentage rather than a multiplier: this scales a length nobody knows in pixels.
-		char buffer[8];
-		const int written = std::snprintf(buffer, sizeof(buffer), "%.0f%%", m_flCornerRoundnessDisplay * 100.0f);
-		const std::string_view valueText{buffer, written > 0 ? static_cast<u64>(written) : 0};
-
-		DrawSlider(drawList, body, SliderTrackRect(rows.CornerRoundness, m_pFonts),
-				   CornerRoundnessToT(m_flCornerRoundnessDisplay), valueText, accent, alpha);
-	}
-
-	if (RowInView(rows.Notifications, layout.ScrollRegion)) {
-		const Rect toggle = ToggleRect(rows.Notifications, m_pFonts);
-		DrawRowLabel(drawList, m_pFonts, rows.Notifications, "Notifications",
-					 "Confirms saves, deletions and resets in the bottom-left corner.",
-					 LabelRightEdge(toggle, rows.Notifications, m_pFonts), alpha);
-		DrawToggle(drawList, toggle, m_flNotificationsToggleAmount, accent, alpha);
+		draw_row_label(t_draw_list, m_fonts, t_rows.accent, "Accent Color",
+					   "Click to pick the selection/button accent color.",
+					   label_right_edge(swatch, t_rows.accent, m_fonts), t_alpha);
+		t_draw_list.add_rounded_rect(swatch, rounded(6.0f), faded(shown, t_alpha));
 	}
 }
 
-void CSettingsPanel::DrawMotionRows(CDrawList &drawList, const PanelLayout &layout, const Rows &rows, u8 alpha) const
+void SettingsPanel::draw_sliders(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const
 {
-	const CFont &body = m_pFonts->GetBody();
-	const Color accent = m_pSettings->m_clrAccent;
+	const Font &body = m_fonts.body();
+	char readout[8];
 
-	if (RowInView(rows.Animations, layout.ScrollRegion)) {
-		const Rect toggle = ToggleRect(rows.Animations, m_pFonts);
-		DrawRowLabel(drawList, m_pFonts, rows.Animations, "Animations",
-					 "Applies animations to popups, scrolling, and the caret.",
-					 LabelRightEdge(toggle, rows.Animations, m_pFonts), alpha);
-		DrawToggle(drawList, toggle, m_flAnimationsToggleAmount, accent, alpha);
+	if (is_on_screen(t_layout, t_rows.corner_roundness)) {
+		const Rect row = t_rows.corner_roundness;
+		const int written = std::snprintf(readout, sizeof(readout), "%.0f%%", m_corner_roundness_shown * 100.0f);
+
+		draw_row_label(t_draw_list, m_fonts, row, "Corner Roundness", "How round those corners actually are.",
+					   label_right_edge(slider_control_rect(row, m_fonts), row, m_fonts), t_alpha);
+		draw_slider(t_draw_list, body, slider_track_rect(row, m_fonts),
+					fraction_in(m_corner_roundness_shown, corner_roundness_min, corner_roundness_max),
+					std::string_view{readout, static_cast<usize>(std::max(written, 0))}, m_settings.accent, t_alpha);
 	}
 
-	if (RowInView(rows.AnimationSpeed, layout.ScrollRegion)) {
-		DrawRowLabel(drawList, m_pFonts, rows.AnimationSpeed, "Animation Speed",
-					 "How fast popups, scrolling, and toggles animate.",
-					 LabelRightEdge(SliderControlRect(rows.AnimationSpeed, m_pFonts), rows.AnimationSpeed, m_pFonts),
-					 alpha);
+	if (is_on_screen(t_layout, t_rows.animation_speed)) {
+		const Rect row = t_rows.animation_speed;
+		const int written = std::snprintf(readout, sizeof(readout), "%.2fx", m_animation_speed_shown);
 
-		char buffer[8];
-		const int written = std::snprintf(buffer, sizeof(buffer), "%.2fx", m_flAnimationSpeedDisplay);
-		const std::string_view valueText{buffer, written > 0 ? static_cast<u64>(written) : 0};
-
-		DrawSlider(drawList, body, SliderTrackRect(rows.AnimationSpeed, m_pFonts),
-				   AnimationSpeedToT(m_flAnimationSpeedDisplay), valueText, accent, alpha);
+		draw_row_label(t_draw_list, m_fonts, row, "Animation Speed", "How fast popups, scrolling, and toggles animate.",
+					   label_right_edge(slider_control_rect(row, m_fonts), row, m_fonts), t_alpha);
+		draw_slider(t_draw_list, body, slider_track_rect(row, m_fonts),
+					fraction_in(m_animation_speed_shown, animation_speed_min, animation_speed_max),
+					std::string_view{readout, static_cast<usize>(std::max(written, 0))}, m_settings.accent, t_alpha);
 	}
 }
 
-void CSettingsPanel::DrawPrivacyRows(CDrawList &drawList, const PanelLayout &layout, const Rows &rows, u8 alpha) const
+void SettingsPanel::draw_toggles(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const
 {
-	const Color accent = m_pSettings->m_clrAccent;
+	for (u32 i = 0; i < toggle_count; i += 1) {
+		const Toggle &toggle = toggles[i];
+		const Rect row = t_rows.*toggle.row;
+		if (!is_on_screen(t_layout, row)) continue;
 
-	if (RowInView(rows.ExcludeFromCapture, layout.ScrollRegion)) {
-		const Rect toggle = ToggleRect(rows.ExcludeFromCapture, m_pFonts);
-		DrawRowLabel(drawList, m_pFonts, rows.ExcludeFromCapture, "Hide From Screen Capture",
-					 "Excludes the account list from screenshots and screen sharing.",
-					 LabelRightEdge(toggle, rows.ExcludeFromCapture, m_pFonts), alpha);
-		DrawToggle(drawList, toggle, m_flExcludeFromCaptureToggleAmount, accent, alpha);
-	}
-
-	if (RowInView(rows.BlockOverlayInjection, layout.ScrollRegion)) {
-		const Rect toggle = ToggleRect(rows.BlockOverlayInjection, m_pFonts);
-		DrawRowLabel(drawList, m_pFonts, rows.BlockOverlayInjection, "Block Overlay Injection",
-					 "Keeps Discord's overlay and hook-based keyloggers out. Disables IMEs; restart to apply.",
-					 LabelRightEdge(toggle, rows.BlockOverlayInjection, m_pFonts), alpha);
-		DrawToggle(drawList, toggle, m_flBlockOverlayInjectionToggleAmount, accent, alpha);
-	}
-
-	if (RowInView(rows.CloseToTray, layout.ScrollRegion)) {
-		const Rect toggle = ToggleRect(rows.CloseToTray, m_pFonts);
-		DrawRowLabel(drawList, m_pFonts, rows.CloseToTray, "Close To Tray",
-					 "Closing hides the app to the system tray instead of quitting.",
-					 LabelRightEdge(toggle, rows.CloseToTray, m_pFonts), alpha);
-		DrawToggle(drawList, toggle, m_flCloseToTrayToggleAmount, accent, alpha);
+		const Rect control = toggle_rect(row, m_fonts);
+		draw_row_label(t_draw_list, m_fonts, row, toggle.title, toggle.description,
+					   label_right_edge(control, row, m_fonts), t_alpha);
+		draw_toggle(t_draw_list, control, m_toggles_shown[i], m_settings.accent, t_alpha);
 	}
 }
 
-void CSettingsPanel::DrawSecurityRows(CDrawList &drawList, const PanelLayout &layout, const Rows &rows, u8 alpha) const
+void SettingsPanel::draw_master_password(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows,
+										 u8 t_alpha) const
 {
-	if (!RowInView(rows.MasterPassword, layout.ScrollRegion)) return;
+	const Rect row = t_rows.master_password;
+	if (!is_on_screen(t_layout, row)) return;
 
-	const Rect button = MasterPasswordButtonRect(rows.MasterPassword, m_pFonts);
-	DrawRowLabel(drawList, m_pFonts, rows.MasterPassword, "Master Password", "Encrypts your saved account passwords.",
-				 LabelRightEdge(button, rows.MasterPassword, m_pFonts), alpha);
+	const Rect button = master_password_button_rect(row, m_fonts);
+	draw_row_label(t_draw_list, m_fonts, row, "Master Password", "Encrypts your saved account passwords.",
+				   label_right_edge(button, row, m_fonts), t_alpha);
 
-	const bool hovered = RectContainsPoint(button, m_flMouseX, m_flMouseY);
-	drawList.AddRectRoundedFilled(
-		button.X, button.Y, button.W, button.H, CDrawList::UniformRadii(6.0f),
-		ColorScaleAlpha(hovered ? ColorLighten(kColorControlBg, 10) : kColorControlBg, alpha));
-	DrawCenteredText(drawList, m_pFonts->GetBody(), button.X, button.Y, button.W, button.H, "Reset Password",
-					 ColorScaleAlpha(kColorText, alpha));
+	const Color fill = button.contains(m_mouse) ? lightened(color_control, 10) : color_control;
+	t_draw_list.add_rounded_rect(button, rounded(6.0f), faded(fill, t_alpha));
+	draw_text_centered(t_draw_list, m_fonts.body(), button, "Reset Password", faded(color_text, t_alpha));
 }
 
-// Drawn after every row's content but still inside the clip: a button belongs to its row and
-// should scroll out of view with it.
-void CSettingsPanel::DrawResetButtons(CDrawList &drawList, const PanelLayout &layout, const Rows &rows, u8 alpha) const
+void SettingsPanel::draw_reset_buttons(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows,
+									   u8 t_alpha) const
 {
-	const bool pointerLive =
-		!m_colorPicker.IsBlocking() && RectContainsPoint(layout.ScrollRegion, m_flMouseX, m_flMouseY);
+	const bool pointer_live = !m_color_picker.is_open() && t_layout.rows_region.contains(m_mouse);
 
-	for (u64 i = 0; i < static_cast<u64>(ESettingsResetTarget::Count); i += 1) {
-		const auto target = static_cast<ESettingsResetTarget>(i);
-		if (!RowInView(ResetTargetRowRect(rows, target), layout.ScrollRegion)) continue;
+	for (u32 i = 0; i < resettable_count; i += 1) {
+		const auto setting = static_cast<ResettableSetting>(i);
+		if (!is_on_screen(t_layout, reset_row(t_rows, setting))) continue;
 
-		const Rect button = ResetTargetButtonRect(rows, target, m_pFonts);
-		const bool hovered = pointerLive && RectContainsPoint(button, m_flMouseX, m_flMouseY);
-
-		DrawResetButton(drawList, m_assets.Get(EAsset::IconReset), button, m_aResetAppearAmount[i],
-						m_aResetSpinAmount[i], hovered, alpha);
+		const Rect button = reset_button(t_rows, setting);
+		draw_reset_button(t_draw_list, m_assets.get(Asset::icon_reset), button, m_reset_visible[i], m_reset_spin[i],
+						  pointer_live && button.contains(m_mouse), t_alpha);
 	}
 }
 
-void CSettingsPanel::Draw(CDrawList &drawList)
+void SettingsPanel::draw(DrawList &t_draw_list)
 {
 	PULSAR_PROFILE_SCOPE("SettingsPanel.Draw");
 
-	if (m_flOpenAmount <= 0.001f) return;
+	if (m_open_amount <= 0.001f) return;
 
-	const auto alpha = static_cast<u8>(255.0f * m_flOpenAmount);
-	const PanelLayout layout = Layout();
-	const Rows rows = RowsFor(layout);
+	const auto alpha = static_cast<u8>(255.0f * m_open_amount);
+	const Layout current = layout();
+	const Rows current_rows = rows(current);
+	const ScrollGeometry scroll = rows_scroll(current, current_rows);
 
-	DrawChrome(drawList, layout, alpha);
+	draw_chrome(t_draw_list, current, alpha);
 
-	// Real GPU-side clipping, so a row scrolled halfway behind the header genuinely cannot
-	// paint outside the region.
-	drawList.PushClipRect(layout.ScrollRegion);
+	t_draw_list.push_clip(current.rows_region);
+	draw_row_highlight(t_draw_list, current, current_rows, alpha);
+	draw_headings(t_draw_list, current, current_rows, alpha);
+	draw_appearance(t_draw_list, current, current_rows, alpha);
+	draw_sliders(t_draw_list, current, current_rows, alpha);
+	draw_toggles(t_draw_list, current, current_rows, alpha);
+	draw_master_password(t_draw_list, current, current_rows, alpha);
+	draw_reset_buttons(t_draw_list, current, current_rows, alpha);
+	t_draw_list.pop_clip();
 
-	DrawRowHoverHighlight(drawList, layout, rows, alpha);
-	DrawSectionHeaders(drawList, layout, rows, alpha);
-	DrawAppearanceRows(drawList, layout, rows, alpha);
-	DrawMotionRows(drawList, layout, rows, alpha);
-	DrawPrivacyRows(drawList, layout, rows, alpha);
-	DrawSecurityRows(drawList, layout, rows, alpha);
-	DrawResetButtons(drawList, layout, rows, alpha);
+	m_rows_scroll.draw_edge_fade(t_draw_list, current.rows_region, scroll, faded(color_background, alpha));
+	m_rows_scroll.draw(t_draw_list, scroll, faded(color_scroll_thumb, alpha), m_mouse);
 
-	drawList.PopClipRect();
-
-	m_rowsScroll.DrawEdgeFade(drawList, layout.ScrollRegion, rows.ContentHeight, layout.ScrollRegion.H,
-							  ColorScaleAlpha(kColorBg, alpha));
-	m_rowsScroll.Draw(drawList, ScrollbarTrackRect(layout.ScrollRegion), rows.ContentHeight, layout.ScrollRegion.H,
-					  ColorScaleAlpha(kColorScrollThumb, alpha), m_flMouseX, m_flMouseY);
-
-	// Drawn last so it layers over every row, including the footer. It anchors to the Accent
-	// row's on-screen position, so there is nothing sensible to show if that row is scrolled
-	// out of view.
-	if (RowInView(rows.Accent, layout.ScrollRegion)) {
-		m_colorPicker.Draw(drawList);
+	if (is_on_screen(current, current_rows.accent)) {
+		m_color_picker.draw(t_draw_list);
 	}
 
-	// Last, over even the picker. Clamped to the panel rather than the window, so a bubble never
-	// floats off the dialog it belongs to.
-	m_tooltip.Draw(drawList, m_pFonts, layout.Panel, alpha);
+	m_tooltip.draw(t_draw_list, m_fonts, current.panel, alpha);
 }

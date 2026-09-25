@@ -2,115 +2,124 @@
 
 #include <algorithm>
 
-#include "ui/draw_list.h"
+#include <Windows.h>
+
+#include "gfx/draw_list.h"
+#include "gfx/font.h"
 #include "ui/text.h"
 
 namespace {
-constexpr float kMenuWidth = 200.0f;
-constexpr float kMenuItemHeight = 32.0f;
-constexpr float kMenuPadding = 6.0f;
-constexpr float kMenuRadius = 10.0f;
-constexpr float kWindowMargin = 8.0f;
+constexpr float menu_width = 200.0f;
+constexpr float item_height = 32.0f;
+constexpr float menu_padding = 6.0f;
+constexpr float menu_radius = 10.0f;
+constexpr float window_margin = 8.0f;
+constexpr float label_inset = 14.0f;
 
-constexpr Color kColorBg{30, 30, 34, 255};
-constexpr Color kColorBorder{60, 60, 66, 255};
-constexpr Color kColorHover{54, 46, 78, 255};
-constexpr Color kColorText{220, 220, 224, 255};
-
-float MenuHeightFor(u32 itemCount)
-{
-	return kMenuPadding * 2.0f + kMenuItemHeight * static_cast<float>(itemCount);
+constexpr Color color_background{30, 30, 34, 255};
+constexpr Color color_border{60, 60, 66, 255};
+constexpr Color color_hover{54, 46, 78, 255};
+constexpr Color color_text{220, 220, 224, 255};
+constexpr Color color_text_disabled{110, 110, 116, 255};
 }
-} // namespace
 
-CContextMenu::CContextMenu(const CFontManager &fonts)
-	: m_fonts(fonts)
+ContextMenu::ContextMenu(const Fonts &t_fonts, CommandQueue &t_commands)
+	: m_fonts(t_fonts)
+	, m_commands(t_commands)
 {
 }
 
-Rect CContextMenu::MenuRect() const
+void ContextMenu::open(Vec2 t_position, std::span<const ContextMenuItem> t_items, Vec2 t_window_size)
 {
-	return Rect{m_flAnchorX, m_flAnchorY, kMenuWidth, MenuHeightFor(m_nItemCount)};
+	m_item_count = static_cast<u32>(std::min<usize>(t_items.size(), max_items));
+	std::copy_n(t_items.begin(), m_item_count, m_items);
+
+	const float height = menu_rect().h;
+	m_position.x =
+		std::clamp(t_position.x, window_margin, std::max(window_margin, t_window_size.x - window_margin - menu_width));
+	m_position.y =
+		std::clamp(t_position.y, window_margin, std::max(window_margin, t_window_size.y - window_margin - height));
+	m_open = true;
 }
 
-// Shared by hit-testing and drawing, so hover and clicks cannot drift apart.
-Rect CContextMenu::ItemRect(u32 index) const
+void ContextMenu::close()
 {
-	const Rect menu = MenuRect();
-
-	return Rect{menu.X, menu.Y + kMenuPadding + static_cast<float>(index) * kMenuItemHeight, menu.W, kMenuItemHeight};
+	m_open = false;
 }
 
-void CContextMenu::Open(float x, float y, const ContextMenuItem *pItems, u32 itemCount, float windowW, float windowH)
+Rect ContextMenu::menu_rect() const
 {
-	m_nItemCount = std::min(itemCount, kContextMenuMaxItems);
-	for (u32 i = 0; i < m_nItemCount; i += 1) {
-		m_aItems[i] = pItems[i];
+	return Rect{m_position.x, m_position.y, menu_width, menu_padding * 2.0f + item_height * m_item_count};
+}
+
+Rect ContextMenu::item_rect(u32 t_index) const
+{
+	return Rect{m_position.x, m_position.y + menu_padding + item_height * t_index, menu_width, item_height};
+}
+
+i32 ContextMenu::item_at(Vec2 t_point) const
+{
+	for (u32 i = 0; i < m_item_count; i += 1) {
+		if (m_items[i].enabled && item_rect(i).contains(t_point)) return static_cast<i32>(i);
 	}
 
-	const float h = MenuHeightFor(m_nItemCount);
-	m_flAnchorX = std::clamp(x, kWindowMargin, std::max(kWindowMargin, windowW - kWindowMargin - kMenuWidth));
-	m_flAnchorY = std::clamp(y, kWindowMargin, std::max(kWindowMargin, windowH - kWindowMargin - h));
-	m_bOpen = true;
+	return -1;
 }
 
-bool CContextMenu::OnPointerUp(float x, float y)
+bool ContextMenu::on_pointer_up(Vec2 t_point)
 {
-	if (!m_bOpen) return false;
+	if (!m_open) return false;
 
-	m_pendingSelection = kContextMenuNoSelection;
-
-	for (u32 i = 0; i < m_nItemCount; i += 1) {
-		if (RectContainsPoint(ItemRect(i), x, y)) {
-			m_pendingSelection = m_aItems[i].Id;
-			break;
-		}
+	const i32 chosen = item_at(t_point);
+	if (chosen >= 0) {
+		m_commands.push(m_items[chosen].command);
 	}
 
-	Close();
+	close();
 
 	return true;
 }
 
-ECursorKind CContextMenu::GetDesiredCursor() const
+bool ContextMenu::on_right_click(Vec2)
 {
-	if (!m_bOpen) return ECursorKind::Arrow;
+	close();
 
-	for (u32 i = 0; i < m_nItemCount; i += 1) {
-		if (RectContainsPoint(ItemRect(i), m_flMouseX, m_flMouseY)) return ECursorKind::Hand;
+	return false;
+}
+
+bool ContextMenu::on_key_down(u32 t_key)
+{
+	if (!m_open) return false;
+
+	if (t_key == VK_ESCAPE) {
+		close();
 	}
 
-	return ECursorKind::Arrow;
+	return true;
 }
 
-u32 CContextMenu::ConsumeSelection()
+CursorKind ContextMenu::cursor() const
 {
-	const u32 selection = m_pendingSelection;
-	m_pendingSelection = kContextMenuNoSelection;
-
-	return selection;
+	return m_open && item_at(m_mouse) >= 0 ? CursorKind::hand : CursorKind::arrow;
 }
 
-void CContextMenu::Draw(CDrawList &drawList)
+void ContextMenu::draw(DrawList &t_draw_list)
 {
-	if (!m_bOpen) return;
+	if (!m_open) return;
 
-	const Rect rect = MenuRect();
-	drawList.AddRectRoundedFilled(rect.X, rect.Y, rect.W, rect.H, CDrawList::UniformRadii(kMenuRadius), kColorBorder);
-	drawList.AddRectRoundedFilled(rect.X + 1.0f, rect.Y + 1.0f, rect.W - 2.0f, rect.H - 2.0f,
-								  CDrawList::UniformRadii(kMenuRadius - 1.0f), kColorBg);
+	t_draw_list.add_bordered_rect(menu_rect(), rounded(menu_radius), color_background, color_border, 1.0f);
 
-	const CFont &body = m_fonts.GetBody();
-	const float baselineOffset = (body.GetAscent() + body.GetDescent()) * 0.5f;
+	const Font &font = m_fonts.body();
 
-	for (u32 i = 0; i < m_nItemCount; i += 1) {
-		const Rect row = ItemRect(i);
+	for (u32 i = 0; i < m_item_count; i += 1) {
+		const Rect row = item_rect(i);
+		const ContextMenuItem &item = m_items[i];
 
-		if (RectContainsPoint(row, m_flMouseX, m_flMouseY)) {
-			drawList.AddRectRoundedFilled(row.X + 4.0f, row.Y, row.W - 8.0f, row.H, CDrawList::UniformRadii(6.0f),
-										  kColorHover);
+		if (item.enabled && row.contains(m_mouse)) {
+			t_draw_list.add_rounded_rect(row.inset(4.0f, 0.0f), rounded(6.0f), color_hover);
 		}
 
-		DrawText(drawList, body, row.X + 14.0f, row.Y + row.H * 0.5f + baselineOffset, m_aItems[i].Label, kColorText);
+		draw_text(t_draw_list, font, Vec2{row.x + label_inset, font.centered_baseline(row)}, item.label,
+				  item.enabled ? color_text : color_text_disabled);
 	}
 }

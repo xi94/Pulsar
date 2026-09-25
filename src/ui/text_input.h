@@ -1,93 +1,106 @@
 #pragma once
 
 #include <string_view>
+
 #include "core/types.h"
 
-class CFont;
-class CDrawList;
+class DrawList;
+class Font;
 
-constexpr u32 kTextInputCapacity = 128;
+constexpr u32 text_input_capacity = 128;
 
-/// A single-line text field: a fixed buffer, a cursor, a keyboard-driven selection, clipboard
-/// support, and a blinking caret. Printable ASCII only - the cursor is a byte offset with no
-/// multi-byte awareness.
-///
-/// Shift with the arrow, Home and End keys extends a selection; typing or deleting with one
-/// active replaces it. Ctrl+A selects all and Ctrl+C, X and V use the system clipboard. Ctrl+E
-/// is Emacs end-of-line, chosen over Emacs's Ctrl+A because select-all is the
-/// far more widely expected binding for that key here.
-///
-/// A plain value type its owner forwards events to, not a CWidget - it never independently
-/// needs a place in the stack's z-order. Only one should be focused at a time, and the owner
-/// routes events to whichever that is; m_bFocused is public for exactly that reason, since
-/// there is no invariant here for a setter to protect.
-class CTextInput {
+enum class TextEdit : u8 {
+	cut,
+	copy,
+	paste,
+	select_all,
+};
+
+struct TextRange {
+	u32 start;
+	u32 end;
+};
+
+class TextInput {
   public:
-	/// Resets the whole object, not just the buffer - callers use this both for first-time setup
-	/// and for re-seeding a field when its form reopens.
-	void Init(std::string_view initialValue);
-
-	std::string_view GetValue() const
+	std::string_view value() const
 	{
-		return std::string_view{m_szBuffer, m_nLength};
+		return std::string_view{m_text, m_length};
 	}
 
-	/// Programs the contents from outside - seeding from a persisted setting, say - as opposed
-	/// to the user-typed path.
-	void SetValue(std::string_view value);
+	void set_value(std::string_view t_value);
+	void set_max_length(u32 t_max_length);
 
-	bool HasSelection() const
+	bool is_focused() const
 	{
-		return m_nSelectionAnchor >= 0 && static_cast<u32>(m_nSelectionAnchor) != m_nCursor;
+		return m_focused;
 	}
 
-	/// Ignores non-printable characters, which arrive here too but are handled by OnKey.
-	void OnChar(u32 character);
+	void set_focused(bool t_focused)
+	{
+		m_focused = t_focused;
+	}
 
-	/// keyCode is a Win32 virtual-key code. Anything not listed in this class's summary is a
-	/// no-op, as is everything while unfocused.
-	void OnKey(u32 keyCode);
+	bool is_masked() const
+	{
+		return m_masked;
+	}
 
-	/// Advances the blink clock regardless of focus; Draw decides whether the caret shows at
-	/// all, so an unfocused field's clock just idles.
-	void Update(float deltaSeconds);
+	void set_masked(bool t_masked)
+	{
+		m_masked = t_masked;
+	}
 
-	/// masked renders every character as an asterisk while still measuring and positioning
-	/// correctly, since the substitution happens before measurement rather than after.
-	void Draw(CDrawList &drawList, const CFont &font, float x, float y, float w, float h, Color textColor,
-			  Color caretColor, bool masked) const;
+	bool is_selecting() const
+	{
+		return m_selecting;
+	}
 
-	bool m_bFocused = false;
+	bool can_apply(TextEdit t_edit) const;
+	void apply(TextEdit t_edit);
+
+	void on_char(u32 t_character);
+	void on_key_down(u32 t_key);
+
+	void on_pointer_down(const Font &t_font, Rect t_field, float t_x);
+	void on_pointer_move(const Font &t_font, Rect t_field, float t_x);
+	void on_pointer_up();
+	void on_right_click(const Font &t_font, Rect t_field, float t_x);
+
+	void update(float t_delta_seconds);
+	void draw(DrawList &t_draw_list, const Font &t_font, Rect t_field, Color t_text_color, Color t_caret_color);
 
   private:
-	/// The selection as an ordered half-open range, whichever direction it was extended in.
-	struct Range {
-		u32 Start;
-		u32 End;
-	};
+	bool has_selection() const
+	{
+		return m_anchor != m_cursor;
+	}
 
-	Range SelectionRange() const;
+	TextRange selection() const;
+	std::string_view shown_text(char (&t_mask)[text_input_capacity]) const;
+	u32 index_at(const Font &t_font, Rect t_field, float t_x) const;
 
-	void EraseRange(u32 start, u32 count);
+	void move_cursor(u32 t_index, bool t_extend_selection);
+	void select(TextRange t_range);
+	void erase(TextRange t_range);
+	void insert(std::string_view t_text);
+	void restart_caret_blink();
 
-	/// Every edit that should type over a selection calls this first.
-	void DeleteSelection();
+	char m_text[text_input_capacity]{};
+	u32 m_length = 0;
+	u32 m_max_length = text_input_capacity;
 
-	/// Inserts at the cursor, skipping non-printable characters and stopping at capacity.
-	void InsertText(std::string_view text);
+	u32 m_cursor = 0;
+	u32 m_anchor = 0;
 
-	void MoveCursorTo(u32 target, bool extendSelection);
+	bool m_focused = false;
+	bool m_masked = false;
+	bool m_selecting = false;
 
-	/// True if the key was one of the control-modified bindings, handled or not.
-	bool HandleControlKey(u32 keyCode);
-	void PasteFromClipboard();
+	u32 m_click_count = 0;
+	u64 m_last_click_ms = 0;
+	float m_last_click_x = 0.0f;
 
-	char m_szBuffer[kTextInputCapacity]{};
-	u32 m_nLength = 0;
-	u32 m_nCursor = 0;
-	float m_flCaretBlinkSeconds = 0.0f;
-
-	/// The selection's other end as a byte offset, or -1 for none. The cursor is always the
-	/// live end - the one further input moves.
-	i32 m_nSelectionAnchor = -1;
+	float m_scroll_x = 0.0f;
+	float m_caret_blink_seconds = 0.0f;
 };

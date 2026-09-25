@@ -6,100 +6,80 @@
 
 #include <Windows.h>
 
-#include "ui/draw_list.h"
+#include "gfx/draw_list.h"
+#include "gfx/font.h"
 #include "ui/text.h"
 
 namespace {
-constexpr float kMargin = 12.0f;
-constexpr float kPadding = 10.0f;
-constexpr float kIndentPerDepth = 12.0f;
-constexpr float kPanelWidth = 340.0f;
-constexpr float kCornerRadius = 8.0f;
+constexpr float margin = 12.0f;
+constexpr float padding = 10.0f;
+constexpr float indent_per_depth = 12.0f;
+constexpr float panel_width = 340.0f;
+constexpr float corner_radius = 8.0f;
+constexpr float frame_budget_ms = 16.6f;
 
-constexpr Color kColorPanel{14, 14, 16, 225};
-constexpr Color kColorBorder{60, 60, 68, 255};
-constexpr Color kColorHeading{236, 236, 240, 255};
-constexpr Color kColorName{198, 198, 206, 255};
-constexpr Color kColorNumbers{150, 190, 240, 255};
+constexpr Color color_panel{14, 14, 16, 225};
+constexpr Color color_border{60, 60, 68, 255};
+constexpr Color color_heading{236, 236, 240, 255};
+constexpr Color color_over_budget{235, 110, 110, 255};
+constexpr Color color_name{198, 198, 206, 255};
+constexpr Color color_numbers{150, 190, 240, 255};
+}
 
-/// A frame over this is a visible hitch at 60Hz, so the heading turns red rather than making the
-/// reader compare against a budget they have to remember.
-constexpr float kFrameBudgetMs = 16.6f;
-constexpr Color kColorOverBudget{235, 110, 110, 255};
-} // namespace
-
-CProfilerOverlay::CProfilerOverlay(CFontManager *pFonts)
-	: m_pFonts(pFonts)
+ProfilerOverlay::ProfilerOverlay(const Fonts &t_fonts)
+	: m_fonts(t_fonts)
 {
 }
 
-void CProfilerOverlay::Update(float deltaSeconds)
+bool ProfilerOverlay::on_key_down(u32 t_key)
 {
-	(void)deltaSeconds;
-}
-
-bool CProfilerOverlay::OnKeyDown(u32 keyCode)
-{
-	if (keyCode == VK_F1) {
-		m_bShown = !m_bShown;
+	if (t_key == VK_F1) {
+		m_shown = !m_shown;
 		return true;
 	}
 
-	if (keyCode == VK_F2 && m_bShown) {
-		CProfiler::Reset();
+	if (t_key == VK_F2 && m_shown) {
+		profiler::reset();
 		return true;
 	}
 
 	return false;
 }
 
-void CProfilerOverlay::DrawRow(CDrawList &drawList, const CProfiler::ScopeStats &stats, float x, float baselineY) const
+void ProfilerOverlay::draw(DrawList &t_draw_list)
 {
-	const CFont &font = m_pFonts->GetSecondary();
+	if (!m_shown) return;
 
-	char numbers[48];
-	std::snprintf(numbers, sizeof(numbers), "%6.2f  %6.2f  %3u", stats.AverageMs, stats.PeakMs, stats.Calls);
+	const Font &font = m_fonts.secondary();
+	const u32 scope_count = profiler::scope_count();
+	const Rect panel{margin, margin, panel_width, padding * 2.0f + (scope_count + 2) * font.line_height()};
 
-	const float numbersWidth = TextWidth(font, numbers);
-	const float numbersX = x + kPanelWidth - kPadding * 2.0f - numbersWidth;
+	t_draw_list.add_bordered_rect(panel, rounded(corner_radius), color_panel, color_border, 1.0f);
 
-	// The name is cut at the numbers column rather than overrunning it: a deep scope name is
-	// long, and a report whose columns do not line up is not a report.
-	DrawTextEllipsized(drawList, font, x + static_cast<float>(stats.Depth) * kIndentPerDepth, baselineY, stats.pName,
-					   numbersX - x - static_cast<float>(stats.Depth) * kIndentPerDepth - kPadding, kColorName);
-	DrawText(drawList, font, numbersX, baselineY, numbers, kColorNumbers);
-}
+	const float x = panel.x + padding;
+	float baseline = panel.y + padding + font.ascent();
 
-void CProfilerOverlay::Draw(CDrawList &drawList)
-{
-	if (!m_bShown) return;
+	char line[64];
+	std::snprintf(line, sizeof(line), "Frame %.2f ms   F1 hide   F2 reset", profiler::frame_ms());
+	draw_text(t_draw_list, font, Vec2{x, baseline}, line,
+			  profiler::frame_ms() > frame_budget_ms ? color_over_budget : color_heading);
 
-	const CFont &font = m_pFonts->GetSecondary();
-	const float lineHeight = font.GetLineHeight();
-	const u32 scopeCount = CProfiler::GetScopeCount();
+	baseline += font.line_height();
+	draw_text(t_draw_list, font, Vec2{x, baseline}, "scope                     avg    peak  n", color_name);
 
-	// Heading, column header, then one row per scope.
-	const float height = kPadding * 2.0f + static_cast<float>(scopeCount + 2) * lineHeight;
-	const Rect panel{kMargin, kMargin, kPanelWidth, height};
+	for (u32 i = 0; i < scope_count; i += 1) {
+		const profiler::ScopeStats &stats = profiler::scope(i);
+		baseline += font.line_height();
 
-	drawList.AddRectRoundedBordered(panel.X, panel.Y, panel.W, panel.H, CDrawList::UniformRadii(kCornerRadius),
-									kColorPanel, kColorBorder, 1.0f);
+		std::snprintf(line, sizeof(line), "%6.2f  %6.2f  %3u", stats.average_ms, stats.peak_ms, stats.calls);
 
-	const float textX = panel.X + kPadding;
-	float baselineY = panel.Y + kPadding + font.GetAscent();
+		const float numbers_x = x + panel_width - padding * 2.0f - text_width(font, line);
+		const float name_x = x + stats.depth * indent_per_depth;
 
-	char heading[64];
-	std::snprintf(heading, sizeof(heading), "Frame %.2f ms   F1 hide   F2 reset", CProfiler::GetFrameMs());
-	DrawText(drawList, font, textX, baselineY, heading,
-			 CProfiler::GetFrameMs() > kFrameBudgetMs ? kColorOverBudget : kColorHeading);
-
-	baselineY += lineHeight;
-	DrawText(drawList, font, textX, baselineY, "scope                     avg    peak  n", kColorName);
-
-	for (u32 i = 0; i < scopeCount; i += 1) {
-		baselineY += lineHeight;
-		DrawRow(drawList, CProfiler::GetScope(i), textX, baselineY);
+		draw_text_truncated(t_draw_list, font, Vec2{name_x, baseline}, stats.name, numbers_x - name_x - padding,
+							color_name);
+		draw_text(t_draw_list, font, Vec2{numbers_x, baseline}, line, color_numbers);
 	}
 }
 
-#endif // PULSAR_PROFILING
+#endif

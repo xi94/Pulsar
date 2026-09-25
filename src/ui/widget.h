@@ -2,90 +2,103 @@
 
 #include "core/types.h"
 
-class CDrawList;
+class DrawList;
+struct InputEvent;
 
-/// The base every UI element derives from. A widget owns its own state, advances its own
-/// animations in Update, draws itself in Draw, and answers input through the On* virtuals -
-/// so no frame loop has to know which widget wants which event.
-///
-/// Not everything needs to be one. Something is a CWidget only if it can independently be the
-/// foreground blocking thing, or needs its own place in the stack's z-order. A text field, a
-/// glyph icon or a colour swatch is a plain member its owner forwards calls to.
-class CWidget {
+class Widget {
   public:
-	virtual ~CWidget() = default;
+	virtual ~Widget() = default;
 
-	/// Called top of the stack down, before Draw, with the mouse state SetMouseGated just set.
-	virtual void Update(float deltaSeconds) = 0;
+	virtual void update(float) {}
 
-	virtual void Draw(CDrawList &drawList) = 0;
+	virtual void draw(DrawList &t_draw_list) = 0;
 
-	/// Each returns whether this widget consumed the event, which stops the stack offering it
-	/// to anything below. The defaults do nothing, so a widget that ignores an input kind needs
-	/// no boilerplate to say so.
-	virtual bool OnPointerDown(float x, float y)
+	virtual bool on_pointer_down(Vec2)
 	{
 		return false;
 	}
 
-	virtual bool OnPointerMove(float x, float y)
+	virtual bool on_pointer_move(Vec2)
 	{
 		return false;
 	}
 
-	virtual bool OnPointerUp(float x, float y)
+	virtual bool on_pointer_up(Vec2)
 	{
 		return false;
 	}
 
-	/// Right-click-down is not tracked separately, so this is the only right-click entry point.
-	/// A widget that wants a context menu usually cannot do the whole job itself - the shape is
-	/// to hit-test here, latch the result as one-shot consumable state, and let a coordinating
-	/// owner poll it and decide what to open.
-	virtual bool OnRightPointerUp(float x, float y)
+	virtual bool on_right_click(Vec2)
 	{
 		return false;
 	}
 
-	virtual bool OnScroll(float x, float y, float wheelDelta)
+	virtual bool on_scroll(Vec2, float)
 	{
 		return false;
 	}
 
-	virtual bool OnKeyDown(u32 keyCode)
+	virtual bool on_key_down(u32)
 	{
 		return false;
 	}
 
-	virtual bool OnChar(u32 character)
+	virtual bool on_char(u32)
 	{
 		return false;
 	}
 
-	/// Does this widget want exclusive input right now - an open modal or popup? The stack uses
-	/// this to decide whether widgets below see the real mouse position or a gated-away one.
-	virtual bool IsBlocking() const
+	virtual bool is_blocking() const
 	{
 		return false;
 	}
 
-	/// What cursor this widget's current hover or drag state calls for. The stack asks every
-	/// widget in the same gated top-down order dispatch uses and takes the first answer that
-	/// is not the default, so anything with no click affordance needs no override.
-	virtual ECursorKind GetDesiredCursor() const
+	virtual CursorKind cursor() const
 	{
-		return ECursorKind::Arrow;
+		return CursorKind::arrow;
 	}
 
-	/// Called once per frame before Update, with either the real cursor position or a gated-away
-	/// one. Keeps m_bIsHovered current so no subclass has to hit-test its own bounds by hand.
-	void SetMouseGated(bool gated, float realX, float realY);
+	void set_mouse(Vec2 t_mouse)
+	{
+		m_mouse = t_mouse;
+	}
 
-	Rect m_vecBounds{};
-	bool m_bVisible = true;
+	bool is_visible() const
+	{
+		return m_visible;
+	}
+
+	void set_visible(bool t_visible)
+	{
+		m_visible = t_visible;
+	}
 
   protected:
-	bool m_bIsHovered = false;
-	float m_flMouseX = -1.0f;
-	float m_flMouseY = -1.0f;
+	Vec2 m_mouse{-1.0f, -1.0f};
+
+  private:
+	bool m_visible = true;
+};
+
+class WidgetStack {
+  public:
+	void push(Widget &t_widget);
+	void push_overlay(Widget &t_widget);
+
+	void update(Vec2 t_mouse, float t_delta_seconds);
+	void draw(DrawList &t_draw_list);
+
+	bool dispatch(const InputEvent &t_event);
+	CursorKind cursor() const;
+
+  private:
+	static constexpr u32 max_widgets = 16;
+
+	template <typename Visitor>
+	bool visit_top_down(Visitor &&t_visitor) const;
+
+	Widget *m_widgets[max_widgets]{};
+	u32 m_widget_count = 0;
+	Widget *m_overlays[max_widgets]{};
+	u32 m_overlay_count = 0;
 };

@@ -1,431 +1,366 @@
 #include "core/debug_log.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <share.h>
+#include <span>
 #include <string>
 
 #include <Windows.h>
-#include <shlobj.h>
 
-#include "core/crash_handler.h"
 #include "core/app_identity.h"
-#include "core/app_paths.h"
+#include "core/crash_handler.h"
+#include "core/file.h"
+#include "core/str.h"
 
 namespace {
-// Every poll loop in this project ticks at 100ms, so anything under this is the normal case
-// and reporting it would bury the abnormal one.
-constexpr u64 kSlowCallMs = 250;
+constexpr u64 slow_call_ms = 250;
+constexpr u64 first_stuck_report_ms = 2000;
+constexpr u64 max_stuck_report_interval_ms = 60000;
+constexpr u64 hang_dump_after_ms = 20000;
+constexpr u64 ui_stall_ms = 2000;
+constexpr DWORD watchdog_scan_interval_ms = 500;
+constexpr DWORD watchdog_shutdown_wait_ms = 5000;
+constexpr u32 max_open_scopes = 64;
+constexpr usize label_capacity = 160;
 
-// The watchdog's first callout for a still-open scope, and the ceiling its doubling interval
-// grows to. Escalating rather than fixed, so a permanently abandoned call settles into an
-// occasional reminder instead of a line every scan forever.
-constexpr u64 kFirstReportMs = 2000;
-constexpr u64 kMaxReportIntervalMs = 60000;
-
-// Comfortably past every real timeout in the login flow - the longest is CRiotClient's 10s
-// form wait - so the dump only fires for something that genuinely is not coming back.
-constexpr u64 kHangDumpMs = 20000;
-
-// Two seconds is many missed frames, far past any legitimate hitch.
-constexpr u64 kUiStallMs = 2000;
-
-constexpr u64 kWatchdogScanIntervalMs = 500;
-
-// Never grown: an abandoned thread's breadcrumb is never released, so this is really "how
-// many permanently wedged calls can be tracked before tracking stops being useful".
-constexpr i32 kMaxBreadcrumbs = 64;
-
-struct Breadcrumb {
-	bool bInUse = false;
-	DWORD ThreadId = 0;
-	u64 StartMs = 0;
-	u64 NextReportMs = 0;	  // an absolute tick, not a duration
-	u64 ReportIntervalMs = 0; // doubles up to kMaxReportIntervalMs
-	const char *pCategory = nullptr;
-	char szLabel[160]{};
+struct OpenScope {
+	bool in_use = false;
+	DWORD thread_id = 0;
+	u64 start_ms = 0;
+	u64 next_report_ms = 0;
+	u64 report_interval_ms = 0;
+	const char *category = nullptr;
+	char label[label_capacity]{};
 };
 
-// One report the watchdog decided to emit, copied out of the table so the logging happens
-// with g_breadcrumbLock already released.
-struct PendingReport {
-	const char *pCategory;
-	DWORD ThreadId;
-	u64 AgeMs;
-	char szLabel[160];
+struct StuckReport {
+	const char *category;
+	DWORD thread_id;
+	u64 age_ms;
+	char label[label_capacity];
 };
 
-std::atomic<bool> g_bEnabled{false};
-std::atomic<bool> g_bInitialized{false};
+std::atomic<bool> g_enabled{false};
+std::atomic<bool> g_initialized{false};
+u64 g_start_ms = 0;
 
-u64 g_startTicks = 0;
+SRWLOCK g_write_lock = SRWLOCK_INIT;
+FILE *g_file = nullptr;
+std::string g_file_path;
 
-// Guards the sinks below so two threads' lines never interleave. Never held across anything
-// that can block.
-SRWLOCK g_writeLock = SRWLOCK_INIT;
-FILE *g_pFile = nullptr;
-std::string g_filePath;
+SRWLOCK g_scope_lock = SRWLOCK_INIT;
+OpenScope g_open_scopes[max_open_scopes];
 
-// Strictly inner to g_writeLock: the watchdog copies out what it wants to report, releases
-// this, and only then writes.
-SRWLOCK g_breadcrumbLock = SRWLOCK_INIT;
-Breadcrumb g_breadcrumbs[kMaxBreadcrumbs];
+std::atomic<u64> g_last_ui_alive_ms{0};
+std::atomic<bool> g_ui_stall_reported{false};
+std::atomic<bool> g_hang_dump_written{false};
 
-std::atomic<u64> g_lastUiAliveMs{0};
-std::atomic<bool> g_bUiStallReported{false};
-std::atomic<bool> g_bHangDumpWritten{false};
+HANDLE g_watchdog_stop = nullptr;
+HANDLE g_watchdog_thread = nullptr;
 
-HANDLE g_hWatchdogStop = nullptr;
-HANDLE g_hWatchdogThread = nullptr;
-
-u64 NowMs()
+u64 now_ms()
 {
 	return GetTickCount64();
 }
 
-// Under %LOCALAPPDATA% rather than next to the .exe, which may sit somewhere a normal user
-// cannot write at all.
-std::wstring LogDirectory()
+void write_line(const char *t_category, const char *t_message)
 {
-	return AppDataSubdirectory(L"logs");
-}
+	SYSTEMTIME local_time;
+	GetLocalTime(&local_time);
 
-std::string WideToUtf8(const std::wstring &wide)
-{
-	if (wide.empty()) return std::string{};
-
-	const int length =
-		WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr);
-	if (length <= 0) return std::string{};
-
-	std::string utf8(static_cast<usize>(length), '\0');
-	WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), utf8.data(), length, nullptr, nullptr);
-
-	return utf8;
-}
-
-// The file is the sink that matters, since it survives the force-kill that ends a hang.
-// OutputDebugStringA is for watching live; stdout only goes anywhere in a Debug build.
-void WriteLine(const char *pCategory, const char *pMessage)
-{
-	SYSTEMTIME localTime;
-	GetLocalTime(&localTime);
-
-	const u64 elapsedMs = NowMs() - g_startTicks;
+	const u64 elapsed_ms = now_ms() - g_start_ms;
 
 	char line[1400];
-	_snprintf_s(line, _TRUNCATE, "%02u:%02u:%02u.%03u  +%4llu.%03llus  t%-5lu  %-8s  %s\n", localTime.wHour,
-				localTime.wMinute, localTime.wSecond, localTime.wMilliseconds,
-				static_cast<unsigned long long>(elapsedMs / 1000), static_cast<unsigned long long>(elapsedMs % 1000),
-				GetCurrentThreadId(), pCategory != nullptr ? pCategory : "-", pMessage);
+	_snprintf_s(line, _TRUNCATE, "%02u:%02u:%02u.%03u  +%4llu.%03llus  t%-5lu  %-8s  %s\n", local_time.wHour,
+				local_time.wMinute, local_time.wSecond, local_time.wMilliseconds, elapsed_ms / 1000, elapsed_ms % 1000,
+				GetCurrentThreadId(), t_category != nullptr ? t_category : "-", t_message);
 
-	AcquireSRWLockExclusive(&g_writeLock);
+	AcquireSRWLockExclusive(&g_write_lock);
 
-	if (g_pFile != nullptr) {
-		std::fputs(line, g_pFile);
-		std::fflush(g_pFile);
+	if (g_file != nullptr) {
+		std::fputs(line, g_file);
+		std::fflush(g_file);
 	}
 
 	OutputDebugStringA(line);
 	std::fputs(line, stdout);
 	std::fflush(stdout);
 
-	ReleaseSRWLockExclusive(&g_writeLock);
+	ReleaseSRWLockExclusive(&g_write_lock);
 }
 
-// This file's reporting, which has no reason to re-check the enabled flag Write already
-// tested.
-void WriteFormatted(const char *pCategory, const char *pFormat, ...)
+void write_formatted(const char *t_category, const char *t_format, va_list t_args)
 {
 	char message[1024];
+	_vsnprintf_s(message, sizeof(message), _TRUNCATE, t_format, t_args);
 
+	write_line(t_category, message);
+}
+
+void write_unchecked(const char *t_category, const char *t_format, ...)
+{
 	va_list args;
-	va_start(args, pFormat);
-	_vsnprintf_s(message, sizeof(message), _TRUNCATE, pFormat, args);
+	va_start(args, t_format);
+	write_formatted(t_category, t_format, args);
 	va_end(args);
-
-	WriteLine(pCategory, message);
 }
 
-void WriteHangDump()
+void write_hang_dump_once()
 {
-	bool expected = false;
-	if (!g_bHangDumpWritten.compare_exchange_strong(expected, true)) {
-		return; // one per run is the point
-	}
+	bool already_written = false;
+	if (!g_hang_dump_written.compare_exchange_strong(already_written, true)) return;
 
-	WriteLine("watchdog", "past the hang threshold - writing a diagnostic minidump of every thread");
+	write_line("watchdog", "past the hang threshold - writing a diagnostic minidump of every thread");
 
-	const std::string dumpPath = WideToUtf8(WriteDiagnosticDump(L"hang"));
-	if (dumpPath.empty()) {
-		WriteLine("watchdog", "diagnostic minidump FAILED to write");
+	const std::string dump_path = to_utf8(write_diagnostic_dump(L"hang"));
+	if (dump_path.empty()) {
+		write_line("watchdog", "diagnostic minidump FAILED to write");
 	} else {
-		WriteFormatted("watchdog", "diagnostic minidump written: %s", dumpPath.c_str());
+		write_unchecked("watchdog", "diagnostic minidump written: %s", dump_path.c_str());
 	}
 }
 
-// Collects everything due for a callout and reschedules each one, all under the lock, so the
-// caller can log without holding it.
-i32 CollectDueReports(u64 now, PendingReport *pOutReports, bool &outAnyPastHangThreshold)
+u32 collect_stuck_scopes(u64 t_now, StuckReport *t_out_reports, bool &t_out_past_hang_threshold)
 {
-	i32 reportCount = 0;
-	outAnyPastHangThreshold = false;
+	u32 report_count = 0;
+	t_out_past_hang_threshold = false;
 
-	AcquireSRWLockExclusive(&g_breadcrumbLock);
+	AcquireSRWLockExclusive(&g_scope_lock);
 
-	for (Breadcrumb &crumb : g_breadcrumbs) {
-		if (!crumb.bInUse || now < crumb.NextReportMs) continue;
+	for (OpenScope &scope : g_open_scopes) {
+		if (!scope.in_use || t_now < scope.next_report_ms) continue;
 
-		const u64 ageMs = now - crumb.StartMs;
-		outAnyPastHangThreshold = outAnyPastHangThreshold || ageMs >= kHangDumpMs;
+		const u64 age_ms = t_now - scope.start_ms;
+		t_out_past_hang_threshold = t_out_past_hang_threshold || age_ms >= hang_dump_after_ms;
 
-		PendingReport &report = pOutReports[reportCount];
-		report.pCategory = crumb.pCategory;
-		report.ThreadId = crumb.ThreadId;
-		report.AgeMs = ageMs;
-		std::memcpy(report.szLabel, crumb.szLabel, sizeof(report.szLabel));
-		reportCount += 1;
+		StuckReport &report = t_out_reports[report_count];
+		report.category = scope.category;
+		report.thread_id = scope.thread_id;
+		report.age_ms = age_ms;
+		std::memcpy(report.label, scope.label, sizeof(report.label));
+		report_count += 1;
 
-		const u64 nextInterval = crumb.ReportIntervalMs * 2;
-		crumb.ReportIntervalMs = nextInterval < kMaxReportIntervalMs ? nextInterval : kMaxReportIntervalMs;
-		crumb.NextReportMs = now + crumb.ReportIntervalMs;
+		scope.report_interval_ms = std::min(scope.report_interval_ms * 2, max_stuck_report_interval_ms);
+		scope.next_report_ms = t_now + scope.report_interval_ms;
 	}
 
-	ReleaseSRWLockExclusive(&g_breadcrumbLock);
+	ReleaseSRWLockExclusive(&g_scope_lock);
 
-	return reportCount;
+	return report_count;
 }
 
-void ScanBreadcrumbs()
+void report_stuck_scopes()
 {
-	PendingReport reports[kMaxBreadcrumbs];
-	bool bAnyPastHangThreshold = false;
-	const i32 reportCount = CollectDueReports(NowMs(), reports, bAnyPastHangThreshold);
+	StuckReport reports[max_open_scopes];
+	bool past_hang_threshold = false;
+	const u32 report_count = collect_stuck_scopes(now_ms(), reports, past_hang_threshold);
 
-	for (i32 i = 0; i < reportCount; i += 1) {
-		const PendingReport &report = reports[i];
-		WriteFormatted("watchdog", "STILL RUNNING after %llums on thread t%lu  [%s] %s",
-					   static_cast<unsigned long long>(report.AgeMs), report.ThreadId,
-					   report.pCategory != nullptr ? report.pCategory : "-", report.szLabel);
+	for (const StuckReport &report : std::span{reports, report_count}) {
+		write_unchecked("watchdog", "STILL RUNNING after %llums on thread t%lu  [%s] %s", report.age_ms,
+						report.thread_id, report.category != nullptr ? report.category : "-", report.label);
 	}
 
-	if (bAnyPastHangThreshold) {
-		WriteHangDump();
+	if (past_hang_threshold) {
+		write_hang_dump_once();
 	}
 }
 
-void ScanUiThread()
+void report_ui_thread_stall()
 {
-	const u64 lastAlive = g_lastUiAliveMs.load(std::memory_order_relaxed);
-	if (lastAlive == 0) {
-		return; // the render thread has not reached its main loop yet
-	}
+	const u64 last_alive_ms = g_last_ui_alive_ms.load(std::memory_order_relaxed);
+	if (last_alive_ms == 0) return;
 
-	const u64 sinceMs = NowMs() - lastAlive;
+	const u64 since_ms = now_ms() - last_alive_ms;
 
-	if (sinceMs >= kUiStallMs) {
-		// Latched, or a frozen UI would say so on every scan for as long as it stays frozen.
-		bool expected = false;
-		if (g_bUiStallReported.compare_exchange_strong(expected, true)) {
-			WriteFormatted("watchdog",
-						   "UI THREAD STALLED - no frame for %llums (the whole app is frozen, not just a worker)",
-						   static_cast<unsigned long long>(sinceMs));
+	if (since_ms >= ui_stall_ms) {
+		bool already_reported = false;
+		if (g_ui_stall_reported.compare_exchange_strong(already_reported, true)) {
+			write_unchecked("watchdog",
+							"UI THREAD STALLED - no frame for %llums (the whole app is frozen, not just a worker)",
+							since_ms);
 		}
 
 		return;
 	}
 
-	bool expected = true;
-	if (g_bUiStallReported.compare_exchange_strong(expected, false)) {
-		WriteLine("watchdog", "UI thread recovered - frames are being drawn again");
+	bool was_reported = true;
+	if (g_ui_stall_reported.compare_exchange_strong(was_reported, false)) {
+		write_line("watchdog", "UI thread recovered - frames are being drawn again");
 	}
 }
 
-DWORD WINAPI WatchdogMain(LPVOID)
+DWORD WINAPI watchdog_main(LPVOID)
 {
-	while (WaitForSingleObject(g_hWatchdogStop, static_cast<DWORD>(kWatchdogScanIntervalMs)) != WAIT_OBJECT_0) {
-		ScanBreadcrumbs();
-		ScanUiThread();
+	while (WaitForSingleObject(g_watchdog_stop, watchdog_scan_interval_ms) != WAIT_OBJECT_0) {
+		report_stuck_scopes();
+		report_ui_thread_stall();
 	}
 
 	return 0;
 }
 
-void OpenLogFile()
+void open_log_file()
 {
-	const std::wstring dir = LogDirectory();
-	if (dir.empty()) return;
+	const std::wstring directory = app_data_subdirectory(L"logs");
+	if (directory.empty()) return;
 
-	const std::wstring path = dir + L"\\" + kAppNameW + L"-debug.log";
+	const std::wstring path = directory + L"\\" + app_name_wide + L"-debug.log";
+	const std::wstring previous_path = directory + L"\\" + app_name_wide + L"-debug.prev.log";
+	MoveFileExW(path.c_str(), previous_path.c_str(), MOVEFILE_REPLACE_EXISTING);
 
-	// Keep exactly one previous run, so the interesting run's log is not destroyed by the
-	// relaunch that goes on to report it.
-	MoveFileExW(path.c_str(), (dir + L"\\" + kAppNameW + L"-debug.prev.log").c_str(), MOVEFILE_REPLACE_EXISTING);
-
-	// _SH_DENYWR rather than a plain open: the most useful thing to do with this file is read
-	// it while the run that is hanging is still hung, and an exclusive lock prevents that.
-	FILE *pFile = _wfsopen(path.c_str(), L"wb", _SH_DENYWR);
-	if (pFile != nullptr) {
-		g_pFile = pFile;
-		g_filePath = WideToUtf8(path);
+	// Shared for reading so the log of a run that is hung right now can still be opened.
+	g_file = _wfsopen(path.c_str(), L"wb", _SH_DENYWR);
+	if (g_file != nullptr) {
+		g_file_path = to_utf8(path);
 	}
 }
 
-void StartWatchdog()
+void start_watchdog()
 {
-	g_hWatchdogStop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-	if (g_hWatchdogStop != nullptr) {
-		g_hWatchdogThread = CreateThread(nullptr, 0, WatchdogMain, nullptr, 0, nullptr);
+	g_watchdog_stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+	if (g_watchdog_stop != nullptr) {
+		g_watchdog_thread = CreateThread(nullptr, 0, watchdog_main, nullptr, 0, nullptr);
 	}
 
-	if (g_hWatchdogThread == nullptr) {
-		WriteLine("app", "watchdog thread could not be started - stuck-call reporting is off for this run");
+	if (g_watchdog_thread == nullptr) {
+		write_line("app", "watchdog thread could not be started - stuck-call reporting is off for this run");
 	}
 }
 
-void StopWatchdog()
+void stop_watchdog()
 {
-	if (g_hWatchdogStop != nullptr) {
-		SetEvent(g_hWatchdogStop);
+	if (g_watchdog_stop != nullptr) {
+		SetEvent(g_watchdog_stop);
 	}
 
-	if (g_hWatchdogThread != nullptr) {
-		// Bounded: the watchdog can be mid-minidump, and hanging shutdown on the one thread
-		// whose job is diagnosing hangs would be a poor joke.
-		WaitForSingleObject(g_hWatchdogThread, 5000);
-		CloseHandle(g_hWatchdogThread);
-		g_hWatchdogThread = nullptr;
+	if (g_watchdog_thread != nullptr) {
+		WaitForSingleObject(g_watchdog_thread, watchdog_shutdown_wait_ms);
+		CloseHandle(g_watchdog_thread);
+		g_watchdog_thread = nullptr;
 	}
 
-	if (g_hWatchdogStop != nullptr) {
-		CloseHandle(g_hWatchdogStop);
-		g_hWatchdogStop = nullptr;
+	if (g_watchdog_stop != nullptr) {
+		CloseHandle(g_watchdog_stop);
+		g_watchdog_stop = nullptr;
 	}
 }
-} // namespace
-
-namespace DebugLog {
-
-void Init()
-{
-	bool expected = false;
-	if (!g_bInitialized.compare_exchange_strong(expected, true)) return;
-
-	g_startTicks = NowMs();
-
-	const bool bForced = GetEnvironmentVariableW(kDebugLogEnvironmentVariable, nullptr, 0) != 0;
-	if (!kIsDebugBuild && !bForced) return;
-
-	OpenLogFile();
-	g_bEnabled.store(true, std::memory_order_release);
-
-	WriteFormatted("app", "%s %s%s - diagnostic log started", kAppName, kAppVersion,
-				   kIsDebugBuild ? " [debug]" : " [release]");
-	StartWatchdog();
 }
 
-void Shutdown()
+void debug_log::init()
 {
-	if (!g_bEnabled.load(std::memory_order_acquire)) return;
+	bool already_initialized = false;
+	if (!g_initialized.compare_exchange_strong(already_initialized, true)) return;
 
-	WriteLine("app", "diagnostic log stopped");
-	StopWatchdog();
+	g_start_ms = now_ms();
 
-	g_bEnabled.store(false, std::memory_order_release);
+	const bool forced_on = GetEnvironmentVariableW(debug_log_environment_variable, nullptr, 0) != 0;
+	if (!is_debug_build && !forced_on) return;
 
-	AcquireSRWLockExclusive(&g_writeLock);
+	open_log_file();
+	g_enabled.store(true, std::memory_order_release);
 
-	if (g_pFile != nullptr) {
-		std::fclose(g_pFile);
-		g_pFile = nullptr;
+	write_unchecked("app", "%s %s%s - diagnostic log started", app_name, app_version,
+					is_debug_build ? " [debug]" : " [release]");
+	start_watchdog();
+}
+
+void debug_log::shutdown()
+{
+	if (!is_enabled()) return;
+
+	write_line("app", "diagnostic log stopped");
+	stop_watchdog();
+
+	g_enabled.store(false, std::memory_order_release);
+
+	AcquireSRWLockExclusive(&g_write_lock);
+
+	if (g_file != nullptr) {
+		std::fclose(g_file);
+		g_file = nullptr;
 	}
 
-	ReleaseSRWLockExclusive(&g_writeLock);
+	ReleaseSRWLockExclusive(&g_write_lock);
 }
 
-bool IsEnabled()
+bool debug_log::is_enabled()
 {
-	return g_bEnabled.load(std::memory_order_acquire);
+	return g_enabled.load(std::memory_order_acquire);
 }
 
-const char *GetFilePath()
+const char *debug_log::file_path()
 {
-	return g_filePath.c_str();
+	return g_file_path.c_str();
 }
 
-void Write(const char *pCategory, const char *pFormat, ...)
+void debug_log::write(const char *t_category, const char *t_format, ...)
 {
-	if (!g_bEnabled.load(std::memory_order_acquire)) return;
-
-	char message[1024];
+	if (!is_enabled()) return;
 
 	va_list args;
-	va_start(args, pFormat);
-	_vsnprintf_s(message, sizeof(message), _TRUNCATE, pFormat, args);
+	va_start(args, t_format);
+	write_formatted(t_category, t_format, args);
 	va_end(args);
-
-	WriteLine(pCategory, message);
 }
 
-void MarkUiThreadAlive()
+void debug_log::mark_ui_thread_alive()
 {
-	// Unconditional: this is a single counter read, and gating it would let the first scan
-	// after a mid-run enable see a stale zero and cry stall.
-	g_lastUiAliveMs.store(NowMs(), std::memory_order_relaxed);
+	g_last_ui_alive_ms.store(now_ms(), std::memory_order_relaxed);
 }
 
-CScope::CScope(const char *pCategory, const char *pFormat, ...)
-	: m_pCategory(pCategory)
+debug_log::Scope::Scope(const char *t_category, const char *t_format, ...)
+	: m_category(t_category)
 {
-	if (!g_bEnabled.load(std::memory_order_acquire)) return;
+	if (!is_enabled()) return;
 
 	va_list args;
-	va_start(args, pFormat);
-	_vsnprintf_s(m_szLabel, sizeof(m_szLabel), _TRUNCATE, pFormat, args);
+	va_start(args, t_format);
+	_vsnprintf_s(m_label, sizeof(m_label), _TRUNCATE, t_format, args);
 	va_end(args);
 
-	m_startMs = NowMs();
+	m_start_ms = now_ms();
 
-	AcquireSRWLockExclusive(&g_breadcrumbLock);
+	AcquireSRWLockExclusive(&g_scope_lock);
 
-	for (i32 i = 0; i < kMaxBreadcrumbs; i += 1) {
-		if (g_breadcrumbs[i].bInUse) continue;
+	for (u32 i = 0; i < max_open_scopes; i += 1) {
+		OpenScope &scope = g_open_scopes[i];
+		if (scope.in_use) continue;
 
-		g_breadcrumbs[i].bInUse = true;
-		g_breadcrumbs[i].ThreadId = GetCurrentThreadId();
-		g_breadcrumbs[i].StartMs = m_startMs;
-		g_breadcrumbs[i].ReportIntervalMs = kFirstReportMs;
-		g_breadcrumbs[i].NextReportMs = m_startMs + kFirstReportMs;
-		g_breadcrumbs[i].pCategory = pCategory;
-		std::memcpy(g_breadcrumbs[i].szLabel, m_szLabel, sizeof(m_szLabel));
-		m_slot = i;
+		scope.in_use = true;
+		scope.thread_id = GetCurrentThreadId();
+		scope.start_ms = m_start_ms;
+		scope.report_interval_ms = first_stuck_report_ms;
+		scope.next_report_ms = m_start_ms + first_stuck_report_ms;
+		scope.category = t_category;
+		std::memcpy(scope.label, m_label, sizeof(m_label));
+		m_slot = static_cast<i32>(i);
 		break;
 	}
 
-	ReleaseSRWLockExclusive(&g_breadcrumbLock);
+	ReleaseSRWLockExclusive(&g_scope_lock);
 }
 
-CScope::~CScope()
+debug_log::Scope::~Scope()
 {
 	if (m_slot >= 0) {
-		AcquireSRWLockExclusive(&g_breadcrumbLock);
-		g_breadcrumbs[m_slot].bInUse = false;
-		ReleaseSRWLockExclusive(&g_breadcrumbLock);
+		AcquireSRWLockExclusive(&g_scope_lock);
+		g_open_scopes[m_slot].in_use = false;
+		ReleaseSRWLockExclusive(&g_scope_lock);
 	}
 
-	if (m_startMs == 0 || !g_bEnabled.load(std::memory_order_acquire)) return;
+	if (m_start_ms == 0 || !is_enabled()) return;
 
-	const u64 elapsedMs = NowMs() - m_startMs;
-	if (elapsedMs < kSlowCallMs) return;
-
-	WriteFormatted(m_pCategory, "slow: %s took %llums", m_szLabel, static_cast<unsigned long long>(elapsedMs));
+	const u64 elapsed = now_ms() - m_start_ms;
+	if (elapsed >= slow_call_ms) {
+		write_unchecked(m_category, "slow: %s took %llums", m_label, elapsed);
+	}
 }
 
-u64 CScope::ElapsedMs() const
+u64 debug_log::Scope::elapsed_ms() const
 {
-	return m_startMs == 0 ? 0 : NowMs() - m_startMs;
+	return m_start_ms == 0 ? 0 : now_ms() - m_start_ms;
 }
-
-} // namespace DebugLog

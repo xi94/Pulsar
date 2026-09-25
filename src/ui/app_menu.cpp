@@ -1,273 +1,179 @@
 #include "ui/app_menu.h"
 
-#include <algorithm>
+#include <span>
 
-#include "core/animator.h"
+#include "core/animation.h"
 #include "core/settings.h"
-#include <string_view>
-#include "gfx/asset_manager.h"
+#include "gfx/assets.h"
+#include "gfx/draw_list.h"
+#include "gfx/font.h"
 #include "platform/window.h"
-#include "ui/draw_list.h"
 #include "ui/text.h"
 
 namespace {
-constexpr float kMenuOpenEaseRate = 20.0f;
-constexpr float kItemHoverEaseRate = 22.0f;
+constexpr float open_ease_rate = 20.0f;
+constexpr float hover_ease_rate = 22.0f;
 
-constexpr float kMenuX = 8.0f;
-constexpr float kMenuWidth = 226.0f;
-constexpr float kMenuItemHeight = 34.0f;
-constexpr float kMenuPadding = 6.0f;
-constexpr float kMenuRadius = 12.0f;
-constexpr float kMenuSlidePixels = 6.0f;
+constexpr float menu_x = 8.0f;
+constexpr float menu_width = 226.0f;
+constexpr float item_height = 34.0f;
+constexpr float menu_padding = 6.0f;
+constexpr float menu_radius = 12.0f;
+constexpr float slide_distance = 6.0f;
+constexpr float highlight_inset = 5.0f;
+constexpr float content_x = 14.0f;
+constexpr float separator_gap = 6.0f;
+constexpr float separator_block = separator_gap * 2.0f + 1.0f;
+constexpr float icon_size = 16.0f;
+constexpr float icon_text_gap = 10.0f;
+constexpr float baseline_nudge = 2.0f;
 
-// One number for the hover pill's inset and the header content's, so the pill, the text and
-// the separator all line up on the same left edge instead of three hand-tuned values drifting.
-constexpr float kMenuInsetX = 5.0f;
-constexpr float kMenuContentX = 14.0f;
-constexpr float kSeparatorGap = 6.0f;
+constexpr Color color_background{30, 30, 34, 255};
+constexpr Color color_border{60, 60, 66, 255};
+constexpr Color color_separator{52, 52, 58, 255};
+constexpr Color color_text{220, 220, 224, 255};
+constexpr Color color_text_disabled{100, 100, 106, 255};
 
-constexpr float kMenuIconSize = 16.0f;
-constexpr float kMenuIconTextGap = 10.0f;
-
-constexpr Color kColorBg{30, 30, 34, 255};
-constexpr Color kColorBorder{60, 60, 66, 255};
-constexpr Color kColorSeparator{52, 52, 58, 255};
-constexpr Color kColorText{220, 220, 224, 255};
-constexpr Color kColorTextDisabled{100, 100, 106, 255};
-
-// Geometry, hit-testing, hover and drawing all walk this one list, so a new item is one entry
-// rather than a fourth near-identical branch. StartsGroup puts a separator above the item;
-// grouping is by subject, since Check for Updates acts on this build while the other two are
-// about this install's configuration.
 struct MenuItem {
-	EAppMenuAction Action;
-	const char *pLabel;
-	bool StartsGroup;
+	CommandType command;
+	const char *label;
+	Asset icon;
+	bool starts_group;
 };
 
-constexpr MenuItem kMenuItems[]{
-	{EAppMenuAction::CheckForUpdates, "Check for Updates", false},
-	{EAppMenuAction::OpenSettings, "Settings", true},
-	{EAppMenuAction::OpenDataFolder, "Open Data Folder", false},
+constexpr MenuItem menu_items[]{
+	{CommandType::check_for_updates, "Check for Updates", Asset::icon_update, false},
+	{CommandType::open_settings, "Settings", Asset::icon_settings, true},
+	{CommandType::open_data_folder, "Open Data Folder", Asset::icon_folder, false},
 };
 
-constexpr u64 kMenuItemCount = sizeof(kMenuItems) / sizeof(kMenuItems[0]);
-static_assert(kMenuItemCount <= CAppMenu::kMaxItems, "grow CAppMenu::kMaxItems to match kMenuItems");
+constexpr u32 item_count = static_cast<u32>(std::size(menu_items));
 
-// The hairline plus the air on either side of it - one number, so the height math and the
-// per-item walk cannot disagree.
-constexpr float kGroupSeparatorBlock = kSeparatorGap * 2.0f + 1.0f;
-
-// Exhaustive on purpose: adding an action without an icon is a compile error here rather than
-// a blank square at runtime.
-const CTexture *IconForItem(const CAssetManager &assets, u64 index)
-{
-	switch (kMenuItems[index].Action) {
-		case EAppMenuAction::OpenSettings:
-			return assets.Get(EAsset::IconSettings);
-		case EAppMenuAction::OpenDataFolder:
-			return assets.Get(EAsset::IconFolder);
-		case EAppMenuAction::CheckForUpdates:
-			return assets.Get(EAsset::IconUpdate);
-		case EAppMenuAction::None:
-			break;
-	}
-
-	return nullptr;
-}
-
-// The only place the item stride is expressed: walks the table so every separator above the
-// index is counted exactly once.
-float ItemOffsetY(u64 index)
+float item_offset(u32 t_item)
 {
 	float offset = 0.0f;
 
-	for (u64 i = 0; i < index; i += 1) {
-		offset += kMenuItemHeight;
-
-		if (i + 1 < kMenuItemCount && kMenuItems[i + 1].StartsGroup) {
-			offset += kGroupSeparatorBlock;
-		}
+	for (u32 i = 1; i <= t_item; i += 1) {
+		offset += item_height + (menu_items[i].starts_group ? separator_block : 0.0f);
 	}
 
 	return offset;
 }
 
-Rect MenuRect(float openAmount)
+Rect menu_rect(float t_open_amount)
 {
-	const float h = kMenuPadding * 2.0f + ItemOffsetY(kMenuItemCount - 1) + kMenuItemHeight;
-	const float slide = (1.0f - openAmount) * -kMenuSlidePixels;
+	const float height = menu_padding * 2.0f + item_offset(item_count - 1) + item_height;
+	const float slide = (1.0f - t_open_amount) * -slide_distance;
 
-	return Rect{kMenuX, kTitleBarHeight + 4.0f + slide, kMenuWidth, h};
+	return Rect{menu_x, title_bar_height + 4.0f + slide, menu_width, height};
 }
 
-Rect ItemRect(Rect menu, u64 index)
+Rect item_rect(Rect t_menu, u32 t_item)
 {
-	return Rect{menu.X, menu.Y + kMenuPadding + ItemOffsetY(index), menu.W, kMenuItemHeight};
+	return Rect{t_menu.x, t_menu.y + menu_padding + item_offset(t_item), t_menu.w, item_height};
+}
 }
 
-Rect GroupSeparatorRect(Rect menu, u64 index)
+AppMenu::AppMenu(const Settings &t_settings, const Fonts &t_fonts, const Assets &t_assets, CommandQueue &t_commands)
+	: m_settings(t_settings)
+	, m_fonts(t_fonts)
+	, m_assets(t_assets)
+	, m_commands(t_commands)
 {
-	const Rect item = ItemRect(menu, index);
-
-	return Rect{menu.X + kMenuContentX, item.Y - kSeparatorGap - 1.0f, menu.W - kMenuContentX * 2.0f, 1.0f};
+	static_assert(item_count <= max_items);
 }
 
-// Inset from the popup's edges so the highlight reads as a chip inside the menu rather than a
-// full-width band cutting it in half.
-Rect ItemHighlightRect(Rect item)
+void AppMenu::open(bool t_settings_available)
 {
-	return Rect{item.X + kMenuInsetX, item.Y, item.W - kMenuInsetX * 2.0f, item.H};
+	m_settings_available = t_settings_available;
+	m_open = true;
 }
 
-// Puts the glyphs' visual centre - not just the ascent - on the row's centre, level with the
-// icon. The nudge closes the last couple of pixels the metric math alone does not; it is
-// empirical rather than font-exact.
-float RowBaselineY(Rect row, const CFont &font)
+void AppMenu::close()
 {
-	constexpr float kBaselineVisualNudge = 2.0f;
-
-	return row.Y + row.H * 0.5f + (font.GetAscent() + font.GetDescent()) * 0.5f - kBaselineVisualNudge;
-}
-} // namespace
-
-CAppMenu::CAppMenu(const CFontManager &fonts, const CAssetManager &assets, const Settings &settings,
-				   const bool &appLocked)
-	: m_fonts(fonts)
-	, m_assets(assets)
-	, m_settings(settings)
-	, m_appLocked(appLocked)
-{
+	m_open = false;
 }
 
-void CAppMenu::Open()
+bool AppMenu::is_enabled(u32 t_item) const
 {
-	m_bOpen = true;
+	return menu_items[t_item].command != CommandType::open_settings || m_settings_available;
 }
 
-// Nothing transient to reset: the hover amounts ease back down on their own.
-void CAppMenu::Close()
+void AppMenu::update(float t_delta_seconds)
 {
-	m_bOpen = false;
+	m_open_amount = animation::ease_toward(m_open_amount, m_open ? 1.0f : 0.0f, open_ease_rate, t_delta_seconds);
+
+	const Rect menu = menu_rect(m_open_amount);
+
+	for (u32 i = 0; i < item_count; i += 1) {
+		const bool hovered = is_blocking() && is_enabled(i) && item_rect(menu, i).contains(m_mouse);
+		m_item_hover[i] =
+			animation::ease_toward(m_item_hover[i], hovered ? 1.0f : 0.0f, hover_ease_rate, t_delta_seconds);
+	}
 }
 
-bool CAppMenu::IsItemEnabled(u64 index) const
+bool AppMenu::on_pointer_up(Vec2 t_point)
 {
-	if (kMenuItems[index].Action == EAppMenuAction::OpenSettings) return !m_appLocked;
+	if (!is_blocking()) return false;
+
+	const Rect menu = menu_rect(m_open_amount);
+
+	for (u32 i = 0; i < item_count; i += 1) {
+		if (is_enabled(i) && item_rect(menu, i).contains(t_point)) {
+			m_commands.push(Command{.type = menu_items[i].command});
+			break;
+		}
+	}
+
+	close();
 
 	return true;
 }
 
-void CAppMenu::Update(float deltaSeconds)
+CursorKind AppMenu::cursor() const
 {
-	m_flOpenAmount = CAnimator::EaseToward(m_flOpenAmount, m_bOpen ? 1.0f : 0.0f, kMenuOpenEaseRate, deltaSeconds);
-	if (!m_bOpen && m_flOpenAmount < 0.002f) {
-		m_flOpenAmount = 0.0f;
+	if (!is_blocking()) return CursorKind::arrow;
+
+	const Rect menu = menu_rect(m_open_amount);
+
+	for (u32 i = 0; i < item_count; i += 1) {
+		if (is_enabled(i) && item_rect(menu, i).contains(m_mouse)) return CursorKind::hand;
 	}
 
-	const Rect menu = MenuRect(m_flOpenAmount);
-
-	for (u64 i = 0; i < kMenuItemCount; i += 1) {
-		// A row that is currently a no-op gets no hover highlight either.
-		const bool hovered =
-			IsBlocking() && IsItemEnabled(i) && RectContainsPoint(ItemRect(menu, i), m_flMouseX, m_flMouseY);
-
-		m_aItemHoverAmount[i] =
-			CAnimator::EaseToward(m_aItemHoverAmount[i], hovered ? 1.0f : 0.0f, kItemHoverEaseRate, deltaSeconds);
-	}
+	return CursorKind::arrow;
 }
 
-bool CAppMenu::OnPointerUp(float x, float y)
+void AppMenu::draw(DrawList &t_draw_list)
 {
-	if (!IsBlocking()) return false;
+	if (m_open_amount <= 0.001f) return;
 
-	const Rect menu = MenuRect(m_flOpenAmount);
+	const auto alpha = static_cast<u8>(255.0f * m_open_amount);
+	const Rect menu = menu_rect(m_open_amount);
+	const Font &font = m_fonts.body();
 
-	for (u64 i = 0; i < kMenuItemCount; i += 1) {
-		if (!RectContainsPoint(ItemRect(menu, i), x, y)) continue;
+	t_draw_list.add_bordered_rect(menu, rounded(menu_radius), with_alpha(color_background, alpha),
+								  with_alpha(color_border, alpha), 1.0f);
 
-		if (IsItemEnabled(i)) {
-			m_pendingAction = kMenuItems[i].Action;
+	for (u32 i = 0; i < item_count; i += 1) {
+		const Rect item = item_rect(menu, i);
+
+		if (menu_items[i].starts_group) {
+			const Rect separator{menu.x + content_x, item.y - separator_gap - 1.0f, menu.w - content_x * 2.0f, 1.0f};
+			t_draw_list.add_rect(separator, with_alpha(color_separator, alpha));
 		}
 
-		break;
-	}
-
-	Close();
-
-	return true;
-}
-
-ECursorKind CAppMenu::GetDesiredCursor() const
-{
-	if (!IsBlocking()) return ECursorKind::Arrow;
-
-	const Rect menu = MenuRect(m_flOpenAmount);
-
-	for (u64 i = 0; i < kMenuItemCount; i += 1) {
-		if (IsItemEnabled(i) && RectContainsPoint(ItemRect(menu, i), m_flMouseX, m_flMouseY)) {
-			return ECursorKind::Hand;
-		}
-	}
-
-	return ECursorKind::Arrow;
-}
-
-EAppMenuAction CAppMenu::ConsumeAction()
-{
-	const EAppMenuAction action = m_pendingAction;
-	m_pendingAction = EAppMenuAction::None;
-
-	return action;
-}
-
-void CAppMenu::Draw(CDrawList &drawList)
-{
-	if (m_flOpenAmount <= 0.001f) return;
-
-	const auto alpha = static_cast<u8>(255.0f * m_flOpenAmount);
-	const Rect rect = MenuRect(m_flOpenAmount);
-	const CFont &body = m_fonts.GetBody();
-
-	drawList.AddRectRoundedFilled(rect.X, rect.Y, rect.W, rect.H, CDrawList::UniformRadii(kMenuRadius),
-								  ColorWithAlpha(kColorBorder, alpha));
-	drawList.AddRectRoundedFilled(rect.X + 1.0f, rect.Y + 1.0f, rect.W - 2.0f, rect.H - 2.0f,
-								  CDrawList::UniformRadii(kMenuRadius - 1.0f), ColorWithAlpha(kColorBg, alpha));
-
-	for (u64 i = 1; i < kMenuItemCount; i += 1) {
-		if (!kMenuItems[i].StartsGroup) continue;
-
-		const Rect separator = GroupSeparatorRect(rect, i);
-		drawList.AddRectFilled(separator.X, separator.Y, separator.W, separator.H,
-							   ColorWithAlpha(kColorSeparator, alpha));
-	}
-
-	for (u64 i = 0; i < kMenuItemCount; i += 1) {
-		const Rect item = ItemRect(rect, i);
-		const float hover = m_aItemHoverAmount[i];
-
-		if (hover > 0.001f) {
-			// The user's accent mixed most of the way back toward the background: a
-			// full-strength fill behind body text would be louder than anything else on
-			// screen, and this menu is not the app's focal point.
-			const Color hoverColor = ColorLerp(kColorBg, m_settings.m_clrAccent, 0.28f);
-			const auto hoverAlpha = static_cast<u8>(static_cast<float>(alpha) * hover);
-			const Rect highlight = ItemHighlightRect(item);
-
-			drawList.AddRectRoundedFilled(highlight.X, highlight.Y, highlight.W, highlight.H,
-										  CDrawList::UniformRadii(7.0f), ColorWithAlpha(hoverColor, hoverAlpha));
+		if (m_item_hover[i] > 0.001f) {
+			const Color hover_color = mix(color_background, m_settings.accent, 0.28f);
+			const auto hover_alpha = static_cast<u8>(alpha * m_item_hover[i]);
+			t_draw_list.add_rounded_rect(item.inset(highlight_inset, 0.0f), rounded(7.0f),
+										 with_alpha(hover_color, hover_alpha));
 		}
 
-		const Color textColor = IsItemEnabled(i) ? kColorText : kColorTextDisabled;
+		const Color content_color = with_alpha(is_enabled(i) ? color_text : color_text_disabled, alpha);
+		const Rect icon{item.x + content_x, item.y + (item.h - icon_size) * 0.5f, icon_size, icon_size};
+		const float baseline = font.centered_baseline(item) - baseline_nudge;
 
-		// Every row shares the same left padding, so icons - and the text shifted over to make
-		// room - always land at the same x.
-		const Rect icon{item.X + kMenuContentX, item.Y + (item.H - kMenuIconSize) * 0.5f, kMenuIconSize, kMenuIconSize};
-		drawList.AddRectRoundedTextured(icon.X, icon.Y, icon.W, icon.H, kCornerRadiiNone, IconForItem(m_assets, i),
-										ColorWithAlpha(textColor, alpha));
-
-		DrawText(drawList, body, icon.X + kMenuIconSize + kMenuIconTextGap, RowBaselineY(item, body),
-				 kMenuItems[i].pLabel, ColorWithAlpha(textColor, alpha));
+		t_draw_list.add_image(icon, m_assets.get(menu_items[i].icon), content_color);
+		draw_text(t_draw_list, font, Vec2{icon.right() + icon_text_gap, baseline}, menu_items[i].label, content_color);
 	}
 }

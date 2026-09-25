@@ -1,168 +1,141 @@
 #include "core/crash_handler.h"
 
-#include "core/app_identity.h"
-#include "core/app_paths.h"
-
 #include <atomic>
 #include <cstdlib>
 #include <cwchar>
 #include <exception>
-#include <string>
 
 #include <Windows.h>
 #include <CommCtrl.h>
 #include <DbgHelp.h>
-#include <combaseapi.h>
 #include <shellapi.h>
-#include <shlobj.h>
+
+#include "core/app_identity.h"
+#include "core/file.h"
 
 namespace {
-constexpr int kOpenFolderButtonId = 1001;
-constexpr int kCloseButtonId = 1002;
+constexpr int open_folder_button_id = 1001;
+constexpr int close_button_id = 1002;
 
-// Full memory so the dump can be opened in a real debugger and inspected by hand, not just
-// read as a curated call stack.
-constexpr auto kCrashDumpType = static_cast<MINIDUMP_TYPE>(MiniDumpWithFullMemory | MiniDumpWithHandleData |
-														   MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules);
+constexpr auto crash_dump_type = static_cast<MINIDUMP_TYPE>(MiniDumpWithFullMemory | MiniDumpWithHandleData |
+															MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules);
 
-// Much cheaper than kCrashDumpType: a hang dump is taken while the process is still
-// expected to carry on, so it captures stacks without the hundreds of megabytes.
-constexpr auto kHangDumpType =
+constexpr auto hang_dump_type =
 	static_cast<MINIDUMP_TYPE>(MiniDumpWithThreadInfo | MiniDumpWithHandleData | MiniDumpWithUnloadedModules);
 
-// Guards against crashing while already handling a crash - the second one falls through to
-// the OS rather than recursing or racing the first.
-std::atomic<bool> g_bHandlingCrash{false};
+std::atomic<bool> g_handling_crash{false};
 
-std::wstring CrashDumpDirectory()
+std::wstring crash_dump_directory()
 {
-	return AppDataSubdirectory(L"crashes");
+	return app_data_subdirectory(L"crashes");
 }
 
-std::wstring FormatTimestamp()
+std::wstring timestamp()
 {
-	SYSTEMTIME st;
-	GetLocalTime(&st);
+	SYSTEMTIME time;
+	GetLocalTime(&time);
 
 	wchar_t buffer[32];
-	swprintf_s(buffer, L"%04u%02u%02u_%02u%02u%02u", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+	swprintf_s(buffer, L"%04u%02u%02u_%02u%02u%02u", time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute,
+			   time.wSecond);
 
 	return buffer;
 }
 
-// "<module>+0x1A2B3C" - the one piece of a raw crash that is useful against a disassembly
-// without loading the dump first.
-std::wstring ModuleRelativeOffset(void *pAddress)
+std::wstring module_relative_address(void *t_address)
 {
-	const HMODULE hModule = GetModuleHandleW(nullptr);
+	const HMODULE module = GetModuleHandleW(nullptr);
 
-	wchar_t modulePath[MAX_PATH]{};
-	GetModuleFileNameW(hModule, modulePath, ARRAYSIZE(modulePath));
+	wchar_t module_path[MAX_PATH]{};
+	GetModuleFileNameW(module, module_path, MAX_PATH);
 
-	const wchar_t *pBaseName = wcsrchr(modulePath, L'\\');
-	pBaseName = pBaseName != nullptr ? pBaseName + 1 : modulePath;
+	const wchar_t *last_separator = wcsrchr(module_path, L'\\');
+	const wchar_t *module_name = last_separator != nullptr ? last_separator + 1 : module_path;
 
-	const auto base = reinterpret_cast<uptr>(hModule);
-	const auto address = reinterpret_cast<uptr>(pAddress);
+	const auto base = reinterpret_cast<uptr>(module);
+	const auto address = reinterpret_cast<uptr>(t_address);
 
 	wchar_t buffer[MAX_PATH + 32];
 	if (address >= base) {
-		swprintf_s(buffer, L"%s+0x%llX", pBaseName, static_cast<unsigned long long>(address - base));
+		swprintf_s(buffer, L"%s+0x%llX", module_name, static_cast<unsigned long long>(address - base));
 	} else {
-		swprintf_s(buffer, L"%s (address outside module: 0x%p)", pBaseName, pAddress);
+		swprintf_s(buffer, L"%s (address outside module: 0x%p)", module_name, t_address);
 	}
 
 	return buffer;
 }
 
-// A null pExceptionPointers is meaningful: MiniDumpWriteDump reads it as "capture the
-// current state of every thread", which is the right fallback for the non-SEH paths and for
-// a hang dump.
-std::wstring WriteMiniDump(EXCEPTION_POINTERS *pExceptionPointers, const std::wstring &dumpDirectory,
-						   const wchar_t *pTag, MINIDUMP_TYPE dumpType)
+std::wstring write_minidump(EXCEPTION_POINTERS *t_exception, const std::wstring &t_directory, const wchar_t *t_tag,
+							MINIDUMP_TYPE t_type)
 {
-	if (dumpDirectory.empty()) return L"";
+	if (t_directory.empty()) return {};
 
-	const std::wstring path = dumpDirectory + L"\\" + kAppNameW + L"_" + pTag + L"_" + FormatTimestamp() + L".dmp";
-	const HANDLE hFile =
+	const std::wstring path = t_directory + L"\\" + app_name_wide + L"_" + t_tag + L"_" + timestamp() + L".dmp";
+	const HANDLE file =
 		CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-	if (hFile == INVALID_HANDLE_VALUE) return L"";
+	if (file == INVALID_HANDLE_VALUE) return {};
 
-	MINIDUMP_EXCEPTION_INFORMATION exceptionInfo{};
-	exceptionInfo.ThreadId = GetCurrentThreadId();
-	exceptionInfo.ExceptionPointers = pExceptionPointers;
-	exceptionInfo.ClientPointers = FALSE;
+	MINIDUMP_EXCEPTION_INFORMATION exception_info{
+		.ThreadId = GetCurrentThreadId(),
+		.ExceptionPointers = t_exception,
+		.ClientPointers = FALSE,
+	};
 
-	const BOOL written = MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), hFile, dumpType,
-										   pExceptionPointers != nullptr ? &exceptionInfo : nullptr, nullptr, nullptr);
-	CloseHandle(hFile);
+	const BOOL written = MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file, t_type,
+										   t_exception != nullptr ? &exception_info : nullptr, nullptr, nullptr);
+	CloseHandle(file);
 
-	return written != FALSE ? path : L"";
+	return written ? path : std::wstring{};
 }
 
-// Returning S_FALSE keeps the dialog open, so Open Crash Folder does not double as a way out
-// of it.
-HRESULT CALLBACK CrashDialogCallback(HWND hWnd, UINT msg, WPARAM wParam, LPARAM /*lParam*/, LONG_PTR lpRefData)
+HRESULT CALLBACK crash_dialog_callback(HWND t_window, UINT t_notification, WPARAM t_button, LPARAM,
+									   LONG_PTR t_dump_directory)
 {
-	if (msg != TDN_BUTTON_CLICKED || wParam != kOpenFolderButtonId) return S_OK;
+	if (t_notification != TDN_BUTTON_CLICKED || t_button != open_folder_button_id) return S_OK;
 
-	const auto *pDumpDirectory = reinterpret_cast<const wchar_t *>(lpRefData);
-	if (pDumpDirectory != nullptr && pDumpDirectory[0] != L'\0') {
-		ShellExecuteW(hWnd, L"open", pDumpDirectory, nullptr, nullptr, SW_SHOWNORMAL);
+	const auto *dump_directory = reinterpret_cast<const wchar_t *>(t_dump_directory);
+	if (dump_directory != nullptr && dump_directory[0] != L'\0') {
+		ShellExecuteW(t_window, L"open", dump_directory, nullptr, nullptr, SW_SHOWNORMAL);
 	}
 
 	return S_FALSE;
 }
 
-std::wstring BuildCrashDialogText(const std::wstring &reason, const std::wstring &offset, const std::wstring &dumpPath)
+void show_crash_dialog(const std::wstring &t_reason, const std::wstring &t_location, const std::wstring &t_dump_path,
+					   const std::wstring &t_dump_directory)
 {
-	std::wstring text = L"An unexpected error occurred and the app needs to close. A crash report has been saved "
-						L"locally.\n\nError: " +
-						reason + L"\nLocation: " + offset;
+	std::wstring content = L"An unexpected error occurred and the app needs to close. A crash report has been saved "
+						   L"locally.\n\nError: " +
+						   t_reason + L"\nLocation: " + t_location;
+	content +=
+		t_dump_path.empty() ? L"\n\nThe crash report itself could not be saved." : L"\n\nSaved to:\n" + t_dump_path;
 
-	text += dumpPath.empty() ? std::wstring(L"\n\nThe crash report itself could not be saved.")
-							 : (L"\n\nSaved to:\n" + dumpPath);
-
-	return text;
-}
-
-// A TaskDialog rather than MessageBoxW, for the Open Crash Folder button its fixed button
-// sets cannot provide. No IDCANCEL and no TDF_ALLOW_DIALOG_CANCELLATION, so Close is the only
-// way out. hwndParent is null on purpose: this app's window may be in an arbitrary state
-// by the time this runs.
-void ShowCrashDialog(const std::wstring &reason, const std::wstring &offset, const std::wstring &dumpPath,
-					 const std::wstring &dumpDirectory)
-{
-	const std::wstring content = BuildCrashDialogText(reason, offset, dumpPath);
+	const std::wstring instruction = std::wstring{app_name_wide} + L" has stopped working";
 
 	const TASKDIALOG_BUTTON buttons[]{
-		{kOpenFolderButtonId, L"Open Crash Folder"},
-		{kCloseButtonId, L"Close"},
+		{open_folder_button_id, L"Open Crash Folder"},
+		{close_button_id, L"Close"},
 	};
-
-	const std::wstring instruction = std::wstring(kAppNameW) + L" has stopped working";
 
 	TASKDIALOGCONFIG config{};
 	config.cbSize = sizeof(config);
-	config.hwndParent = nullptr;
 	config.dwFlags = TDF_SIZE_TO_CONTENT;
-	config.pszWindowTitle = kAppNameW;
+	config.pszWindowTitle = app_name_wide;
 	config.pszMainIcon = TD_ERROR_ICON;
 	config.pszMainInstruction = instruction.c_str();
 	config.pszContent = content.c_str();
-	config.pButtons = buttons;
 	config.cButtons = ARRAYSIZE(buttons);
-	config.nDefaultButton = kCloseButtonId;
-	config.pfCallback = CrashDialogCallback;
-	config.lpCallbackData = reinterpret_cast<LONG_PTR>(dumpDirectory.c_str());
+	config.pButtons = buttons;
+	config.nDefaultButton = close_button_id;
+	config.pfCallback = crash_dialog_callback;
+	config.lpCallbackData = reinterpret_cast<LONG_PTR>(t_dump_directory.c_str());
 
-	int selectedButton = 0;
-	TaskDialogIndirect(&config, &selectedButton, nullptr, nullptr);
+	TaskDialogIndirect(&config, nullptr, nullptr, nullptr);
 }
 
-const wchar_t *ExceptionCodeName(DWORD code)
+const wchar_t *exception_name(DWORD t_code)
 {
-	switch (code) {
+	switch (t_code) {
 		case EXCEPTION_ACCESS_VIOLATION:
 			return L"Access violation";
 		case EXCEPTION_STACK_OVERFLOW:
@@ -186,97 +159,83 @@ const wchar_t *ExceptionCodeName(DWORD code)
 	}
 }
 
-LONG WINAPI UnhandledExceptionFilterProc(EXCEPTION_POINTERS *pExceptionPointers)
+void report_crash(EXCEPTION_POINTERS *t_exception, const wchar_t *t_reason)
 {
-	bool expected = false;
-	if (!g_bHandlingCrash.compare_exchange_strong(expected, true)) return EXCEPTION_CONTINUE_SEARCH;
+	const std::wstring location = module_relative_address(t_exception->ExceptionRecord->ExceptionAddress);
+	const std::wstring dump_directory = crash_dump_directory();
+	const std::wstring dump_path = write_minidump(t_exception, dump_directory, L"crash", crash_dump_type);
 
-	const DWORD code = pExceptionPointers->ExceptionRecord->ExceptionCode;
+	show_crash_dialog(t_reason, location, dump_path, dump_directory);
+}
 
-	// A stack overflow leaves almost no stack for the rest of this handler; reclaiming the
-	// guard page buys back enough room for std::wstring and DbgHelp below.
+LONG WINAPI unhandled_exception_filter(EXCEPTION_POINTERS *t_exception)
+{
+	bool already_handling = false;
+	if (!g_handling_crash.compare_exchange_strong(already_handling, true)) return EXCEPTION_CONTINUE_SEARCH;
+
+	const DWORD code = t_exception->ExceptionRecord->ExceptionCode;
+
+	// Restores the guard page so the handler below has stack to run on.
 	if (code == EXCEPTION_STACK_OVERFLOW) {
 		_resetstkoflw();
 	}
 
-	const std::wstring reason = ExceptionCodeName(code);
-	const std::wstring offset = ModuleRelativeOffset(pExceptionPointers->ExceptionRecord->ExceptionAddress);
-	const std::wstring dumpDirectory = CrashDumpDirectory();
-	const std::wstring dumpPath = WriteMiniDump(pExceptionPointers, dumpDirectory, L"crash", kCrashDumpType);
+	report_crash(t_exception, exception_name(code));
 
-	ShowCrashDialog(reason, offset, dumpPath, dumpDirectory);
-
-	return EXCEPTION_EXECUTE_HANDLER; // terminate now, without WER's dialog on top of ours
+	return EXCEPTION_EXECUTE_HANDLER;
 }
 
-// The non-SEH paths hand over no EXCEPTION_POINTERS, so this synthesizes one from the current
-// register state. Its instruction pointer is not where the underlying problem started, but it
-// is where the process actually stopped being able to continue.
-[[noreturn]] void HandleFatalCondition(const wchar_t *pReason)
+[[noreturn]] void handle_fatal_condition(const wchar_t *t_reason)
 {
-	bool expected = false;
-	if (!g_bHandlingCrash.compare_exchange_strong(expected, true)) {
+	bool already_handling = false;
+	if (!g_handling_crash.compare_exchange_strong(already_handling, true)) {
 		std::abort();
 	}
 
 	CONTEXT context{};
 	RtlCaptureContext(&context);
 
-	EXCEPTION_RECORD exceptionRecord{};
-	exceptionRecord.ExceptionCode = STATUS_FATAL_APP_EXIT;
+	EXCEPTION_RECORD record{.ExceptionCode = STATUS_FATAL_APP_EXIT};
 #if defined(_M_X64)
-	exceptionRecord.ExceptionAddress = reinterpret_cast<void *>(context.Rip);
+	record.ExceptionAddress = reinterpret_cast<void *>(context.Rip);
 #elif defined(_M_IX86)
-	exceptionRecord.ExceptionAddress = reinterpret_cast<void *>(context.Eip);
+	record.ExceptionAddress = reinterpret_cast<void *>(context.Eip);
 #endif
 
-	EXCEPTION_POINTERS exceptionPointers{&exceptionRecord, &context};
-
-	const std::wstring offset = ModuleRelativeOffset(exceptionRecord.ExceptionAddress);
-	const std::wstring dumpDirectory = CrashDumpDirectory();
-	const std::wstring dumpPath = WriteMiniDump(&exceptionPointers, dumpDirectory, L"crash", kCrashDumpType);
-
-	ShowCrashDialog(pReason, offset, dumpPath, dumpDirectory);
+	EXCEPTION_POINTERS pointers{&record, &context};
+	report_crash(&pointers, t_reason);
 
 	std::abort();
 }
 
-// std::terminate has several real causes and this path knows none of them for certain, so it
-// reports only what it does know.
-[[noreturn]] void TerminateHandler()
+[[noreturn]] void on_terminate()
 {
-	HandleFatalCondition(L"Unhandled exception");
+	handle_fatal_condition(L"Unhandled exception");
 }
 
-[[noreturn]] void __cdecl PureCallHandler()
+[[noreturn]] void __cdecl on_pure_call()
 {
-	HandleFatalCondition(L"Pure virtual function call");
+	handle_fatal_condition(L"Pure virtual function call");
 }
 
-void __cdecl InvalidParameterHandler(const wchar_t *, const wchar_t *, const wchar_t *, unsigned int, uptr)
+void __cdecl on_invalid_parameter(const wchar_t *, const wchar_t *, const wchar_t *, unsigned int, uptr)
 {
-	HandleFatalCondition(L"CRT invalid parameter");
+	handle_fatal_condition(L"CRT invalid parameter");
 }
-} // namespace
+}
 
-void InstallCrashHandler()
+void install_crash_handler()
 {
-	// ShowCrashDialog replaces both of Windows' own crash UIs, so a user sees exactly one
-	// dialog and it is the one with useful information in it.
 	SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
 	_set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 
-	SetUnhandledExceptionFilter(UnhandledExceptionFilterProc);
-	std::set_terminate(TerminateHandler);
-	_set_purecall_handler(PureCallHandler);
-	_set_invalid_parameter_handler(InvalidParameterHandler);
+	SetUnhandledExceptionFilter(unhandled_exception_filter);
+	std::set_terminate(on_terminate);
+	_set_purecall_handler(on_pure_call);
+	_set_invalid_parameter_handler(on_invalid_parameter);
 }
 
-std::wstring WriteDiagnosticDump(const wchar_t *pTag)
+std::wstring write_diagnostic_dump(const wchar_t *t_tag)
 {
-	// Outside g_bHandlingCrash: a diagnostic dump is not a crash, and taking one
-	// must never make a later real crash fall through unhandled.
-	const wchar_t *pResolvedTag = pTag != nullptr && pTag[0] != L'\0' ? pTag : L"diagnostic";
-
-	return WriteMiniDump(nullptr, CrashDumpDirectory(), pResolvedTag, kHangDumpType);
+	return write_minidump(nullptr, crash_dump_directory(), t_tag, hang_dump_type);
 }

@@ -1,13 +1,7 @@
 #include "core/storage.h"
 
-#include "core/app_identity.h"
-#include "core/debug_log.h"
-#include "core/str.h"
-
-#include <algorithm>
-#include <cstdio>
 #include <cstring>
-#include <string>
+#include <span>
 #include <vector>
 
 #include <Windows.h>
@@ -15,496 +9,435 @@
 #include <nlohmann/json.hpp>
 #include <sodium.h>
 
-#include "core/account.h"
-#include "core/atomic_file.h"
-#include "core/crypto.h"
-#include <string_view>
+#include "core/app_identity.h"
+#include "core/debug_log.h"
+#include "core/file.h"
+#include "core/str.h"
 
 using nlohmann::json;
 
 namespace {
-constexpr int kFormatVersion = 1;
-constexpr const char *kAccountsFileName = "accounts.vault";
-constexpr const char *kSettingsFileName = "settings.json";
+constexpr int format_version = 1;
+constexpr const char *accounts_file_name = "accounts.vault";
+constexpr const char *settings_file_name = "settings.json";
 
-// Cleared by a failed load, never set again. See CStorage::IsSettingsWritable.
-bool g_bSettingsWritable = true;
-bool g_bAccountsWritable = true;
+bool g_settings_writable = true;
+bool g_accounts_writable = true;
+u8 g_saved_accounts_digest[crypto_generichash_BYTES]{};
 
-// A load result that must seal the file: the file is there, but nothing readable came out of
-// either it or its .bak, so whatever is in memory is defaults rather than the user's data.
-// NoFile is not that - a first run has nothing to protect and must be free to write.
-bool SealsFile(EStorageLoadResult result)
+void accounts_digest(std::span<const u8> t_plaintext, const MasterKey &t_master_key, u8 *t_out_digest)
 {
-	return result == EStorageLoadResult::Failed;
+	crypto_generichash(t_out_digest, crypto_generichash_BYTES, t_plaintext.data(), t_plaintext.size(),
+					   t_master_key.data_key(), crypto::key_size);
 }
 
-bool PathExists(const char *pPath)
+void remember_saved_accounts(std::span<const u8> t_plaintext, const MasterKey &t_master_key)
 {
-	return GetFileAttributesA(pPath) != INVALID_FILE_ATTRIBUTES;
+	accounts_digest(t_plaintext, t_master_key, g_saved_accounts_digest);
 }
 
-// Moves one data file out of the newest legacy folder that still has it. Keyed on the file rather
-// than on the folder, because the folder is not a reliable signal: the diagnostic log creates the
-// new folder during startup, well before storage is first touched, so a folder-level check would
-// find it already there and conclude there was nothing to migrate.
-//
-// A file already present under the new name always wins - this only ever fills a gap, so running
-// an old build again after migrating cannot clobber newer data on the way back.
-void MigrateLegacyFile(const char *pLocalAppData, const char *pNewDir, const char *pFileName)
+bool matches_saved_accounts(std::span<const u8> t_plaintext, const MasterKey &t_master_key)
 {
-	char newPath[MAX_PATH];
-	std::snprintf(newPath, sizeof(newPath), "%s\\%s", pNewDir, pFileName);
+	u8 digest[crypto_generichash_BYTES];
+	accounts_digest(t_plaintext, t_master_key, digest);
 
-	if (PathExists(newPath)) return;
+	return sodium_memcmp(digest, g_saved_accounts_digest, sizeof(digest)) == 0;
+}
 
-	for (const char *pLegacyName : kLegacyDataFolderNames) {
-		char legacyPath[MAX_PATH];
-		std::snprintf(legacyPath, sizeof(legacyPath), "%s\\%s\\%s", pLocalAppData, pLegacyName, pFileName);
+bool path_exists(const std::string &t_path)
+{
+	return GetFileAttributesA(t_path.c_str()) != INVALID_FILE_ATTRIBUTES;
+}
 
-		if (PathExists(legacyPath) && CopyFileA(legacyPath, newPath, TRUE)) {
-			DebugLog::Write("storage", "migrated %s from the %s folder", pFileName, pLegacyName);
+std::string local_app_data_root()
+{
+	char buffer[MAX_PATH];
+	const DWORD length = GetEnvironmentVariableA("LOCALAPPDATA", buffer, sizeof(buffer));
+
+	return length > 0 && length < sizeof(buffer) ? std::string{buffer, length} : std::string{};
+}
+
+void migrate_legacy_file(const std::string &t_root, const std::string &t_directory, const char *t_file_name)
+{
+	const std::string path = t_directory + "\\" + t_file_name;
+	if (path_exists(path)) return;
+
+	for (const char *legacy_folder : legacy_data_folder_names) {
+		const std::string legacy_path = t_root + "\\" + legacy_folder + "\\" + t_file_name;
+
+		if (path_exists(legacy_path) && CopyFileA(legacy_path.c_str(), path.c_str(), TRUE)) {
+			debug_log::write("storage", "migrated %s from the %s folder", t_file_name, legacy_folder);
 			return;
 		}
 	}
 }
 
-bool GetStorageDirectory(char *pBuffer, usize bufferSize)
+std::string storage_path(const char *t_file_name)
 {
-	char localAppData[MAX_PATH];
-	const DWORD length = GetEnvironmentVariableA("LOCALAPPDATA", localAppData, sizeof(localAppData));
-	if (length == 0 || length >= sizeof(localAppData)) return false;
+	const std::string directory = storage::data_directory();
 
-	char dir[MAX_PATH];
-	std::snprintf(dir, sizeof(dir), "%s\\%s", localAppData, kAppDataFolderName);
-	CreateDirectoryA(dir, nullptr);
-
-	// Copied rather than moved, so a rollback to a build that still looks under the old name
-	// finds its data intact. The duplicate is the price of that, and it is two small files.
-	MigrateLegacyFile(localAppData, dir, kAccountsFileName);
-	MigrateLegacyFile(localAppData, dir, kSettingsFileName);
-
-	const int written = std::snprintf(pBuffer, bufferSize, "%s", dir);
-
-	return written > 0 && static_cast<usize>(written) < bufferSize;
+	return directory.empty() ? std::string{} : directory + "\\" + t_file_name;
 }
 
-bool GetStorageFilePath(const char *pFileName, char *pBuffer, usize bufferSize)
+std::string to_hex(std::span<const u8> t_bytes)
 {
-	char dir[MAX_PATH];
-	if (!GetStorageDirectory(dir, sizeof(dir))) return false;
+	std::string hex(t_bytes.size() * 2 + 1, '\0');
+	sodium_bin2hex(hex.data(), hex.size(), t_bytes.data(), t_bytes.size());
+	hex.pop_back();
 
-	const int written = std::snprintf(pBuffer, bufferSize, "%s\\%s", dir, pFileName);
-
-	return written > 0 && static_cast<usize>(written) < bufferSize;
+	return hex;
 }
 
-bool FileExists(const char *pPath)
+bool from_hex(const std::string &t_hex, std::span<u8> t_out)
 {
-	FILE *pFile = nullptr;
-	const bool exists = fopen_s(&pFile, pPath, "rb") == 0 && pFile != nullptr;
+	usize decoded = 0;
 
-	if (pFile != nullptr) {
-		std::fclose(pFile);
-	}
-
-	return exists;
+	return t_hex.size() == t_out.size() * 2 &&
+		   sodium_hex2bin(t_out.data(), t_out.size(), t_hex.c_str(), t_hex.size(), nullptr, &decoded, nullptr) == 0 &&
+		   decoded == t_out.size();
 }
 
-std::string BytesToHex(const u8 *pData, usize length)
+std::string to_base64(std::span<const u8> t_bytes)
 {
-	std::string out(length * 2 + 1, '\0');
-	sodium_bin2hex(out.data(), out.size(), pData, length);
-	out.resize(length * 2);
+	std::string encoded(sodium_base64_ENCODED_LEN(t_bytes.size(), sodium_base64_VARIANT_ORIGINAL), '\0');
+	sodium_bin2base64(encoded.data(), encoded.size(), t_bytes.data(), t_bytes.size(), sodium_base64_VARIANT_ORIGINAL);
+	encoded.resize(std::strlen(encoded.c_str()));
 
-	return out;
+	return encoded;
 }
 
-// False - leaving pOut untouched - unless hex decodes to exactly outLength bytes. A key
-// that does not exist yet in an older file lands here and keeps whatever pOut already had.
-bool HexToBytes(const std::string &hex, u8 *pOut, usize outLength)
+bool from_base64(const std::string &t_text, std::vector<u8> &t_out)
 {
-	if (hex.size() != outLength * 2) return false;
+	t_out.resize(t_text.size());
 
-	usize decodedLength = 0;
-
-	return sodium_hex2bin(pOut, outLength, hex.c_str(), hex.size(), nullptr, &decodedLength, nullptr) == 0 &&
-		   decodedLength == outLength;
-}
-
-std::string BytesToBase64(const u8 *pData, usize length)
-{
-	const usize encodedLength = sodium_base64_ENCODED_LEN(length, sodium_base64_VARIANT_ORIGINAL);
-
-	std::string out(encodedLength, '\0');
-	sodium_bin2base64(out.data(), out.size(), pData, length, sodium_base64_VARIANT_ORIGINAL);
-	out.resize(std::strlen(out.c_str()));
-
-	return out;
-}
-
-bool Base64ToBytes(const std::string &base64, std::vector<u8> &outBytes)
-{
-	outBytes.resize(base64.size()); // base64 never decodes to more bytes than it encodes to
-
-	usize decodedLength = 0;
-	if (sodium_base642bin(outBytes.data(), outBytes.size(), base64.c_str(), base64.size(), nullptr, &decodedLength,
-						  nullptr, sodium_base64_VARIANT_ORIGINAL) != 0) {
+	usize decoded = 0;
+	if (sodium_base642bin(t_out.data(), t_out.size(), t_text.c_str(), t_text.size(), nullptr, &decoded, nullptr,
+						  sodium_base64_VARIANT_ORIGINAL) != 0) {
 		return false;
 	}
 
-	outBytes.resize(decodedLength);
+	t_out.resize(decoded);
 
 	return true;
 }
 
-bool ParseJsonFile(const char *pPath, json &outJson)
+bool parse_json_file(const std::string &t_path, json &t_out)
 {
-	u8 *pData = nullptr;
-	usize length = 0;
-	if (!CAtomicFile::ReadFile(pPath, &pData, &length)) return false;
+	std::vector<u8> bytes;
+	if (!read_whole_file(t_path.c_str(), bytes)) return false;
 
-	bool ok = false;
+	t_out = json::parse(bytes.begin(), bytes.end(), nullptr, false);
+
+	return t_out.is_object();
+}
+
+bool read_json_with_backup(const std::string &t_path, json &t_out)
+{
+	return parse_json_file(t_path, t_out) || parse_json_file(backup_path_for(t_path), t_out);
+}
+
+storage::LoadResult missing_or_failed(const std::string &t_path)
+{
+	return path_exists(t_path) ? storage::LoadResult::failed : storage::LoadResult::no_file;
+}
+
+json master_password_to_json(const Settings &t_settings)
+{
+	const MasterKeyParams &key = t_settings.master_key;
+
+	return json{
+		{"enabled", t_settings.master_password_enabled},
+		{"salt_hex", to_hex(key.salt)},
+		{"ops_limit", key.ops_limit},
+		{"mem_limit", static_cast<u64>(key.mem_limit)},
+		{"wrap_nonce_hex", to_hex(key.wrap_nonce)},
+		{"wrapped_dek_hex", to_hex(key.wrapped_data_key)},
+	};
+}
+
+void read_master_password(const json &t_json, Settings &t_settings)
+{
+	t_settings.master_password_enabled = false;
+
+	const auto found = t_json.find("master_password");
+	if (found == t_json.end() || !found->is_object()) return;
+
+	const json &master_password = *found;
+	MasterKeyParams &key = t_settings.master_key;
+
+	t_settings.master_password_enabled = master_password.value("enabled", false);
+	key.ops_limit = master_password.value("ops_limit", u64{0});
+	key.mem_limit = static_cast<usize>(master_password.value("mem_limit", u64{0}));
+	from_hex(master_password.value("salt_hex", std::string{}), key.salt);
+	from_hex(master_password.value("wrap_nonce_hex", std::string{}), key.wrap_nonce);
+	from_hex(master_password.value("wrapped_dek_hex", std::string{}), key.wrapped_data_key);
+}
+
+void read_appearance(const json &t_json, Settings &t_settings)
+{
+	t_settings.animations_enabled = t_json.value("animations_enabled", t_settings.animations_enabled);
+	t_settings.animation_speed = t_json.value("animation_speed", t_settings.animation_speed);
+	t_settings.font_size = t_json.value("font_pixel_size", t_settings.font_size);
+	t_settings.secondary_font_size = t_json.value("secondary_font_pixel_size", t_settings.secondary_font_size);
+	t_settings.corner_roundness = t_json.value("corner_roundness", t_settings.corner_roundness);
+
+	const bool legacy_rounded_corners = t_json.value("rounded_corners_enabled", true);
+	if (!legacy_rounded_corners) {
+		t_settings.corner_roundness = 0.0f;
+	}
+
+	const auto accent = t_json.find("accent_color");
+	if (accent != t_json.end() && accent->is_array() && accent->size() == 4) {
+		const json &channels = *accent;
+		t_settings.accent =
+			Color{channels[0].get<u8>(), channels[1].get<u8>(), channels[2].get<u8>(), channels[3].get<u8>()};
+	}
+
+	copy_to(t_json.value("font_name", std::string{t_settings.font_name}), t_settings.font_name);
+}
+
+storage::LoadResult read_settings(Settings &t_settings)
+{
+	const std::string path = storage_path(settings_file_name);
+	if (path.empty()) return storage::LoadResult::failed;
+
+	json settings;
+	if (!read_json_with_backup(path, settings)) return missing_or_failed(path);
+
 	try {
-		outJson = json::parse(pData, pData + length);
-		ok = outJson.is_object();
+		t_settings.window_width = settings.value("window_width", t_settings.window_width);
+		t_settings.window_height = settings.value("window_height", t_settings.window_height);
+		t_settings.hide_accounts_from_capture =
+			settings.value("exclude_account_list_from_capture", t_settings.hide_accounts_from_capture);
+
+		const bool legacy_minimize_to_tray = settings.value("minimize_to_tray", t_settings.close_to_tray);
+		t_settings.close_to_tray = settings.value("close_to_tray", legacy_minimize_to_tray);
+
+		t_settings.block_overlay_injection =
+			settings.value("block_overlay_injection", t_settings.block_overlay_injection);
+		t_settings.show_notifications = settings.value("show_notifications", t_settings.show_notifications);
+		t_settings.zoom_stop = settings.value("carousel_zoom_stop", t_settings.zoom_stop);
+		t_settings.selected_game = settings.value("carousel_selected_banner", t_settings.selected_game);
+		copy_to(settings.value("last_run_version", std::string{}), t_settings.last_run_version);
+
+		read_appearance(settings, t_settings);
+		read_master_password(settings, t_settings);
 	} catch (const json::exception &) {
-		ok = false;
+		return storage::LoadResult::failed;
 	}
 
-	std::free(pData);
-
-	return ok;
+	return storage::LoadResult::ok;
 }
 
-// A corrupted file is an expected, recoverable condition here rather than a programming
-// error, so the .bak sibling gets a turn before this gives up.
-bool ReadJsonWithFallback(const char *pPath, json &outJson)
-{
-	if (ParseJsonFile(pPath, outJson)) return true;
-
-	char backupPath[MAX_PATH];
-
-	return CAtomicFile::BackupPathFor(pPath, backupPath, sizeof(backupPath)) && ParseJsonFile(backupPath, outJson);
-}
-
-// Account::Init asserts rather than truncates, and asserts compile out of a Release build,
-// so an over-long decrypted string would overflow. Successful decryption already rules out
-// tampering, but not a future bug in this file's serialization.
-std::string_view TruncatedView(const std::string &value, u64 maxLength)
-{
-	return std::string_view{value.data(), std::min<u64>(value.size(), maxLength)};
-}
-
-json MasterPasswordToJson(const Settings &settings)
-{
-	json out;
-	out["enabled"] = settings.m_bMasterPasswordEnabled;
-	out["salt_hex"] = BytesToHex(settings.m_aMasterPasswordSalt, sizeof(settings.m_aMasterPasswordSalt));
-	out["ops_limit"] = settings.m_masterPasswordOpsLimit;
-	out["mem_limit"] = static_cast<u64>(settings.m_masterPasswordMemLimit);
-	out["wrap_nonce_hex"] =
-		BytesToHex(settings.m_aMasterPasswordWrapNonce, sizeof(settings.m_aMasterPasswordWrapNonce));
-	out["wrapped_dek_hex"] =
-		BytesToHex(settings.m_aMasterPasswordWrappedDek, sizeof(settings.m_aMasterPasswordWrappedDek));
-
-	return out;
-}
-
-void MasterPasswordFromJson(const json &j, Settings &settings)
-{
-	settings.m_bMasterPasswordEnabled = false;
-
-	if (!j.contains("master_password") || !j["master_password"].is_object()) return;
-
-	const json &mp = j["master_password"];
-	settings.m_bMasterPasswordEnabled = mp.value("enabled", false);
-	settings.m_masterPasswordOpsLimit = mp.value("ops_limit", static_cast<u64>(0));
-	settings.m_masterPasswordMemLimit = static_cast<usize>(mp.value("mem_limit", static_cast<u64>(0)));
-
-	HexToBytes(mp.value("salt_hex", std::string()), settings.m_aMasterPasswordSalt,
-			   sizeof(settings.m_aMasterPasswordSalt));
-	HexToBytes(mp.value("wrap_nonce_hex", std::string()), settings.m_aMasterPasswordWrapNonce,
-			   sizeof(settings.m_aMasterPasswordWrapNonce));
-	HexToBytes(mp.value("wrapped_dek_hex", std::string()), settings.m_aMasterPasswordWrappedDek,
-			   sizeof(settings.m_aMasterPasswordWrappedDek));
-}
-
-void ReadAppearanceFromJson(const json &j, Settings &settings)
-{
-	settings.m_bAnimationsEnabled = j.value("animations_enabled", settings.m_bAnimationsEnabled);
-	settings.m_flAnimationSpeed = j.value("animation_speed", settings.m_flAnimationSpeed);
-	settings.m_flFontPixelSize = j.value("font_pixel_size", settings.m_flFontPixelSize);
-	settings.m_flSecondaryFontPixelSize = j.value("secondary_font_pixel_size", settings.m_flSecondaryFontPixelSize);
-	settings.m_flCornerRoundness = j.value("corner_roundness", settings.m_flCornerRoundness);
-
-	// The roundness slider replaced a plain on/off toggle, which is no longer written.
-	// Still honored on read so an install that had corners off does not get them back.
-	if (!j.value("rounded_corners_enabled", true)) {
-		settings.m_flCornerRoundness = 0.0f;
-	}
-
-	if (j.contains("accent_color") && j["accent_color"].is_array() && j["accent_color"].size() == 4) {
-		const json &a = j["accent_color"];
-		settings.m_clrAccent = Color{a[0].get<u8>(), a[1].get<u8>(), a[2].get<u8>(), a[3].get<u8>()};
-	}
-
-	const std::string fontName = j.value("font_name", std::string(settings.m_szFontName));
-	CopyTo(TruncatedView(fontName, sizeof(settings.m_szFontName) - 1), settings.m_szFontName,
-		   sizeof(settings.m_szFontName));
-}
-
-json BannerToJson(const Banner &banner)
+json game_to_json(const Game &t_game)
 {
 	json accounts = json::array();
-	for (u32 i = 0; i < banner.AccountCount; i += 1) {
-		const Account &account = banner.Accounts[i];
 
-		json entry;
-		entry["username"] = std::string(account.m_szUsername);
-		entry["note"] = std::string(account.m_szNote);
-		entry["password"] = std::string(account.m_szPassword);
-		entry["visible_mask"] = account.m_uVisibleBannerMask;
-		accounts.push_back(std::move(entry));
+	for (const Account &account : std::span{t_game.accounts, t_game.account_count}) {
+		accounts.push_back(json{
+			{"username", account.username},
+			{"note", account.note},
+			{"password", account.password},
+			{"visible_mask", account.visible_game_mask},
+		});
 	}
 
-	json out;
-	out["title"] = std::string(banner.Title.data(), banner.Title.size());
-	out["accounts"] = std::move(accounts);
-
-	return out;
+	return json{{"title", std::string{t_game.title}}, {"accounts", std::move(accounts)}};
 }
 
-void ReadAccountsIntoBanner(const json &source, Banner &banner)
+void read_game_accounts(const json &t_json, Game &t_game)
 {
-	banner.AccountCount = 0;
+	t_game.account_count = 0;
 
-	if (!source.contains("accounts") || !source["accounts"].is_array()) return;
+	const auto accounts = t_json.find("accounts");
+	if (accounts == t_json.end() || !accounts->is_array()) return;
 
-	for (const json &entry : source["accounts"]) {
-		if (banner.AccountCount >= kCarouselMaxAccountsPerBanner) break;
+	for (const json &entry : *accounts) {
+		if (t_game.account_count >= max_accounts_per_game) break;
 
-		const std::string username = entry.value("username", std::string());
-		const std::string note = entry.value("note", std::string());
-		const std::string password = entry.value("password", std::string());
+		Account &account = t_game.accounts[t_game.account_count];
+		account.assign(entry.value("username", std::string{}), entry.value("note", std::string{}),
+					   entry.value("password", std::string{}));
+		account.visible_game_mask = entry.value("visible_mask", u16{0});
 
-		Account &account = banner.Accounts[banner.AccountCount];
-		account.Init(TruncatedView(username, sizeof(account.m_szUsername) - 1),
-					 TruncatedView(note, sizeof(account.m_szNote) - 1),
-					 TruncatedView(password, sizeof(account.m_szPassword) - 1));
-		account.m_uVisibleBannerMask = entry.value("visible_mask", static_cast<u16>(0));
-		banner.AccountCount += 1;
+		t_game.account_count += 1;
 	}
 }
 
-Banner *FindBannerByTitle(Banner *pBanners, u32 bannerCount, const std::string &title)
+Game *find_game(Library &t_library, std::string_view t_title)
 {
-	for (u32 i = 0; i < bannerCount; i += 1) {
-		if (pBanners[i].Title == title.c_str()) return &pBanners[i];
+	for (Game &game : t_library.games()) {
+		if (game.title == t_title) return &game;
 	}
 
 	return nullptr;
 }
 
-bool DecryptVault(const json &envelope, const CMasterKey &masterKey, std::vector<u8> &outPlaintext)
+bool decrypt_vault(const json &t_envelope, const MasterKey &t_master_key, std::vector<u8> &t_out_plaintext)
 {
-	u8 nonce[CCrypto::kNonceSize];
-	u8 tag[CCrypto::kTagSize];
+	u8 nonce[crypto::nonce_size];
+	u8 tag[crypto::tag_size];
 	std::vector<u8> ciphertext;
 
-	if (!HexToBytes(envelope.value("nonce_hex", std::string()), nonce, sizeof(nonce)) ||
-		!HexToBytes(envelope.value("tag_hex", std::string()), tag, sizeof(tag)) ||
-		!Base64ToBytes(envelope.value("ciphertext_b64", std::string()), ciphertext)) {
+	if (!from_hex(t_envelope.value("nonce_hex", std::string{}), nonce) ||
+		!from_hex(t_envelope.value("tag_hex", std::string{}), tag) ||
+		!from_base64(t_envelope.value("ciphertext_b64", std::string{}), ciphertext)) {
 		return false;
 	}
 
-	outPlaintext.resize(ciphertext.size());
+	t_out_plaintext.resize(ciphertext.size());
 
-	return CCrypto::Decrypt(masterKey.m_aDek, nonce, ciphertext.data(), static_cast<u32>(ciphertext.size()), tag,
-							outPlaintext.data());
-}
-} // namespace
-
-bool CStorage::GetDataDirectory(char *pBuffer, usize bufferSize)
-{
-	return GetStorageDirectory(pBuffer, bufferSize);
+	return crypto::decrypt(t_master_key.data_key(), nonce, ciphertext, tag, t_out_plaintext.data());
 }
 
-bool CStorage::IsSettingsWritable()
+storage::LoadResult read_accounts(Library &t_library, const MasterKey &t_master_key)
 {
-	return g_bSettingsWritable;
-}
+	if (!t_master_key.is_unlocked()) return storage::LoadResult::locked;
 
-bool CStorage::IsAccountsWritable()
-{
-	return g_bAccountsWritable;
-}
-
-bool CStorage::SaveSettings(const Settings &settings, i32 carouselZoomStop, i32 carouselSelectedBanner)
-{
-	if (!g_bSettingsWritable) return false;
-
-	json j;
-	j["format_version"] = kFormatVersion;
-	j["window_width"] = settings.m_nWindowWidth;
-	j["window_height"] = settings.m_nWindowHeight;
-	j["animations_enabled"] = settings.m_bAnimationsEnabled;
-	j["animation_speed"] = settings.m_flAnimationSpeed;
-	j["corner_roundness"] = settings.m_flCornerRoundness;
-	j["font_pixel_size"] = settings.m_flFontPixelSize;
-	j["secondary_font_pixel_size"] = settings.m_flSecondaryFontPixelSize;
-	j["accent_color"] = {settings.m_clrAccent.R, settings.m_clrAccent.G, settings.m_clrAccent.B,
-						 settings.m_clrAccent.A};
-	j["font_name"] = std::string(settings.m_szFontName);
-	j["exclude_account_list_from_capture"] = settings.m_bExcludeAccountListFromCapture;
-	j["close_to_tray"] = settings.m_bCloseToTray;
-	j["block_overlay_injection"] = settings.m_bBlockOverlayInjection;
-	j["show_notifications"] = settings.m_bShowNotifications;
-	j["last_run_version"] = settings.m_szLastRunVersion;
-	j["carousel_zoom_stop"] = carouselZoomStop;
-	j["carousel_selected_banner"] = carouselSelectedBanner;
-	j["master_password"] = MasterPasswordToJson(settings);
-
-	char path[MAX_PATH];
-	if (!GetStorageFilePath(kSettingsFileName, path, sizeof(path))) return false;
-
-	const std::string text = j.dump(2);
-
-	return CAtomicFile::WriteAtomic(path, text.data(), text.size());
-}
-
-static EStorageLoadResult LoadSettingsFromDisk(Settings &settings, i32 &outCarouselZoomStop,
-											   i32 &outCarouselSelectedBanner)
-{
-	char path[MAX_PATH];
-	if (!GetStorageFilePath(kSettingsFileName, path, sizeof(path))) return EStorageLoadResult::Failed;
-
-	const bool fileExists = FileExists(path);
-
-	json j;
-	if (!ReadJsonWithFallback(path, j)) return fileExists ? EStorageLoadResult::Failed : EStorageLoadResult::NoFile;
-
-	settings.m_nWindowWidth = j.value("window_width", settings.m_nWindowWidth);
-	settings.m_nWindowHeight = j.value("window_height", settings.m_nWindowHeight);
-	settings.m_bExcludeAccountListFromCapture =
-		j.value("exclude_account_list_from_capture", settings.m_bExcludeAccountListFromCapture);
-
-	// This setting was "minimize_to_tray" back when it hooked minimize instead of close;
-	// read as the fallback so an existing file keeps the user's choice.
-	settings.m_bCloseToTray = j.value("close_to_tray", j.value("minimize_to_tray", settings.m_bCloseToTray));
-	settings.m_bBlockOverlayInjection = j.value("block_overlay_injection", settings.m_bBlockOverlayInjection);
-	settings.m_bShowNotifications = j.value("show_notifications", settings.m_bShowNotifications);
-	CopyTo(TruncatedView(j.value("last_run_version", std::string()), sizeof(settings.m_szLastRunVersion) - 1),
-		   settings.m_szLastRunVersion, sizeof(settings.m_szLastRunVersion));
-
-	outCarouselZoomStop = j.value("carousel_zoom_stop", outCarouselZoomStop);
-	outCarouselSelectedBanner = j.value("carousel_selected_banner", outCarouselSelectedBanner);
-
-	ReadAppearanceFromJson(j, settings);
-	MasterPasswordFromJson(j, settings);
-
-	return EStorageLoadResult::Ok;
-}
-
-bool CStorage::SaveAccounts(const Banner *pBanners, u32 bannerCount, bool masterPasswordEnabled,
-							const CMasterKey &masterKey)
-{
-	if (!masterPasswordEnabled || !masterKey.m_bEnabled || !g_bAccountsWritable) return false;
-
-	json banners = json::array();
-	for (u32 i = 0; i < bannerCount; i += 1) {
-		banners.push_back(BannerToJson(pBanners[i]));
-	}
-
-	const std::string plaintext = banners.dump();
-
-	u8 nonce[CCrypto::kNonceSize];
-	CCrypto::RandomBytes(nonce, sizeof(nonce));
-
-	u8 tag[CCrypto::kTagSize];
-	std::vector<u8> ciphertext(plaintext.size());
-	if (!CCrypto::Encrypt(masterKey.m_aDek, nonce, reinterpret_cast<const u8 *>(plaintext.data()),
-						  static_cast<u32>(plaintext.size()), ciphertext.data(), tag)) {
-		return false;
-	}
+	const std::string path = storage_path(accounts_file_name);
+	if (path.empty()) return storage::LoadResult::failed;
 
 	json envelope;
-	envelope["format_version"] = kFormatVersion;
-	envelope["nonce_hex"] = BytesToHex(nonce, sizeof(nonce));
-	envelope["tag_hex"] = BytesToHex(tag, sizeof(tag));
-	envelope["ciphertext_b64"] = BytesToBase64(ciphertext.data(), ciphertext.size());
+	if (!read_json_with_backup(path, envelope)) return missing_or_failed(path);
 
-	char path[MAX_PATH];
-	if (!GetStorageFilePath(kAccountsFileName, path, sizeof(path))) return false;
-
-	const std::string text = envelope.dump();
-
-	return CAtomicFile::WriteAtomic(path, text.data(), text.size());
-}
-
-static EStorageLoadResult LoadAccountsFromDisk(Banner *pBanners, u32 bannerCount, bool masterPasswordEnabled,
-											   const CMasterKey &masterKey)
-{
-	if (!masterPasswordEnabled || !masterKey.m_bEnabled) return EStorageLoadResult::Locked;
-
-	char path[MAX_PATH];
-	if (!GetStorageFilePath(kAccountsFileName, path, sizeof(path))) return EStorageLoadResult::Failed;
-
-	const bool fileExists = FileExists(path);
-
-	json envelope;
-	if (!ReadJsonWithFallback(path, envelope)) {
-		return fileExists ? EStorageLoadResult::Failed : EStorageLoadResult::NoFile;
-	}
-
-	std::vector<u8> plaintext;
-	if (!DecryptVault(envelope, masterKey, plaintext)) return EStorageLoadResult::Failed;
-
-	json banners;
 	try {
-		banners = json::parse(plaintext.begin(), plaintext.end());
-	} catch (const json::exception &) {
-		return EStorageLoadResult::Failed;
-	}
+		std::vector<u8> plaintext;
+		if (!decrypt_vault(envelope, t_master_key, plaintext)) return storage::LoadResult::failed;
 
-	if (!banners.is_array()) return EStorageLoadResult::Failed;
+		const json games = json::parse(plaintext.begin(), plaintext.end(), nullptr, false);
+		if (!games.is_array()) return storage::LoadResult::failed;
 
-	for (const json &entry : banners) {
-		Banner *pBanner = FindBannerByTitle(pBanners, bannerCount, entry.value("title", std::string()));
-		if (pBanner != nullptr) {
-			ReadAccountsIntoBanner(entry, *pBanner);
+		remember_saved_accounts(plaintext, t_master_key);
+
+		for (const json &entry : games) {
+			if (Game *game = find_game(t_library, entry.value("title", std::string{}))) {
+				read_game_accounts(entry, *game);
+			}
 		}
+	} catch (const json::exception &) {
+		return storage::LoadResult::failed;
 	}
 
-	return EStorageLoadResult::Ok;
+	return storage::LoadResult::ok;
+}
 }
 
-EStorageLoadResult CStorage::LoadSettings(Settings &settings, i32 &outCarouselZoomStop, i32 &outCarouselSelectedBanner)
+std::string storage::data_directory()
 {
-	const EStorageLoadResult result = LoadSettingsFromDisk(settings, outCarouselZoomStop, outCarouselSelectedBanner);
+	const std::string root = local_app_data_root();
+	if (root.empty()) return {};
 
-	// Sealing settings has to seal the vault with it. accounts.vault is only interpretable through
-	// the KEK parameters in settings.json, so losing those means the app sees "no master password",
-	// offers to set one up, and a fresh key would encrypt the empty in-memory list straight over
-	// the real accounts. The vault stays readable to a later launch precisely by refusing this one.
-	if (SealsFile(result)) {
-		g_bSettingsWritable = false;
-		g_bAccountsWritable = false;
-		DebugLog::Write("storage", "%s did not load - neither file will be written this session", kSettingsFileName);
+	const std::string directory = root + "\\" + app_data_folder_name;
+	CreateDirectoryA(directory.c_str(), nullptr);
+
+	migrate_legacy_file(root, directory, accounts_file_name);
+	migrate_legacy_file(root, directory, settings_file_name);
+
+	return directory;
+}
+
+storage::LoadResult storage::load_settings(Settings &t_settings)
+{
+	const LoadResult result = read_settings(t_settings);
+
+	if (result == LoadResult::failed) {
+		// accounts.vault can only be decrypted with the key parameters in settings.json. Without them the app offers
+		// a fresh master password, and saving under that would overwrite the real vault.
+		g_settings_writable = false;
+		g_accounts_writable = false;
+		debug_log::write("storage", "%s did not load - neither file will be written this session", settings_file_name);
 	}
 
 	return result;
 }
 
-EStorageLoadResult CStorage::LoadAccounts(Banner *pBanners, u32 bannerCount, bool masterPasswordEnabled,
-										  const CMasterKey &masterKey)
+bool storage::save_settings(const Settings &t_settings)
 {
-	const EStorageLoadResult result = LoadAccountsFromDisk(pBanners, bannerCount, masterPasswordEnabled, masterKey);
+	if (!g_settings_writable) return false;
 
-	if (SealsFile(result)) {
-		g_bAccountsWritable = false;
-		DebugLog::Write("storage", "%s did not load - it will not be written this session", kAccountsFileName);
+	const std::string path = storage_path(settings_file_name);
+	if (path.empty()) return false;
+
+	const Color accent = t_settings.accent;
+	const json settings{
+		{"format_version", format_version},
+		{"window_width", t_settings.window_width},
+		{"window_height", t_settings.window_height},
+		{"animations_enabled", t_settings.animations_enabled},
+		{"animation_speed", t_settings.animation_speed},
+		{"corner_roundness", t_settings.corner_roundness},
+		{"font_pixel_size", t_settings.font_size},
+		{"secondary_font_pixel_size", t_settings.secondary_font_size},
+		{"accent_color", json::array({accent.r, accent.g, accent.b, accent.a})},
+		{"font_name", t_settings.font_name},
+		{"exclude_account_list_from_capture", t_settings.hide_accounts_from_capture},
+		{"close_to_tray", t_settings.close_to_tray},
+		{"block_overlay_injection", t_settings.block_overlay_injection},
+		{"show_notifications", t_settings.show_notifications},
+		{"last_run_version", t_settings.last_run_version},
+		{"carousel_zoom_stop", t_settings.zoom_stop},
+		{"carousel_selected_banner", t_settings.selected_game},
+		{"master_password", master_password_to_json(t_settings)},
+	};
+
+	return write_file_atomic(path, settings.dump(2));
+}
+
+storage::LoadResult storage::load_accounts(Library &t_library, const MasterKey &t_master_key)
+{
+	const LoadResult result = read_accounts(t_library, t_master_key);
+
+	if (result == LoadResult::failed) {
+		g_accounts_writable = false;
+		debug_log::write("storage", "%s did not load - it will not be written this session", accounts_file_name);
 	}
 
 	return result;
+}
+
+bool storage::save_accounts(const Library &t_library, const MasterKey &t_master_key)
+{
+	if (!t_master_key.is_unlocked() || !g_accounts_writable) return false;
+
+	json games = json::array();
+	for (const Game &game : t_library.games()) {
+		games.push_back(game_to_json(game));
+	}
+
+	const std::string plaintext = games.dump();
+	const std::span<const u8> plaintext_bytes{reinterpret_cast<const u8 *>(plaintext.data()), plaintext.size()};
+
+	// A fresh nonce makes every encryption differ, so unchanged accounts have to be caught before encrypting.
+	if (matches_saved_accounts(plaintext_bytes, t_master_key)) return true;
+
+	u8 nonce[crypto::nonce_size];
+	crypto::random_bytes(nonce);
+
+	u8 tag[crypto::tag_size];
+	std::vector<u8> ciphertext(plaintext.size());
+	if (!crypto::encrypt(t_master_key.data_key(), nonce, plaintext_bytes, ciphertext.data(), tag)) return false;
+
+	const json envelope{
+		{"format_version", format_version},
+		{"nonce_hex", to_hex(nonce)},
+		{"tag_hex", to_hex(tag)},
+		{"ciphertext_b64", to_base64(ciphertext)},
+	};
+
+	const std::string path = storage_path(accounts_file_name);
+	if (path.empty() || !write_file_atomic(path, envelope.dump())) return false;
+
+	remember_saved_accounts(plaintext_bytes, t_master_key);
+
+	return true;
+}
+
+bool storage::can_save_settings()
+{
+	return g_settings_writable;
+}
+
+bool storage::can_save_accounts()
+{
+	return g_accounts_writable;
 }

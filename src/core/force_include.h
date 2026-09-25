@@ -3,8 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 
-/// Force-included into every translation unit by the build (see src/CMakeLists.txt), so these
-/// names are always in scope and no file has to include this or <cstdint> to spell an integer.
 using u8 = std::uint8_t;
 using u16 = std::uint16_t;
 using u32 = std::uint32_t;

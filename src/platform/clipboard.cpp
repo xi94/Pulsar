@@ -4,28 +4,52 @@
 
 #include <Windows.h>
 
-void SetClipboardText(void *hOwnerWindow, const char *pText)
+#include "core/str.h"
+
+void set_clipboard_text(std::string_view t_text)
 {
-	if (!OpenClipboard(static_cast<HWND>(hOwnerWindow))) return;
+	const std::wstring wide = to_wide(t_text);
+	const usize bytes = (wide.size() + 1) * sizeof(wchar_t);
+
+	if (!OpenClipboard(GetActiveWindow())) return;
 
 	EmptyClipboard();
 
-	const auto textLength = static_cast<int>(std::strlen(pText));
-	const int wideLength = MultiByteToWideChar(CP_UTF8, 0, pText, textLength, nullptr, 0);
-	const HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, (static_cast<SIZE_T>(wideLength) + 1) * sizeof(wchar_t));
+	const HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
+	void *destination = memory != nullptr ? GlobalLock(memory) : nullptr;
 
-	if (memory != nullptr) {
-		auto *pDestination = static_cast<wchar_t *>(GlobalLock(memory));
-		if (pDestination != nullptr) {
-			if (wideLength > 0) {
-				MultiByteToWideChar(CP_UTF8, 0, pText, textLength, pDestination, wideLength);
-			}
+	if (destination != nullptr) {
+		std::memcpy(destination, wide.c_str(), bytes);
+		GlobalUnlock(memory);
 
-			pDestination[wideLength] = L'\0';
-			GlobalUnlock(memory);
-			SetClipboardData(CF_UNICODETEXT, memory);
+		if (SetClipboardData(CF_UNICODETEXT, memory) == nullptr) {
+			GlobalFree(memory);
 		}
+	} else if (memory != nullptr) {
+		GlobalFree(memory);
 	}
 
 	CloseClipboard();
+}
+
+std::string clipboard_text()
+{
+	if (!OpenClipboard(GetActiveWindow())) return {};
+
+	std::string text;
+
+	const HANDLE data = GetClipboardData(CF_UNICODETEXT);
+	if (const auto *wide = data != nullptr ? static_cast<const wchar_t *>(GlobalLock(data)) : nullptr) {
+		text = to_utf8(wide);
+		GlobalUnlock(data);
+	}
+
+	CloseClipboard();
+
+	return text;
+}
+
+bool clipboard_has_text()
+{
+	return IsClipboardFormatAvailable(CF_UNICODETEXT);
 }

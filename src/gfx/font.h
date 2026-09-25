@@ -1,103 +1,100 @@
 #pragma once
 
 #include <memory>
-
 #include <string_view>
 
 #include "stb/stb_truetype.h"
 
-class IRenderer;
-class CTexture;
+#include "core/types.h"
 
-/// A baked glyph atlas: one GPU texture plus stb's packed metrics for ASCII 32..126. Alpha
-/// coverage is expanded to RGBA8 so it samples through the same tinted-texture pipeline every
-/// other textured draw uses.
-///
-/// DPI-aware by construction rather than by scale factors sprinkled at call sites. The atlas is
-/// baked at pixelHeight * dpiScale real texels, so glyphs stay crisp, but every metric this
-/// class exposes is in the same logical-pixel space as the rest of the UI - callers never need
-/// to know what scale a font was baked at. GetBakeScale, GetPackedChars and GetAtlasSize are the
-/// exception, for ui/text.cpp's glyph walk, which is the one place that works in baked units.
-///
-/// Re-baking in place is supported and used by both the font-size setting and a live DPI change:
-/// LoadFromFile always bakes into a fresh texture and drops the previous one.
-class CFont {
+class Renderer;
+class Texture;
+
+class Font {
   public:
-	/// Declared out-of-line rather than defaulted inline: an implicitly generated destructor,
-	/// move, or even constructor-unwind path would need CTexture's complete type at every call
-	/// site, not just here where it is only forward-declared.
-	CFont();
-	~CFont();
-	CFont(CFont &&) noexcept;
-	CFont &operator=(CFont &&) noexcept;
+	static constexpr u32 first_char = 32;
+	static constexpr u32 char_count = 95;
 
-	CFont(const CFont &) = delete;
-	CFont &operator=(const CFont &) = delete;
+	Font();
+	~Font();
+	Font(Font &&) noexcept;
+	Font &operator=(Font &&) noexcept;
 
-	static constexpr u32 kFirstChar = 32;
-	static constexpr u32 kCharCount = 95; // ASCII 32..126
+	bool load(Renderer &t_renderer, const char *t_path, float t_pixel_height, float t_dpi_scale);
 
-	/// pPath goes straight to fopen, so it is a real null-terminated path rather than a
-	/// std::string_view. pixelHeight is the logical size every caller reasons about.
-	bool LoadFromFile(IRenderer *pRenderer, const char *pPath, float pixelHeight, float dpiScale);
-
-	float GetPixelHeight() const
+	float pixel_height() const
 	{
-		return m_flPixelHeight;
+		return m_pixel_height;
 	}
 
-	float GetAscent() const
+	float ascent() const
 	{
-		return m_flAscent;
+		return m_ascent;
 	}
 
-	float GetDescent() const
+	float descent() const
 	{
-		return m_flDescent;
+		return m_descent;
 	}
 
-	float GetLineGap() const
+	float line_height() const
 	{
-		return m_flLineGap;
+		return m_ascent - m_descent + m_line_gap;
 	}
 
-	/// Baseline to baseline for consecutive lines. Stacked text uses this rather than a fixed
-	/// constant so it grows with the font instead of overlapping at larger sizes.
-	float GetLineHeight() const
+	float centered_baseline(Rect t_box) const
 	{
-		return m_flAscent - m_flDescent + m_flLineGap;
+		return t_box.y + t_box.h * 0.5f + (m_ascent + m_descent) * 0.5f;
 	}
 
-	const CTexture *GetAtlas() const
+	const Texture *atlas() const
 	{
-		return m_pAtlas.get();
+		return m_atlas.get();
 	}
 
-	const stbtt_packedchar *GetPackedChars() const
+	const stbtt_packedchar *packed_chars() const
 	{
-		return m_aPackedChars;
+		return m_packed_chars;
 	}
 
-	u32 GetAtlasSize() const
+	u32 atlas_size() const
 	{
-		return m_nAtlasSize;
+		return m_atlas_size;
 	}
 
-	/// Atlas texels per logical pixel.
-	float GetBakeScale() const
+	float bake_scale() const
 	{
-		return m_flBakeScale;
+		return m_bake_scale;
 	}
 
   private:
-	std::unique_ptr<CTexture> m_pAtlas;
-	stbtt_packedchar m_aPackedChars[kCharCount]{};
-	u32 m_nAtlasSize = 0;
-	float m_flBakeScale = 1.0f;
+	std::unique_ptr<Texture> m_atlas;
+	stbtt_packedchar m_packed_chars[char_count]{};
+	u32 m_atlas_size = 0;
+	float m_bake_scale = 1.0f;
+	float m_pixel_height = 0.0f;
+	float m_ascent = 0.0f;
+	float m_descent = 0.0f;
+	float m_line_gap = 0.0f;
+};
 
-	/// Everything below is logical pixels.
-	float m_flPixelHeight = 0.0f;
-	float m_flAscent = 0.0f;
-	float m_flDescent = 0.0f;
-	float m_flLineGap = 0.0f;
+class Fonts {
+  public:
+	bool load_defaults(Renderer &t_renderer, float t_dpi_scale);
+	bool load(Renderer &t_renderer, std::string_view t_file_name, float t_body_size, float t_secondary_size,
+			  float t_dpi_scale);
+
+	const Font &body() const
+	{
+		return m_body;
+	}
+
+	const Font &secondary() const
+	{
+		return m_secondary;
+	}
+
+  private:
+	Font m_body;
+	Font m_secondary;
 };

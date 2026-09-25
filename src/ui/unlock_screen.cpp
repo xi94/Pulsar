@@ -1,406 +1,386 @@
 #include "ui/unlock_screen.h"
 
-#include <cstring>
-
 #include <Windows.h>
 
 #include "core/master_key.h"
 #include "core/settings.h"
-#include "gfx/asset_manager.h"
+#include "gfx/assets.h"
+#include "gfx/draw_list.h"
+#include "gfx/font.h"
 #include "platform/window.h"
 #include "ui/controls.h"
-#include "ui/draw_list.h"
 #include "ui/text.h"
 
 namespace {
-constexpr float kCardWidth = 380.0f;
-constexpr float kUnlockCardHeight = 210.0f;
+constexpr float card_width = 380.0f;
+constexpr float unlock_card_height = 210.0f;
+constexpr float setup_card_height = 366.0f;
+constexpr float card_radius = 16.0f;
+constexpr float card_padding = 28.0f;
+constexpr float field_height = 40.0f;
+constexpr float field_radius = 6.0f;
+constexpr float button_height = 40.0f;
+constexpr float gap = 14.0f;
+constexpr float reveal_size = 22.0f;
+constexpr float reveal_margin = 6.0f;
+constexpr float unlock_first_field_y = 74.0f;
+constexpr float setup_first_field_y = 96.0f;
 
-// Title, a two-line description, two fields, a gap, the button, and a trailing error line.
-constexpr float kSetupCardHeight = 366.0f;
-
-constexpr float kCardRadius = 16.0f;
-constexpr float kCardPadding = 28.0f;
-constexpr float kFieldHeight = 40.0f;
-constexpr float kButtonHeight = 40.0f;
-constexpr float kGap = 14.0f;
-constexpr float kRevealButtonSize = 22.0f;
-
-// Where the first field sits below the card's title and description, which differ in height
-// between the two modes.
-constexpr float kUnlockFieldOffsetY = 74.0f;
-constexpr float kSetupFieldOffsetY = 96.0f;
-
-constexpr Color kColorBackdrop{12, 12, 14, 255};
-constexpr Color kColorCard{26, 26, 30, 255};
-constexpr Color kColorFieldBg{24, 24, 27, 255};
-constexpr Color kColorFieldBorder{40, 40, 45, 255};
-constexpr Color kColorTextBright{232, 232, 236, 255};
-constexpr Color kColorTextDim{150, 150, 156, 255};
-constexpr Color kColorError{220, 90, 80, 255};
-
-// Always centred, unlike the modal and settings panel which scale against the window: a fixed
-// small card is all this screen ever needs.
-Rect CardRect(float windowW, float windowH, bool setupMode)
-{
-	const float h = setupMode ? kSetupCardHeight : kUnlockCardHeight;
-
-	return Rect{(windowW - kCardWidth) * 0.5f, (windowH - h) * 0.5f, kCardWidth, h};
+constexpr Color color_backdrop{12, 12, 14, 255};
+constexpr Color color_card{26, 26, 30, 255};
+constexpr Color color_field{24, 24, 27, 255};
+constexpr Color color_field_border{40, 40, 45, 255};
+constexpr Color color_text_bright{232, 232, 236, 255};
+constexpr Color color_text_dim{150, 150, 156, 255};
+constexpr Color color_error{220, 90, 80, 255};
 }
 
-Rect FirstFieldRect(Rect card, bool setupMode)
-{
-	const float offsetY = setupMode ? kSetupFieldOffsetY : kUnlockFieldOffsetY;
-
-	return Rect{card.X + kCardPadding, card.Y + offsetY, card.W - kCardPadding * 2.0f, kFieldHeight};
-}
-
-Rect ConfirmFieldRect(Rect card)
-{
-	const Rect password = FirstFieldRect(card, true);
-
-	return Rect{password.X, password.Y + kFieldHeight + kGap, password.W, kFieldHeight};
-}
-
-Rect SubmitButtonRect(Rect card, bool setupMode)
-{
-	const Rect last = setupMode ? ConfirmFieldRect(card) : FirstFieldRect(card, false);
-
-	return Rect{last.X, last.Y + last.H + kGap, last.W, kButtonHeight};
-}
-
-// Sits inside its own field's right edge, which is why hit-testing has to check it before the
-// field itself.
-Rect RevealButtonRect(Rect field)
-{
-	return Rect{field.X + field.W - kRevealButtonSize - 6.0f, field.Y + (field.H - kRevealButtonSize) * 0.5f,
-				kRevealButtonSize, kRevealButtonSize};
-}
-
-// This screen rings a focused field in the accent rather than a neutral border, which is the one
-// way its fields differ from every other panel's.
-void DrawFieldChrome(CDrawList &drawList, Rect field, bool focused, Color accent)
-{
-	constexpr float kFieldCornerRadius = 6.0f;
-
-	Controls::DrawFieldChrome(drawList, field, kFieldCornerRadius, focused ? accent : kColorFieldBorder, kColorFieldBg,
-							  255);
-}
-} // namespace
-
-CUnlockScreen::CUnlockScreen(const CFontManager &fonts, const CWindow &window, Settings *pSettings,
-							 CMasterKey *pMasterKey, const CAssetManager &assets)
-	: m_fonts(fonts)
-	, m_window(window)
-	, m_pSettings(pSettings)
-	, m_pMasterKey(pMasterKey)
-	, m_assets(assets)
+UnlockScreen::UnlockScreen(Settings &t_settings, MasterKey &t_master_key, const Fonts &t_fonts, const Assets &t_assets,
+						   const Window &t_window, CommandQueue &t_commands)
+	: m_settings(t_settings)
+	, m_master_key(t_master_key)
+	, m_fonts(t_fonts)
+	, m_assets(t_assets)
+	, m_window(t_window)
+	, m_commands(t_commands)
 {
 }
 
-void CUnlockScreen::ActivateForUnlock()
+void UnlockScreen::reset_fields()
 {
-	m_bSetupMode = false;
-	m_passwordInput.Init("");
-	m_passwordInput.m_bFocused = true;
-	m_bWrongPassword = false;
-	m_bPasswordRevealed = false;
-	m_bActive = true;
-}
-
-void CUnlockScreen::ActivateForSetup()
-{
-	m_bSetupMode = true;
-	m_passwordInput.Init("");
-	m_confirmPasswordInput.Init("");
-	m_passwordInput.m_bFocused = true;
-	m_bPasswordRevealed = false;
-	m_bPasswordMismatch = false;
-	m_bSetupFailed = false;
-	m_bActive = true;
-}
-
-void CUnlockScreen::Deactivate()
-{
-	m_bActive = false;
-}
-
-bool CUnlockScreen::ConsumeUnlockSucceeded()
-{
-	const bool bSucceeded = m_bUnlockSucceededThisFrame;
-	m_bUnlockSucceededThisFrame = false;
-
-	return bSucceeded;
-}
-
-bool CUnlockScreen::ConsumeSetupSucceeded()
-{
-	const bool bSucceeded = m_bSetupSucceededThisFrame;
-	m_bSetupSucceededThisFrame = false;
-
-	return bSucceeded;
-}
-
-bool CUnlockScreen::AttemptUnlock()
-{
-	const bool bUnlocked =
-		m_pMasterKey->Unlock(m_passwordInput.GetValue(), m_pSettings->m_aMasterPasswordSalt,
-							 m_pSettings->m_masterPasswordOpsLimit, m_pSettings->m_masterPasswordMemLimit,
-							 m_pSettings->m_aMasterPasswordWrapNonce, m_pSettings->m_aMasterPasswordWrappedDek);
-
-	m_passwordInput.SetValue("");
-	m_bWrongPassword = !bUnlocked;
-	m_bUnlockSucceededThisFrame = bUnlocked;
-
-	// A failed attempt keeps focus for the retry.
-	m_passwordInput.m_bFocused = !bUnlocked;
-
-	return bUnlocked;
-}
-
-bool CUnlockScreen::AttemptSetup()
-{
-	if (m_passwordInput.GetValue().empty()) return false;
-
-	if (m_passwordInput.GetValue() != m_confirmPasswordInput.GetValue()) {
-		m_bPasswordMismatch = true;
-		m_bSetupFailed = false;
-		m_confirmPasswordInput.SetValue("");
-		m_confirmPasswordInput.m_bFocused = true;
-
-		return false;
+	for (TextInput &field : m_fields) {
+		field.set_value("");
+		field.set_masked(true);
 	}
 
-	if (!m_pMasterKey->Set(m_passwordInput.GetValue())) {
-		// Argon2id or the wrap itself failed - rare, mainly an out-of-memory situation under
-		// the moderate preset's cost, but a real outcome rather than a hypothetical.
-		m_bSetupFailed = true;
-		m_bPasswordMismatch = false;
-
-		return false;
-	}
-
-	m_pSettings->m_bMasterPasswordEnabled = true;
-	m_pSettings->m_masterPasswordOpsLimit = m_pMasterKey->m_opsLimit;
-	m_pSettings->m_masterPasswordMemLimit = m_pMasterKey->m_memLimit;
-	std::memcpy(m_pSettings->m_aMasterPasswordSalt, m_pMasterKey->m_aSalt, sizeof(m_pSettings->m_aMasterPasswordSalt));
-	std::memcpy(m_pSettings->m_aMasterPasswordWrapNonce, m_pMasterKey->m_aWrapNonce,
-				sizeof(m_pSettings->m_aMasterPasswordWrapNonce));
-	std::memcpy(m_pSettings->m_aMasterPasswordWrappedDek, m_pMasterKey->m_aWrappedDek,
-				sizeof(m_pSettings->m_aMasterPasswordWrappedDek));
-
-	m_passwordInput.SetValue("");
-	m_confirmPasswordInput.SetValue("");
-	m_bPasswordMismatch = false;
-	m_bSetupFailed = false;
-	m_bSetupSucceededThisFrame = true;
-
-	return true;
+	focus_field(password);
 }
 
-void CUnlockScreen::Update(float deltaSeconds)
+void UnlockScreen::show_unlock()
 {
-	if (!m_bActive) return;
+	m_setup = false;
+	m_wrong_password = false;
+	reset_fields();
+	m_active = true;
+}
 
-	m_passwordInput.Update(deltaSeconds);
+void UnlockScreen::show_setup()
+{
+	m_setup = true;
+	m_passwords_differ = false;
+	m_setup_failed = false;
+	reset_fields();
+	m_active = true;
+}
 
-	if (m_bSetupMode) {
-		m_confirmPasswordInput.Update(deltaSeconds);
+void UnlockScreen::hide()
+{
+	m_active = false;
+}
+
+Rect UnlockScreen::card_rect() const
+{
+	const Vec2 window = m_window.size();
+
+	return Rect{0.0f, 0.0f, window.x, window.y}.centered(card_width, m_setup ? setup_card_height : unlock_card_height);
+}
+
+Rect UnlockScreen::field_rect(u32 t_field) const
+{
+	const Rect card = card_rect();
+	const float first_y = card.y + (m_setup ? setup_first_field_y : unlock_first_field_y);
+
+	return Rect{card.x + card_padding, first_y + t_field * (field_height + gap), card.w - card_padding * 2.0f,
+				field_height};
+}
+
+Rect UnlockScreen::field_text_rect(u32 t_field) const
+{
+	Rect field = field_rect(t_field);
+	field.w -= reveal_size + reveal_margin;
+
+	return field;
+}
+
+Rect UnlockScreen::reveal_rect(u32 t_field) const
+{
+	const Rect field = field_rect(t_field);
+
+	return Rect{field.right() - reveal_size - reveal_margin, field.y + (field.h - reveal_size) * 0.5f, reveal_size,
+				reveal_size};
+}
+
+Rect UnlockScreen::submit_rect() const
+{
+	const Rect last_field = field_rect(field_count() - 1);
+
+	return Rect{last_field.x, last_field.bottom() + gap, last_field.w, button_height};
+}
+
+bool UnlockScreen::is_reveal_hit(Vec2 t_point) const
+{
+	for (u32 i = 0; i < field_count(); i += 1) {
+		if (reveal_rect(i).contains(t_point)) return true;
+	}
+
+	return false;
+}
+
+i32 UnlockScreen::field_at(Vec2 t_point) const
+{
+	if (is_reveal_hit(t_point)) return -1;
+
+	for (u32 i = 0; i < field_count(); i += 1) {
+		if (field_rect(i).contains(t_point)) return static_cast<i32>(i);
+	}
+
+	return -1;
+}
+
+void UnlockScreen::focus_field(u32 t_field)
+{
+	for (u32 i = 0; i < 2; i += 1) {
+		m_fields[i].set_focused(i == t_field);
 	}
 }
 
-bool CUnlockScreen::OnChar(u32 character)
+void UnlockScreen::submit()
 {
-	if (!m_bActive) return false;
-
-	// A no-op on an unfocused field, so routing to both is safe - exactly one is ever focused.
-	m_passwordInput.OnChar(character);
-
-	if (m_bSetupMode) {
-		m_confirmPasswordInput.OnChar(character);
-	}
-
-	return true;
-}
-
-bool CUnlockScreen::OnKeyDown(u32 keyCode)
-{
-	if (!m_bActive) return false;
-
-	if (keyCode == VK_RETURN) {
-		if (m_bSetupMode) {
-			AttemptSetup();
-		} else {
-			AttemptUnlock();
-		}
-
-		return true;
-	}
-
-	// Setup only - unlock has one field with nothing to cycle to. Plain Tab swaps regardless of
-	// Shift, since with exactly two fields forward and backward land in the same place.
-	if (m_bSetupMode && keyCode == VK_TAB) {
-		const bool wasOnPassword = m_passwordInput.m_bFocused;
-		m_passwordInput.m_bFocused = !wasOnPassword;
-		m_confirmPasswordInput.m_bFocused = wasOnPassword;
-		(wasOnPassword ? m_confirmPasswordInput : m_passwordInput).OnKey(VK_END);
-
-		return true;
-	}
-
-	m_passwordInput.OnKey(keyCode);
-
-	if (m_bSetupMode) {
-		m_confirmPasswordInput.OnKey(keyCode);
-	}
-
-	return true;
-}
-
-bool CUnlockScreen::OnPointerUp(float x, float y)
-{
-	if (!m_bActive) return false;
-
-	const Rect card =
-		CardRect(static_cast<float>(m_window.GetWidth()), static_cast<float>(m_window.GetHeight()), m_bSetupMode);
-	const Rect passwordField = FirstFieldRect(card, m_bSetupMode);
-
-	const bool clickedPassword = RectContainsPoint(passwordField, x, y);
-	const bool clickedConfirm = m_bSetupMode && RectContainsPoint(ConfirmFieldRect(card), x, y);
-
-	if (clickedPassword || clickedConfirm) {
-		m_passwordInput.m_bFocused = clickedPassword;
-		m_confirmPasswordInput.m_bFocused = clickedConfirm;
-		// Positions the cursor at the end of the possibly seeded value.
-		(clickedPassword ? m_passwordInput : m_confirmPasswordInput).OnKey(VK_END);
-	}
-
-	// Both fields share one reveal state, but each draws and hit-tests its own button.
-	const bool clickedReveal = RectContainsPoint(RevealButtonRect(passwordField), x, y) ||
-							   (m_bSetupMode && RectContainsPoint(RevealButtonRect(ConfirmFieldRect(card)), x, y));
-	if (clickedReveal) {
-		m_bPasswordRevealed = !m_bPasswordRevealed;
-	}
-
-	if (RectContainsPoint(SubmitButtonRect(card, m_bSetupMode), x, y)) {
-		if (m_bSetupMode) {
-			AttemptSetup();
-		} else {
-			AttemptUnlock();
-		}
-	}
-
-	return true;
-}
-
-ECursorKind CUnlockScreen::GetDesiredCursor() const
-{
-	if (!m_bActive) return ECursorKind::Arrow;
-
-	const Rect card =
-		CardRect(static_cast<float>(m_window.GetWidth()), static_cast<float>(m_window.GetHeight()), m_bSetupMode);
-	const Rect passwordField = FirstFieldRect(card, m_bSetupMode);
-	const Rect confirmField = ConfirmFieldRect(card);
-
-	// Reveal buttons sit inside their field's right edge, so they have to be checked first -
-	// the field would always win that overlap and the button would only ever show an I-beam.
-	const bool overButton = RectContainsPoint(RevealButtonRect(passwordField), m_flMouseX, m_flMouseY) ||
-							RectContainsPoint(SubmitButtonRect(card, m_bSetupMode), m_flMouseX, m_flMouseY) ||
-							(m_bSetupMode && RectContainsPoint(RevealButtonRect(confirmField), m_flMouseX, m_flMouseY));
-	if (overButton) return ECursorKind::Hand;
-
-	const bool overField = RectContainsPoint(passwordField, m_flMouseX, m_flMouseY) ||
-						   (m_bSetupMode && RectContainsPoint(confirmField, m_flMouseX, m_flMouseY));
-
-	return overField ? ECursorKind::IBeam : ECursorKind::Arrow;
-}
-
-void CUnlockScreen::DrawPasswordField(CDrawList &drawList, Rect field, CTextInput &input)
-{
-	const Color accent = m_pSettings->m_clrAccent;
-
-	DrawFieldChrome(drawList, field, input.m_bFocused, accent);
-	input.Draw(drawList, m_fonts.GetBody(), field.X, field.Y, field.W, field.H, kColorTextBright, accent,
-			   !m_bPasswordRevealed);
-
-	const Rect reveal = RevealButtonRect(field);
-	const bool hovered = RectContainsPoint(reveal, m_flMouseX, m_flMouseY);
-	Controls::DrawEyeGlyph(drawList, m_assets, reveal, m_bPasswordRevealed, hovered ? kColorTextBright : kColorTextDim);
-}
-
-void CUnlockScreen::Draw(CDrawList &drawList)
-{
-	if (!m_bActive) return;
-
-	const auto windowW = static_cast<float>(m_window.GetWidth());
-	const auto windowH = static_cast<float>(m_window.GetHeight());
-
-	// Stops short of the status bar rather than covering the whole window: that strip is drawn
-	// before this widget, and a backdrop reaching all the way down painted over it entirely.
-	drawList.AddRectFilled(0.0f, 0.0f, windowW, windowH - kStatusBarHeight, kColorBackdrop);
-
-	const Rect card = CardRect(windowW, windowH, m_bSetupMode);
-	drawList.AddRectRoundedFilled(card.X, card.Y, card.W, card.H, CDrawList::UniformRadii(kCardRadius), kColorCard);
-
-	if (m_bSetupMode) {
-		DrawSetupCard(drawList, card);
+	if (m_setup) {
+		attempt_setup();
 	} else {
-		DrawUnlockCard(drawList, card);
+		attempt_unlock();
 	}
 }
 
-void CUnlockScreen::DrawUnlockCard(CDrawList &drawList, Rect card)
+void UnlockScreen::attempt_unlock()
 {
-	const CFont &body = m_fonts.GetBody();
-	const CFont &secondary = m_fonts.GetSecondary();
-	const Color accent = m_pSettings->m_clrAccent;
-	const float textX = card.X + kCardPadding;
+	TextInput &field = m_fields[password];
+	const bool unlocked = m_master_key.unlock(field.value(), m_settings.master_key);
 
-	DrawText(drawList, body, textX, card.Y + kCardPadding + body.GetAscent(), "Master Password", kColorTextBright);
-	DrawText(drawList, secondary, textX, card.Y + kCardPadding + body.GetLineHeight() + 4.0f + secondary.GetAscent(),
-			 "Enter your master password to continue.", kColorTextDim);
+	field.set_value("");
+	field.set_focused(!unlocked);
+	m_wrong_password = !unlocked;
 
-	DrawPasswordField(drawList, FirstFieldRect(card, false), m_passwordInput);
-
-	const Rect button = SubmitButtonRect(card, false);
-	drawList.AddRectRoundedBordered(button.X, button.Y, button.W, button.H, CDrawList::UniformRadii(8.0f), accent,
-									ColorOutlineOn(accent), 1.0f);
-	DrawCenteredText(drawList, body, button.X, button.Y, button.W, button.H, "Unlock", ColorForegroundOn(accent));
-
-	if (m_bWrongPassword) {
-		DrawText(drawList, secondary, textX, button.Y + button.H + kGap + secondary.GetAscent(), "Incorrect password.",
-				 kColorError);
+	if (unlocked) {
+		m_commands.push(Command{.type = CommandType::vault_unlocked});
 	}
 }
 
-void CUnlockScreen::DrawSetupCard(CDrawList &drawList, Rect card)
+void UnlockScreen::attempt_setup()
 {
-	const CFont &body = m_fonts.GetBody();
-	const CFont &secondary = m_fonts.GetSecondary();
-	const Color accent = m_pSettings->m_clrAccent;
-	const float textX = card.X + kCardPadding;
+	const std::string_view chosen = m_fields[password].value();
+	if (chosen.empty()) return;
 
-	DrawText(drawList, body, textX, card.Y + kCardPadding + body.GetAscent(), "Create a Master Password",
-			 kColorTextBright);
-
-	const float descriptionY = card.Y + kCardPadding + body.GetLineHeight() + 4.0f + secondary.GetAscent();
-	DrawText(drawList, secondary, textX, descriptionY, "This encrypts your saved account passwords. Choose",
-			 kColorTextDim);
-	DrawText(drawList, secondary, textX, descriptionY + secondary.GetLineHeight(),
-			 "something memorable - it can't be recovered if lost.", kColorTextDim);
-
-	DrawPasswordField(drawList, FirstFieldRect(card, true), m_passwordInput);
-	DrawPasswordField(drawList, ConfirmFieldRect(card), m_confirmPasswordInput);
-
-	const Rect button = SubmitButtonRect(card, true);
-	drawList.AddRectRoundedBordered(button.X, button.Y, button.W, button.H, CDrawList::UniformRadii(8.0f), accent,
-									ColorOutlineOn(accent), 1.0f);
-	DrawCenteredText(drawList, body, button.X, button.Y, button.W, button.H, "Create Password",
-					 ColorForegroundOn(accent));
-
-	if (m_bPasswordMismatch || m_bSetupFailed) {
-		const std::string_view message =
-			m_bPasswordMismatch ? "Passwords don't match." : "Something went wrong - try again.";
-		DrawText(drawList, secondary, textX, button.Y + button.H + kGap + secondary.GetAscent(), message, kColorError);
+	if (chosen != m_fields[confirmation].value()) {
+		m_passwords_differ = true;
+		m_setup_failed = false;
+		m_fields[confirmation].set_value("");
+		focus_field(confirmation);
+		return;
 	}
+
+	if (!m_master_key.create(chosen, m_settings.master_key)) {
+		m_setup_failed = true;
+		m_passwords_differ = false;
+		return;
+	}
+
+	m_settings.master_password_enabled = true;
+	m_passwords_differ = false;
+	m_setup_failed = false;
+
+	for (TextInput &field : m_fields) {
+		field.set_value("");
+	}
+
+	m_commands.push(Command{.type = CommandType::vault_created});
+}
+
+void UnlockScreen::update(float t_delta_seconds)
+{
+	if (!m_active) return;
+
+	for (u32 i = 0; i < field_count(); i += 1) {
+		m_fields[i].update(t_delta_seconds);
+	}
+}
+
+bool UnlockScreen::on_char(u32 t_character)
+{
+	if (!m_active) return false;
+
+	for (u32 i = 0; i < field_count(); i += 1) {
+		m_fields[i].on_char(t_character);
+	}
+
+	return true;
+}
+
+bool UnlockScreen::on_key_down(u32 t_key)
+{
+	if (!m_active) return false;
+
+	if (t_key == VK_RETURN) {
+		submit();
+	} else if (m_setup && t_key == VK_TAB) {
+		focus_field(m_fields[password].is_focused() ? confirmation : password);
+	} else {
+		for (u32 i = 0; i < field_count(); i += 1) {
+			m_fields[i].on_key_down(t_key);
+		}
+	}
+
+	return true;
+}
+
+bool UnlockScreen::on_pointer_down(Vec2 t_point)
+{
+	if (!m_active) return false;
+
+	const i32 pressed = field_at(t_point);
+	if (pressed >= 0) {
+		focus_field(static_cast<u32>(pressed));
+		m_fields[pressed].on_pointer_down(m_fonts.body(), field_text_rect(static_cast<u32>(pressed)), t_point.x);
+	}
+
+	return true;
+}
+
+bool UnlockScreen::on_pointer_move(Vec2 t_point)
+{
+	if (!m_active) return false;
+
+	for (u32 i = 0; i < field_count(); i += 1) {
+		if (m_fields[i].is_selecting()) {
+			m_fields[i].on_pointer_move(m_fonts.body(), field_text_rect(i), t_point.x);
+		}
+	}
+
+	return true;
+}
+
+bool UnlockScreen::on_pointer_up(Vec2 t_point)
+{
+	if (!m_active) return false;
+
+	bool ended_text_selection = false;
+	for (TextInput &field : m_fields) {
+		ended_text_selection = ended_text_selection || field.is_selecting();
+		field.on_pointer_up();
+	}
+
+	if (ended_text_selection) return true;
+
+	if (is_reveal_hit(t_point)) {
+		const bool reveal = m_fields[password].is_masked();
+
+		for (TextInput &field : m_fields) {
+			field.set_masked(!reveal);
+		}
+	} else if (submit_rect().contains(t_point)) {
+		submit();
+	}
+
+	return true;
+}
+
+bool UnlockScreen::on_right_click(Vec2 t_point)
+{
+	if (!m_active) return false;
+
+	const i32 clicked = field_at(t_point);
+	if (clicked >= 0) {
+		const auto field = static_cast<u32>(clicked);
+
+		focus_field(field);
+		m_fields[field].on_right_click(m_fonts.body(), field_text_rect(field), t_point.x);
+		m_commands.push(
+			Command{.type = CommandType::show_text_menu, .position = t_point, .text_input = &m_fields[field]});
+	}
+
+	return true;
+}
+
+CursorKind UnlockScreen::cursor() const
+{
+	if (!m_active) return CursorKind::arrow;
+
+	for (const TextInput &field : m_fields) {
+		if (field.is_selecting()) return CursorKind::ibeam;
+	}
+
+	if (is_reveal_hit(m_mouse) || submit_rect().contains(m_mouse)) return CursorKind::hand;
+
+	return field_at(m_mouse) >= 0 ? CursorKind::ibeam : CursorKind::arrow;
+}
+
+void UnlockScreen::draw_field(DrawList &t_draw_list, u32 t_field)
+{
+	const Color accent = m_settings.accent;
+	TextInput &field = m_fields[t_field];
+	const Rect reveal = reveal_rect(t_field);
+
+	controls::draw_field(t_draw_list, field_rect(t_field), field_radius,
+						 field.is_focused() ? accent : color_field_border, color_field, 255);
+	field.draw(t_draw_list, m_fonts.body(), field_text_rect(t_field), color_text_bright, accent);
+	controls::draw_eye(t_draw_list, m_assets, reveal, !field.is_masked(),
+					   reveal.contains(m_mouse) ? color_text_bright : color_text_dim);
+}
+
+void UnlockScreen::draw_submit_button(DrawList &t_draw_list, std::string_view t_label) const
+{
+	const Color accent = m_settings.accent;
+	const Rect button = submit_rect();
+
+	t_draw_list.add_bordered_rect(button, rounded(8.0f), accent, outline_on(accent), 1.0f);
+	draw_text_centered(t_draw_list, m_fonts.body(), button, t_label, foreground_on(accent));
+}
+
+void UnlockScreen::draw(DrawList &t_draw_list)
+{
+	if (!m_active) return;
+
+	const Vec2 window = m_window.size();
+	const Font &body = m_fonts.body();
+	const Font &secondary = m_fonts.secondary();
+
+	t_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y - status_bar_height}, color_backdrop);
+
+	const Rect card = card_rect();
+	t_draw_list.add_rounded_rect(card, rounded(card_radius), color_card);
+
+	const float text_x = card.x + card_padding;
+	const float title_baseline = card.y + card_padding + body.ascent();
+	const float description_baseline = card.y + card_padding + body.line_height() + 4.0f + secondary.ascent();
+	const float error_baseline = submit_rect().bottom() + gap + secondary.ascent();
+
+	if (m_setup) {
+		draw_text(t_draw_list, body, Vec2{text_x, title_baseline}, "Create a Master Password", color_text_bright);
+		draw_text(t_draw_list, secondary, Vec2{text_x, description_baseline},
+				  "This encrypts your saved account passwords. Choose", color_text_dim);
+		draw_text(t_draw_list, secondary, Vec2{text_x, description_baseline + secondary.line_height()},
+				  "something memorable - it can't be recovered if lost.", color_text_dim);
+	} else {
+		draw_text(t_draw_list, body, Vec2{text_x, title_baseline}, "Master Password", color_text_bright);
+		draw_text(t_draw_list, secondary, Vec2{text_x, description_baseline}, "Enter your master password to continue.",
+				  color_text_dim);
+	}
+
+	for (u32 i = 0; i < field_count(); i += 1) {
+		draw_field(t_draw_list, i);
+	}
+
+	draw_submit_button(t_draw_list, m_setup ? "Create Password" : "Unlock");
+
+	std::string_view error;
+	if (!m_setup && m_wrong_password) {
+		error = "Incorrect password.";
+	} else if (m_setup && m_passwords_differ) {
+		error = "Passwords don't match.";
+	} else if (m_setup && m_setup_failed) {
+		error = "Something went wrong - try again.";
+	}
+
+	draw_text(t_draw_list, secondary, Vec2{text_x, error_baseline}, error, color_error);
 }

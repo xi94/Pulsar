@@ -4,88 +4,64 @@
 
 #include <sodium.h>
 
-CMasterKey::~CMasterKey()
+MasterKey::~MasterKey()
 {
-	Clear();
+	sodium_memzero(m_data_key, sizeof(m_data_key));
 }
 
-void CMasterKey::Init()
+bool MasterKey::create(std::string_view t_password, MasterKeyParams &t_out_params)
 {
-	m_bEnabled = false;
-	m_opsLimit = 0;
-	m_memLimit = 0;
+	MasterKeyParams params{
+		.ops_limit = crypto::default_ops_limit(),
+		.mem_limit = crypto::default_mem_limit(),
+	};
 
-	sodium_memzero(m_aDek, sizeof(m_aDek));
-	std::memset(m_aSalt, 0, sizeof(m_aSalt));
-	std::memset(m_aWrapNonce, 0, sizeof(m_aWrapNonce));
-	std::memset(m_aWrappedDek, 0, sizeof(m_aWrappedDek));
+	crypto::random_bytes(params.salt);
+	crypto::random_bytes(params.wrap_nonce);
+
+	u8 data_key[crypto::key_size];
+	crypto::random_bytes(data_key);
+
+	u8 key_encryption_key[crypto::key_size];
+	if (!crypto::derive_key(t_password, params.salt, params.ops_limit, params.mem_limit, key_encryption_key)) {
+		sodium_memzero(data_key, sizeof(data_key));
+		return false;
+	}
+
+	const bool wrapped = crypto::encrypt(key_encryption_key, params.wrap_nonce, data_key, params.wrapped_data_key,
+										 params.wrapped_data_key + crypto::key_size);
+	sodium_memzero(key_encryption_key, sizeof(key_encryption_key));
+
+	if (wrapped) {
+		std::memcpy(m_data_key, data_key, sizeof(m_data_key));
+		m_unlocked = true;
+		t_out_params = params;
+	}
+
+	sodium_memzero(data_key, sizeof(data_key));
+
+	return wrapped;
 }
 
-bool CMasterKey::Set(std::string_view password)
+bool MasterKey::unlock(std::string_view t_password, const MasterKeyParams &t_params)
 {
-	u8 salt[CCrypto::kSaltSize];
-	CCrypto::RandomBytes(salt, sizeof(salt));
+	u8 key_encryption_key[crypto::key_size];
+	if (!crypto::derive_key(t_password, t_params.salt, t_params.ops_limit, t_params.mem_limit, key_encryption_key)) {
+		return false;
+	}
 
-	u8 dek[CCrypto::kKeySize];
-	CCrypto::RandomBytes(dek, sizeof(dek));
+	u8 data_key[crypto::key_size];
+	const std::span<const u8> wrapped{t_params.wrapped_data_key, crypto::key_size};
+	const bool unwrapped = crypto::decrypt(key_encryption_key, t_params.wrap_nonce, wrapped,
+										   t_params.wrapped_data_key + crypto::key_size, data_key);
+	sodium_memzero(key_encryption_key, sizeof(key_encryption_key));
 
-	const u64 opsLimit = CCrypto::DefaultOpsLimit();
-	const usize memLimit = CCrypto::DefaultMemLimit();
+	if (unwrapped) {
+		std::memcpy(m_data_key, data_key, sizeof(m_data_key));
+		m_unlocked = true;
+	}
 
-	u8 kek[CCrypto::kKeySize];
-	if (!CCrypto::Argon2idDeriveKey(password, salt, opsLimit, memLimit, kek)) return false;
+	sodium_memzero(data_key, sizeof(data_key));
 
-	u8 wrapNonce[CCrypto::kNonceSize];
-	CCrypto::RandomBytes(wrapNonce, sizeof(wrapNonce));
-
-	u8 wrappedDek[CCrypto::kKeySize + CCrypto::kTagSize];
-	const bool wrapped = CCrypto::Encrypt(kek, wrapNonce, dek, sizeof(dek), wrappedDek, wrappedDek + CCrypto::kKeySize);
-	sodium_memzero(kek, sizeof(kek));
-
-	if (!wrapped) return false;
-
-	std::memcpy(m_aDek, dek, sizeof(m_aDek));
-	sodium_memzero(dek, sizeof(dek));
-
-	std::memcpy(m_aSalt, salt, sizeof(m_aSalt));
-	std::memcpy(m_aWrapNonce, wrapNonce, sizeof(m_aWrapNonce));
-	std::memcpy(m_aWrappedDek, wrappedDek, sizeof(m_aWrappedDek));
-	m_opsLimit = opsLimit;
-	m_memLimit = memLimit;
-	m_bEnabled = true;
-
-	return true;
-}
-
-bool CMasterKey::Unlock(std::string_view password, const u8 salt[CCrypto::kSaltSize], u64 opsLimit, usize memLimit,
-						const u8 wrapNonce[CCrypto::kNonceSize],
-						const u8 wrappedDek[CCrypto::kKeySize + CCrypto::kTagSize])
-{
-	u8 kek[CCrypto::kKeySize];
-	if (!CCrypto::Argon2idDeriveKey(password, salt, opsLimit, memLimit, kek)) return false;
-
-	u8 dek[CCrypto::kKeySize];
-	const bool unwrapped =
-		CCrypto::Decrypt(kek, wrapNonce, wrappedDek, CCrypto::kKeySize, wrappedDek + CCrypto::kKeySize, dek);
-	sodium_memzero(kek, sizeof(kek));
-
-	if (!unwrapped) return false;
-
-	std::memcpy(m_aDek, dek, sizeof(m_aDek));
-	sodium_memzero(dek, sizeof(dek));
-
-	std::memcpy(m_aSalt, salt, sizeof(m_aSalt));
-	std::memcpy(m_aWrapNonce, wrapNonce, sizeof(m_aWrapNonce));
-	std::memcpy(m_aWrappedDek, wrappedDek, sizeof(m_aWrappedDek));
-	m_opsLimit = opsLimit;
-	m_memLimit = memLimit;
-	m_bEnabled = true;
-
-	return true;
-}
-
-void CMasterKey::Clear()
-{
-	m_bEnabled = false;
-	sodium_memzero(m_aDek, sizeof(m_aDek));
+	return unwrapped;
 }

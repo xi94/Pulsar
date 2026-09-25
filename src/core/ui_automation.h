@@ -1,139 +1,71 @@
 #pragma once
 
-#include <string>
-
 #include <UIAutomation.h>
 #include <Windows.h>
 #include <wrl/client.h>
 
-// A thin wrapper over Win32 UI Automation, the accessibility API a screen reader uses, for
-// inspecting and driving another process's UI. Nothing here knows about the Riot Client.
-//
-// Threading: apartment membership belongs to the OS thread, not to this object. Construct a
-// fresh instance on whichever thread will use it and never share one, even sequentially.
-//
-// Every cross-process lookup runs on a throwaway thread and is abandoned if it does not return
-// in time. These are uncancellable COM calls into another process's provider, and a
-// Chromium-based one rebuilding its tree has been seen sitting inside a single
-// ElementFromHandle for over thirty seconds. An abandoned lookup reports "not found"; HasWedged
-// is what tells that apart from a genuine miss.
-
-/// One found element. Copyable; a default-constructed instance is the "not found" state every
-/// lookup returns instead of a null or an error code.
-class CUiElement {
+class UiElement {
   public:
-	CUiElement() = default;
-	explicit CUiElement(Microsoft::WRL::ComPtr<IUIAutomationElement> pElement);
+	UiElement() = default;
+	explicit UiElement(Microsoft::WRL::ComPtr<IUIAutomationElement> t_element);
 
-	bool IsValid() const
+	bool is_valid() const
 	{
-		return m_pElement != nullptr;
+		return m_element != nullptr;
 	}
 
-	/// Escape hatch for anything this wrapper does not cover.
-	const Microsoft::WRL::ComPtr<IUIAutomationElement> &Get() const
+	const Microsoft::WRL::ComPtr<IUIAutomationElement> &com() const
 	{
-		return m_pElement;
+		return m_element;
 	}
 
-	/// A true text write via IUIAutomationValuePattern. Not every control supports it; SetFocus
-	/// plus CUiAutomation::SendKeystrokes is the fallback when this returns false.
-	bool SetValue(const wchar_t *pText) const;
-
-	bool Invoke() const;
-	bool SetFocus() const;
-
-	/// Whether this element holds OS-level keyboard focus right now. Some providers post the
-	/// focus change rather than applying it, so poll this before synthesizing a keystroke.
-	bool HasKeyboardFocus() const;
-
-	bool GetName(std::wstring &outName) const;
-	bool GetAutomationId(std::wstring &outAutomationId) const;
+	bool set_value(const wchar_t *t_text) const;
+	bool invoke() const;
+	bool focus() const;
+	bool has_keyboard_focus() const;
 
   private:
-	Microsoft::WRL::ComPtr<IUIAutomationElement> m_pElement;
+	Microsoft::WRL::ComPtr<IUIAutomationElement> m_element;
 };
 
-class CUiAutomation {
+class UiAutomation {
   public:
-	~CUiAutomation();
+	UiAutomation() = default;
+	~UiAutomation();
 
-	/// Call once early in startup, before any instance exists. Holds the process's MTA open so
-	/// the per-instance CoInitializeEx/CoUninitialize pairs stop tearing down the whole
-	/// apartment - and UI Automation's state inside it - every time. Joins no apartment itself.
-	static void KeepProcessMtaAlive();
+	UiAutomation(const UiAutomation &) = delete;
+	UiAutomation &operator=(const UiAutomation &) = delete;
 
-	/// Must succeed before any other method. See this file's threading note.
-	bool Init();
-	void Shutdown();
+	static void keep_process_mta_alive();
 
-	/// True once too many of this instance's lookups have been abandoned, meaning the target has
-	/// stopped answering and later lookups now fail fast.
-	///
-	/// Any caller that reads "found nothing" as an answer must check this - a wedged provider
-	/// and a genuine absence look identical otherwise.
-	bool HasWedged() const
+	bool init();
+	void shutdown();
+
+	bool has_wedged() const
 	{
-		return m_bWedged;
+		return m_wedged;
 	}
 
-	/// Searches processId and every descendant process: the launched Riot Client process is a
-	/// lightweight parent and only one grandchild owns the real window. Only top-level, visible,
-	/// unowned windows above a minimum size count.
-	static HWND FindTopLevelWindow(u32 processId);
+	static HWND find_top_level_window(u32 t_process_id);
+	static HWND find_window_by_title(const wchar_t *t_title);
 
-	/// An exact top-level title match, desktop-wide. Preferred over FindTopLevelWindow, which
-	/// remains for a caller that only has a process id to go on.
-	static HWND FindWindowByName(const wchar_t *pTitle);
+	UiElement element_from_window(HWND t_window) const;
+	UiElement find_descendant(const UiElement &t_root, const wchar_t *t_name) const;
+	UiElement find_descendant(const UiElement &t_root, const wchar_t *t_name, CONTROLTYPEID t_control_type) const;
 
-	/// Collapses the two common startup waits - no window yet, and window without an automation
-	/// tree yet - into one call.
-	CUiElement WaitForWindowByProcessId(u32 processId, u32 timeoutMs) const;
-	CUiElement WaitForWindowByName(const wchar_t *pTitle, u32 timeoutMs) const;
-
-	CUiElement ElementFromWindow(HWND hWnd) const;
-
-	/// One-shot lookups, for when the element should already exist. Descendants rather than
-	/// children: Riot Client-style UI nests controls several levels deep.
-	CUiElement FindFirstDescendantByAutomationId(const CUiElement &root, const wchar_t *pAutomationId) const;
-	CUiElement FindFirstDescendantByName(const CUiElement &root, const wchar_t *pName) const;
-	CUiElement FindFirstDescendantByControlType(const CUiElement &root, CONTROLTYPEID controlType) const;
-
-	/// Name and ControlType together. The login form's fields are CEF-rendered inputs with a
-	/// Name but no AutomationId, and pairing the two is what stops this matching an unrelated
-	/// element that happens to share the same visible label.
-	CUiElement FindFirstDescendantByNameAndControlType(const CUiElement &root, const wchar_t *pName,
-													   CONTROLTYPEID controlType) const;
-
-	/// The same lookups, polled: a freshly launched process's controls often do not exist for
-	/// the first several hundred milliseconds, and one lookup cannot tell "not yet" from "never".
-	CUiElement WaitForDescendantByAutomationId(const CUiElement &root, const wchar_t *pAutomationId,
-											   u32 timeoutMs) const;
-	CUiElement WaitForDescendantByName(const CUiElement &root, const wchar_t *pName, u32 timeoutMs) const;
-	CUiElement WaitForDescendantByControlType(const CUiElement &root, CONTROLTYPEID controlType, u32 timeoutMs) const;
-	CUiElement WaitForDescendantByNameAndControlType(const CUiElement &root, const wchar_t *pName,
-													 CONTROLTYPEID controlType, u32 timeoutMs) const;
-
-	/// Synthesized input via SendInput, so it lands as a genuine keypress rather than a posted
-	/// WM_KEYDOWN some UI frameworks ignore. Types into whatever holds keyboard focus.
-	void SendKeystrokes(const wchar_t *pText) const;
-	void SendKey(WORD virtualKeyCode) const;
+	void type_text(const wchar_t *t_text) const;
+	void press_key(WORD t_virtual_key) const;
 
   private:
-	bool CanSearch(const CUiElement &root) const;
+	bool can_search(const UiElement &t_root) const;
 
-	/// Shared body of the four one-shot lookups: everything past building the condition.
-	CUiElement FindFirstWithCondition(const CUiElement &root, Microsoft::WRL::ComPtr<IUIAutomationCondition> pCondition,
-									  const char *pLabel) const;
+	UiElement find_first(const UiElement &t_root, Microsoft::WRL::ComPtr<IUIAutomationCondition> t_condition,
+						 const char *t_label) const;
+	UiElement finish_bounded_lookup(Microsoft::WRL::ComPtr<IUIAutomationElement> t_found, bool t_abandoned) const;
 
-	/// Shared tail of every bounded lookup, keeping the abandoned-call bookkeeping in one place.
-	CUiElement FinishBoundedLookup(Microsoft::WRL::ComPtr<IUIAutomationElement> pFound, bool bAbandoned) const;
+	Microsoft::WRL::ComPtr<IUIAutomation> m_automation;
+	bool m_com_initialized = false;
 
-	Microsoft::WRL::ComPtr<IUIAutomation> m_pAutomation;
-	bool m_bComInitialized = false;
-
-	/// Mutable because the lookups are const: they only count how badly the other end is
-	/// behaving. Unsynchronized, since an instance belongs to exactly one thread.
-	mutable u32 m_abandonedCallCount = 0;
-	mutable bool m_bWedged = false;
+	mutable u32 m_abandoned_call_count = 0;
+	mutable bool m_wedged = false;
 };

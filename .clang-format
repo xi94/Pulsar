@@ -25,3 +25,4 @@ BreakBeforeConceptDeclarations: Always
 BraceWrapping:
   AfterFunction: false
   BeforeLambdaBody: false
+FixNamespaceComments: false

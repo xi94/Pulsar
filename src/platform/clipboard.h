@@ -1,5 +1,8 @@
 #pragma once
 
-/// Places UTF-8 text on the system clipboard as CF_UNICODETEXT. `owner` is the window that
-/// takes clipboard ownership for the duration.
-void SetClipboardText(void *hOwnerWindow, const char *pText);
+#include <string>
+#include <string_view>
+
+void set_clipboard_text(std::string_view t_text);
+std::string clipboard_text();
+bool clipboard_has_text();

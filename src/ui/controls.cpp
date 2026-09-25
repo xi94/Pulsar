@@ -2,114 +2,108 @@
 
 #include <algorithm>
 
+#include "gfx/assets.h"
+#include "gfx/draw_list.h"
 #include "gfx/font.h"
-#include "ui/draw_list.h"
-#include "ui/hoverable.h"
 #include "ui/text.h"
 
 namespace {
-constexpr float kButtonCornerRadius = 8.0f;
+constexpr float button_radius = 8.0f;
+constexpr float field_border = 1.5f;
+}
 
-/// Proportional to the rect rather than fixed, so the same glyph reads correctly on a 16px row
-/// badge and on a 32px close button.
-constexpr float kGlyphArmRatio = 0.24f;
-constexpr float kGlyphThicknessRatio = 0.09f;
-constexpr float kGlyphMinThickness = 2.0f;
-} // namespace
-
-void Controls::DrawIcon(CDrawList &drawList, Rect rect, const CTexture *pTexture, Color tint)
+void controls::draw_icon(DrawList &t_draw_list, Rect t_rect, const Texture *t_icon, Color t_tint)
 {
-	if (pTexture != nullptr) {
-		drawList.AddRectRoundedTextured(rect.X, rect.Y, rect.W, rect.H, kCornerRadiiNone, pTexture, tint);
+	t_draw_list.add_image(t_rect, t_icon, t_tint);
+}
+
+void controls::draw_x(DrawList &t_draw_list, Rect t_rect, Color t_color)
+{
+	const Vec2 center = t_rect.center();
+	const float arm = std::min(t_rect.w, t_rect.h) * 0.24f;
+	const float thickness = std::max(2.0f, t_rect.h * 0.09f);
+
+	t_draw_list.add_line({center.x - arm, center.y - arm}, {center.x + arm, center.y + arm}, thickness, t_color);
+	t_draw_list.add_line({center.x - arm, center.y + arm}, {center.x + arm, center.y - arm}, thickness, t_color);
+}
+
+void controls::draw_eye(DrawList &t_draw_list, const Assets &t_assets, Rect t_rect, bool t_revealed, Color t_color)
+{
+	draw_icon(t_draw_list, t_rect, t_assets.get(t_revealed ? Asset::icon_eye_visible : Asset::icon_eye_hidden),
+			  t_color);
+}
+
+void controls::draw_lift(DrawList &t_draw_list, Rect t_rect, float t_radius, Color t_glow, u8 t_alpha)
+{
+	constexpr int layers = 5;
+	constexpr float max_spread = 9.0f;
+	constexpr float base_alpha = 34.0f;
+
+	for (int layer = layers; layer >= 1; layer -= 1) {
+		const float t = static_cast<float>(layer) / layers;
+		const float spread = max_spread * t;
+		const auto layer_alpha = static_cast<u8>(base_alpha * (1.0f - t) * (1.0f - t) * (t_alpha / 255.0f));
+		if (layer_alpha == 0) continue;
+
+		t_draw_list.add_rounded_rect(t_rect.inset(-spread), rounded(t_radius + spread),
+									 with_alpha(t_glow, layer_alpha));
 	}
 }
 
-void Controls::DrawIconRotated(CDrawList &drawList, Rect rect, const CTexture *pTexture, float radians, Color tint)
+void controls::draw_circular_hover(DrawList &t_draw_list, Rect t_rect, Color t_glow, Color t_fill, u8 t_alpha)
 {
-	if (pTexture == nullptr) return;
-
-	drawList.AddRectTexturedRotated(rect.X, rect.Y, rect.W, rect.H, radians, pTexture, tint);
+	draw_lift(t_draw_list, t_rect, t_rect.w * 0.5f, t_glow, t_alpha);
+	t_draw_list.add_rounded_rect(t_rect, rounded(t_rect.w * 0.5f), faded(t_fill, t_alpha));
 }
 
-void Controls::DrawXGlyph(CDrawList &drawList, Rect rect, Color color)
+void controls::draw_panel_shadow(DrawList &t_draw_list, Rect t_panel, float t_radius, float t_amount)
 {
-	const float cx = rect.X + rect.W * 0.5f;
-	const float cy = rect.Y + rect.H * 0.5f;
-	const float arm = std::min(rect.W, rect.H) * kGlyphArmRatio;
-	const float thickness = std::max(kGlyphMinThickness, rect.H * kGlyphThicknessRatio);
+	constexpr int layers = 4;
+	constexpr float max_spread = 20.0f;
+	constexpr float drop = 10.0f;
+	constexpr float layer_alpha = 18.0f;
 
-	drawList.AddLine(cx - arm, cy - arm, cx + arm, cy + arm, thickness, color);
-	drawList.AddLine(cx - arm, cy + arm, cx + arm, cy - arm, thickness, color);
-}
+	for (int layer = layers; layer >= 1; layer -= 1) {
+		const float t = static_cast<float>(layer) / layers;
+		const float spread = max_spread * t;
+		const Rect shadow{t_panel.x - spread, t_panel.y - spread + drop, t_panel.w + spread * 2.0f,
+						  t_panel.h + spread * 2.0f};
 
-void Controls::DrawEyeGlyph(CDrawList &drawList, const CAssetManager &assets, Rect rect, bool revealed, Color color)
-{
-	DrawIcon(drawList, rect, assets.Get(revealed ? EAsset::IconEyeVisible : EAsset::IconEyeHidden), color);
-}
-
-void Controls::DrawCircularHover(CDrawList &drawList, Rect rect, Color liftColor, Color fill, u8 alpha)
-{
-	CHoverable::DrawLift(drawList, rect, rect.W * 0.5f, liftColor, alpha);
-	drawList.AddRectRoundedFilled(rect.X, rect.Y, rect.W, rect.H, CDrawList::UniformRadii(rect.W * 0.5f),
-								  ColorScaleAlpha(fill, alpha));
-}
-
-void Controls::DrawFieldChrome(CDrawList &drawList, Rect rect, float cornerRadius, Color border, Color fill, u8 alpha)
-{
-	// The border is a slightly larger rounded rect behind the fill rather than a stroke, so the
-	// inner radius has to shrink by the same inset or the corners read as two nested shapes.
-	constexpr float kBorderThickness = 1.5f;
-
-	drawList.AddRectRoundedFilled(rect.X, rect.Y, rect.W, rect.H, CDrawList::UniformRadii(cornerRadius),
-								  ColorScaleAlpha(border, alpha));
-	drawList.AddRectRoundedFilled(rect.X + kBorderThickness, rect.Y + kBorderThickness,
-								  rect.W - kBorderThickness * 2.0f, rect.H - kBorderThickness * 2.0f,
-								  CDrawList::UniformRadii(cornerRadius - kBorderThickness),
-								  ColorScaleAlpha(fill, alpha));
-}
-
-void Controls::DrawPanelShadow(CDrawList &drawList, Rect panel, float cornerRadius, float amount)
-{
-	constexpr int kLayers = 4;
-	constexpr float kMaxExpand = 20.0f;
-	constexpr float kYOffset = 10.0f;
-	constexpr float kLayerAlpha = 18.0f;
-
-	for (int i = kLayers; i >= 1; i -= 1) {
-		const float t = static_cast<float>(i) / static_cast<float>(kLayers);
-		const float expand = kMaxExpand * t;
-		const auto shadowAlpha = static_cast<u8>(kLayerAlpha * t * amount);
-
-		drawList.AddRectRoundedFilled(panel.X - expand, panel.Y - expand + kYOffset, panel.W + expand * 2.0f,
-									  panel.H + expand * 2.0f, CDrawList::UniformRadii(cornerRadius + expand * 0.4f),
-									  Color{0, 0, 0, shadowAlpha});
+		t_draw_list.add_rounded_rect(shadow, rounded(t_radius + spread * 0.4f),
+									 Color{0, 0, 0, static_cast<u8>(layer_alpha * t * t_amount)});
 	}
 }
 
-void Controls::DrawAccentButton(CDrawList &drawList, const CFont &font, Rect rect, std::string_view label, Color accent,
-								bool enabled, bool hovered, Color disabledFill, Color disabledLabel, u8 alpha)
+void controls::draw_field(DrawList &t_draw_list, Rect t_rect, float t_radius, Color t_border, Color t_fill, u8 t_alpha)
 {
-	const Color fill = !enabled ? disabledFill : (hovered ? ColorLighten(accent, 20) : accent);
-
-	if (hovered) {
-		CHoverable::DrawLift(drawList, rect, kButtonCornerRadius, accent, alpha);
-	}
-
-	drawList.AddRectRoundedBordered(rect.X, rect.Y, rect.W, rect.H, CDrawList::UniformRadii(kButtonCornerRadius),
-									ColorScaleAlpha(fill, alpha), ColorScaleAlpha(ColorOutlineOn(fill), alpha), 1.0f);
-	DrawCenteredText(drawList, font, rect.X, rect.Y, rect.W, rect.H, label,
-					 ColorScaleAlpha(enabled ? ColorForegroundOn(fill) : disabledLabel, alpha));
+	t_draw_list.add_bordered_rect(t_rect, rounded(t_radius), faded(t_fill, t_alpha), faded(t_border, t_alpha),
+								  field_border);
 }
 
-void Controls::DrawNeutralButton(CDrawList &drawList, const CFont &font, Rect rect, std::string_view label,
-								 Color liftColor, Color restingFill, Color hoverFill, Color labelColor, bool hovered,
-								 u8 alpha)
+void controls::draw_accent_button(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label,
+								  Color t_accent, bool t_enabled, bool t_hovered, Color t_disabled_fill,
+								  Color t_disabled_label, u8 t_alpha)
 {
-	if (hovered) {
-		CHoverable::DrawLift(drawList, rect, kButtonCornerRadius, liftColor, alpha);
+	const Color fill = !t_enabled ? t_disabled_fill : (t_hovered ? lightened(t_accent, 20) : t_accent);
+
+	if (t_hovered) {
+		draw_lift(t_draw_list, t_rect, button_radius, t_accent, t_alpha);
 	}
 
-	drawList.AddRectRoundedFilled(rect.X, rect.Y, rect.W, rect.H, CDrawList::UniformRadii(kButtonCornerRadius),
-								  ColorScaleAlpha(hovered ? hoverFill : restingFill, alpha));
-	DrawCenteredText(drawList, font, rect.X, rect.Y, rect.W, rect.H, label, ColorScaleAlpha(labelColor, alpha));
+	t_draw_list.add_bordered_rect(t_rect, rounded(button_radius), faded(fill, t_alpha),
+								  faded(outline_on(fill), t_alpha), 1.0f);
+	draw_text_centered(t_draw_list, t_font, t_rect, t_label,
+					   faded(t_enabled ? foreground_on(fill) : t_disabled_label, t_alpha));
+}
+
+void controls::draw_button(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label,
+						   const ButtonColors &t_colors, bool t_hovered, u8 t_alpha)
+{
+	if (t_hovered) {
+		draw_lift(t_draw_list, t_rect, button_radius, t_colors.lift, t_alpha);
+	}
+
+	t_draw_list.add_rounded_rect(t_rect, rounded(button_radius),
+								 faded(t_hovered ? t_colors.hover_fill : t_colors.fill, t_alpha));
+	draw_text_centered(t_draw_list, t_font, t_rect, t_label, faded(t_colors.label, t_alpha));
 }

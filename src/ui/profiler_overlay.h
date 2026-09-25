@@ -4,29 +4,20 @@
 
 #ifdef PULSAR_PROFILING
 
-#include "gfx/font_manager.h"
 #include "ui/widget.h"
 
-/// The profiler's report, drawn in the top-left corner and toggled with F1. Debug builds only -
-/// the whole file is compiled out otherwise, and CMake does not even list it in a Release build.
-///
-/// Never blocking and never consuming a pointer event: it has to be possible to read this while
-/// using the thing it is measuring.
-class CProfilerOverlay : public CWidget {
+class Fonts;
+
+class ProfilerOverlay : public Widget {
   public:
-	explicit CProfilerOverlay(CFontManager *pFonts);
+	explicit ProfilerOverlay(const Fonts &t_fonts);
 
-	void Update(float deltaSeconds) override;
-	void Draw(CDrawList &drawList) override;
-
-	/// F1 toggles, F2 clears the accumulated averages and peaks.
-	bool OnKeyDown(u32 keyCode) override;
+	void draw(DrawList &t_draw_list) override;
+	bool on_key_down(u32 t_key) override;
 
   private:
-	void DrawRow(CDrawList &drawList, const CProfiler::ScopeStats &stats, float x, float baselineY) const;
-
-	CFontManager *m_pFonts = nullptr;
-	bool m_bShown = false;
+	const Fonts &m_fonts;
+	bool m_shown = false;
 };
 
-#endif // PULSAR_PROFILING
+#endif

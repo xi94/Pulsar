@@ -3,125 +3,116 @@
 #include <algorithm>
 #include <bit>
 
-#include "core/animator.h"
-#include "ui/draw_list.h"
+#include "core/animation.h"
+#include "core/library.h"
+#include "gfx/draw_list.h"
+#include "gfx/font.h"
 #include "ui/text.h"
 
 namespace {
-constexpr float kPopupWidth = 220.0f;
-constexpr float kPopupPadding = 6.0f;
-constexpr float kPopupRadius = 10.0f;
-constexpr float kWindowMargin = 8.0f;
-constexpr float kAnchorGap = 6.0f;
-constexpr float kRowPaddingX = 10.0f;
-constexpr float kOpenEaseRate = 20.0f;
+constexpr float popup_width = 220.0f;
+constexpr float popup_padding = 6.0f;
+constexpr float popup_radius = 10.0f;
+constexpr float bounds_margin = 8.0f;
+constexpr float anchor_gap = 6.0f;
+constexpr float row_padding_x = 10.0f;
+constexpr float open_ease_rate = 20.0f;
 
-constexpr Color kColorBg{30, 30, 34, 255};
-constexpr Color kColorBorder{60, 60, 66, 255};
-constexpr Color kColorHover{46, 46, 52, 255};
-constexpr Color kColorText{220, 220, 224, 255};
-constexpr Color kColorTextDisabled{130, 130, 136, 255};
-constexpr Color kColorCheck{130, 200, 140, 255};
-constexpr Color kColorCheckDisabled{110, 118, 112, 255};
-constexpr Color kColorIconDisabled{150, 150, 150, 255};
-constexpr Color kColorIconNormal{255, 255, 255, 255};
+constexpr Color color_background{30, 30, 34, 255};
+constexpr Color color_border{60, 60, 66, 255};
+constexpr Color color_hover{46, 46, 52, 255};
+constexpr Color color_text{220, 220, 224, 255};
+constexpr Color color_text_disabled{130, 130, 136, 255};
+constexpr Color color_check{130, 200, 140, 255};
+constexpr Color color_check_disabled{110, 118, 112, 255};
+constexpr Color color_icon{255, 255, 255, 255};
+constexpr Color color_icon_disabled{150, 150, 150, 255};
 
-// Smaller than List view's dedicated thumbnail: this is a compact multi-select,
-// not a place to show icons off.
-float RowHeightFor(const CFontManager &fonts)
+float row_height_for(const Fonts &t_fonts)
 {
-	return std::max(30.0f, fonts.GetSecondary().GetLineHeight() + 14.0f);
+	return std::max(30.0f, t_fonts.secondary().line_height() + 14.0f);
 }
 
-float IconSizeFor(const CFontManager &fonts)
+float icon_size_for(const Fonts &t_fonts)
 {
-	return fonts.GetSecondary().GetLineHeight() * 0.95f;
+	return t_fonts.secondary().line_height() * 0.95f;
 }
 
-void DrawCheck(CDrawList &drawList, Rect row, float scale, Color color)
+void draw_check(DrawList &t_draw_list, Rect t_row, float t_scale, Color t_color)
 {
-	const float cx = row.X + row.W - kRowPaddingX - 8.0f * scale;
-	const float cy = row.Y + row.H * 0.5f;
+	const float x = t_row.right() - row_padding_x - 8.0f * t_scale;
+	const float y = t_row.center().y;
 
-	drawList.AddLine(cx - 7.0f * scale, cy, cx - 2.0f * scale, cy + 5.0f * scale, 2.0f, color);
-	drawList.AddLine(cx - 2.0f * scale, cy + 5.0f * scale, cx + 7.0f * scale, cy - 6.0f * scale, 2.0f, color);
-}
-} // namespace
-
-CGameSelectPopup::CGameSelectPopup(const CFontManager &fonts)
-	: m_fonts(fonts)
-{
+	t_draw_list.add_line({x - 7.0f * t_scale, y}, {x - 2.0f * t_scale, y + 5.0f * t_scale}, 2.0f, t_color);
+	t_draw_list.add_line({x - 2.0f * t_scale, y + 5.0f * t_scale}, {x + 7.0f * t_scale, y - 6.0f * t_scale}, 2.0f,
+						 t_color);
 }
 
-// Below the anchor and right-aligned to it, so the box unfolds down and left over the form.
-// Every clamp is relative to the bounds rect's edges.
-//
-// Only the resting height is clamped, never the animating one: clamping the growing height
-// slides the box upward frame by frame, which reads as drifting rather than opening.
-Rect CGameSelectPopup::PopupRect() const
+bool has_bit(u16 t_mask, u32 t_bit)
 {
-	const u32 rowCount = std::max<u32>(1, m_nBannerCount);
-	const float fullHeight = kPopupPadding * 2.0f + RowHeightFor(m_fonts) * static_cast<float>(rowCount);
-
-	// Right edges flush, then clamped so a narrow column cannot push the box off its left side.
-	// The popup is wider than the chip, so it always overhangs to the left.
-	const float minX = m_bounds.X + kWindowMargin;
-	const float maxX = std::max(minX, m_bounds.X + m_bounds.W - kWindowMargin - kPopupWidth);
-	const float x = std::clamp(m_anchor.X + m_anchor.W - kPopupWidth, minX, maxX);
-
-	const float minY = m_bounds.Y + kWindowMargin;
-	const float maxY = std::max(minY, m_bounds.Y + m_bounds.H - kWindowMargin - fullHeight);
-	const float y = std::clamp(m_anchor.Y + m_anchor.H + kAnchorGap, minY, maxY);
-
-	return Rect{x, y, kPopupWidth, fullHeight * m_flOpenAmount};
+	return (t_mask & (1u << t_bit)) != 0;
+}
 }
 
-Rect CGameSelectPopup::RowRect(u32 index) const
+GameSelectPopup::GameSelectPopup(const Library &t_library, const Fonts &t_fonts)
+	: m_library(t_library)
+	, m_fonts(t_fonts)
 {
-	const Rect popup = PopupRect();
-	const float height = RowHeightFor(m_fonts);
-
-	return Rect{popup.X, popup.Y + kPopupPadding + static_cast<float>(index) * height, popup.W, height};
 }
 
-bool CGameSelectPopup::IsLockedRow(u32 index) const
+void GameSelectPopup::open(Rect t_anchor, Rect t_bounds)
 {
-	return (m_uMask & (1u << index)) != 0 && std::popcount(m_uMask) == 1;
+	m_anchor = t_anchor;
+	m_bounds = t_bounds;
+	m_open = true;
 }
 
-void CGameSelectPopup::Open(u16 initialMask, const Banner *pBanners, u32 bannerCount, Rect anchor, Rect bounds)
+void GameSelectPopup::close()
 {
-	m_uMask = initialMask;
-	m_pBanners = pBanners;
-	m_nBannerCount = bannerCount;
-	m_anchor = anchor;
-	m_bounds = bounds;
-	m_bOpen = true;
+	m_open = false;
 }
 
-void CGameSelectPopup::Close()
+void GameSelectPopup::update(float t_delta_seconds)
 {
-	m_bOpen = false;
+	m_open_amount = animation::ease_toward(m_open_amount, m_open ? 1.0f : 0.0f, open_ease_rate, t_delta_seconds);
 }
 
-void CGameSelectPopup::Update(float deltaSeconds)
+Rect GameSelectPopup::popup_rect() const
 {
-	m_flOpenAmount = CAnimator::EaseToward(m_flOpenAmount, m_bOpen ? 1.0f : 0.0f, kOpenEaseRate, deltaSeconds);
+	const u32 row_count = std::max<u32>(1, m_library.game_count());
+	const float full_height = popup_padding * 2.0f + row_height_for(m_fonts) * row_count;
 
-	if (!m_bOpen && m_flOpenAmount < 0.002f) {
-		m_flOpenAmount = 0.0f;
-	}
+	const float min_x = m_bounds.x + bounds_margin;
+	const float max_x = std::max(min_x, m_bounds.right() - bounds_margin - popup_width);
+	const float min_y = m_bounds.y + bounds_margin;
+	const float max_y = std::max(min_y, m_bounds.bottom() - bounds_margin - full_height);
+
+	return Rect{std::clamp(m_anchor.right() - popup_width, min_x, max_x),
+				std::clamp(m_anchor.bottom() + anchor_gap, min_y, max_y), popup_width, full_height * m_open_amount};
 }
 
-bool CGameSelectPopup::OnPointerDown(float x, float y)
+Rect GameSelectPopup::row_rect(u32 t_game) const
 {
-	if (!IsBlocking() || !RectContainsPoint(PopupRect(), x, y)) return false;
+	const Rect popup = popup_rect();
+	const float height = row_height_for(m_fonts);
 
-	for (u32 i = 0; i < m_nBannerCount; i += 1) {
-		if (!RectContainsPoint(RowRect(i), x, y)) continue;
+	return Rect{popup.x, popup.y + popup_padding + t_game * height, popup.w, height};
+}
 
-		if (!IsLockedRow(i)) {
-			m_uMask ^= static_cast<u16>(1u << i);
+bool GameSelectPopup::is_last_checked(u32 t_game) const
+{
+	return has_bit(m_mask, t_game) && std::popcount(m_mask) == 1;
+}
+
+bool GameSelectPopup::on_pointer_down(Vec2 t_point)
+{
+	if (!is_open() || !popup_rect().contains(t_point)) return false;
+
+	for (u32 game = 0; game < m_library.game_count(); game += 1) {
+		if (!row_rect(game).contains(t_point)) continue;
+
+		if (!is_last_checked(game)) {
+			m_mask ^= static_cast<u16>(1u << game);
 		}
 
 		break;
@@ -130,66 +121,52 @@ bool CGameSelectPopup::OnPointerDown(float x, float y)
 	return true;
 }
 
-ECursorKind CGameSelectPopup::GetDesiredCursor() const
+CursorKind GameSelectPopup::cursor(Vec2 t_mouse) const
 {
-	if (!IsBlocking()) return ECursorKind::Arrow;
+	if (!is_open()) return CursorKind::arrow;
 
-	for (u32 i = 0; i < m_nBannerCount; i += 1) {
-		// A locked row's click is ignored, so it gets no hand either - matching Draw, which
-		// skips its hover highlight.
-		if (!IsLockedRow(i) && RectContainsPoint(RowRect(i), m_flMouseX, m_flMouseY)) return ECursorKind::Hand;
+	for (u32 game = 0; game < m_library.game_count(); game += 1) {
+		if (!is_last_checked(game) && row_rect(game).contains(t_mouse)) return CursorKind::hand;
 	}
 
-	return ECursorKind::Arrow;
+	return CursorKind::arrow;
 }
 
-void CGameSelectPopup::Draw(CDrawList &drawList)
+void GameSelectPopup::draw(DrawList &t_draw_list, Vec2 t_mouse) const
 {
-	if (!IsBlocking()) return;
+	if (!is_open()) return;
 
-	const Rect popup = PopupRect();
-	drawList.AddRectRoundedFilled(popup.X, popup.Y, popup.W, popup.H, CDrawList::UniformRadii(kPopupRadius),
-								  kColorBorder);
-	drawList.AddRectRoundedFilled(popup.X + 1.0f, popup.Y + 1.0f, popup.W - 2.0f, popup.H - 2.0f,
-								  CDrawList::UniformRadii(kPopupRadius - 1.0f), kColorBg);
+	const Rect popup = popup_rect();
+	t_draw_list.add_bordered_rect(popup, rounded(popup_radius), color_background, color_border, 1.0f);
+	t_draw_list.push_clip(popup);
 
-	// The position clamp is what keeps this laid out correctly; the clip rect guarantees no row
-	// paints past the rounded border even when many banners in a short bounds rect make the
-	// clamp alone unable to fit everything.
-	drawList.PushClipRect(popup);
+	const Font &font = m_fonts.secondary();
+	const float icon_size = icon_size_for(m_fonts);
 
-	const CFont &secondary = m_fonts.GetSecondary();
-	const float iconSize = IconSizeFor(m_fonts);
-	const float baselineOffset = (secondary.GetAscent() + secondary.GetDescent()) * 0.5f;
+	for (u32 index = 0; index < m_library.game_count(); index += 1) {
+		const Game &game = m_library.game(index);
+		const Rect row = row_rect(index);
+		const bool locked = is_last_checked(index);
 
-	for (u32 i = 0; i < m_nBannerCount; i += 1) {
-		const Rect row = RowRect(i);
-		const Banner &banner = m_pBanners[i];
-		const bool locked = IsLockedRow(i);
-
-		if (!locked && RectContainsPoint(row, m_flMouseX, m_flMouseY)) {
-			drawList.AddRectRoundedFilled(row.X + 4.0f, row.Y, row.W - 8.0f, row.H, CDrawList::UniformRadii(6.0f),
-										  kColorHover);
+		if (!locked && row.contains(t_mouse)) {
+			t_draw_list.add_rounded_rect(row.inset(4.0f, 0.0f), rounded(6.0f), color_hover);
 		}
 
-		const Rect iconRect{row.X + kRowPaddingX, row.Y + (row.H - iconSize) * 0.5f, iconSize, iconSize};
+		const Rect icon{row.x + row_padding_x, row.y + (row.h - icon_size) * 0.5f, icon_size, icon_size};
 
-		if (banner.pIcon != nullptr) {
-			drawList.AddRectRoundedTextured(iconRect.X, iconRect.Y, iconRect.W, iconRect.H,
-											CDrawList::UniformRadii(4.0f), banner.pIcon,
-											locked ? kColorIconDisabled : kColorIconNormal);
+		if (game.icon != nullptr) {
+			t_draw_list.add_image(icon, game.icon, locked ? color_icon_disabled : color_icon, rounded(4.0f));
 		} else {
-			drawList.AddRectRoundedFilled(iconRect.X, iconRect.Y, iconRect.W, iconRect.H, CDrawList::UniformRadii(4.0f),
-										  locked ? ColorScaleAlpha(banner.Accent, 140) : banner.Accent);
+			t_draw_list.add_rounded_rect(icon, rounded(4.0f), locked ? faded(game.accent, 140) : game.accent);
 		}
 
-		DrawText(drawList, secondary, iconRect.X + iconRect.W + 10.0f, row.Y + row.H * 0.5f + baselineOffset,
-				 banner.Title, locked ? kColorTextDisabled : kColorText);
+		draw_text(t_draw_list, font, Vec2{icon.right() + 10.0f, font.centered_baseline(row)}, game.title,
+				  locked ? color_text_disabled : color_text);
 
-		if ((m_uMask & (1u << i)) != 0) {
-			DrawCheck(drawList, row, iconSize / 20.0f, locked ? kColorCheckDisabled : kColorCheck);
+		if (has_bit(m_mask, index)) {
+			draw_check(t_draw_list, row, icon_size / 20.0f, locked ? color_check_disabled : color_check);
 		}
 	}
 
-	drawList.PopClipRect();
+	t_draw_list.pop_clip();
 }

@@ -2,41 +2,36 @@
 
 #ifdef PULSAR_PROFILING
 
+#include <algorithm>
+
 #include <Windows.h>
 
 namespace {
-/// How much of the previous average survives each frame. High enough that a row does not flicker
-/// between two numbers, low enough that a real regression shows up within a second.
-constexpr float kAverageRetention = 0.9f;
+constexpr u32 max_scopes = 64;
+constexpr float average_retention = 0.9f;
 
 struct Scope {
-	const char *pName = nullptr;
-	u32 Depth = 0;
-	i64 StartTicks = 0;
-
-	// This frame's totals, folded into the report at EndFrame.
-	i64 FrameTicks = 0;
-	u32 FrameCalls = 0;
-
-	CProfiler::ScopeStats Stats{};
+	const char *name = nullptr;
+	u32 depth = 0;
+	i64 start_ticks = 0;
+	i64 frame_ticks = 0;
+	u32 frame_calls = 0;
+	profiler::ScopeStats stats{};
 };
 
-struct ProfilerState {
-	Scope Scopes[CProfiler::kMaxScopes]{};
-	u32 ScopeCount = 0;
-
-	// Indices into Scopes, so a scope entered twice in one frame nests correctly.
-	u32 OpenScopes[CProfiler::kMaxScopes]{};
-	u32 OpenCount = 0;
-
-	i64 FrameStartTicks = 0;
-	float FrameMs = 0.0f;
-	bool bInFrame = false;
+struct Profiler {
+	Scope scopes[max_scopes]{};
+	u32 scope_count = 0;
+	u32 open_scopes[max_scopes]{};
+	u32 open_count = 0;
+	i64 frame_start_ticks = 0;
+	float frame_ms = 0.0f;
+	bool in_frame = false;
 };
 
-ProfilerState g_profiler;
+Profiler g_profiler;
 
-i64 CurrentTicks()
+i64 current_ticks()
 {
 	LARGE_INTEGER counter;
 	QueryPerformanceCounter(&counter);
@@ -44,120 +39,111 @@ i64 CurrentTicks()
 	return counter.QuadPart;
 }
 
-// Cached because QueryPerformanceFrequency is fixed for the life of the system, and this is
-// called for every scope that closes.
-double TicksToMilliseconds()
+float ticks_to_ms(i64 t_ticks)
 {
-	static const double scale = [] {
+	static const double ms_per_tick = [] {
 		LARGE_INTEGER frequency;
 		QueryPerformanceFrequency(&frequency);
 
 		return 1000.0 / static_cast<double>(frequency.QuadPart);
 	}();
 
-	return scale;
+	return static_cast<float>(static_cast<double>(t_ticks) * ms_per_tick);
 }
 
-/// Scopes are named by string literal, so pointer identity is enough and the linear scan is over
-/// a handful of entries. A new name claims the next slot; past kMaxScopes it is dropped, which
-/// costs a row in the report and nothing else.
-Scope *FindOrAddScope(const char *pName)
+Scope *find_or_add_scope(const char *t_name)
 {
-	for (u32 i = 0; i < g_profiler.ScopeCount; i += 1) {
-		if (g_profiler.Scopes[i].pName == pName) return &g_profiler.Scopes[i];
+	for (u32 i = 0; i < g_profiler.scope_count; i += 1) {
+		if (g_profiler.scopes[i].name == t_name) return &g_profiler.scopes[i];
 	}
 
-	if (g_profiler.ScopeCount >= CProfiler::kMaxScopes) return nullptr;
+	if (g_profiler.scope_count >= max_scopes) return nullptr;
 
-	Scope &scope = g_profiler.Scopes[g_profiler.ScopeCount];
-	g_profiler.ScopeCount += 1;
+	Scope &scope = g_profiler.scopes[g_profiler.scope_count];
+	g_profiler.scope_count += 1;
 
-	scope.pName = pName;
-	scope.Stats.pName = pName;
+	scope.name = t_name;
+	scope.stats.name = t_name;
 
 	return &scope;
 }
-} // namespace
+}
 
-void CProfiler::BeginFrame()
+void profiler::begin_frame()
 {
-	g_profiler.FrameStartTicks = CurrentTicks();
-	g_profiler.bInFrame = true;
-	g_profiler.OpenCount = 0;
+	g_profiler.frame_start_ticks = current_ticks();
+	g_profiler.in_frame = true;
+	g_profiler.open_count = 0;
 
-	for (u32 i = 0; i < g_profiler.ScopeCount; i += 1) {
-		g_profiler.Scopes[i].FrameTicks = 0;
-		g_profiler.Scopes[i].FrameCalls = 0;
+	for (u32 i = 0; i < g_profiler.scope_count; i += 1) {
+		g_profiler.scopes[i].frame_ticks = 0;
+		g_profiler.scopes[i].frame_calls = 0;
 	}
 }
 
-void CProfiler::EndFrame()
+void profiler::end_frame()
 {
-	if (!g_profiler.bInFrame) return;
+	if (!g_profiler.in_frame) return;
 
-	g_profiler.FrameMs =
-		static_cast<float>(static_cast<double>(CurrentTicks() - g_profiler.FrameStartTicks) * TicksToMilliseconds());
-	g_profiler.bInFrame = false;
+	g_profiler.frame_ms = ticks_to_ms(current_ticks() - g_profiler.frame_start_ticks);
+	g_profiler.in_frame = false;
 
-	for (u32 i = 0; i < g_profiler.ScopeCount; i += 1) {
-		Scope &scope = g_profiler.Scopes[i];
-		const auto lastMs = static_cast<float>(static_cast<double>(scope.FrameTicks) * TicksToMilliseconds());
+	for (u32 i = 0; i < g_profiler.scope_count; i += 1) {
+		Scope &scope = g_profiler.scopes[i];
+		const float last_ms = ticks_to_ms(scope.frame_ticks);
 
-		scope.Stats.Calls = scope.FrameCalls;
-		scope.Stats.Depth = scope.Depth;
-		scope.Stats.LastMs = lastMs;
-		scope.Stats.AverageMs = scope.Stats.AverageMs * kAverageRetention + lastMs * (1.0f - kAverageRetention);
-
-		if (lastMs > scope.Stats.PeakMs) {
-			scope.Stats.PeakMs = lastMs;
-		}
+		scope.stats.calls = scope.frame_calls;
+		scope.stats.depth = scope.depth;
+		scope.stats.last_ms = last_ms;
+		scope.stats.average_ms = scope.stats.average_ms * average_retention + last_ms * (1.0f - average_retention);
+		scope.stats.peak_ms = std::max(scope.stats.peak_ms, last_ms);
 	}
 }
 
-void CProfiler::BeginScope(const char *pName)
+void profiler::begin_scope(const char *t_name)
 {
-	Scope *pScope = FindOrAddScope(pName);
-	if (pScope == nullptr || g_profiler.OpenCount >= kMaxScopes) return;
+	Scope *scope = find_or_add_scope(t_name);
+	if (scope == nullptr || g_profiler.open_count >= max_scopes) return;
 
-	pScope->Depth = g_profiler.OpenCount;
-	pScope->StartTicks = CurrentTicks();
-	pScope->FrameCalls += 1;
+	scope->depth = g_profiler.open_count;
+	scope->start_ticks = current_ticks();
+	scope->frame_calls += 1;
 
-	g_profiler.OpenScopes[g_profiler.OpenCount] = static_cast<u32>(pScope - g_profiler.Scopes);
-	g_profiler.OpenCount += 1;
+	g_profiler.open_scopes[g_profiler.open_count] = static_cast<u32>(scope - g_profiler.scopes);
+	g_profiler.open_count += 1;
 }
 
-void CProfiler::EndScope()
+void profiler::end_scope()
 {
-	if (g_profiler.OpenCount == 0) return;
+	if (g_profiler.open_count == 0) return;
 
-	g_profiler.OpenCount -= 1;
+	g_profiler.open_count -= 1;
 
-	Scope &scope = g_profiler.Scopes[g_profiler.OpenScopes[g_profiler.OpenCount]];
-	scope.FrameTicks += CurrentTicks() - scope.StartTicks;
+	Scope &scope = g_profiler.scopes[g_profiler.open_scopes[g_profiler.open_count]];
+	scope.frame_ticks += current_ticks() - scope.start_ticks;
 }
 
-void CProfiler::Reset()
+void profiler::reset()
 {
-	for (u32 i = 0; i < g_profiler.ScopeCount; i += 1) {
-		g_profiler.Scopes[i].Stats.AverageMs = 0.0f;
-		g_profiler.Scopes[i].Stats.PeakMs = 0.0f;
+	for (u32 i = 0; i < g_profiler.scope_count; i += 1) {
+		g_profiler.scopes[i].stats.average_ms = 0.0f;
+		g_profiler.scopes[i].stats.peak_ms = 0.0f;
 	}
 }
 
-u32 CProfiler::GetScopeCount()
+u32 profiler::scope_count()
 {
-	return g_profiler.ScopeCount;
+	return g_profiler.scope_count;
 }
 
-const CProfiler::ScopeStats &CProfiler::GetScope(u32 index)
+const profiler::ScopeStats &profiler::scope(u32 t_index)
 {
-	return g_profiler.Scopes[index].Stats;
+	return g_profiler.scopes[t_index].stats;
 }
 
-float CProfiler::GetFrameMs()
+float profiler::frame_ms()
 {
-	return g_profiler.FrameMs;
+	return g_profiler.frame_ms;
 }
 
-#endif // PULSAR_PROFILING
+#endif

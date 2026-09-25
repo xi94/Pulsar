@@ -1,422 +1,341 @@
 #include "core/login_attempt.h"
 
-#include "core/str.h"
-
-#include <chrono>
-#include <memory>
 #include <string>
 #include <utility>
 
-#include <Windows.h>
-
 #include "core/debug_log.h"
+#include "core/str.h"
 #include "core/thread_util.h"
 #include "core/ui_automation.h"
 
 namespace {
-constexpr const char *kLogCategory = "login";
+constexpr const char *log_category = "login";
 
-constexpr u32 kFormTimeoutMs = 10000;
-constexpr u32 kResultTimeoutMs = 6000;
-constexpr u32 kForegroundTimeoutMs = 5000;
-constexpr u32 kFocusTimeoutMs = 5000;
+constexpr u32 login_form_timeout_ms = 10000;
+constexpr u32 login_result_timeout_ms = 6000;
+constexpr u32 foreground_timeout_ms = 5000;
+constexpr u32 focus_timeout_ms = 5000;
+constexpr u32 play_button_timeout_ms = 8000;
+constexpr auto cancel_grace_period = std::chrono::milliseconds(5000);
+constexpr auto shutdown_join_timeout = std::chrono::milliseconds(3000);
+constexpr auto finished_join_timeout = std::chrono::milliseconds(50);
 
-// Generous but not load-bearing: the login already went through by the time this runs, so a
-// timeout here only means the game was left unlaunched.
-constexpr u32 kPlayButtonTimeoutMs = 8000;
-
-// A healthy worker notices a cancel within one 100ms poll interval.
-constexpr auto kCancelGracePeriod = std::chrono::milliseconds(5000);
-
-// Riot's wording is never shown verbatim: it is not stable across client versions or locales.
-// Wrong credentials is the one case worth calling out, since it is the only actionable one.
-constexpr const char *kInvalidCredentialsMessage = "Invalid username or password.";
-constexpr const char *kServerErrorMessage =
+constexpr const char *invalid_credentials_message = "Invalid username or password.";
+constexpr const char *server_error_message =
 	"Something went wrong - Riot's servers might be overloaded. Try again in a moment.";
-constexpr const char *kGameInProgressMessage = "A game is already running - close it before switching accounts.";
-constexpr const char *kNoRiotClientMessage = "Couldn't find the Riot Client - is it installed?";
-constexpr const char *kLaunchFailedMessage = "Couldn't launch the Riot Client.";
-constexpr const char *kWindowTimeoutMessage = "The Riot Client didn't respond in time.";
-constexpr const char *kFormTimeoutMessage = "Couldn't find the Riot Client's login form.";
-constexpr const char *kUnresponsiveClientMessage = "The Riot Client stopped responding - try again.";
+constexpr const char *game_in_progress_message = "A game is already running - close it before switching accounts.";
+constexpr const char *no_riot_client_message = "Couldn't find the Riot Client - is it installed?";
+constexpr const char *launch_failed_message = "Couldn't launch the Riot Client.";
+constexpr const char *window_timeout_message = "The Riot Client didn't respond in time.";
+constexpr const char *form_timeout_message = "Couldn't find the Riot Client's login form.";
+constexpr const char *unresponsive_client_message = "The Riot Client stopped responding - try again.";
+constexpr const char *automation_failed_message = "Couldn't start Windows UI Automation - try again.";
 
-// Distinct from kServerErrorMessage: automation failing to start is a problem with this
-// machine's accessibility stack, not with Riot.
-constexpr const char *kAutomationFailedMessage = "Couldn't start Windows UI Automation - try again.";
-
-enum class ESubmitResult : u8 {
-	FormNotFound,
-	ErrorShown,	  // the client's inline error tooltip appeared
-	NoErrorShown, // nothing appeared in time - the "assume success" inference
+enum class SubmitResult : u8 {
+	form_not_found,
+	error_shown,
+	no_error_shown,
 };
 
-const char *StageName(ELoginStage stage)
+const char *stage_name(LoginStage t_stage)
 {
-	switch (stage) {
-		case ELoginStage::Idle:
+	switch (t_stage) {
+		case LoginStage::idle:
 			return "IDLE";
-		case ELoginStage::WaitingForProcess:
+		case LoginStage::waiting_for_process:
 			return "WAITING_FOR_PROCESS";
-		case ELoginStage::Connecting:
+		case LoginStage::connecting:
 			return "CONNECTING";
-		case ELoginStage::Authenticating:
+		case LoginStage::authenticating:
 			return "AUTHENTICATING";
-		case ELoginStage::Launching:
+		case LoginStage::launching:
 			return "LAUNCHING";
-		case ELoginStage::Success:
+		case LoginStage::success:
 			return "SUCCESS";
-		case ELoginStage::Error:
+		case LoginStage::error:
 			return "ERROR";
-		case ELoginStage::Cancelled:
+		case LoginStage::cancelled:
 			return "CANCELLED";
 	}
 
 	return "?";
 }
 
-// Every stage change goes through here rather than storing directly, so the log shows the same
-// sequence the UI sees. Release ordering on every stage, not just the terminal ones.
-void StoreStage(LoginAttemptState &state, ELoginStage stage)
+void set_stage(LoginWork &t_work, LoginStage t_stage)
 {
-	DebugLog::Write(kLogCategory, "stage -> %s%s", StageName(stage),
-					state.szMessage[0] != '\0' ? " (with a message)" : "");
-	state.Stage.store(stage, std::memory_order_release);
+	debug_log::write(log_category, "stage -> %s%s", stage_name(t_stage),
+					 t_work.message[0] != '\0' ? " (with a message)" : "");
+	t_work.stage.store(t_stage, std::memory_order_release);
 }
 
-void StoreError(LoginAttemptState &state, const char *pMessage)
+void fail(LoginWork &t_work, const char *t_message)
 {
-	CopyTo(pMessage, state.szMessage, LoginAttemptState::kMaxMessageLength);
-	StoreStage(state, ELoginStage::Error);
+	copy_to(t_message, t_work.message);
+	set_stage(t_work, LoginStage::error);
 }
 
-bool IsCancelled(const LoginAttemptState &state)
+bool stop_if_cancelled(LoginWork &t_work)
 {
-	return state.bCancelRequested.load(std::memory_order_relaxed);
-}
+	if (!t_work.cancel_requested.load(std::memory_order_relaxed)) return false;
 
-// True once the attempt has been stopped, so a caller can `if (StoreIfCancelled(state)) return;`
-// at each of the flow's checkpoints.
-bool StoreIfCancelled(LoginAttemptState &state)
-{
-	if (!IsCancelled(state)) return false;
-
-	StoreStage(state, ELoginStage::Cancelled);
+	set_stage(t_work, LoginStage::cancelled);
 
 	return true;
 }
 
-// A CRiotClient poll returning false means either "the user cancelled" or "this step genuinely
-// failed", and the worker cannot tell which without re-checking the flag itself.
-void StoreCancelledOrError(LoginAttemptState &state, const char *pFailureMessage)
+void fail_unless_cancelled(LoginWork &t_work, const char *t_message)
 {
-	if (!StoreIfCancelled(state)) {
-		StoreError(state, pFailureMessage);
+	if (!stop_if_cancelled(t_work)) {
+		fail(t_work, t_message);
 	}
 }
 
-// A plain substring check is enough: among every message the client has been observed to
-// surface, this is the only one containing the word at all.
-bool LooksLikeInvalidCredentials(const std::wstring &wide)
+bool is_invalid_credentials(const std::wstring &t_error)
 {
-	return wide.find(L"credentials") != std::wstring::npos;
+	return t_error.find(L"credentials") != std::wstring::npos;
 }
 
-// pIgnorePreviousMessage is only set for the retry. Without it the retry can read the first
-// attempt's still-on-screen tooltip as its own result before the client replaces it.
-ESubmitResult SubmitAndWaitForResult(LoginAttemptState &state, CUiAutomation &uiAutomation,
-									 std::wstring &outErrorMessage,
-									 const std::wstring *pIgnorePreviousMessage = nullptr)
+SubmitResult submit_and_wait_for_result(LoginWork &t_work, const UiAutomation &t_automation, std::wstring &t_out_error,
+										const std::wstring *t_error_to_ignore = nullptr)
 {
-	outErrorMessage.clear();
+	t_out_error.clear();
 
-	if (!state.RiotClient.SubmitLogin(uiAutomation, state.szUsername, state.szPassword, kFormTimeoutMs,
-									  &state.bCancelRequested)) {
-		return ESubmitResult::FormNotFound;
+	if (!t_work.riot_client.submit_login(t_automation, t_work.username, t_work.password, login_form_timeout_ms,
+										 t_work.cancel_requested)) {
+		return SubmitResult::form_not_found;
 	}
 
-	if (state.RiotClient.WaitForLoginError(uiAutomation, outErrorMessage, kResultTimeoutMs, &state.bCancelRequested,
-										   pIgnorePreviousMessage)) {
-		return ESubmitResult::ErrorShown;
-	}
+	const bool error_shown = t_work.riot_client.wait_for_login_error(t_automation, t_out_error, login_result_timeout_ms,
+																	 t_work.cancel_requested, t_error_to_ignore);
 
-	return ESubmitResult::NoErrorShown;
+	return error_shown ? SubmitResult::error_shown : SubmitResult::no_error_shown;
 }
 
-// Kills every known client process and launches a fresh one, then waits for its window. False
-// means this stored its own terminal stage and the caller should return.
-bool StartFreshClient(LoginAttemptState &state)
+bool start_fresh_client(LoginWork &t_work)
 {
-	// Checked before the kill rather than after, since there is nothing to undo if it bails.
-	if (CRiotClient::IsGameInProgress()) {
-		StoreError(state, kGameInProgressMessage);
+	if (RiotClient::is_game_in_progress()) {
+		fail(t_work, game_in_progress_message);
 		return false;
 	}
 
-	if (StoreIfCancelled(state)) return false;
+	if (stop_if_cancelled(t_work)) return false;
 
-	// Always kill and relaunch, never reuse: an already-running client can be sitting logged in
-	// on its library page, which has no login form at all.
-	CRiotClient::KillAllClientProcesses();
+	RiotClient::kill_all_client_processes();
 
-	if (!state.RiotClient.ResolveExecutablePath()) {
-		StoreError(state, kNoRiotClientMessage);
+	if (!t_work.riot_client.resolve_executable_path()) {
+		fail(t_work, no_riot_client_message);
 		return false;
 	}
 
-	if (!state.RiotClient.Launch(CRiotClient::LaunchProductForBannerTitle(state.szGameTitle))) {
-		StoreError(state, kLaunchFailedMessage);
+	if (!t_work.riot_client.launch(RiotClient::launch_product_for(t_work.game_title))) {
+		fail(t_work, launch_failed_message);
 		return false;
 	}
 
-	// Unbounded, unlike every other step here. A cold Electron start depends on the machine, its
-	// disk, and whether the client patches itself first, so any timeout is a guess at someone
-	// else's hardware. The user's Cancel is the bound instead, which means a false return here
-	// only ever means cancelled.
-	if (!state.RiotClient.WaitForWindow(CRiotClient::kWaitForeverMs, &state.bCancelRequested)) {
-		StoreCancelledOrError(state, kWindowTimeoutMessage);
+	if (!t_work.riot_client.wait_for_window(RiotClient::wait_forever_ms, t_work.cancel_requested)) {
+		fail_unless_cancelled(t_work, window_timeout_message);
 		return false;
 	}
 
-	return !StoreIfCancelled(state);
+	return !stop_if_cancelled(t_work);
 }
 
-// Brings the client forward and gives it keyboard focus. Both are best effort by design; only
-// cancellation stops the flow here.
-bool FocusClientForInput(LoginAttemptState &state)
+bool focus_client(LoginWork &t_work)
 {
-	StoreStage(state, ELoginStage::Connecting);
+	set_stage(t_work, LoginStage::connecting);
 
-	state.RiotClient.BringToForeground(kForegroundTimeoutMs, &state.bCancelRequested);
-	state.RiotClient.SetKeyboardFocus(kFocusTimeoutMs, &state.bCancelRequested);
+	t_work.riot_client.bring_to_foreground(foreground_timeout_ms, t_work.cancel_requested);
+	t_work.riot_client.take_keyboard_focus(focus_timeout_ms, t_work.cancel_requested);
 
-	return !StoreIfCancelled(state);
+	return !stop_if_cancelled(t_work);
 }
 
-// A generic "trouble signing you in" error - never wrong credentials, which resubmitting cannot
-// fix - clears up on one immediate retry against the same still-open client. The one place a
-// retry without a fresh relaunch is correct.
-bool ShouldRetryAfterError(ESubmitResult result, const std::wstring &errorMessage)
+const char *form_failure_message(const UiAutomation &t_automation)
 {
-	return result == ESubmitResult::ErrorShown && !LooksLikeInvalidCredentials(errorMessage);
+	return t_automation.has_wedged() ? unresponsive_client_message : form_timeout_message;
 }
 
-// Submits, retries once if the failure looks transient, and stores the terminal stage on any
-// outcome that ends the attempt. False means the caller should return.
-bool Authenticate(LoginAttemptState &state, CUiAutomation &uiAutomation)
+bool authenticate(LoginWork &t_work, const UiAutomation &t_automation)
 {
-	StoreStage(state, ELoginStage::Authenticating);
+	set_stage(t_work, LoginStage::authenticating);
 
-	std::wstring errorMessage;
-	ESubmitResult result = SubmitAndWaitForResult(state, uiAutomation, errorMessage);
+	std::wstring error;
+	SubmitResult result = submit_and_wait_for_result(t_work, t_automation, error);
 
-	if (result == ESubmitResult::FormNotFound) {
-		StoreCancelledOrError(state, uiAutomation.HasWedged() ? kUnresponsiveClientMessage : kFormTimeoutMessage);
+	if (result == SubmitResult::form_not_found) {
+		fail_unless_cancelled(t_work, form_failure_message(t_automation));
 		return false;
 	}
 
-	if (ShouldRetryAfterError(result, errorMessage)) {
-		if (!FocusClientForInput(state)) return false;
+	const bool transient_error = result == SubmitResult::error_shown && !is_invalid_credentials(error);
+	if (transient_error) {
+		if (!focus_client(t_work)) return false;
 
-		StoreStage(state, ELoginStage::Authenticating);
+		set_stage(t_work, LoginStage::authenticating);
 
-		const std::wstring previousErrorMessage = errorMessage;
-		result = SubmitAndWaitForResult(state, uiAutomation, errorMessage, &previousErrorMessage);
+		const std::wstring previous_error = error;
+		result = submit_and_wait_for_result(t_work, t_automation, error, &previous_error);
 
-		if (result == ESubmitResult::FormNotFound) {
-			StoreCancelledOrError(state, uiAutomation.HasWedged() ? kUnresponsiveClientMessage : kFormTimeoutMessage);
+		if (result == SubmitResult::form_not_found) {
+			fail_unless_cancelled(t_work, form_failure_message(t_automation));
 			return false;
 		}
 	}
 
-	if (result == ESubmitResult::ErrorShown) {
-		StoreError(state, LooksLikeInvalidCredentials(errorMessage) ? kInvalidCredentialsMessage : kServerErrorMessage);
+	if (result == SubmitResult::error_shown) {
+		fail(t_work, is_invalid_credentials(error) ? invalid_credentials_message : server_error_message);
 		return false;
 	}
 
-	// Before the "no error appeared, so it worked" inference below: a client whose provider
-	// stopped answering produces the same absence as a login that succeeded.
-	if (uiAutomation.HasWedged()) {
-		DebugLog::Write(kLogCategory, "UI Automation gave up on the client - refusing to infer success from silence");
-		StoreError(state, kUnresponsiveClientMessage);
+	// A wedged client shows no error either, so silence only means success while automation is still answering.
+	if (t_automation.has_wedged()) {
+		debug_log::write(log_category, "UI Automation gave up on the client - refusing to infer success from silence");
+		fail(t_work, unresponsive_client_message);
 		return false;
 	}
 
-	return !StoreIfCancelled(state);
+	return !stop_if_cancelled(t_work);
 }
 
-void RunLoginAttempt(LoginAttemptState &state)
+void run_login(LoginWork &t_work)
 {
-	state.szMessage[0] = '\0';
-	StoreStage(state, ELoginStage::WaitingForProcess);
+	t_work.message[0] = '\0';
+	set_stage(t_work, LoginStage::waiting_for_process);
 
-	if (!StartFreshClient(state) || !FocusClientForInput(state)) return;
+	if (!start_fresh_client(t_work) || !focus_client(t_work)) return;
 
-	// Fresh per attempt, because this runs on a brand new OS thread every time and apartment
-	// membership belongs to the thread.
-	CUiAutomation uiAutomation;
-	if (!uiAutomation.Init()) {
-		DebugLog::Write(kLogCategory, "CUiAutomation::Init failed - see the uia lines just above for the HRESULT");
-		StoreError(state, kAutomationFailedMessage);
+	UiAutomation automation;
+	if (!automation.init()) {
+		debug_log::write(log_category, "UiAutomation::init failed - see the uia lines just above for the HRESULT");
+		fail(t_work, automation_failed_message);
 		return;
 	}
 
-	if (!Authenticate(state, uiAutomation)) return;
+	if (!authenticate(t_work, automation)) return;
 
-	// The login has already succeeded by this point, so a Play button that never turns up just
-	// leaves the game unlaunched rather than failing the attempt.
-	StoreStage(state, ELoginStage::Launching);
-	state.RiotClient.WaitForPlayButtonAndClick(uiAutomation, kPlayButtonTimeoutMs, &state.bCancelRequested);
+	set_stage(t_work, LoginStage::launching);
+	t_work.riot_client.click_play_when_ready(automation, play_button_timeout_ms, t_work.cancel_requested);
 
-	if (StoreIfCancelled(state)) return;
+	if (stop_if_cancelled(t_work)) return;
 
-	StoreStage(state, ELoginStage::Success);
+	set_stage(t_work, LoginStage::success);
 }
 
-// Co-owns the state block it drives so abandoning this thread mid-call cannot leave it writing
-// into freed memory.
-void WorkerMain(std::shared_ptr<LoginAttemptState> pState)
+void worker_main(std::shared_ptr<LoginWork> t_work)
 {
-	DebugLog::Write(kLogCategory, "worker started");
-	RunLoginAttempt(*pState);
+	debug_log::write(log_category, "worker started");
+	run_login(*t_work);
 
-	// Set here, not at each of RunLoginAttempt's returns, so an early-out added later cannot
-	// forget it.
-	pState->bWorkerFinished.store(true, std::memory_order_release);
+	t_work->worker_finished.store(true, std::memory_order_release);
 
-	// The gap between this line and the one above is the CUiAutomation unwind. A log ending at
-	// "worker finished" with no "unwinding" after it is that teardown hanging.
-	DebugLog::Write(kLogCategory, "worker finished (stage %s), unwinding",
-					StageName(pState->Stage.load(std::memory_order_acquire)));
+	debug_log::write(log_category, "worker finished (stage %s), unwinding",
+					 stage_name(t_work->stage.load(std::memory_order_acquire)));
 }
-} // namespace
+}
 
-CLoginAttempt::~CLoginAttempt()
+LoginAttempt::~LoginAttempt()
 {
-	if (m_pState != nullptr) {
-		m_pState->bCancelRequested.store(true, std::memory_order_relaxed);
+	if (m_work != nullptr) {
+		m_work->cancel_requested.store(true, std::memory_order_relaxed);
 	}
 
 	if (m_worker.joinable()) {
-		DebugLog::Write(kLogCategory, "shutting down with a worker still running - cancelling and joining");
+		debug_log::write(log_category, "shutting down with a worker still running - cancelling and joining");
 	}
 
-	// Bounded rather than a bare join: a worker stuck inside a UI Automation call would otherwise
-	// hang shutdown. Detaching is safe because the worker co-owns its state block.
-	const DebugLog::CScope scope(kLogCategory, "shutdown join of the login worker");
-	JoinWithTimeoutOrDetach(m_worker, std::chrono::milliseconds(3000));
+	const debug_log::Scope scope(log_category, "shutdown join of the login worker");
+	join_or_abandon(m_worker, shutdown_join_timeout);
 }
 
-void CLoginAttempt::Init()
+bool LoginAttempt::is_terminal(LoginStage t_stage)
 {
-	// Does not touch m_worker: dropping this object's reference is the whole reset, and the block
-	// stays alive under the worker's own reference.
-	m_pState.reset();
-	m_bActive = false;
+	return t_stage == LoginStage::success || t_stage == LoginStage::error || t_stage == LoginStage::cancelled;
 }
 
-bool CLoginAttempt::IsTerminalStage(ELoginStage stage)
+void LoginAttempt::start(std::string_view t_username, std::string_view t_password, std::string_view t_game_title)
 {
-	return stage == ELoginStage::Success || stage == ELoginStage::Error || stage == ELoginStage::Cancelled;
-}
-
-void CLoginAttempt::Start(std::string_view username, std::string_view password, std::string_view gameTitle)
-{
-	if (m_bActive && !IsTerminalStage(GetStage())) {
-		DebugLog::Write(kLogCategory, "Start refused - the previous attempt is still active (stage %s)",
-						StageName(GetStage()));
+	if (m_active && !is_terminal(stage())) {
+		debug_log::write(log_category, "start refused - the previous attempt is still active (stage %s)",
+						 stage_name(stage()));
 		return;
 	}
 
-	// The instantaneous case. The bound only covers a worker that stored its terminal stage but
-	// is still unwinding.
-	JoinWithTimeoutOrDetach(m_worker, std::chrono::milliseconds(50));
-	m_bActive = false;
+	join_or_abandon(m_worker, finished_join_timeout);
 
-	auto pState = std::make_shared<LoginAttemptState>();
-	CopyTo(username, pState->szUsername, sizeof(pState->szUsername));
-	CopyTo(password, pState->szPassword, sizeof(pState->szPassword));
-	CopyTo(gameTitle, pState->szGameTitle, sizeof(pState->szGameTitle));
-	pState->Stage.store(ELoginStage::WaitingForProcess, std::memory_order_relaxed);
+	auto work = std::make_shared<LoginWork>();
+	copy_to(t_username, work->username);
+	copy_to(t_password, work->password);
+	copy_to(t_game_title, work->game_title);
+	work->stage.store(LoginStage::waiting_for_process, std::memory_order_relaxed);
 
-	m_pState = pState;
-	m_worker = std::thread(WorkerMain, std::move(pState));
-	m_bActive = true;
+	m_work = work;
+	m_worker = std::thread(worker_main, std::move(work));
+	m_active = true;
 
-	DebugLog::Write(kLogCategory, "attempt started for game \"%s\"", m_pState->szGameTitle);
+	debug_log::write(log_category, "attempt started for game \"%s\"", m_work->game_title);
 }
 
-void CLoginAttempt::Cancel()
+void LoginAttempt::cancel()
 {
-	if (!m_bActive || m_pState == nullptr || IsTerminalStage(GetStage())) return;
+	if (!m_active || m_work == nullptr || is_terminal(stage())) return;
 
-	DebugLog::Write(kLogCategory, "cancel requested at stage %s", StageName(GetStage()));
-	m_pState->bCancelRequested.store(true, std::memory_order_relaxed);
-	m_cancelDeadline = std::chrono::steady_clock::now() + kCancelGracePeriod;
+	debug_log::write(log_category, "cancel requested at stage %s", stage_name(stage()));
+	m_work->cancel_requested.store(true, std::memory_order_relaxed);
+	m_cancel_deadline = std::chrono::steady_clock::now() + cancel_grace_period;
 }
 
-ELoginStage CLoginAttempt::GetStage() const
+LoginStage LoginAttempt::stage() const
 {
-	return m_pState != nullptr ? m_pState->Stage.load(std::memory_order_acquire) : ELoginStage::Idle;
+	return m_work != nullptr ? m_work->stage.load(std::memory_order_acquire) : LoginStage::idle;
 }
 
-std::string_view CLoginAttempt::GetTerminalMessage() const
+std::string_view LoginAttempt::terminal_message() const
 {
-	return m_pState != nullptr ? std::string_view{m_pState->szMessage} : std::string_view{""};
+	return m_work != nullptr ? std::string_view{m_work->message} : std::string_view{};
 }
 
-void CLoginAttempt::AbandonWorker()
+void LoginAttempt::update()
 {
-	// Read before the store below erases the distinction: a cancel the worker never acknowledged
-	// should still land as Cancelled rather than as an error.
-	const bool userCancelled = m_pState != nullptr && m_pState->bCancelRequested.load(std::memory_order_relaxed);
+	if (!m_active || m_work == nullptr) return;
 
-	if (m_pState != nullptr) {
-		// It may come back to life long after this, and the first thing it checks should say stop.
-		m_pState->bCancelRequested.store(true, std::memory_order_relaxed);
+	if (m_work->worker_finished.load(std::memory_order_acquire)) {
+		const debug_log::Scope scope(log_category, "render-thread join of a finished login worker");
+		join_or_abandon(m_worker, finished_join_timeout);
+		m_active = false;
+
+		debug_log::write(log_category, "attempt retired (final stage %s)", stage_name(stage()));
+
+		return;
 	}
 
-	if (m_worker.joinable()) {
-		// Whichever DebugLog breadcrumb is still open on that thread names the wedged call.
-		DebugLog::Write(kLogCategory, "ABANDONING the login worker - it never acknowledged the cancel (stage %s)",
-						StageName(GetStage()));
-		m_worker.detach();
+	const bool cancel_ignored = m_work->cancel_requested.load(std::memory_order_relaxed) &&
+								std::chrono::steady_clock::now() >= m_cancel_deadline;
+	if (cancel_ignored) {
+		abandon_worker();
 	}
+}
 
-	auto pAbandoned = std::make_shared<LoginAttemptState>();
-	if (userCancelled) {
-		pAbandoned->Stage.store(ELoginStage::Cancelled, std::memory_order_relaxed);
+void LoginAttempt::abandon_worker()
+{
+	const bool user_cancelled = m_work->cancel_requested.load(std::memory_order_relaxed);
+
+	debug_log::write(log_category, "ABANDONING the login worker - it never acknowledged the cancel (stage %s)",
+					 stage_name(stage()));
+
+	// The detached worker keeps its own reference to the old work, so it can never write into the next attempt.
+	m_work->cancel_requested.store(true, std::memory_order_relaxed);
+	join_or_abandon(m_worker, std::chrono::milliseconds{0});
+
+	auto abandoned = std::make_shared<LoginWork>();
+	if (user_cancelled) {
+		abandoned->stage.store(LoginStage::cancelled, std::memory_order_relaxed);
 	} else {
-		CopyTo(kUnresponsiveClientMessage, pAbandoned->szMessage, LoginAttemptState::kMaxMessageLength);
-		pAbandoned->Stage.store(ELoginStage::Error, std::memory_order_relaxed);
+		copy_to(unresponsive_client_message, abandoned->message);
+		abandoned->stage.store(LoginStage::error, std::memory_order_relaxed);
 	}
 
-	pAbandoned->bWorkerFinished.store(true, std::memory_order_relaxed);
+	abandoned->worker_finished.store(true, std::memory_order_relaxed);
 
-	m_pState = std::move(pAbandoned);
-	m_bActive = false;
-}
-
-void CLoginAttempt::Update()
-{
-	if (!m_bActive || m_pState == nullptr) return;
-
-	// bWorkerFinished rather than a terminal stage: the worker stores that before unwinding its
-	// CUiAutomation, and joining in that window would park the render thread on the teardown.
-	if (m_pState->bWorkerFinished.load(std::memory_order_acquire)) {
-		// Bounded and on the render thread: if this ever reports slow, the UI hitched.
-		const DebugLog::CScope scope(kLogCategory, "render-thread join of a finished login worker");
-		JoinWithTimeoutOrDetach(m_worker, std::chrono::milliseconds(50));
-		m_bActive = false;
-
-		DebugLog::Write(kLogCategory, "attempt retired (final stage %s)", StageName(GetStage()));
-
-		return;
-	}
-
-	// Only after a requested cancel goes unacknowledged past its grace period - never purely
-	// for running long.
-	if (m_pState->bCancelRequested.load(std::memory_order_relaxed) &&
-		std::chrono::steady_clock::now() >= m_cancelDeadline) {
-		AbandonWorker();
-	}
+	m_work = std::move(abandoned);
+	m_active = false;
 }

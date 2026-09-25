@@ -1,240 +1,211 @@
 #include "app.h"
 
-#include "core/str.h"
-
-#include <chrono>
 #include <cstdio>
-#include <memory>
+#include <utility>
 #include <print>
 
 #include <Windows.h>
 #include <shellapi.h>
 #include <sodium.h>
 
-#include "core/animator.h"
+#include "core/animation.h"
+#include "core/app_identity.h"
 #include "core/debug_log.h"
 #include "core/profiler.h"
+#include "core/str.h"
 #include "core/ui_automation.h"
-#include "core/app_identity.h"
 #include "platform/clipboard.h"
-#include "ui/controls.h"
+#include "platform/overlay_guard.h"
 #include "ui/text.h"
 
 namespace {
-constexpr u32 kDrawListVertexCapacity = 1 << 16;
-constexpr u32 kDrawListIndexCapacity = (1 << 16) * 3 / 2;
+constexpr u32 draw_list_vertex_capacity = 1 << 16;
+constexpr u32 draw_list_index_capacity = (1 << 16) * 3 / 2;
 
-// The whole process's arena, used for exactly one thing: the draw list's per-frame scratch. Sized
-// from that one consumer rather than picked as a round number - it was 64 MB against a real need
-// of under two, and malloc commits what it hands back, so the difference was 62 MB of commit
-// charge the app never touched.
-constexpr u64 kArenaAlignmentSlack = 64;
-constexpr u64 kPersistentArenaCapacity = static_cast<u64>(kDrawListVertexCapacity) * sizeof(Vertex2D) +
-										 static_cast<u64>(kDrawListIndexCapacity) * sizeof(u32) + kArenaAlignmentSlack;
+constexpr Color color_background{18, 18, 20, 255};
+constexpr Color color_chrome_seam{46, 46, 50, 255};
+constexpr Color color_status_text{158, 158, 166, 255};
+constexpr float status_padding = 14.0f;
+constexpr float status_mark_size = 15.0f;
+constexpr float status_mark_gap = 7.0f;
+constexpr float status_baseline_nudge = 2.0f;
 
-constexpr ColorF kColorBackground{18.0f / 255.0f, 18.0f / 255.0f, 20.0f / 255.0f, 1.0f};
-
-// A 1px seam reads as clearly as a much bigger, uglier brightness jump would.
-constexpr Color kColorChromeSeam{46, 46, 50, 255};
-constexpr Color kColorStatusBarText{158, 158, 166, 255};
-constexpr float kStatusBarVersionPadding = 14.0f;
-
-// The app mark beside the version. Sized under the bar height so it reads as sitting in the strip
-// rather than filling it, and tinted the same dim grey as the text so the two read as one label.
-constexpr float kStatusBarMarkSize = 15.0f;
-constexpr float kStatusBarMarkGap = 7.0f;
-
-constexpr u32 kMenuIdCopyUsername = 1;
-constexpr u32 kMenuIdCopyPassword = 2;
-
-// Everything one game needs, so adding a game means adding one row here. A second list in the
-// same order is how a tray ends up drawing one game's icon beside another's name.
-struct GameEntry {
-	const char *pTitle;
-	EAsset Banner;
-	EAsset Icon;
-	Color Accent;
+struct GameInfo {
+	const char *title;
+	Asset banner;
+	Asset icon;
+	Color accent;
 };
 
-constexpr GameEntry kGames[]{
-	{"League of Legends", EAsset::BannerLeagueOfLegends, EAsset::IconLeagueOfLegends, {210, 175, 55, 255}},
-	{"Teamfight Tactics", EAsset::BannerTeamfightTactics, EAsset::IconTeamfightTactics, {70, 140, 190, 255}},
-	{"Valorant", EAsset::BannerValorant, EAsset::IconValorant, {210, 55, 60, 255}},
-	{"2XKO", EAsset::BannerTwoXko, EAsset::IconTwoXko, {45, 205, 210, 255}},
-	{"Legends of Runeterra", EAsset::BannerRuneterra, EAsset::IconRuneterra, {140, 90, 200, 255}},
+constexpr GameInfo games[]{
+	{"League of Legends", Asset::banner_league_of_legends, Asset::icon_league_of_legends, {210, 175, 55, 255}},
+	{"Teamfight Tactics", Asset::banner_teamfight_tactics, Asset::icon_teamfight_tactics, {70, 140, 190, 255}},
+	{"Valorant", Asset::banner_valorant, Asset::icon_valorant, {210, 55, 60, 255}},
+	{"2XKO", Asset::banner_two_xko, Asset::icon_two_xko, {45, 205, 210, 255}},
+	{"Legends of Runeterra", Asset::banner_runeterra, Asset::icon_runeterra, {140, 90, 200, 255}},
 };
 
-constexpr u32 kGameCount = sizeof(kGames) / sizeof(kGames[0]);
+static_assert(std::size(games) <= max_games);
+static_assert(tray_max_games >= max_games);
 
-// Startup is one straight line of work, so timing it needs nothing more than a running clock and a
-// name at each boundary: the gap between two calls is the phase that just finished. Unlike the
-// frame profiler this is left in every build - it is a few clock reads, and DebugLog::Write is a
-// single predictable branch when the log is off, so the numbers stay measurable where they matter.
-void StartupPhase(const char *pName)
+void log_startup_phase(const char *t_phase)
 {
 	using Clock = std::chrono::steady_clock;
 
-	static Clock::time_point processStart = Clock::now();
-	static Clock::time_point phaseStart = processStart;
-	static const char *pPending = nullptr;
+	static const Clock::time_point process_start = Clock::now();
+	static Clock::time_point phase_start = process_start;
+	static const char *previous_phase = nullptr;
 
 	const Clock::time_point now = Clock::now();
 
-	if (pPending != nullptr) {
-		DebugLog::Write("startup", "%-20s %6.1f ms   (%6.1f ms in)", pPending,
-						std::chrono::duration<float, std::milli>(now - phaseStart).count(),
-						std::chrono::duration<float, std::milli>(now - processStart).count());
+	if (previous_phase != nullptr) {
+		debug_log::write("startup", "%-20s %6.1f ms   (%6.1f ms in)", previous_phase,
+						 std::chrono::duration<float, std::milli>(now - phase_start).count(),
+						 std::chrono::duration<float, std::milli>(now - process_start).count());
 	}
 
-	pPending = pName;
-	phaseStart = now;
+	previous_phase = t_phase;
+	phase_start = now;
 }
 
-static_assert(kGameCount <= kCarouselMaxBanners, "more games than the carousel can hold");
-static_assert(kTrayMaxGames >= kCarouselMaxBanners, "the tray would silently drop games the carousel accepts");
-} // namespace
-
-CApp::EStartResult CApp::Init()
+void guard_against_overlays(bool t_block_injection)
 {
-	// After the crash handler and the log, so a duplicate launch still gets reported.
-	if (!m_instanceGuard.IsFirstInstance()) {
-		const bool activated = CWindow::ActivateExistingInstance();
-		DebugLog::Write("app", "another instance is already running (%s) - exiting",
-						activated ? "brought it to the front" : "it never answered");
+	overlay_guard::apply_process_identity();
 
-		return EStartResult::AlreadyRunning;
-	}
-
-	// First thing of all: decoding needs no window and no GPU, so it runs alongside the quarter
-	// second of driver work that D3D device creation costs and ends up free.
-	m_assets.BeginDecode();
-
-	// Read before anything else settings-shaped: the window needs a size, and the overlay guard
-	// needs its own switch, both before the real load - which needs a carousel that does not exist
-	// yet - can run.
-	Settings bootSettings;
-	i32 unusedZoomStop = 0;
-	i32 unusedSelectedBanner = 0;
-
-	StartupPhase("BootSettings");
-	CStorage::LoadSettings(bootSettings, unusedZoomStop, unusedSelectedBanner);
-
-	StartupPhase("ApplyOverlayGuard");
-	ApplyOverlayGuard(bootSettings.m_bBlockOverlayInjection);
-
-	// Holds the process's MTA open so the per-attempt COM init and teardown stop rebuilding the
-	// whole apartment every time. Joins no apartment itself, so the render thread stays free.
-	StartupPhase("KeepProcessMtaAlive");
-	CUiAutomation::KeepProcessMtaAlive();
-
-	// Not safe to call concurrently with any other libsodium function, so it happens here, before
-	// any worker thread exists.
-	if (sodium_init() < 0) {
-		std::println("Failed to initialize libsodium.");
-		return EStartResult::Failed;
-	}
-
-	if (!m_arena.Init(kPersistentArenaCapacity)) {
-		std::println("Failed to reserve persistent arena.");
-		return EStartResult::Failed;
-	}
-
-	StartupPhase("InitGraphics");
-	if (!InitGraphics(bootSettings)) return EStartResult::Failed;
-
-	StartupPhase("tray.Create");
-	m_tray.Create(kAppNameW);
-	m_drawList.Init(m_arena, kDrawListVertexCapacity, kDrawListIndexCapacity);
-
-	StartupPhase("CreateGames");
-	CreateGames();
-
-	StartupPhase("MasterKeyInit");
-	m_masterKey.Init();
-
-	// One check at startup, no periodic recheck. The network I/O happens on the worker.
-	m_updater.Init();
-	m_updater.CheckForUpdateAsync(kAppVersion);
-
-	StartupPhase("LoadAll");
-	ApplyLoadedSettings(LoadAll());
-	StartupPhase("CreateWidgets");
-	CreateWidgets();
-
-	m_window.SetRedrawCallback(OnWindowRedraw, this);
-	m_window.SetDpiChangedCallback(OnWindowDpiChanged, this);
-
-	m_startTime = std::chrono::steady_clock::now();
-	m_previousFrameTime = m_startTime;
-
-	// One real frame, laid out and presented while the window is still hidden, so showing it
-	// reveals actual UI instead of an uninitialized backbuffer.
-	StartupPhase("FirstFrame");
-	AdvanceFrame();
-	m_window.Show();
-
-	StartupPhase("Done");
-
-	return EStartResult::Ok;
-}
-
-// Runs before the window exists, since the injection policy only governs loads that have not
-// happened yet, and an overlay that attaches does so once a window is there to draw on.
-void CApp::ApplyOverlayGuard(bool blockInjection)
-{
-	OverlayGuard::ApplyProcessIdentity();
-
-	if (!blockInjection) {
-		DebugLog::Write("app", "overlay injection guard disabled by setting");
+	if (!t_block_injection) {
+		debug_log::write("app", "overlay injection guard disabled by setting");
 		return;
 	}
 
-	switch (OverlayGuard::BlockHookInjection()) {
-		case OverlayGuard::EInjectionBlockResult::Blocked:
-			DebugLog::Write("app", "extension-point DLL injection blocked");
+	switch (overlay_guard::block_hook_injection()) {
+		case overlay_guard::BlockResult::blocked:
+			debug_log::write("app", "extension-point DLL injection blocked");
 			break;
-
-		case OverlayGuard::EInjectionBlockResult::Refused:
-			DebugLog::Write("app", "extension-point block refused, err=%lu", GetLastError());
+		case overlay_guard::BlockResult::refused:
+			debug_log::write("app", "extension-point block refused, err=%lu", GetLastError());
 			break;
-
-		case OverlayGuard::EInjectionBlockResult::Unsupported:
-			DebugLog::Write("app", "extension-point block unsupported on this Windows build");
+		case overlay_guard::BlockResult::unsupported:
+			debug_log::write("app", "extension-point block unsupported on this Windows build");
 			break;
 	}
 
-	if (const wchar_t *pModule = OverlayGuard::DetectInjectedOverlay()) {
-		DebugLog::Write("app", "an overlay module was already loaded before the guard ran: %ls", pModule);
+	if (const wchar_t *module = overlay_guard::injected_overlay_module()) {
+		debug_log::write("app", "an overlay module was already loaded before the guard ran: %ls", module);
 	}
 }
 
-bool CApp::InitGraphics(const Settings &bootSettings)
+void launch_self()
 {
-	StartupPhase("  window.Create");
-	if (!m_window.Create(kAppNameW, bootSettings.m_nWindowWidth, bootSettings.m_nWindowHeight)) {
+	wchar_t path[MAX_PATH];
+	if (GetModuleFileNameW(nullptr, path, MAX_PATH) == 0) return;
+
+	STARTUPINFOW startup_info{.cb = sizeof(startup_info)};
+	PROCESS_INFORMATION process_info{};
+
+	if (CreateProcessW(path, nullptr, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup_info, &process_info)) {
+		CloseHandle(process_info.hProcess);
+		CloseHandle(process_info.hThread);
+	}
+}
+}
+
+App::App()
+	: m_carousel(m_library, m_settings, m_fonts, m_assets, m_commands)
+	, m_toasts(m_settings, m_fonts, m_assets, m_window, m_commands)
+	, m_account_modal(m_library, m_settings, m_fonts, m_assets, m_window, m_toasts, m_commands)
+	, m_settings_panel(m_settings, m_fonts, m_renderer, m_window, m_assets, m_commands)
+	, m_unlock_screen(m_settings, m_master_key, m_fonts, m_assets, m_window, m_commands)
+	, m_app_menu(m_settings, m_fonts, m_assets, m_commands)
+	, m_update_overlay(m_updater, m_settings, m_fonts, m_window)
+	, m_context_menu(m_fonts, m_commands)
+	, m_title_bar(m_window, m_updater, m_fonts, m_assets, m_commands)
+#ifdef PULSAR_PROFILING
+	, m_profiler_overlay(m_fonts)
+#endif
+{
+}
+
+App::StartResult App::start()
+{
+	if (!m_instance_guard.is_first_instance()) {
+		const bool activated = Window::activate_existing_instance();
+		debug_log::write("app", "another instance is already running (%s) - exiting",
+						 activated ? "brought it to the front" : "it never answered");
+
+		return StartResult::already_running;
+	}
+
+	m_assets.begin_decode();
+
+	log_startup_phase("LoadSettings");
+	const storage::LoadResult settings_result = storage::load_settings(m_settings);
+
+	log_startup_phase("GuardAgainstOverlays");
+	guard_against_overlays(m_settings.block_overlay_injection);
+	UiAutomation::keep_process_mta_alive();
+
+	if (sodium_init() < 0) {
+		std::println("Failed to initialize libsodium.");
+		return StartResult::failed;
+	}
+
+	log_startup_phase("CreateGraphics");
+	if (!create_graphics()) return StartResult::failed;
+
+	log_startup_phase("CreateTray");
+	m_tray.create(app_name_wide);
+	m_draw_list.init(draw_list_vertex_capacity, draw_list_index_capacity);
+
+	log_startup_phase("AddGames");
+	add_games();
+	m_updater.check_for_update();
+
+	log_startup_phase("ApplySettings");
+	apply_settings(settings_result);
+	stack_widgets();
+	lock();
+
+	if (m_settings.master_password_enabled) {
+		m_unlock_screen.show_unlock();
+	} else {
+		m_unlock_screen.show_setup();
+	}
+
+	m_window.on_redraw([this] { redraw_while_resizing(); });
+	m_window.on_dpi_changed([this] { reload_fonts(); });
+
+	m_start_time = std::chrono::steady_clock::now();
+	m_last_frame_time = m_start_time;
+
+	log_startup_phase("FirstFrame");
+	frame();
+	m_window.show();
+	log_startup_phase("Done");
+
+	return StartResult::ok;
+}
+
+bool App::create_graphics()
+{
+	if (!m_window.create(app_name_wide, m_settings.window_width, m_settings.window_height)) {
 		std::println("Failed to create window.");
 		return false;
 	}
 
-	const RendererConfig config{m_window.GetHandle(), m_window.GetPhysicalWidth(), m_window.GetPhysicalHeight(),
-								static_cast<float>(m_window.GetWidth()), static_cast<float>(m_window.GetHeight())};
-	StartupPhase("  renderer.Init");
-	if (!m_renderer.Init(config)) {
+	if (!m_renderer.init(m_window)) {
 		std::println("Failed to initialize renderer.");
 		return false;
 	}
 
-	m_nSwapchainWidth = m_window.GetPhysicalWidth();
-	m_nSwapchainHeight = m_window.GetPhysicalHeight();
+	m_swap_chain_width = m_window.physical_width();
+	m_swap_chain_height = m_window.physical_height();
 
-	StartupPhase("  assets.Upload");
-	if (!m_assets.FinishUpload(&m_renderer)) {
+	if (!m_assets.finish_upload(m_renderer)) {
 		std::println("Failed to load one or more embedded assets.");
 		return false;
 	}
 
-	StartupPhase("  fonts.Load");
-	if (!m_fonts.Load(&m_renderer, m_window.GetDpiScale())) {
+	if (!m_fonts.load_defaults(m_renderer, m_window.dpi_scale())) {
 		std::println("Failed to load the UI font.");
 		return false;
 	}
@@ -242,776 +213,459 @@ bool CApp::InitGraphics(const Settings &bootSettings)
 	return true;
 }
 
-// AddBanner appends, so this iteration's banner index is i - the same index the tray stores its
-// icon under, which is why both happen in one loop.
-void CApp::CreateGames()
+void App::add_games()
 {
-	auto pCarousel = std::make_unique<CCarousel>(m_fonts, m_assets);
-	m_pCarousel = pCarousel.get();
+	for (u32 i = 0; i < std::size(games); i += 1) {
+		const GameInfo &game = games[i];
 
-	for (u32 i = 0; i < kGameCount; i += 1) {
-		const GameEntry &game = kGames[i];
-		m_pCarousel->AddBanner(game.pTitle, m_assets.Get(game.Banner), m_assets.Get(game.Icon), game.Accent);
-
-		const EmbeddedImageBytes iconBytes = CAssetManager::GetSourceBytes(game.Icon);
-		m_tray.SetGameIcon(static_cast<i32>(i), iconBytes.pBytes, iconBytes.Length);
+		m_library.add_game(game.title, m_assets.get(game.banner), m_assets.get(game.icon), game.accent);
+		m_tray.set_game_icon(i, Assets::encoded_bytes(game.icon));
 	}
 
-	m_tray.SetMenuCallback(BuildTrayMenu, m_pCarousel);
-
-	m_stack.Push(std::move(pCarousel));
+	m_tray.on_menu_open([this](TrayMenu &t_menu) { fill_tray_menu(t_menu); });
 }
 
-// Push order is z-order, bottom to top. The unlock screen sits above every dialog and consumes
-// all input while active, so nothing below it needs its own locked-state handling. The app menu
-// and update overlay sit above even that, since the title bar opens both whether or not the
-// vault is unlocked.
-void CApp::CreateWidgets()
+void App::stack_widgets()
 {
-	// Constructed first: every widget that raises a notification is handed this, so it has to
-	// outlive them, and the stack destroys in reverse push order.
-	auto pToasts = std::make_unique<CToastHost>(m_fonts, m_window, m_assets, m_settings);
-	m_pToasts = pToasts.get();
+	m_widgets.push(m_carousel);
+	m_widgets.push(m_account_modal);
+	m_widgets.push(m_settings_panel);
+	m_widgets.push(m_unlock_screen);
+	m_widgets.push(m_app_menu);
+	m_widgets.push(m_update_overlay);
+	m_widgets.push(m_context_menu);
 
-	auto pModal = std::make_unique<CAccountModal>(m_pCarousel, m_pToasts, m_fonts, m_window, m_settings, m_assets);
-	auto pSettingsPanel = std::make_unique<CSettingsPanel>(&m_fonts, &m_settings, m_window, &m_renderer, m_assets);
-	auto pContextMenu = std::make_unique<CContextMenu>(m_fonts);
-	auto pUnlockScreen = std::make_unique<CUnlockScreen>(m_fonts, m_window, &m_settings, &m_masterKey, m_assets);
-	auto pAppMenu = std::make_unique<CAppMenu>(m_fonts, m_assets, m_settings, m_bAppLocked);
-	auto pUpdateOverlay = std::make_unique<CUpdateOverlay>(m_fonts, m_window, &m_settings, &m_updater);
-	auto pTitleBar = std::make_unique<CTitleBar>(&m_window, m_assets, m_updater, m_fonts);
-
-	m_pModal = pModal.get();
-	m_pSettingsPanel = pSettingsPanel.get();
-	m_pContextMenu = pContextMenu.get();
-	m_pUnlockScreen = pUnlockScreen.get();
-	m_pAppMenu = pAppMenu.get();
-	m_pUpdateOverlay = pUpdateOverlay.get();
-	m_pTitleBar = pTitleBar.get();
-
-	m_stack.Push(std::move(pModal));
-	m_stack.Push(std::move(pSettingsPanel));
-	m_stack.Push(std::move(pContextMenu));
-	m_stack.Push(std::move(pUnlockScreen));
-	m_stack.Push(std::move(pAppMenu));
-	m_stack.Push(std::move(pUpdateOverlay));
-
-	// Above every dialog, so a confirmation is readable over whatever raised it, but below the
-	// title bar, which is the one thing that must never be covered.
-	m_stack.Push(std::move(pToasts), true);
-	m_stack.Push(std::move(pTitleBar), true);
-
+	m_widgets.push_overlay(m_toasts);
+	m_widgets.push_overlay(m_title_bar);
 #ifdef PULSAR_PROFILING
-	// Last, so its own draw is the only one not counted in the numbers it reports.
-	m_stack.Push(std::make_unique<CProfilerOverlay>(&m_fonts), true);
+	m_widgets.push_overlay(m_profiler_overlay);
 #endif
-
-	// The master password is mandatory: either none has been set yet, or one exists and has not
-	// been unlocked this session.
-	if (!m_settings.m_bMasterPasswordEnabled) {
-		m_pUnlockScreen->ActivateForSetup();
-	} else if (m_bAppLocked) {
-		m_pUnlockScreen->ActivateForUnlock();
-	}
 }
 
-void CApp::ApplyLoadedSettings(EStorageLoadResult loadResult)
+void App::apply_settings(storage::LoadResult t_load_result)
 {
-	m_bAppLocked = !m_settings.m_bMasterPasswordEnabled || loadResult == EStorageLoadResult::Locked;
-	m_pCarousel->m_bVisible = !m_bAppLocked;
+	m_carousel.restore(m_settings.zoom_stop, m_settings.selected_game);
 
-	if (loadResult != EStorageLoadResult::Ok && loadResult != EStorageLoadResult::Locked) return;
+	if (t_load_result == storage::LoadResult::failed) return;
 
-	CAnimator::SetEnabled(m_settings.m_bAnimationsEnabled);
-	CAnimator::SetSpeed(m_settings.m_flAnimationSpeed);
-	CDrawList::SetCornerRoundnessScale(m_settings.m_flCornerRoundness);
-	m_fonts.ApplyBody(&m_renderer, m_settings.m_szFontName, m_settings.m_flFontPixelSize,
-					  m_settings.m_flSecondaryFontPixelSize, m_window.GetDpiScale());
+	animation::set_enabled(m_settings.animations_enabled);
+	animation::set_speed(m_settings.animation_speed);
+	set_corner_roundness(m_settings.corner_roundness);
+	reload_fonts();
+	m_settings_panel.sync_with_settings();
 
-	// Latched before the stamp below overwrites it. An empty stored version is a first run, which
-	// is not an update and gets nothing.
-	m_bJustUpdated = m_settings.m_szLastRunVersion[0] != '\0' &&
-					 std::string_view{m_settings.m_szLastRunVersion} != std::string_view{kAppVersion};
-	CopyTo(kAppVersion, m_settings.m_szLastRunVersion, sizeof(m_settings.m_szLastRunVersion));
+	const std::string_view last_run_version = m_settings.last_run_version;
+	m_just_updated = !last_run_version.empty() && last_run_version != app_version;
+	copy_to(app_version, m_settings.last_run_version);
 }
 
-void CApp::SaveAccounts()
+void App::lock()
 {
-	CStorage::SaveAccounts(&m_pCarousel->GetBanner(0), m_pCarousel->GetBannerCount(),
-						   m_settings.m_bMasterPasswordEnabled, m_masterKey);
+	m_locked = true;
+	m_carousel.set_visible(false);
 }
 
-void CApp::SaveSettings()
+void App::unlock()
 {
-	CStorage::SaveSettings(m_settings, m_pCarousel->GetZoomStop(), m_pCarousel->GetSelectedIndex());
+	m_locked = false;
+	m_carousel.set_visible(true);
+	m_unlock_screen.hide();
 }
 
-void CApp::SaveAll()
+void App::save_settings()
 {
-	SaveAccounts();
-	SaveSettings();
+	m_settings.zoom_stop = m_carousel.zoom_stop();
+	m_settings.selected_game = m_carousel.selected_game();
+	storage::save_settings(m_settings);
 }
 
-EStorageLoadResult CApp::LoadAll()
+void App::save_everything()
 {
-	i32 zoomStop = 0;
-	i32 selectedBanner = 0;
-	const EStorageLoadResult settingsResult = CStorage::LoadSettings(m_settings, zoomStop, selectedBanner);
-
-	m_pCarousel->ApplyZoomStop(zoomStop);
-	m_pCarousel->ApplySelectedIndex(selectedBanner);
-
-	const EStorageLoadResult accountsResult = CStorage::LoadAccounts(
-		&m_pCarousel->GetBanner(0), m_pCarousel->GetBannerCount(), m_settings.m_bMasterPasswordEnabled, m_masterKey);
-
-	// Settings failing outranks whatever the vault said: the master-password state the accounts
-	// result was decided against came from that same unreadable file, so it means nothing here.
-	return settingsResult == EStorageLoadResult::Failed ? settingsResult : accountsResult;
+	storage::save_accounts(m_library, m_master_key);
+	save_settings();
 }
 
-// Rows come from the visible-account query rather than raw storage, so an account visible under
-// a second game appears under that game here too.
-void CApp::BuildTrayMenu(void *pUserData, TrayMenuModel &outModel)
+void App::fill_tray_menu(TrayMenu &t_menu) const
 {
-	const auto *pCarousel = static_cast<const CCarousel *>(pUserData);
-	VisibleAccountRef refs[kCarouselMaxVisibleAccounts];
+	for (u32 game = 0; game < m_library.game_count() && t_menu.game_count < tray_max_games; game += 1) {
+		const VisibleAccounts visible = m_library.visible_accounts(game);
 
-	for (u32 b = 0; b < pCarousel->GetBannerCount() && outModel.GameCount < kTrayMaxGames; b += 1) {
-		const u32 visibleCount = pCarousel->GetVisibleAccounts(b, refs);
+		TrayGame &entry = t_menu.games[t_menu.game_count];
+		t_menu.game_count += 1;
 
-		TrayGameItem &game = outModel.Games[outModel.GameCount];
-		outModel.GameCount += 1;
+		copy_to(m_library.game(game).title, entry.title);
+		entry.game = static_cast<i32>(game);
+		entry.first_account = t_menu.account_count;
+		entry.account_count = 0;
 
-		CopyTo(pCarousel->GetBanner(b).Title, game.Title, sizeof(game.Title));
-		game.BannerIndex = static_cast<i32>(b);
-		game.FirstAccount = outModel.AccountCount;
-		game.AccountCount = 0;
+		for (u32 row = 0; row < visible.count && t_menu.account_count < tray_max_accounts; row += 1) {
+			const Account &account = m_library.account(visible.refs[row]);
+			const std::string_view note = account.note;
 
-		for (u32 q = 0; q < visibleCount && outModel.AccountCount < kTrayMaxAccountItems; q += 1) {
-			const Account &account = pCarousel->GetBanner(refs[q].BannerIndex).Accounts[refs[q].AccountIndex];
+			TrayAccount &item = t_menu.accounts[t_menu.account_count];
+			copy_to(note.empty() ? std::string_view{account.username} : note, item.label);
+			item.game = static_cast<i32>(game);
+			item.row = static_cast<i32>(row);
 
-			// The note names the account the way its owner thinks of it.
-			const std::string_view note = account.GetNote();
-			const std::string_view label = note.empty() ? account.GetUsername() : note;
-
-			TrayAccountItem &item = outModel.Accounts[outModel.AccountCount];
-			CopyTo(label, item.Label, sizeof(item.Label));
-			item.BannerIndex = static_cast<i32>(b);
-			item.QueryIndex = static_cast<i32>(q);
-
-			outModel.AccountCount += 1;
-			game.AccountCount += 1;
+			t_menu.account_count += 1;
+			entry.account_count += 1;
 		}
 	}
 }
 
-// Serves both a live resize and an ordinary repaint, so the swapchain is only rebuilt when the
-// size genuinely changed - ResizeBuffers is not free, and a plain WM_PAINT arrives at the same
-// size it left at.
-void CApp::OnWindowRedraw(void *pUserData)
-{
-	auto *pApp = static_cast<CApp *>(pUserData);
-	const u32 physicalWidth = pApp->m_window.GetPhysicalWidth();
-	const u32 physicalHeight = pApp->m_window.GetPhysicalHeight();
-
-	// A minimized window reports a zero client size, which the swapchain cannot be resized to.
-	if (physicalWidth == 0 || physicalHeight == 0) return;
-
-	if (physicalWidth != pApp->m_nSwapchainWidth || physicalHeight != pApp->m_nSwapchainHeight) {
-		pApp->m_renderer.Resize(physicalWidth, physicalHeight, static_cast<float>(pApp->m_window.GetWidth()),
-								static_cast<float>(pApp->m_window.GetHeight()));
-		pApp->m_nSwapchainWidth = physicalWidth;
-		pApp->m_nSwapchainHeight = physicalHeight;
-	}
-
-	pApp->AdvanceFrame();
-}
-
-// Re-bakes both atlases at the new scale before the move that follows repaints the window, so
-// that repaint never samples a stale-resolution atlas.
-void CApp::OnWindowDpiChanged(void *pUserData)
-{
-	auto *pApp = static_cast<CApp *>(pUserData);
-
-	pApp->m_fonts.ApplyBody(&pApp->m_renderer, pApp->m_settings.m_szFontName, pApp->m_settings.m_flFontPixelSize,
-							pApp->m_settings.m_flSecondaryFontPixelSize, pApp->m_window.GetDpiScale());
-}
-
-void CApp::HandleTrayEvent()
-{
-	switch (m_tray.TakeEvent()) {
-		case ETrayEventType::ExitRequested:
-			// A real close request, not a posted WM_CLOSE: with close-to-tray on, that would only
-			// hide the window, and the tray's Exit means exit.
-			m_window.RequestClose();
-			break;
-
-		case ETrayEventType::ShowWindow:
-			m_window.Restore();
-			break;
-
-		case ETrayEventType::QuickLogin: {
-			const i32 bannerIndex = m_tray.GetPendingBannerIndex();
-			const i32 queryIndex = m_tray.GetPendingAccountIndex();
-
-			// Re-run rather than trusting the index the menu was built from: the account list can
-			// have changed while the menu was open.
-			bool valid =
-				bannerIndex >= 0 && static_cast<u32>(bannerIndex) < m_pCarousel->GetBannerCount() && queryIndex >= 0;
-
-			if (valid) {
-				VisibleAccountRef refs[kCarouselMaxVisibleAccounts];
-				valid =
-					static_cast<u32>(queryIndex) < m_pCarousel->GetVisibleAccounts(static_cast<u32>(bannerIndex), refs);
-			}
-
-			if (valid) {
-				// No restore - a tray login stays out of the way. The modal still opens behind the
-				// scenes, so restoring later lands on its progress view.
-				m_pModal->OpenForQuickLogin(bannerIndex, queryIndex);
-			}
-
-			break;
-		}
-
-		case ETrayEventType::None:
-			break;
-	}
-}
-
-void CApp::HandleTitleBarButtons()
-{
-	if (m_pTitleBar->ConsumeMenuClicked()) {
-		if (m_pAppMenu->IsBlocking()) {
-			m_pAppMenu->Close();
-		} else {
-			m_pAppMenu->Open();
-		}
-	}
-
-	if (m_pTitleBar->ConsumeUpdateClicked()) {
-		if (m_pUpdateOverlay->IsBlocking()) {
-			m_pUpdateOverlay->Close();
-		} else {
-			m_pUpdateOverlay->Open();
-		}
-	}
-}
-
-void CApp::HandleAppMenuAction()
-{
-	switch (m_pAppMenu->ConsumeAction()) {
-		case EAppMenuAction::OpenSettings:
-			m_pSettingsPanel->Open();
-			break;
-
-		case EAppMenuAction::CheckForUpdates: {
-			// Reopening the menu must not restart an in-flight download or discard an available
-			// update the user has not acted on yet.
-			const EUpdateStage stage = m_updater.GetStage();
-			const bool idle =
-				stage == EUpdateStage::Idle || stage == EUpdateStage::UpToDate || stage == EUpdateStage::CheckFailed;
-
-			if (idle) {
-				m_updater.CheckForUpdateAsync(kAppVersion);
-			}
-
-			m_pUpdateOverlay->Open();
-			break;
-		}
-
-		case EAppMenuAction::OpenDataFolder: {
-			// "open" rather than "explore" reuses an existing Explorer window. Resolving the
-			// directory also creates it, so there is always somewhere to point at.
-			char dataDirectory[MAX_PATH];
-			if (CStorage::GetDataDirectory(dataDirectory, sizeof(dataDirectory))) {
-				ShellExecuteA(nullptr, "open", dataDirectory, nullptr, nullptr, SW_SHOWNORMAL);
-			}
-
-			break;
-		}
-
-		case EAppMenuAction::None:
-			break;
-	}
-
-	// Setup rather than unlock: a reset means "create a new password", and this only fires while
-	// already unlocked.
-	if (m_pSettingsPanel->ConsumeResetPasswordRequested()) {
-		m_pUnlockScreen->ActivateForSetup();
-		m_bAppLocked = true;
-		m_pCarousel->m_bVisible = false;
-	}
-}
-
-// The modal cannot open a context menu itself, so it latches which row was hit and this serves
-// the menu. Copy only - editing and deleting have dedicated buttons on the row.
-void CApp::HandleContextMenu(const InputEvent &event)
-{
-	const PendingHit rightClickedRow = m_pModal->ConsumePendingRightClickRow();
-
-	if (rightClickedRow.Kind == EPendingHitKind::Index) {
-		m_nContextMenuAccountIndex = rightClickedRow.Index;
-
-		const ContextMenuItem items[]{
-			{"Copy Username", kMenuIdCopyUsername},
-			{"Copy Password", kMenuIdCopyPassword},
-		};
-
-		m_pContextMenu->Open(event.X, event.Y, items, 2, static_cast<float>(m_window.GetWidth()),
-							 static_cast<float>(m_window.GetHeight()));
-	}
-
-	const u32 selected = m_pContextMenu->ConsumeSelection();
-	if (selected == kContextMenuNoSelection || m_nContextMenuAccountIndex < 0) return;
-
-	// Resolved through the modal rather than indexed into a banner here: a row's position in the
-	// visible list is not its position in storage, and that mapping lives in exactly one place.
-	const char *pUsername = nullptr;
-	const char *pPassword = nullptr;
-	if (!m_pModal->GetAccountCopyFields(static_cast<u32>(m_nContextMenuAccountIndex), pUsername, pPassword)) return;
-
-	SetClipboardText(m_window.GetHandle(), selected == kMenuIdCopyUsername ? pUsername : pPassword);
-}
-
-bool CApp::HandleWheel(const InputEvent &event)
-{
-	// Ctrl+scroll cycles the carousel's view mode, but only while nothing above it is blocking.
-	const bool ctrlDown = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
-	const bool blocked = m_pModal->IsBlocking() || m_pAppMenu->IsBlocking() || m_pSettingsPanel->IsBlocking() ||
-						 m_pContextMenu->IsBlocking() || m_pUnlockScreen->IsBlocking();
-
-	if (!ctrlDown || blocked) return m_stack.DispatchScroll(event.X, event.Y, event.WheelDelta);
-
-	m_pCarousel->AdjustZoomStop(event.WheelDelta);
-
-	// The zoom stop lives in the settings file, so narrowing to that one means a scroll notch -
-	// which can fire many times in a row - never re-encrypts the account list.
-	SaveSettings();
-
-	return true;
-}
-
-bool CApp::HandlePointerUp(const InputEvent &event)
-{
-	// "An already-centred card opens the modal" needs the selection as it stood before this
-	// click, since clicking a different card just re-centres it - dispatch may change it.
-	const i32 previouslySelectedBanner = m_pCarousel->GetSelectedIndex();
-	const bool consumed = m_stack.DispatchPointerUp(event.X, event.Y);
-
-	const PendingHit clickedBanner = m_pCarousel->ConsumePendingClick();
-	const bool openImmediately = m_pCarousel->GetViewMode() != ECarouselViewMode::Carousel;
-
-	if (clickedBanner.Kind == EPendingHitKind::Index &&
-		(openImmediately || clickedBanner.Index == previouslySelectedBanner)) {
-		m_pModal->Open(clickedBanner.Index);
-	}
-
-	return consumed;
-}
-
-// Enter on the carousel always opens the focused game, unlike a click, which only opens a card
-// that was already centred - the focus ring has already said which one Enter would act on.
-void CApp::HandleCarouselActivate()
-{
-	const PendingHit activated = m_pCarousel->ConsumePendingActivate();
-
-	if (activated.Kind == EPendingHitKind::Index) {
-		m_pModal->Open(activated.Index);
-	}
-}
-
-void CApp::HandleInputEvent(const InputEvent &event)
-{
-	if (event.Type == EInputEventType::MouseMove) {
-		m_flMouseX = event.X;
-		m_flMouseY = event.Y;
-	}
-
-	m_stack.SetRealMousePosition(m_flMouseX, m_flMouseY);
-
-	bool consumed = false;
-	switch (event.Type) {
-		case EInputEventType::MouseDown:
-			consumed = m_stack.DispatchPointerDown(event.X, event.Y);
-			break;
-
-		case EInputEventType::MouseMove:
-			consumed = m_stack.DispatchPointerMove(event.X, event.Y);
-			break;
-
-		case EInputEventType::MouseUp:
-			consumed = HandlePointerUp(event);
-			break;
-
-		case EInputEventType::RightMouseUp:
-			consumed = m_stack.DispatchRightPointerUp(event.X, event.Y);
-			break;
-
-		case EInputEventType::MouseWheel:
-			consumed = HandleWheel(event);
-			break;
-
-		case EInputEventType::KeyDown:
-			consumed = m_stack.DispatchKeyDown(event.KeyCode);
-			HandleCarouselActivate();
-			break;
-
-		case EInputEventType::CharTyped:
-			consumed = m_stack.DispatchChar(event.KeyCode);
-			break;
-	}
-
-	// Cheap to poll on every event: each returns a "nothing happened" answer almost always.
-	HandleTitleBarButtons();
-	HandleAppMenuAction();
-	HandleContextMenu(event);
-	HandlePersistence(event, consumed);
-}
-
-// The unlock screen's two success signals need different follow-ups: an unlock only needs a
-// reload, since the in-memory passwords are blank from the earlier locked load, while a setup
-// needs a save, since every password is re-encrypted under the fresh key.
-void CApp::HandlePersistence(const InputEvent &event, bool consumed)
-{
-	const bool isActionEvent = event.Type == EInputEventType::MouseUp || event.Type == EInputEventType::KeyDown ||
-							   event.Type == EInputEventType::RightMouseUp;
-	if (!isActionEvent) return;
-
-	const bool unlockSucceeded = m_pUnlockScreen->ConsumeUnlockSucceeded();
-	const bool setupSucceeded = m_pUnlockScreen->ConsumeSetupSucceeded();
-
-	if (unlockSucceeded) {
-		CStorage::LoadAccounts(&m_pCarousel->GetBanner(0), m_pCarousel->GetBannerCount(),
-							   m_settings.m_bMasterPasswordEnabled, m_masterKey);
-	} else if (setupSucceeded) {
-		SaveAll();
-	} else if (consumed) {
-		SaveAll();
-	} else {
-		return;
-	}
-
-	if (unlockSucceeded || setupSucceeded) {
-		m_bAppLocked = false;
-		m_pCarousel->m_bVisible = true;
-		m_pUnlockScreen->Deactivate();
-	}
-}
-
-// The update flow is the one thing that happens without the user asking, so it is the one thing
-// that has to announce itself. Everything else in this app is a direct response to a click and
-// needs no corner-of-the-screen confirmation.
-//
-// Edge-triggered off the stage rather than polled on its value, or an available update would
-// re-announce itself every frame until acted on.
-void CApp::NotifyUpdateStageChanges()
-{
-	const EUpdateStage stage = m_updater.GetStage();
-	if (stage == m_lastNotifiedUpdateStage) return;
-
-	m_lastNotifiedUpdateStage = stage;
-
-	if (stage == EUpdateStage::Available || stage == EUpdateStage::ManualUpgradeRequired) {
-		// The one notification here that asks for something rather than reporting it, so it is the
-		// one that spins - a turning icon is worth spending on an update nobody has acted on yet.
-		char szMessage[96];
-		std::snprintf(szMessage, sizeof(szMessage), "Version %s available", m_updater.GetManifest().szVersion);
-		m_pToasts->Notify(
-			{.Message = szMessage, .Icon = EAsset::IconUpdate, .SpinIcon = true, .Action = EToastAction::OpenUpdates});
-	} else if (stage == EUpdateStage::Error) {
-		const char *szMessage = "The update could not be installed.";
-		m_pToasts->Notify({.Message = szMessage, .Icon = EAsset::IconUpdate, .Action = EToastAction::OpenUpdates});
-	}
-}
-
-// The host only latches what a click asked for; opening the overlay is this class's job, since it
-// is the only thing that owns one.
-void CApp::HandleToastAction()
-{
-	if (m_pToasts->ConsumeAction() == EToastAction::OpenUpdates) m_pUpdateOverlay->Open();
-}
-
-// Reported from the frame loop rather than from Init, so the toast animates in over a window that
-// is already on screen instead of being half over by the time it is shown.
-void CApp::NotifyIfJustUpdated()
-{
-	if (!m_bJustUpdated) return;
-
-	m_bJustUpdated = false;
-
-	char message[96];
-	std::snprintf(message, sizeof(message), "Updated to %s", kAppVersion);
-	m_pToasts->Notify({.Message = message, .Icon = EAsset::IconUpdate});
-}
-
-// Saving is off for the rest of the session when this fires, which is a state the user has to be
-// told about - every change they make from here is silently temporary, and the reason the app is
-// refusing is that the files on disk are still worth more than anything it could write over them.
-void CApp::NotifyIfStorageSealed()
-{
-	if (m_bStorageSealNotified) return;
-	if (CStorage::IsSettingsWritable() && CStorage::IsAccountsWritable()) return;
-
-	m_bStorageSealNotified = true;
-	m_pToasts->Notify({.Message = "Saved data could not be read - changes will not be kept"});
-}
-
-void CApp::PumpInput()
+void App::pump_input()
 {
 	PULSAR_PROFILE_SCOPE("Input");
 
-	m_window.PumpMessages();
+	m_window.pump_messages();
+	m_window.set_close_to_tray(m_settings.close_to_tray && m_tray.is_icon_visible());
+	m_tray.set_accent(m_settings.accent);
 
-	m_window.SetCloseToTray(m_settings.m_bCloseToTray && m_tray.IsIconVisible());
-	m_tray.SetAccentColor(m_settings.m_clrAccent);
-	m_pCarousel->SetAccentColor(m_settings.m_clrAccent);
+	handle_tray_event();
 
-	HandleTrayEvent();
-
-	for (u32 i = 0; i < m_window.GetInputEventCount(); i += 1) {
-		HandleInputEvent(m_window.GetInputEvents()[i]);
+	for (const InputEvent &event : m_window.input_events()) {
+		handle_input(event);
 	}
 }
 
-// The carousel is the one widget whose layout derives from externally-set bounds; every other
-// widget queries the window directly. Runs inside AdvanceFrame rather than alongside input, so a
-// frame drawn from a live resize drag lays out at the size it is about to be drawn at.
-void CApp::Layout()
+void App::handle_tray_event()
 {
-	// Kept live so whatever save happens next persists the current size. Guarded against zero,
-	// which a minimized window reports and which would otherwise overwrite the real saved size.
-	if (m_window.GetWidth() > 0 && m_window.GetHeight() > 0) {
-		m_settings.m_nWindowWidth = m_window.GetWidth();
-		m_settings.m_nWindowHeight = m_window.GetHeight();
-	}
+	const TrayEvent event = m_tray.take_event();
 
-	const float width = static_cast<float>(m_window.GetWidth());
-	const float height = static_cast<float>(m_window.GetHeight());
-	m_pCarousel->m_vecBounds = Rect{0.0f, kTitleBarHeight, width, height - kTitleBarHeight - kStatusBarHeight};
+	switch (event.type) {
+		case TrayEventType::exit:
+			m_window.request_close();
+			break;
+
+		case TrayEventType::show_window:
+			m_window.restore();
+			break;
+
+		case TrayEventType::quick_login:
+			if (m_account_modal.can_quick_login(event.game, event.row)) {
+				m_account_modal.quick_login(event.game, event.row);
+			}
+
+			break;
+
+		case TrayEventType::none:
+			break;
+	}
 }
 
-// One frame: lay out, advance every animation, draw. Everything here is safe to run from inside
-// a resize drag's modal loop, which is the whole reason it is separated from the rest of Run's
-// body - a frame that only redrew would leave the layout and every animation frozen at whatever
-// they held when the drag started.
-//
-// The re-entrancy guard is not theoretical: presenting can pump messages, and a WM_PAINT
-// arriving there would otherwise start a second frame inside this one.
-void CApp::AdvanceFrame()
+void App::handle_input(const InputEvent &t_event)
 {
-	if (m_bInFrame) return;
+	if (t_event.type == InputEventType::mouse_move) {
+		m_mouse = t_event.position;
+	}
 
-	m_bInFrame = true;
+	const bool consumed = m_widgets.dispatch(t_event);
+	process_commands();
+
+	const bool is_action = t_event.type == InputEventType::mouse_up || t_event.type == InputEventType::key_down ||
+						   t_event.type == InputEventType::right_click;
+	if (consumed && is_action) {
+		save_everything();
+	}
+}
+
+void App::process_commands()
+{
+	while (const std::optional<Command> command = m_commands.pop()) {
+		process(*command);
+	}
+}
+
+void App::process(const Command &t_command)
+{
+	switch (t_command.type) {
+		case CommandType::toggle_app_menu:
+			if (m_app_menu.is_open()) {
+				m_app_menu.close();
+			} else {
+				m_app_menu.open(!m_locked);
+			}
+
+			break;
+
+		case CommandType::toggle_update_overlay:
+			if (m_update_overlay.is_open()) {
+				m_update_overlay.close();
+			} else {
+				m_update_overlay.open();
+			}
+
+			break;
+
+		case CommandType::open_update_overlay:
+			m_update_overlay.open();
+			break;
+
+		case CommandType::open_settings:
+			m_settings_panel.open();
+			break;
+
+		case CommandType::open_data_folder: {
+			const std::string directory = storage::data_directory();
+			if (!directory.empty()) {
+				ShellExecuteA(nullptr, "open", directory.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+			}
+
+			break;
+		}
+
+		case CommandType::check_for_updates:
+			m_updater.check_for_update();
+			m_update_overlay.open();
+			break;
+
+		case CommandType::open_game:
+			m_account_modal.open(t_command.index);
+			break;
+
+		case CommandType::save_settings:
+			save_settings();
+			break;
+
+		case CommandType::request_new_master_password:
+			lock();
+			m_unlock_screen.show_setup();
+			break;
+
+		case CommandType::vault_unlocked:
+			storage::load_accounts(m_library, m_master_key);
+			unlock();
+			break;
+
+		case CommandType::vault_created:
+			save_everything();
+			unlock();
+			break;
+
+		case CommandType::show_account_menu:
+			open_account_menu(t_command);
+			break;
+
+		case CommandType::show_text_menu:
+			open_text_menu(t_command);
+			break;
+
+		case CommandType::copy_username:
+		case CommandType::copy_password:
+			if (const Account *account = m_account_modal.account_at_row(t_command.index)) {
+				set_clipboard_text(t_command.type == CommandType::copy_username ? account->username
+																				: account->password);
+			}
+
+			break;
+
+		case CommandType::edit_text:
+			t_command.text_input->apply(t_command.text_edit);
+			break;
+	}
+}
+
+void App::open_account_menu(const Command &t_command)
+{
+	const ContextMenuItem items[]{
+		{"Copy Username", Command{.type = CommandType::copy_username, .index = t_command.index}},
+		{"Copy Password", Command{.type = CommandType::copy_password, .index = t_command.index}},
+	};
+
+	m_context_menu.open(t_command.position, items, m_window.size());
+}
+
+void App::open_text_menu(const Command &t_command)
+{
+	TextInput &input = *t_command.text_input;
+
+	const auto item = [&input](std::string_view t_label, TextEdit t_edit) {
+		const Command edit{.type = CommandType::edit_text, .text_input = &input, .text_edit = t_edit};
+
+		return ContextMenuItem{t_label, edit, input.can_apply(t_edit)};
+	};
+
+	const ContextMenuItem items[]{
+		item("Cut", TextEdit::cut),
+		item("Copy", TextEdit::copy),
+		item("Paste", TextEdit::paste),
+		item("Select All", TextEdit::select_all),
+	};
+
+	m_context_menu.open(t_command.position, items, m_window.size());
+}
+
+void App::announce_update_stage()
+{
+	const UpdateStage stage = m_updater.stage();
+	if (stage == m_announced_update_stage) return;
+
+	m_announced_update_stage = stage;
+
+	const Command open_updates{.type = CommandType::open_update_overlay};
+
+	if (stage == UpdateStage::available || stage == UpdateStage::manual_upgrade_required) {
+		char message[96];
+		std::snprintf(message, sizeof(message), "Version %s available", m_updater.manifest().version);
+		m_toasts.notify(
+			Notification{.message = message, .icon = Asset::icon_update, .spin_icon = true, .on_click = open_updates});
+	} else if (stage == UpdateStage::error) {
+		m_toasts.notify(Notification{
+			.message = "The update could not be installed.", .icon = Asset::icon_update, .on_click = open_updates});
+	}
+}
+
+void App::announce_first_run_after_update()
+{
+	if (!std::exchange(m_just_updated, false)) return;
+
+	char message[96];
+	std::snprintf(message, sizeof(message), "Updated to %s", app_version);
+	m_toasts.notify(Notification{.message = message, .icon = Asset::icon_update});
+}
+
+void App::announce_unreadable_storage()
+{
+	if (m_unreadable_storage_announced || (storage::can_save_settings() && storage::can_save_accounts())) return;
+
+	m_unreadable_storage_announced = true;
+	m_toasts.notify(Notification{.message = "Saved data could not be read - changes will not be kept"});
+}
+
+void App::relaunch_if_update_installed()
+{
+	if (!m_updater.consume_ready_to_relaunch()) return;
+
+	save_everything();
+
+	// The replacement build would otherwise find this process's mutex and exit as a duplicate.
+	m_instance_guard.release();
+
+	launch_self();
+	m_window.request_close();
+}
+
+void App::redraw_while_resizing()
+{
+	if (m_window.physical_width() == 0 || m_window.physical_height() == 0) return;
+
+	if (m_window.physical_width() != m_swap_chain_width || m_window.physical_height() != m_swap_chain_height) {
+		m_renderer.resize(m_window);
+		m_swap_chain_width = m_window.physical_width();
+		m_swap_chain_height = m_window.physical_height();
+	}
+
+	frame();
+}
+
+void App::reload_fonts()
+{
+	m_fonts.load(m_renderer, m_settings.font_name, m_settings.font_size, m_settings.secondary_font_size,
+				 m_window.dpi_scale());
+}
+
+void App::frame()
+{
+	if (m_in_frame) return;
+
+	m_in_frame = true;
 	PULSAR_PROFILE_FRAME_BEGIN();
 
 	const auto now = std::chrono::steady_clock::now();
-	const float deltaSeconds = std::chrono::duration<float>(now - m_previousFrameTime).count();
-	m_previousFrameTime = now;
+	const float delta_seconds = std::chrono::duration<float>(now - m_last_frame_time).count();
+	m_last_frame_time = now;
 
-	{
-		PULSAR_PROFILE_SCOPE("Layout");
-		Layout();
+	const Vec2 window = m_window.size();
+	if (m_window.width() > 0 && m_window.height() > 0) {
+		m_settings.window_width = m_window.width();
+		m_settings.window_height = m_window.height();
 	}
+
+	m_carousel.set_bounds(Rect{0.0f, title_bar_height, window.x, window.y - title_bar_height - status_bar_height});
 
 	{
 		PULSAR_PROFILE_SCOPE("Widgets.Update");
-		m_stack.SetRealMousePosition(m_flMouseX, m_flMouseY);
-		m_stack.Update(deltaSeconds);
+		m_widgets.update(m_mouse, delta_seconds);
 	}
 
-	// Skipped over the resize border: forcing the app cursor there every frame would fight the
-	// OS's resize arrows, which its own hit-test already sets correctly.
-	if (!m_window.IsMouseOverResizeBorder()) {
-		m_window.SetCursorKind(m_stack.GetDesiredCursor());
+	if (!m_window.is_mouse_over_resize_border()) {
+		m_window.set_cursor(m_widgets.cursor());
 	}
 
-	// Drives the banner glow's shimmer, read back when the carousel's geometry is submitted.
-	m_renderer.SetEffectTime(std::chrono::duration<float>(now - m_startTime).count());
+	m_renderer.set_effect_time(std::chrono::duration<float>(now - m_start_time).count());
 
-	if (!m_window.IsMinimized()) {
-		RenderFrame();
+	if (!m_window.is_minimized()) {
+		render();
 	}
 
 	PULSAR_PROFILE_FRAME_END();
-	m_bInFrame = false;
+	m_in_frame = false;
 }
 
-// Keeps usernames, notes and revealed passwords out of screenshots and screen shares while the
-// account modal is open. Scoped to that one view, so normal capture returns when it closes.
-void CApp::UpdateCaptureExclusion()
+void App::draw_status_bar()
 {
-	const bool shouldExclude = m_settings.m_bExcludeAccountListFromCapture && m_pModal->IsBlocking();
-	if (shouldExclude == m_bExcludedFromCapture) return;
+	const Vec2 window = m_window.size();
+	const Rect status_bar{0.0f, window.y - status_bar_height, window.x, status_bar_height};
 
-	SetWindowDisplayAffinity(m_window.GetHandle(), shouldExclude ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
-	m_bExcludedFromCapture = shouldExclude;
-}
+	m_draw_list.add_rect(Rect{0.0f, title_bar_height, window.x, 1.0f}, color_chrome_seam);
+	m_draw_list.add_rect(Rect{0.0f, status_bar.y - 1.0f, window.x, 1.0f}, color_chrome_seam);
+	m_draw_list.add_rect(status_bar, title_bar_color);
 
-// A verified update has been swapped into this exe's path. Exiting through the normal close
-// path rather than ExitProcess keeps the renderer's GPU release order intact.
-bool CApp::ConsumeRelaunchRequest()
-{
-	if (!m_updater.ConsumeReadyToRelaunch()) return false;
+	const Rect mark{status_padding, status_bar.y + (status_bar_height - status_mark_size) * 0.5f, status_mark_size,
+					status_mark_size};
+	m_draw_list.add_image(mark, m_assets.get(Asset::icon_app), color_status_text);
 
-	SaveAll();
+	char version[48];
+	const int written =
+		std::snprintf(version, sizeof(version), "%s v%s%s", app_name, app_version, is_debug_build ? " [dev]" : "");
+	const Font &font = m_fonts.secondary();
 
-	// Released before spawning the replacement, or the new build would see this still-running
-	// process's mutex and exit as a duplicate instead of updating.
-	m_instanceGuard.Release();
+	draw_text(m_draw_list, font,
+			  Vec2{mark.right() + status_mark_gap, font.centered_baseline(status_bar) - status_baseline_nudge},
+			  std::string_view{version, static_cast<usize>(std::max(written, 0))}, color_status_text);
 
-	wchar_t exePath[MAX_PATH];
-	if (GetModuleFileNameW(nullptr, exePath, MAX_PATH) > 0) {
-		STARTUPINFOW startupInfo{sizeof(startupInfo)};
-		PROCESS_INFORMATION processInfo{};
-
-		if (CreateProcessW(exePath, nullptr, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startupInfo,
-						   &processInfo)) {
-			CloseHandle(processInfo.hProcess);
-			CloseHandle(processInfo.hThread);
-		}
-	}
-
-	// RequestClose rather than a posted WM_CLOSE, for the same reason the tray's Exit uses it:
-	// close-to-tray would otherwise turn this into a hide, leaving two copies running.
-	m_window.RequestClose();
-
-	return true;
-}
-
-void CApp::DrawStatusBarVersion()
-{
-	const CFont &secondary = m_fonts.GetSecondary();
-	const float statusBarY = static_cast<float>(m_window.GetHeight()) - kStatusBarHeight;
-
-	char versionBuffer[48];
-	const int written = std::snprintf(versionBuffer, sizeof(versionBuffer), "%s v%s%s", kAppName, kAppVersion,
-									  kIsDebugBuild ? " [dev]" : "");
-	const std::string_view versionText{versionBuffer, written > 0 ? static_cast<u64>(written) : 0};
-
-	// The same baseline centring, nudge included, that the carousel's status-bar content uses.
-	constexpr float kBaselineVisualNudge = 2.0f;
-	const float baselineY = statusBarY + kStatusBarHeight * 0.5f +
-							(secondary.GetAscent() + secondary.GetDescent()) * 0.5f - kBaselineVisualNudge;
-
-	// Centred on the bar rather than on the text's baseline: the mark is a square, and lining its
-	// centre up with the text's would sit it low by half a descender.
-	const Rect mark{kStatusBarVersionPadding, statusBarY + (kStatusBarHeight - kStatusBarMarkSize) * 0.5f,
-					kStatusBarMarkSize, kStatusBarMarkSize};
-	Controls::DrawIcon(m_drawList, mark, m_assets.Get(EAsset::IconApp), kColorStatusBarText);
-
-	DrawText(m_drawList, secondary, mark.X + mark.W + kStatusBarMarkGap, baselineY, versionText, kColorStatusBarText);
-}
-
-// One renderer call per command, in the order the draw list closed them.
-void CApp::SubmitDrawList()
-{
-	for (u32 i = 0; i < m_drawList.GetCommandCount(); i += 1) {
-		const DrawCommand &command = m_drawList.GetCommands()[i];
-		const u32 *pIndices = m_drawList.GetIndices() + command.IndexOffset;
-		const Vertex2D *pVertices = m_drawList.GetVertices();
-		const u32 vertexCount = m_drawList.GetVertexCount();
-
-		m_renderer.SetClipRect(command.HasClip ? ClipRect{true, command.ClipRect} : ClipRect{false, Rect{}});
-
-		switch (command.Kind) {
-			case EDrawCommandKind::Solid:
-				m_renderer.Draw2D(pVertices, vertexCount, pIndices, command.IndexCount);
-				break;
-
-			case EDrawCommandKind::Textured:
-				m_renderer.Draw2DTextured(command.pTexture != nullptr ? command.pTexture->GetHandle() : nullptr,
-										  pVertices, vertexCount, pIndices, command.IndexCount);
-				break;
-
-			case EDrawCommandKind::BannerGlow:
-				m_renderer.Draw2DBannerGlow(pVertices, vertexCount, pIndices, command.IndexCount,
-											command.Glow.QuadWidth, command.Glow.QuadHeight, command.Glow.CornerRadius,
-											command.Glow.RingWidth);
-				break;
-
-			case EDrawCommandKind::ColorPickerSv:
-				m_renderer.Draw2DColorPickerSv(pVertices, vertexCount, pIndices, command.IndexCount);
-				break;
-
-			case EDrawCommandKind::CircularProgress:
-				m_renderer.Draw2DCircularProgress(
-					pVertices, vertexCount, pIndices, command.IndexCount, command.Progress.QuadWidth,
-					command.Progress.QuadHeight, command.Progress.OuterRadius, command.Progress.InnerRadius,
-					command.Progress.StartAngle, command.Progress.SweepAngle, command.Progress.GlowStrength);
-				break;
-		}
+	if (m_carousel.is_visible()) {
+		m_carousel.draw_status_bar(m_draw_list);
 	}
 }
 
-void CApp::RenderFrame()
+void App::render()
 {
 	PULSAR_PROFILE_SCOPE("Render");
 
-	const float width = static_cast<float>(m_window.GetWidth());
-	const float height = static_cast<float>(m_window.GetHeight());
-
-	m_drawList.Clear();
-
-	// The chrome stays visible even on the master-password screen: only the carousel's
-	// content waits on the unlock state.
-	m_drawList.AddRectFilled(0.0f, kTitleBarHeight, width, 1.0f, kColorChromeSeam);
-	m_drawList.AddRectFilled(0.0f, height - kStatusBarHeight - 1.0f, width, 1.0f, kColorChromeSeam);
-	m_drawList.AddRectFilled(0.0f, height - kStatusBarHeight, width, kStatusBarHeight, kTitleBarColor);
-
-	DrawStatusBarVersion();
-
-	if (m_pCarousel->m_bVisible) {
-		m_pCarousel->DrawStatusBarContent(m_drawList);
-	}
+	m_draw_list.clear();
+	draw_status_bar();
 
 	{
 		PULSAR_PROFILE_SCOPE("Render.BuildGeometry");
-		m_stack.Draw(m_drawList);
-		m_drawList.Finish();
+		m_widgets.draw(m_draw_list);
+		m_draw_list.finish();
 	}
 
-	m_renderer.BeginFrame();
-	m_renderer.Clear(kColorBackground);
-
-	{
-		PULSAR_PROFILE_SCOPE("Render.Submit");
-		SubmitDrawList();
-	}
-
-	{
-		// Blocks on vsync, so this is nearly always the largest number in the report and nearly
-		// always means nothing. Read the others against the frame total instead.
-		PULSAR_PROFILE_SCOPE("Render.Present");
-		m_renderer.EndFrame();
-	}
+	m_renderer.render(m_draw_list, color_background);
 }
 
-void CApp::Run()
+void App::run()
 {
-	while (!m_window.ShouldClose()) {
-		PumpInput();
-		NotifyIfJustUpdated();
-		NotifyIfStorageSealed();
-		AdvanceFrame();
+	while (!m_window.should_close()) {
+		pump_input();
+		announce_first_run_after_update();
+		announce_unreadable_storage();
+		frame();
 
-		// Joins a finished worker once it is done; safe to call every frame regardless.
-		m_updater.Update();
-		NotifyUpdateStageChanges();
-		HandleToastAction();
-		ConsumeRelaunchRequest();
-		UpdateCaptureExclusion();
+		m_updater.update();
+		announce_update_stage();
+		process_commands();
+		relaunch_if_update_installed();
 
-		// Hidden or minimized: nothing was presented, so nothing paced this iteration.
-		// Everything above still runs, since a tray quick-login has to work while hidden.
-		if (m_window.IsHidden() || m_window.IsMinimized()) {
+		m_window.set_excluded_from_capture(m_settings.hide_accounts_from_capture && m_account_modal.is_blocking());
+
+		if (m_window.is_hidden() || m_window.is_minimized()) {
 			Sleep(16);
 		}
 
-		// Last in the frame, so it only ticks once one has been presented. The watchdog reads this
-		// to tell a frozen app apart from a stuck login worker.
-		DebugLog::MarkUiThreadAlive();
+		debug_log::mark_ui_thread_alive();
 	}
 
-	SaveAll();
+	save_everything();
 }

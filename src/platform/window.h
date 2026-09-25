@@ -1,285 +1,190 @@
 #pragma once
 
+#include <functional>
+#include <span>
+
 #include <Windows.h>
 
 #include "core/types.h"
 
-// The single Win32 window, with a custom-drawn title bar in place of the OS caption.
-// WS_OVERLAPPEDWINDOW is kept so Aero Snap, the minimize animation and Alt+Tab thumbnails keep
-// working; DwmExtendFrameIntoClientArea preserves the drop shadow and rounded corners once
-// WM_NCCALCSIZE removes the frame.
-//
-// DPI awareness runs on a logical/physical split, so nothing above this class reasons about DPI:
-// GetWidth, layout constants and input coordinates are all logical, and GetPhysicalWidth exists
-// only for the renderer boundary.
-//
-// The two callbacks are function pointers rather than virtuals because Win32 delivers both
-// synchronously - a live border drag runs inside DefWindowProc's own modal loop - so neither can
-// be polled once per frame.
-
-enum class EInputEventType : u8 {
-	MouseDown,
-	MouseUp,
-	MouseMove,
-	MouseWheel,
-	RightMouseUp, // right-click-down is not tracked; nothing needs a right-drag
-	KeyDown,	  // a virtual-key code, so a physical key rather than a printable character
-	CharTyped,	  // a real typed character
+enum class InputEventType : u8 {
+	mouse_down,
+	mouse_up,
+	mouse_move,
+	mouse_wheel,
+	right_click,
+	key_down,
+	character,
 };
 
 struct InputEvent {
-	EInputEventType Type;
-	float X; // logical pixels
-	float Y;
-	float WheelDelta;
-	u32 KeyCode; // a VK_* code for KeyDown, a UTF-16 code unit for CharTyped
+	InputEventType type;
+	Vec2 position;
+	float wheel_delta;
+	u32 key;
 };
 
-constexpr u32 kMaxInputEventsPerFrame = 64;
-
-constexpr float kTitleBarHeight = 40.0f;
-constexpr float kTitleBarButtonWidth = 46.0f;
-
-/// The update slot is wider than the rest because it is a labelled pill, not a glyph.
-constexpr float kUpdateButtonWidth = 170.0f;
-
-/// The bottom chrome strip. Declared here rather than in the app so CCarousel can derive its
-/// own rect from the same constant.
-constexpr float kStatusBarHeight = 26.0f;
-
-/// The floor the OS enforces on a resize drag. Below this the title bar's own buttons stop
-/// fitting, so no layout below is ever asked for something it cannot produce.
-constexpr float kMinWindowWidth = 640.0f;
-constexpr float kMinWindowHeight = 440.0f;
-
-enum class ETitleBarButton : u8 {
-	None,
-	Menu,
-
-	/// Reserved as a real hit-test slot unconditionally, even though the title bar only draws
-	/// into it while an update is in flight. Keeping the geometry constant here means CWindow
-	/// never has to know CUpdater exists; SetUpdateButtonVisible is what makes the slot fall
-	/// through to draggable caption space when there is nothing to show.
-	Update,
-
-	Minimize,
-	Maximize,
-	Close,
+enum class TitleBarButton : u8 {
+	none,
+	menu,
+	update,
+	minimize,
+	maximize,
+	close,
 };
 
-/// Called synchronously whenever the window needs a frame on screen right now: a live resize
-/// drag and a WM_PAINT both run inside their own modal loop, so nothing polled once per frame
-/// can answer them. The handler is expected to resize the swapchain if needed and draw.
-using RedrawCallback = void (*)(void *pUserData);
+constexpr float title_bar_height = 40.0f;
+constexpr float title_bar_button_width = 46.0f;
+constexpr float update_button_width = 170.0f;
+constexpr float status_bar_height = 26.0f;
+constexpr float min_window_width = 640.0f;
+constexpr float min_window_height = 440.0f;
 
-/// Called before the WM_SIZE that follows a monitor change, so font atlases can be re-baked at
-/// the new scale before anything samples them.
-using DpiChangedCallback = void (*)(void *pUserData);
-
-class CWindow {
+class Window {
   public:
-	CWindow() = default;
-	~CWindow();
+	Window() = default;
+	~Window();
 
-	CWindow(const CWindow &) = delete;
-	CWindow &operator=(const CWindow &) = delete;
+	Window(const Window &) = delete;
+	Window &operator=(const Window &) = delete;
 
-	/// width and height are logical pixels; the real window is sized in physical pixels for
-	/// whichever monitor it lands on, so it always looks the same size at any scale factor.
-	///
-	/// The instance's address must stay stable afterwards - the window procedure stashes `this`
-	/// in GWLP_USERDATA - so a CWindow lives on the stack or behind a stable pointer, never
-	/// moved.
-	///
-	/// The window is created hidden. Everything below is already valid when this returns, so a
-	/// caller can finish renderer and asset init and draw one real frame before Show makes it
-	/// visible; showing immediately is what used to flash an uninitialized backbuffer.
-	bool Create(const wchar_t *pTitle, u32 width, u32 height);
+	static bool activate_existing_instance();
 
-	/// Call only once the renderer is up and one real frame has been presented.
-	void Show()
+	bool create(const wchar_t *t_title, u32 t_width, u32 t_height);
+	void show();
+	void restore();
+
+	void on_redraw(std::function<void()> t_callback);
+	void on_dpi_changed(std::function<void()> t_callback);
+
+	void pump_messages();
+
+	std::span<const InputEvent> input_events() const
 	{
-		ShowWindow(m_hWnd, SW_SHOW);
+		return {m_input_events, m_input_event_count};
 	}
 
-	void SetRedrawCallback(RedrawCallback callback, void *pUserData);
-	void SetDpiChangedCallback(DpiChangedCallback callback, void *pUserData);
-
-	/// Pumps this thread's message queue - which also dispatches the tray's message-only window
-	/// - and refills the input-event queue. The previous frame's events are discarded here, so
-	/// a caller reads them once between two calls.
-	void PumpMessages();
-
-	HWND GetHandle() const
+	HWND handle() const
 	{
-		return m_hWnd;
+		return m_window;
 	}
 
-	u32 GetWidth() const
+	u32 width() const
 	{
-		return m_nWidth;
+		return m_width;
 	}
 
-	u32 GetHeight() const
+	u32 height() const
 	{
-		return m_nHeight;
+		return m_height;
 	}
 
-	u32 GetPhysicalWidth() const
+	Vec2 size() const
 	{
-		return m_nPhysicalWidth;
+		return Vec2{static_cast<float>(m_width), static_cast<float>(m_height)};
 	}
 
-	u32 GetPhysicalHeight() const
+	u32 physical_width() const
 	{
-		return m_nPhysicalHeight;
+		return m_physical_width;
 	}
 
-	/// Physical over logical; 1.0 at 100% Windows scaling.
-	float GetDpiScale() const
+	u32 physical_height() const
 	{
-		return m_flDpiScale;
+		return m_physical_height;
 	}
 
-	bool ShouldClose() const
+	float dpi_scale() const
 	{
-		return m_bShouldClose;
+		return m_dpi_scale;
 	}
 
-	const InputEvent *GetInputEvents() const
+	bool should_close() const
 	{
-		return m_aInputEvents;
+		return m_should_close;
 	}
 
-	u32 GetInputEventCount() const
+	void request_close()
 	{
-		return m_nInputEventCount;
+		m_should_close = true;
 	}
 
-	/// Menu and Update are left-aligned; Minimize, Maximize and Close are right-aligned in that
-	/// order.
-	Rect GetTitleBarButtonRect(ETitleBarButton button) const;
-	ETitleBarButton TitleBarHitTest(float clientX, float clientY) const;
-
-	/// Call once per frame with whatever the widget stack asked for. Applies immediately, so a
-	/// frame that changes cursor kind without the mouse moving still looks right, and remembers
-	/// the kind so WM_SETCURSOR - which Windows sends on nearly every mouse move and would
-	/// otherwise reset to the class default - can keep reapplying it.
-	void SetCursorKind(ECursorKind kind);
-
-	/// Kept up to date by WM_NCHITTEST rather than recomputed from a polled mouse position:
-	/// once the cursor crosses into that strip it is non-client, so WM_MOUSEMOVE stops arriving
-	/// and the polled position goes stale at exactly the moment it matters. The frame loop skips
-	/// its SetCursorKind call while this is true so it does not fight the OS's resize arrows.
-	bool IsMouseOverResizeBorder() const
+	bool is_hidden() const
 	{
-		return m_bMouseOverResizeBorder;
+		return !IsWindowVisible(m_window);
 	}
 
-	/// False, the default, makes the update slot fall through to plain caption space rather than
-	/// leaving a dead undraggable strip next to the menu button.
-	void SetUpdateButtonVisible(bool visible)
+	bool is_minimized() const
 	{
-		m_bUpdateButtonVisible = visible;
+		return IsIconic(m_window);
 	}
 
-	/// While true, a close request hides the window instead of quitting, leaving the tray as the
-	/// only way back. Minimizing is unaffected and always goes to the taskbar.
-	void SetCloseToTray(bool closeToTray)
+	bool is_maximized() const
 	{
-		m_bCloseToTray = closeToTray;
+		return IsZoomed(m_window);
 	}
 
-	/// Ends the app regardless of close-to-tray, for the paths that genuinely mean exit: the
-	/// tray's Exit item and the updater's relaunch.
-	void RequestClose()
+	bool is_mouse_over_resize_border() const
 	{
-		m_bShouldClose = true;
+		return m_mouse_over_resize_border;
 	}
 
-	bool IsHidden() const
+	void set_close_to_tray(bool t_close_to_tray)
 	{
-		return IsWindowVisible(m_hWnd) == FALSE;
+		m_close_to_tray = t_close_to_tray;
 	}
 
-	/// Minimized to the taskbar: visible as far as IsHidden is concerned, but with a zero client
-	/// size and nothing on screen to present to.
-	bool IsMinimized() const
+	void set_update_button_visible(bool t_visible)
 	{
-		return IsIconic(m_hWnd) != FALSE;
+		m_update_button_visible = t_visible;
 	}
 
-	/// True for the whole of a border drag or title-bar move. Both run inside a DefWindowProc
-	/// modal loop that never returns to the frame loop, so anything with a side effect beyond
-	/// drawing - spawning a process, closing the window - has to sit these out.
-	bool IsInSizeMove() const
-	{
-		return m_bInSizeMove;
-	}
+	void set_cursor(CursorKind t_cursor);
+	void set_excluded_from_capture(bool t_excluded);
 
-	void Restore();
-
-	/// Asks an already-running instance to show itself, for a second instance to call before bowing
-	/// out. The wait exists because the running instance may still be starting up with no window
-	/// yet, and a double-click during that window should still surface it.
-	static bool ActivateExistingInstance(u32 timeoutMs = 3000);
+	Rect title_bar_button_rect(TitleBarButton t_button) const;
+	TitleBarButton title_bar_button_at(Vec2 t_point) const;
 
   private:
-	static LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+	static constexpr u32 max_input_events = 64;
 
-	LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
-	LRESULT HandleHitTest(LPARAM lParam);
-	LRESULT HandleDpiChanged(WPARAM wParam, LPARAM lParam);
-	void HandleSize(LPARAM lParam);
-	LRESULT HandleEraseBackground();
-	LRESULT HandlePaint();
-	LRESULT HandleMinMaxInfo(LPARAM lParam) const;
-	LRESULT HandleEnterSizeMove();
-	LRESULT HandleExitSizeMove();
+	static LRESULT CALLBACK window_proc(HWND t_window, UINT t_message, WPARAM t_wparam, LPARAM t_lparam);
 
-	void Redraw();
+	LRESULT handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam);
+	LRESULT handle_hit_test(LPARAM t_lparam);
+	void handle_dpi_changed(WPARAM t_wparam, LPARAM t_lparam);
+	void handle_size(LPARAM t_lparam);
+	void handle_min_max_info(LPARAM t_lparam) const;
 
-	bool RegisterWindowClass(HINSTANCE hInstance);
-	void CorrectSizeForActualDpi(u32 logicalWidth, u32 logicalHeight);
+	void register_window_class(HINSTANCE t_instance) const;
+	void correct_size_for_actual_dpi(u32 t_width, u32 t_height);
 
-	void PushInputEvent(const InputEvent &event);
-	void PushMouseEvent(EInputEventType type, LPARAM lParam);
+	Vec2 to_logical(POINT t_physical) const;
+	void push_input(const InputEvent &t_event);
+	void push_mouse(InputEventType t_type, LPARAM t_lparam);
+	void redraw();
 
-	HWND m_hWnd = nullptr;
+	HWND m_window = nullptr;
 
-	u32 m_nWidth = 0;
-	u32 m_nHeight = 0;
-	u32 m_nPhysicalWidth = 0;
-	u32 m_nPhysicalHeight = 0;
-	float m_flDpiScale = 1.0f;
+	u32 m_width = 0;
+	u32 m_height = 0;
+	u32 m_physical_width = 0;
+	u32 m_physical_height = 0;
+	float m_dpi_scale = 1.0f;
 
-	bool m_bShouldClose = false;
-	bool m_bUpdateButtonVisible = false;
-	bool m_bCloseToTray = false;
+	bool m_should_close = false;
+	bool m_close_to_tray = false;
+	bool m_update_button_visible = false;
+	bool m_excluded_from_capture = false;
+	bool m_mouse_over_resize_border = false;
+	bool m_mouse_captured = false;
+	Vec2 m_last_mouse{};
 
-	/// SetCapture on button-down keeps move and up events routed here once the cursor leaves the
-	/// client area mid-drag. Without it, releasing outside the window sends the up event
-	/// elsewhere and any in-progress drag stays stuck pressed forever. The flag and last
-	/// position back a WM_CAPTURECHANGED handler that synthesizes the missing up event when
-	/// capture is lost some other way - Alt+Tab, a system dialog, WM_CANCELMODE.
-	bool m_bMouseCaptured = false;
-	float m_flLastMouseX = 0.0f;
-	float m_flLastMouseY = 0.0f;
+	CursorKind m_cursor = CursorKind::arrow;
 
-	bool m_bMouseOverResizeBorder = false;
+	std::function<void()> m_redraw;
+	std::function<void()> m_dpi_changed;
 
-	RedrawCallback m_pRedrawCallback = nullptr;
-	void *m_pRedrawCallbackUserData = nullptr;
-
-	// Set for the whole of a border drag or a title-bar move, both of which run inside
-	// DefWindowProc modal loops.
-	bool m_bInSizeMove = false;
-
-	DpiChangedCallback m_pDpiChangedCallback = nullptr;
-	void *m_pDpiChangedCallbackUserData = nullptr;
-
-	ECursorKind m_cursorKind = ECursorKind::Arrow;
-
-	InputEvent m_aInputEvents[kMaxInputEventsPerFrame]{};
-	u32 m_nInputEventCount = 0;
+	InputEvent m_input_events[max_input_events]{};
+	u32 m_input_event_count = 0;
 };

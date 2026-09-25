@@ -2,131 +2,127 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
-#include <cstdlib>
 #include <print>
 #include <vector>
 
-#include "gfx/texture.h"
+#include <Windows.h>
+
+#include "core/file.h"
+#include "gfx/renderer.h"
 
 namespace {
-// stb's raw coverage reads thin and dim for a light face at UI sizes. A mild gamma boost
-// darkens partially-covered edge pixels toward fully-covered, closer to how the OS's text
-// rendering reads, without touching glyph geometry.
-constexpr float kAlphaGamma = 0.8f;
+constexpr float coverage_gamma = 0.8f;
+constexpr float setting_to_pixel_scale = 1.5f;
+constexpr float default_body_size = 16.0f;
+constexpr float default_secondary_size = 12.0f;
+constexpr const char *default_font_file = "segoeui.ttf";
 
-// A high font size on a high-DPI monitor can bake well over 100 texels per glyph, which does
-// not fit 512x512. Coarse steps rather than an exact fit: retrying a failed pack is more
-// complexity than a slightly oversized atlas costs in VRAM.
-u32 AtlasSizeFor(float bakedPixelHeight)
+u32 atlas_size_for(float t_baked_pixel_height)
 {
-	if (bakedPixelHeight <= 24.0f) return 512;
-
-	if (bakedPixelHeight <= 48.0f) return 1024;
+	if (t_baked_pixel_height <= 24.0f) return 512;
+	if (t_baked_pixel_height <= 48.0f) return 1024;
 
 	return 2048;
 }
 
-bool ReadWholeFile(const char *pPath, std::vector<unsigned char> &outBytes)
+std::vector<u8> coverage_to_white_rgba(const std::vector<u8> &t_coverage)
 {
-	FILE *pFile = nullptr;
-	if (fopen_s(&pFile, pPath, "rb") != 0 || pFile == nullptr) return false;
+	std::vector<u8> rgba(t_coverage.size() * 4);
 
-	std::fseek(pFile, 0, SEEK_END);
-	const long fileSize = std::ftell(pFile);
-	std::fseek(pFile, 0, SEEK_SET);
-
-	if (fileSize <= 0) {
-		std::fclose(pFile);
-		return false;
-	}
-
-	outBytes.resize(static_cast<usize>(fileSize));
-	const usize readCount = std::fread(outBytes.data(), 1, outBytes.size(), pFile);
-	std::fclose(pFile);
-
-	return readCount == outBytes.size();
-}
-
-std::vector<unsigned char> ExpandCoverageToRgba(const std::vector<unsigned char> &alpha)
-{
-	std::vector<unsigned char> rgba(alpha.size() * 4);
-
-	for (usize i = 0; i < alpha.size(); i += 1) {
-		const float coverage = static_cast<float>(alpha[i]) / 255.0f;
-		const float boosted = std::pow(coverage, kAlphaGamma) * 255.0f;
+	for (usize i = 0; i < t_coverage.size(); i += 1) {
+		const float boosted = std::pow(t_coverage[i] / 255.0f, coverage_gamma) * 255.0f;
 
 		rgba[i * 4 + 0] = 255;
 		rgba[i * 4 + 1] = 255;
 		rgba[i * 4 + 2] = 255;
-		rgba[i * 4 + 3] = static_cast<unsigned char>(std::min(255.0f, boosted));
+		rgba[i * 4 + 3] = static_cast<u8>(std::min(255.0f, boosted));
 	}
 
 	return rgba;
 }
-} // namespace
 
-// Defined here, where CTexture is complete - see the declarations in font.h.
-CFont::CFont() = default;
-CFont::~CFont() = default;
-CFont::CFont(CFont &&) noexcept = default;
-CFont &CFont::operator=(CFont &&) noexcept = default;
-
-bool CFont::LoadFromFile(IRenderer *pRenderer, const char *pPath, float pixelHeight, float dpiScale)
+std::string system_font_path(std::string_view t_file_name)
 {
-	std::vector<unsigned char> fontData;
-	if (!ReadWholeFile(pPath, fontData)) {
-		std::println("Failed to read font file: {}", pPath);
+	char windows_directory[MAX_PATH];
+	const UINT length = GetWindowsDirectoryA(windows_directory, MAX_PATH);
+	if (length == 0 || length >= MAX_PATH) return {};
+
+	return std::string{windows_directory, length} + "\\Fonts\\" + std::string{t_file_name};
+}
+}
+
+Font::Font() = default;
+Font::~Font() = default;
+Font::Font(Font &&) noexcept = default;
+Font &Font::operator=(Font &&) noexcept = default;
+
+bool Font::load(Renderer &t_renderer, const char *t_path, float t_pixel_height, float t_dpi_scale)
+{
+	std::vector<u8> font_file;
+	if (!read_whole_file(t_path, font_file)) {
+		std::println("Failed to read font file: {}", t_path);
 		return false;
 	}
 
-	const float bakedPixelHeight = pixelHeight * dpiScale;
-	const u32 atlasSize = AtlasSizeFor(bakedPixelHeight);
+	const float baked_pixel_height = t_pixel_height * t_dpi_scale;
+	const u32 atlas_size = atlas_size_for(baked_pixel_height);
+	std::vector<u8> coverage(static_cast<usize>(atlas_size) * atlas_size);
 
-	std::vector<unsigned char> alphaPixels(static_cast<usize>(atlasSize) * atlasSize);
+	stbtt_pack_context pack;
+	stbtt_PackBegin(&pack, coverage.data(), static_cast<int>(atlas_size), static_cast<int>(atlas_size), 0, 1, nullptr);
+	stbtt_PackSetOversampling(&pack, 1, 1);
+	const bool packed = stbtt_PackFontRange(&pack, font_file.data(), 0, baked_pixel_height, first_char, char_count,
+											m_packed_chars) != 0;
+	stbtt_PackEnd(&pack);
 
-	stbtt_pack_context packContext;
-	stbtt_PackBegin(&packContext, alphaPixels.data(), static_cast<int>(atlasSize), static_cast<int>(atlasSize), 0, 1,
-					nullptr);
-
-	// No oversampling. 2x2 rasterizes each glyph at double size and box-filters it back down,
-	// which is a real low-pass blur - fine for text reused at many subpixel offsets, but at a
-	// thin face's ~1.5px stroke it smears the stroke's core into a soft gradient with no sharp
-	// centre left. This atlas is always sampled 1:1, so plain per-pixel coverage is what crisp
-	// UI text actually wants.
-	stbtt_PackSetOversampling(&packContext, 1, 1);
-
-	const int packedOk =
-		stbtt_PackFontRange(&packContext, fontData.data(), 0, bakedPixelHeight, static_cast<int>(kFirstChar),
-							static_cast<int>(kCharCount), m_aPackedChars);
-	stbtt_PackEnd(&packContext);
-
-	if (!packedOk) {
-		std::println("Failed to pack glyph atlas for font: {}", pPath);
+	if (!packed) {
+		std::println("Failed to pack glyph atlas for font: {}", t_path);
 		return false;
 	}
 
-	const std::vector<unsigned char> rgbaPixels = ExpandCoverageToRgba(alphaPixels);
-	m_pAtlas = std::make_unique<CTexture>(pRenderer, rgbaPixels.data(), atlasSize, atlasSize);
+	const std::vector<u8> rgba = coverage_to_white_rgba(coverage);
+	m_atlas = std::make_unique<Texture>(t_renderer, rgba.data(), atlas_size, atlas_size);
 
-	stbtt_fontinfo fontInfo;
-	stbtt_InitFont(&fontInfo, fontData.data(), 0);
+	stbtt_fontinfo info;
+	stbtt_InitFont(&info, font_file.data(), 0);
 
 	int ascent = 0;
 	int descent = 0;
-	int lineGap = 0;
-	stbtt_GetFontVMetrics(&fontInfo, &ascent, &descent, &lineGap);
+	int line_gap = 0;
+	stbtt_GetFontVMetrics(&info, &ascent, &descent, &line_gap);
 
-	// Metrics come back in baked units; dividing by the scale puts them back in the logical
-	// space every caller reasons about.
-	const float scale = stbtt_ScaleForPixelHeight(&fontInfo, bakedPixelHeight) / dpiScale;
+	const float logical_scale = stbtt_ScaleForPixelHeight(&info, baked_pixel_height) / t_dpi_scale;
 
-	m_nAtlasSize = atlasSize;
-	m_flPixelHeight = pixelHeight;
-	m_flBakeScale = dpiScale;
-	m_flAscent = static_cast<float>(ascent) * scale;
-	m_flDescent = static_cast<float>(descent) * scale;
-	m_flLineGap = static_cast<float>(lineGap) * scale;
+	m_atlas_size = atlas_size;
+	m_bake_scale = t_dpi_scale;
+	m_pixel_height = t_pixel_height;
+	m_ascent = ascent * logical_scale;
+	m_descent = descent * logical_scale;
+	m_line_gap = line_gap * logical_scale;
 
-	return m_pAtlas->GetHandle() != nullptr;
+	return m_atlas->is_valid();
+}
+
+bool Fonts::load_defaults(Renderer &t_renderer, float t_dpi_scale)
+{
+	return load(t_renderer, default_font_file, default_body_size, default_secondary_size, t_dpi_scale);
+}
+
+bool Fonts::load(Renderer &t_renderer, std::string_view t_file_name, float t_body_size, float t_secondary_size,
+				 float t_dpi_scale)
+{
+	const std::string path = system_font_path(t_file_name);
+	if (t_file_name.empty() || path.empty()) return false;
+
+	Font body;
+	Font secondary;
+	if (!body.load(t_renderer, path.c_str(), t_body_size * setting_to_pixel_scale, t_dpi_scale) ||
+		!secondary.load(t_renderer, path.c_str(), t_secondary_size * setting_to_pixel_scale, t_dpi_scale)) {
+		return false;
+	}
+
+	m_body = std::move(body);
+	m_secondary = std::move(secondary);
+
+	return true;
 }

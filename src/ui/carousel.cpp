@@ -1,868 +1,658 @@
 #include "ui/carousel.h"
 
-#include "core/profiler.h"
-
 #include <algorithm>
-#include <cassert>
 #include <cmath>
 #include <cstdio>
-#include <cstring>
+#include <utility>
 
-#include "core/animator.h"
-#include "gfx/asset_manager.h"
-#include "gfx/texture.h"
+#include <Windows.h>
+
+#include "core/animation.h"
+#include "core/profiler.h"
+#include "core/settings.h"
+#include "gfx/assets.h"
+#include "gfx/draw_list.h"
+#include "gfx/font.h"
 #include "platform/window.h"
-#include "ui/draw_list.h"
-#include "ui/layout.h"
 #include "ui/text.h"
 
 namespace {
-constexpr float kCardWidth = 220.0f;
-constexpr float kCardHeight = 300.0f;
-constexpr float kCardSpacing = 36.0f;
+constexpr float card_width = 220.0f;
+constexpr float card_height = 300.0f;
+constexpr float card_spacing = 36.0f;
+constexpr float card_corner_radius = 14.0f;
+constexpr float drag_pixels_per_card = card_width + card_spacing;
+constexpr float scroll_ease_rate = 12.0f;
+constexpr float mode_transition_ease_rate = 16.0f;
+constexpr float mode_slide_distance = 18.0f;
+constexpr float zoom_ease_rate = 9.0f;
+constexpr float edge_fade_width = 64.0f;
 
-// A nominal stride, used only to turn a drag's pixel delta into slot units - an input
-// sensitivity, not the actual on-screen spacing, which CumulativeSlotOffset computes.
-constexpr float kCardStride = kCardWidth + kCardSpacing;
+constexpr Vec2 grid_card_min_size{160.0f, 220.0f};
+constexpr Vec2 grid_card_max_size{224.0f, 308.0f};
+constexpr float grid_gap = 24.0f;
+constexpr float grid_padding = 24.0f;
+constexpr float grid_hover_growth = 0.06f;
+constexpr float grid_hover_ease_rate = 14.0f;
 
-constexpr float kEaseRate = 12.0f;
-constexpr float kViewModeTransitionEaseRate = 16.0f;
-constexpr float kViewModeSlidePixels = 18.0f;
+constexpr float list_thumb_min_size = 56.0f;
+constexpr float list_thumb_max_size = 96.0f;
+constexpr float list_row_padding_y = 14.0f;
+constexpr float list_padding = 16.0f;
+constexpr float list_gap = 8.0f;
+constexpr float list_corner_radius = 10.0f;
 
-// Slower than most easing here on purpose: List's row-icon growth reads best gradual.
-constexpr float kZoomPercentEaseRate = 9.0f;
+constexpr float switcher_hold_seconds = 0.7f;
+constexpr float switcher_ease_rate = 18.0f;
+constexpr float switcher_width = 150.0f;
+constexpr float switcher_padding = 6.0f;
+constexpr float switcher_radius = 10.0f;
+constexpr float switcher_margin = 16.0f;
+constexpr float switcher_slide_distance = 8.0f;
+constexpr float switcher_icon_size = 24.0f;
+constexpr float switcher_icon_gap = 10.0f;
+constexpr float switcher_content_inset = 12.0f;
+constexpr float switcher_track_column_min = 26.0f;
+constexpr float switcher_track_width = 4.0f;
+constexpr float switcher_indicator_height = 18.0f;
+constexpr float switcher_indicator_padding = 7.0f;
 
-// The max preserves the base's aspect ratio exactly, so the card shape does not distort as it
-// grows across Grid's three zoom stops.
-constexpr float kGridCardWidthBase = 160.0f;
-constexpr float kGridCardHeightBase = 220.0f;
-constexpr float kGridCardWidthMax = 224.0f;
-constexpr float kGridCardHeightMax = 308.0f;
-constexpr float kGridGap = 24.0f;
-constexpr float kGridPadding = 24.0f;
+constexpr float status_icon_size = 16.0f;
+constexpr float status_icon_gap = 8.0f;
+constexpr float status_padding_right = 14.0f;
+constexpr float baseline_nudge = 2.0f;
 
-// Noticeable but not cartoonish, and well under half the gap on a side so a grown card cannot
-// visually collide with its neighbours mid-transition.
-constexpr float kGridHoverScaleAmount = 0.06f;
-constexpr float kGridHoverScaleEaseRate = 14.0f;
+constexpr Color color_background{18, 18, 20, 255};
+constexpr Color color_white{255, 255, 255, 255};
+constexpr Color color_scroll_thumb{160, 160, 168, 200};
+constexpr Color color_list_row{32, 32, 36, 220};
+constexpr Color color_list_row_hover{42, 42, 47, 220};
+constexpr Color color_list_text{232, 232, 236, 255};
+constexpr Color color_status_icon{175, 175, 182, 255};
+constexpr Color color_status_text{158, 158, 166, 255};
+constexpr Color color_card_border{90, 90, 96, 160};
+constexpr Color color_card_border_highlighted{255, 255, 255, 235};
+constexpr Color color_switcher_background{26, 26, 30, 255};
+constexpr Color color_switcher_border{58, 58, 64, 255};
+constexpr Color color_switcher_text{190, 190, 196, 255};
+constexpr Color color_switcher_text_active{240, 240, 244, 255};
+constexpr Color color_switcher_track{58, 58, 64, 255};
+constexpr Color color_switcher_tick{118, 118, 126, 190};
+constexpr Color color_switcher_active_row{52, 52, 58, 255};
 
-constexpr float kListThumbSizeBase = 56.0f;
-constexpr float kListThumbSizeMax = 96.0f;
-constexpr float kListRowPaddingV = 14.0f;
-constexpr float kListPadding = 16.0f;
-constexpr float kListGap = 8.0f;
+constexpr i32 zoom_stop_count = 7;
+constexpr i32 grid_first_stop = 1;
+constexpr i32 grid_last_stop = 3;
+constexpr i32 list_first_stop = 4;
 
-constexpr float kModeSwitcherHoldDuration = 0.7f;
-constexpr float kModeSwitcherEaseRate = 18.0f;
-constexpr float kModeSwitcherWidth = 150.0f;
-constexpr float kModeSwitcherPadding = 6.0f;
-constexpr float kModeSwitcherRadius = 10.0f;
-constexpr float kModeSwitcherMargin = 16.0f;
-constexpr float kModeSwitcherSlidePixels = 8.0f;
-constexpr float kModeSwitcherRowIconSize = 24.0f;
-constexpr float kModeSwitcherRowIconGap = 10.0f;
-constexpr float kModeSwitcherRowContentInsetX = 12.0f;
+constexpr ViewMode switcher_row_modes[]{ViewMode::list, ViewMode::grid, ViewMode::carousel};
+constexpr i32 switcher_row_stops[]{list_first_stop, grid_first_stop, 0};
+constexpr u32 switcher_row_count = static_cast<u32>(std::size(switcher_row_modes));
 
-// The vertical percentage slider down the panel's right edge. The live percentage text is
-// itself the moving indicator, in a small pill. The bottom is 0% and the top is 100%.
-constexpr float kModeSwitcherTrackColumnMin = 26.0f;
-constexpr float kModeSwitcherTrackWidth = 4.0f;
-constexpr float kModeSwitcherIndicatorHeight = 18.0f;
-constexpr float kModeSwitcherIndicatorPaddingX = 7.0f;
-
-constexpr float kStatusBarIconSize = 16.0f;
-constexpr float kStatusBarIconGap = 8.0f;
-constexpr float kStatusBarPadRight = 14.0f;
-
-// Ascent alone puts the baseline too low, since it ignores how far descenders reach back up.
-// The nudge closes the last couple of pixels; it is empirical, not font-exact.
-constexpr float kBaselineVisualNudge = 2.0f;
-
-constexpr Color kColorBackground{18, 18, 20, 255};
-constexpr Color kColorWhite{255, 255, 255, 255};
-constexpr Color kColorScrollThumb{160, 160, 168, 200};
-constexpr Color kColorListRowBg{32, 32, 36, 220};
-constexpr Color kColorListRowBgHover{42, 42, 47, 220};
-constexpr Color kColorListText{232, 232, 236, 255};
-constexpr Color kColorStatusBarIcon{175, 175, 182, 255};
-constexpr Color kColorStatusBarText{158, 158, 166, 255};
-
-constexpr Color kCardNeutralBorder{90, 90, 96, 160};
-constexpr Color kCardHighlightBorder{255, 255, 255, 235};
-
-constexpr Color kModeSwitcherBg{26, 26, 30, 255};
-constexpr Color kModeSwitcherBorder{58, 58, 64, 255};
-constexpr Color kModeSwitcherText{190, 190, 196, 255};
-constexpr Color kModeSwitcherTextActive{240, 240, 244, 255};
-constexpr Color kModeSwitcherTrackBg{58, 58, 64, 255};
-constexpr Color kModeSwitcherTickColor{118, 118, 126, 190};
-
-// The active row's highlight stays a plain neutral box: the accent belongs on the bar beside
-// it and on the zoom readout, not on the surface behind the whole row. Tinting this too made
-// the selected row the loudest thing on screen.
-constexpr Color kModeSwitcherActiveRowFill{52, 52, 58, 255};
-
-// Carousel at stop 0, then Grid and List across three stops each.
-constexpr i32 kGridZoomStopFirst = 1;
-constexpr i32 kGridZoomStopLast = 3;
-constexpr i32 kListZoomStopFirst = 4;
-
-// Listed in the same direction as the slider - bottom is 0% and Carousel, top is 100% and
-// List - rather than in enum order. Shared by drawing and the row hit-test.
-constexpr ECarouselViewMode kModeSwitcherRowMode[kCarouselViewModeCount]{
-	ECarouselViewMode::List,
-	ECarouselViewMode::Grid,
-	ECarouselViewMode::Carousel,
-};
-
-// Each mode's base stop, never a grown one: clicking a row means "switch to this mode", not
-// "jump to whatever zoom within it".
-constexpr i32 kModeSwitcherRowStop[kCarouselViewModeCount]{
-	kListZoomStopFirst,
-	kGridZoomStopFirst,
-	0,
-};
-
-// The one mapping every stop change goes through to detect when it crosses into another mode.
-ECarouselViewMode ZoomStopViewMode(i32 stop)
+ViewMode mode_at_stop(i32 t_stop)
 {
-	if (stop <= 0) return ECarouselViewMode::Carousel;
+	if (t_stop <= 0) return ViewMode::carousel;
+	if (t_stop <= grid_last_stop) return ViewMode::grid;
 
-	if (stop <= kGridZoomStopLast) return ECarouselViewMode::Grid;
-
-	return ECarouselViewMode::List;
+	return ViewMode::list;
 }
 
-// A stop's position on the continuous 0..100 scale, evenly spaced.
-float ZoomStopPercent(i32 stop)
+float stop_percent(i32 t_stop)
 {
-	return static_cast<float>(stop) / static_cast<float>(kCarouselZoomStopCount - 1) * 100.0f;
+	return static_cast<float>(t_stop) / (zoom_stop_count - 1) * 100.0f;
 }
 
-// 0 where the given band begins, 1 at its own maximum.
-float ZoomTWithin(float zoomPercent, i32 firstStop, i32 lastStop)
+float zoom_within(float t_percent, i32 t_first_stop, i32 t_last_stop)
 {
-	const float lo = ZoomStopPercent(firstStop);
-	const float hi = ZoomStopPercent(lastStop);
+	const float first = stop_percent(t_first_stop);
+	const float last = stop_percent(t_last_stop);
 
-	return std::clamp((zoomPercent - lo) / (hi - lo), 0.0f, 1.0f);
+	return std::clamp((t_percent - first) / (last - first), 0.0f, 1.0f);
 }
 
-float GridZoomT(float zoomPercent)
+Vec2 grid_card_size(float t_zoom_percent)
 {
-	return ZoomTWithin(zoomPercent, kGridZoomStopFirst, kGridZoomStopLast);
+	const float t = zoom_within(t_zoom_percent, grid_first_stop, grid_last_stop);
+
+	return Vec2{grid_card_min_size.x + (grid_card_max_size.x - grid_card_min_size.x) * t,
+				grid_card_min_size.y + (grid_card_max_size.y - grid_card_min_size.y) * t};
 }
 
-float ListZoomT(float zoomPercent)
+float list_thumb_size(float t_zoom_percent)
 {
-	return ZoomTWithin(zoomPercent, kListZoomStopFirst, kCarouselZoomStopCount - 1);
+	const float t = zoom_within(t_zoom_percent, list_first_stop, zoom_stop_count - 1);
+
+	return list_thumb_min_size + (list_thumb_max_size - list_thumb_min_size) * t;
 }
 
-float GridCardWidthFor(float zoomPercent)
+float list_row_height(float t_zoom_percent)
 {
-	return kGridCardWidthBase + (kGridCardWidthMax - kGridCardWidthBase) * GridZoomT(zoomPercent);
+	return list_thumb_size(t_zoom_percent) + list_row_padding_y * 2.0f;
 }
 
-float GridCardHeightFor(float zoomPercent)
+u32 grid_columns(float t_width, float t_zoom_percent)
 {
-	return kGridCardHeightBase + (kGridCardHeightMax - kGridCardHeightBase) * GridZoomT(zoomPercent);
+	const float usable = t_width - grid_padding * 2.0f + grid_gap;
+
+	return std::max<u32>(1, static_cast<u32>(usable / (grid_card_size(t_zoom_percent).x + grid_gap)));
 }
 
-float ListThumbSizeFor(float zoomPercent)
+float card_scale(float t_slots_from_center)
 {
-	return kListThumbSizeBase + (kListThumbSizeMax - kListThumbSizeBase) * ListZoomT(zoomPercent);
-}
-
-float ListRowHeightFor(float zoomPercent)
-{
-	return ListThumbSizeFor(zoomPercent) + kListRowPaddingV * 2.0f;
-}
-
-u32 GridColumnsForWidth(float areaW, float zoomPercent)
-{
-	const float cardW = GridCardWidthFor(zoomPercent);
-	const float usable = areaW - kGridPadding * 2.0f + kGridGap;
-
-	return std::max<u32>(1, static_cast<u32>(usable / (cardW + kGridGap)));
-}
-
-// Falls off to a floor scale within two slots either side of centre, so the centred card reads
-// clearly larger and its neighbours recede.
-float CardScaleAtDistance(float distance)
-{
-	const float closeness = std::max(0.0f, 1.0f - std::min(distance, 2.0f) / 2.0f);
+	const float closeness = std::max(0.0f, 1.0f - std::min(t_slots_from_center, 2.0f) / 2.0f);
 
 	return 0.90f + 0.28f * closeness;
 }
 
-// The horizontal offset from the centre slot, accounting for each card's actual scaled width
-// rather than a fixed stride - which is what keeps the edge-to-edge gap constant regardless of
-// distance from centre. The scale is piecewise-linear in distance, so a trapezoid rule is
-// exact here rather than an approximation.
-float CumulativeSlotOffset(float slot)
+float center_offset_of_slot(float t_slot)
 {
-	constexpr i32 kIntegrationSteps = 24;
+	constexpr i32 integration_steps = 24;
 
-	const float sign = slot < 0.0f ? -1.0f : 1.0f;
-	const float magnitude = std::fabs(slot);
-	if (magnitude < 0.0001f) return 0.0f;
+	const float distance = std::fabs(t_slot);
+	if (distance < 0.0001f) return 0.0f;
 
-	const float step = magnitude / static_cast<float>(kIntegrationSteps);
-	float integral = 0.0f;
-	float previousWidth = kCardWidth * CardScaleAtDistance(0.0f);
+	const float step = distance / integration_steps;
+	float covered = 0.0f;
+	float previous_width = card_width * card_scale(0.0f);
 
-	for (i32 i = 1; i <= kIntegrationSteps; i += 1) {
-		const float width = kCardWidth * CardScaleAtDistance(step * static_cast<float>(i));
-		integral += (previousWidth + width) * 0.5f * step;
-		previousWidth = width;
+	for (i32 i = 1; i <= integration_steps; i += 1) {
+		const float width = card_width * card_scale(step * i);
+		covered += (previous_width + width) * 0.5f * step;
+		previous_width = width;
 	}
 
-	return sign * (integral + magnitude * kCardSpacing);
+	return std::copysign(covered + distance * card_spacing, t_slot);
 }
 
-// A card's visual state. The border itself is always plain white, never game-coloured - only
-// the glow hugging the card uses the game's accent. `strong`, meaning Carousel's centred card,
-// gets a slightly larger and brighter glow than a plain hover.
-struct CardVisualState {
-	Color BorderColor;
-	float BorderThickness;
-	float GlowSize; // pixels past the card the glow quad extends; 0 for none
-	u8 GlowAlpha;
+struct CardLook {
+	Color border;
+	float border_thickness;
+	float glow_size;
+	u8 glow_alpha;
 };
 
-CardVisualState CardVisualStateFor(bool highlighted, bool strong)
+CardLook card_look(bool t_highlighted, bool t_centered)
 {
-	if (!highlighted) return CardVisualState{kCardNeutralBorder, 2.0f, 0.0f, 0};
+	if (!t_highlighted) return CardLook{color_card_border, 2.0f, 0.0f, 0};
+	if (t_centered) return CardLook{color_card_border_highlighted, 2.5f, 18.0f, 255};
 
-	if (strong) return CardVisualState{kCardHighlightBorder, 2.5f, 18.0f, 255};
-
-	return CardVisualState{kCardHighlightBorder, 2.0f, 14.0f, 225};
+	return CardLook{color_card_border_highlighted, 2.0f, 14.0f, 225};
 }
 
-std::string_view ViewModeName(ECarouselViewMode mode)
+std::string_view mode_name(ViewMode t_mode)
 {
-	switch (mode) {
-		case ECarouselViewMode::Carousel:
+	switch (t_mode) {
+		case ViewMode::carousel:
 			return "Carousel";
-		case ECarouselViewMode::Grid:
+		case ViewMode::grid:
 			return "Grid";
-		case ECarouselViewMode::List:
+		case ViewMode::list:
 			return "List";
 	}
 
 	return "";
 }
 
-// Tints the white-on-transparent source rather than needing separate active and inactive art,
-// the same recolour-on-draw trick every other embedded icon here uses.
-void DrawModeGlyph(CDrawList &drawList, const CAssetManager &assets, ECarouselViewMode mode, Rect box, Color color)
+Asset mode_icon(ViewMode t_mode)
 {
-	EAsset asset = EAsset::IconCarousel;
-	switch (mode) {
-		case ECarouselViewMode::Carousel:
-			asset = EAsset::IconCarousel;
-			break;
-		case ECarouselViewMode::Grid:
-			asset = EAsset::IconGrid;
-			break;
-		case ECarouselViewMode::List:
-			asset = EAsset::IconList;
+	switch (t_mode) {
+		case ViewMode::grid:
+			return Asset::icon_grid;
+		case ViewMode::list:
+			return Asset::icon_list;
+		case ViewMode::carousel:
 			break;
 	}
 
-	const CTexture *pTexture = assets.Get(asset);
-	if (pTexture != nullptr) {
-		drawList.AddRectRoundedTextured(box.X, box.Y, box.W, box.H, kCornerRadiiNone, pTexture, color);
-	}
+	return Asset::icon_carousel;
 }
 
-// Centring a small icon on the raw geometric centre reads as sitting above the text, since a
-// glyph's cap height sits above that centre rather than straddling it.
-float IconCenterYFor(float areaCenterY, float ascentValue)
+std::string_view status_text(ViewMode t_mode, char (&t_buffer)[48])
 {
-	return areaCenterY + ascentValue * 0.15f;
+	const std::string_view name = mode_name(t_mode);
+	const int written = std::snprintf(t_buffer, sizeof(t_buffer), "%.*s  -  Ctrl+Scroll to zoom",
+									  static_cast<int>(name.size()), name.data());
+
+	return std::string_view{t_buffer, static_cast<usize>(std::max(written, 0))};
 }
 
-// %.*s rather than %s: the view mode's name is not guaranteed null-terminated. ASCII only,
-// since the font only bakes 32..126 and anything else would simply be skipped.
-std::string_view FormatStatusBarText(ECarouselViewMode mode, char *pBuffer, usize bufferSize)
+float track_column_width(const Font &t_font)
 {
-	const std::string_view name = ViewModeName(mode);
-	const int written =
-		std::snprintf(pBuffer, bufferSize, "%.*s  -  Ctrl+Scroll to zoom", static_cast<int>(name.size()), name.data());
-
-	return std::string_view{pBuffer, written > 0 ? static_cast<u64>(written) : 0};
+	return std::max(switcher_track_column_min, text_width(t_font, "100%") + switcher_indicator_padding * 2.0f + 6.0f);
 }
 
-// Widens the track column if the widest possible indicator text would not otherwise fit: a
-// fixed column does not scale with the font size, and a large enough one would spill the pill
-// past the panel's border.
-float ModeSwitcherTrackColumnWidthFor(const CFont &secondary)
+i32 stop_at_track_position(Rect t_track, float t_y)
 {
-	const float indicatorW = TextWidth(secondary, "100%") + kModeSwitcherIndicatorPaddingX * 2.0f;
+	const float t = std::clamp(1.0f - (t_y - t_track.y) / t_track.h, 0.0f, 1.0f);
 
-	return std::max(kModeSwitcherTrackColumnMin, indicatorW + 6.0f);
+	return static_cast<i32>(std::round(t * (zoom_stop_count - 1)));
 }
 
-// The inverse of the thumb-position math, with the track's top as the 100% end.
-i32 ZoomStopForTrackPosition(Rect track, float y)
+bool is_control_held()
 {
-	const float t = std::clamp(1.0f - (y - track.Y) / track.H, 0.0f, 1.0f);
-
-	return static_cast<i32>(std::round(t * static_cast<float>(kCarouselZoomStopCount - 1)));
+	return (GetKeyState(VK_CONTROL) & 0x8000) != 0;
 }
-} // namespace
+}
 
-CCarousel::CCarousel(const CFontManager &fonts, const CAssetManager &assets)
-	: m_fonts(fonts)
-	, m_assets(assets)
+Carousel::Carousel(const Library &t_library, const Settings &t_settings, const Fonts &t_fonts, const Assets &t_assets,
+				   CommandQueue &t_commands)
+	: m_library(t_library)
+	, m_settings(t_settings)
+	, m_fonts(t_fonts)
+	, m_assets(t_assets)
+	, m_commands(t_commands)
 {
 }
 
-void CCarousel::AddBanner(std::string_view title, CTexture *pTexture, CTexture *pIcon, Color accent)
+void Carousel::restore(i32 t_zoom_stop, i32 t_selected_game)
 {
-	assert(m_nBannerCount < kCarouselMaxBanners);
+	m_zoom_stop = std::clamp(t_zoom_stop, 0, zoom_stop_count - 1);
+	m_zoom_percent = stop_percent(m_zoom_stop);
+	m_mode = mode_at_stop(m_zoom_stop);
+	m_previous_mode = m_mode;
+	m_mode_transition = 0.0f;
 
-	Banner &banner = m_aBanners[m_nBannerCount];
-	banner.Title = title;
-	banner.pTexture = pTexture;
-	banner.pIcon = pIcon;
-	banner.Accent = accent;
-	banner.AccountCount = 0;
-	banner.TextureAspect = pTexture != nullptr && pTexture->GetHeight() > 0
-							   ? static_cast<float>(pTexture->GetWidth()) / static_cast<float>(pTexture->GetHeight())
-							   : 1.0f;
-
-	m_nBannerCount += 1;
+	m_scroll = clamp_scroll(static_cast<float>(t_selected_game));
+	m_target_scroll = m_scroll;
+	m_focused_game = selected_game();
 }
 
-void CCarousel::AddAccount(u32 bannerIndex, std::string_view username, std::string_view note, std::string_view password)
+i32 Carousel::selected_game() const
 {
-	assert(bannerIndex < m_nBannerCount);
-
-	Banner &banner = m_aBanners[bannerIndex];
-	assert(banner.AccountCount < kCarouselMaxAccountsPerBanner);
-
-	banner.Accounts[banner.AccountCount].Init(username, note, password);
-	banner.AccountCount += 1;
+	return static_cast<i32>(clamp_scroll(std::round(m_target_scroll)));
 }
 
-void CCarousel::UpdateAccount(u32 bannerIndex, u32 accountIndex, std::string_view username, std::string_view note,
-							  std::string_view password)
+float Carousel::clamp_scroll(float t_offset) const
 {
-	assert(bannerIndex < m_nBannerCount);
-
-	Banner &banner = m_aBanners[bannerIndex];
-	assert(accountIndex < banner.AccountCount);
-
-	banner.Accounts[accountIndex].Init(username, note, password);
+	return game_count() == 0 ? 0.0f : std::clamp(t_offset, 0.0f, static_cast<float>(game_count() - 1));
 }
 
-void CCarousel::RemoveAccount(u32 bannerIndex, u32 accountIndex)
+Rect Carousel::carousel_card(u32 t_game) const
 {
-	assert(bannerIndex < m_nBannerCount);
+	const float slot = static_cast<float>(t_game) - m_scroll;
+	const float scale = card_scale(std::fabs(slot));
+	const float width = card_width * scale;
+	const float height = card_height * scale;
+	const float center_x = m_bounds.center().x + center_offset_of_slot(slot);
 
-	Banner &banner = m_aBanners[bannerIndex];
-	assert(accountIndex < banner.AccountCount);
-
-	for (u32 i = accountIndex; i + 1 < banner.AccountCount; i += 1) {
-		banner.Accounts[i] = banner.Accounts[i + 1];
-	}
-
-	banner.AccountCount -= 1;
+	return Rect{center_x - width * 0.5f, m_bounds.y + (m_bounds.h - height) * 0.5f, width, height};
 }
 
-u32 CCarousel::GetVisibleAccounts(u32 bannerIndex, VisibleAccountRef *pOut) const
+Rect Carousel::grid_card(u32 t_game) const
 {
-	if (bannerIndex >= m_nBannerCount) return 0;
+	const Vec2 size = grid_card_size(m_zoom_percent);
+	const u32 columns = grid_columns(m_bounds.w, m_zoom_percent);
+	const u32 column = t_game % columns;
+	const u32 row = t_game / columns;
 
-	u32 count = 0;
+	const float total_width = columns * size.x + (columns - 1) * grid_gap;
+	const float x = m_bounds.x + (m_bounds.w - total_width) * 0.5f + column * (size.x + grid_gap);
+	const float y = m_bounds.y + grid_padding + row * (size.y + grid_gap) - m_wrap_scroll.offset();
 
-	const Banner &own = m_aBanners[bannerIndex];
-	for (u32 i = 0; i < own.AccountCount; i += 1) {
-		pOut[count] = VisibleAccountRef{bannerIndex, i};
-		count += 1;
-	}
-
-	for (u32 b = 0; b < m_nBannerCount; b += 1) {
-		if (b == bannerIndex) continue;
-
-		const Banner &other = m_aBanners[b];
-		for (u32 i = 0; i < other.AccountCount; i += 1) {
-			if ((other.Accounts[i].GetEffectiveVisibleMask(b) & (1u << bannerIndex)) != 0) {
-				pOut[count] = VisibleAccountRef{b, i};
-				count += 1;
-			}
-		}
-	}
-
-	assert(count <= kCarouselMaxVisibleAccounts);
-
-	return count;
+	return Rect{x, y, size.x, size.y};
 }
 
-float CCarousel::ClampTarget(float value) const
+Rect Carousel::list_row(u32 t_game) const
 {
-	if (m_nBannerCount == 0) return 0.0f;
+	const float height = list_row_height(m_zoom_percent);
+	const float y = m_bounds.y + list_padding + t_game * (height + list_gap) - m_wrap_scroll.offset();
 
-	return std::clamp(value, 0.0f, static_cast<float>(m_nBannerCount - 1));
+	return Rect{m_bounds.x + list_padding, y, m_bounds.w - list_padding * 2.0f, height};
 }
 
-Rect CCarousel::GetBannerRect(u32 index) const
+Rect Carousel::card_in_current_mode(u32 t_game) const
 {
-	const float slot = static_cast<float>(index) - m_flScrollOffset;
-	const float scale = CardScaleAtDistance(std::fabs(slot));
-	const float w = kCardWidth * scale;
-	const float h = kCardHeight * scale;
-	const float cx = m_vecBounds.X + m_vecBounds.W * 0.5f + CumulativeSlotOffset(slot);
-
-	return Rect{cx - w * 0.5f, m_vecBounds.Y + (m_vecBounds.H - h) * 0.5f, w, h};
-}
-
-Rect CCarousel::GridBannerRect(u32 index) const
-{
-	const float cardW = GridCardWidthFor(m_flZoomPercent);
-	const float cardH = GridCardHeightFor(m_flZoomPercent);
-	const u32 columns = GridColumnsForWidth(m_vecBounds.W, m_flZoomPercent);
-	const u32 col = index % columns;
-	const u32 row = index / columns;
-
-	const float totalWidth = static_cast<float>(columns) * cardW + static_cast<float>(columns - 1) * kGridGap;
-	const float startX = m_vecBounds.X + (m_vecBounds.W - totalWidth) * 0.5f;
-	const float y =
-		m_vecBounds.Y + kGridPadding + static_cast<float>(row) * (cardH + kGridGap) - m_wrapScroll.m_flScrollOffset;
-
-	return Rect{startX + static_cast<float>(col) * (cardW + kGridGap), y, cardW, cardH};
-}
-
-float CCarousel::GridContentHeight() const
-{
-	if (m_nBannerCount == 0) return 0.0f;
-
-	const u32 columns = GridColumnsForWidth(m_vecBounds.W, m_flZoomPercent);
-	const u32 rows = (m_nBannerCount + columns - 1) / columns;
-	const float cardH = GridCardHeightFor(m_flZoomPercent);
-
-	return kGridPadding * 2.0f + static_cast<float>(rows) * cardH + static_cast<float>(rows - 1) * kGridGap;
-}
-
-Rect CCarousel::ListBannerRect(u32 index) const
-{
-	const float rowHeight = ListRowHeightFor(m_flZoomPercent);
-	const float y = m_vecBounds.Y + kListPadding + static_cast<float>(index) * (rowHeight + kListGap) -
-					m_wrapScroll.m_flScrollOffset;
-
-	return Rect{m_vecBounds.X + kListPadding, y, m_vecBounds.W - kListPadding * 2.0f, rowHeight};
-}
-
-float CCarousel::ListContentHeight() const
-{
-	if (m_nBannerCount == 0) return 0.0f;
-
-	const float rowHeight = ListRowHeightFor(m_flZoomPercent);
-
-	return kListPadding * 2.0f + static_cast<float>(m_nBannerCount) * rowHeight +
-		   static_cast<float>(m_nBannerCount - 1) * kListGap;
-}
-
-float CCarousel::WrapContentHeight(ECarouselViewMode mode) const
-{
-	switch (mode) {
-		case ECarouselViewMode::Grid:
-			return GridContentHeight();
-		case ECarouselViewMode::List:
-			return ListContentHeight();
-		case ECarouselViewMode::Carousel:
+	switch (m_mode) {
+		case ViewMode::grid:
+			return grid_card(t_game);
+		case ViewMode::list:
+			return list_row(t_game);
+		case ViewMode::carousel:
 			break;
+	}
+
+	return carousel_card(t_game);
+}
+
+float Carousel::wrap_content_height() const
+{
+	if (game_count() == 0) return 0.0f;
+
+	if (m_mode == ViewMode::grid) {
+		const u32 columns = grid_columns(m_bounds.w, m_zoom_percent);
+		const u32 rows = (game_count() + columns - 1) / columns;
+
+		return grid_padding * 2.0f + rows * grid_card_size(m_zoom_percent).y + (rows - 1) * grid_gap;
+	}
+
+	if (m_mode == ViewMode::list) {
+		return list_padding * 2.0f + game_count() * list_row_height(m_zoom_percent) + (game_count() - 1) * list_gap;
 	}
 
 	return 0.0f;
 }
 
-Rect CCarousel::ScrollbarTrackRect() const
+ScrollGeometry Carousel::wrap_scroll_geometry() const
 {
-	return Rect{m_vecBounds.X + m_vecBounds.W - kScrollbarWidth - 8.0f, m_vecBounds.Y + 8.0f, kScrollbarWidth,
-				m_vecBounds.H - 16.0f};
+	const Rect track{m_bounds.right() - scrollbar_width - 8.0f, m_bounds.y + 8.0f, scrollbar_width, m_bounds.h - 16.0f};
+
+	return ScrollGeometry{track, wrap_content_height(), m_bounds.h};
 }
 
-// The bounds already stop exactly where the status bar starts, since the owner sets both from
-// the same window height, so the strip's rect falls straight out of that.
-Rect CCarousel::StatusBarRect() const
+i32 Carousel::game_at(Vec2 t_point) const
 {
-	return Rect{m_vecBounds.X, m_vecBounds.Y + m_vecBounds.H, m_vecBounds.W, kStatusBarHeight};
+	if (m_mode != ViewMode::carousel) {
+		if (t_point.y < m_bounds.y || t_point.y >= m_bounds.bottom()) return -1;
+
+		for (u32 game = 0; game < game_count(); game += 1) {
+			if (card_in_current_mode(game).contains(t_point)) return static_cast<i32>(game);
+		}
+
+		return -1;
+	}
+
+	i32 closest = -1;
+	float closest_distance = 0.0f;
+
+	for (u32 game = 0; game < game_count(); game += 1) {
+		if (!carousel_card(game).contains(t_point)) continue;
+
+		const float distance = std::fabs(static_cast<float>(game) - m_scroll);
+		if (closest < 0 || distance < closest_distance) {
+			closest = static_cast<i32>(game);
+			closest_distance = distance;
+		}
+	}
+
+	return closest;
 }
 
-// The one geometry function drawing and hit-testing share, so hovering the indicator can never
-// disagree with where it actually is.
-Rect CCarousel::StatusBarContentRect() const
+Rect Carousel::status_indicator_rect() const
 {
-	const Rect statusBar = StatusBarRect();
-
 	char buffer[48];
-	const std::string_view text = FormatStatusBarText(m_viewMode, buffer, sizeof(buffer));
-	const float contentW = kStatusBarIconSize + kStatusBarIconGap + TextWidth(m_fonts.GetSecondary(), text);
+	const float width =
+		status_icon_size + status_icon_gap + text_width(m_fonts.secondary(), status_text(m_mode, buffer));
 
-	return Rect{statusBar.X + statusBar.W - kStatusBarPadRight - contentW, statusBar.Y, contentW, statusBar.H};
+	return Rect{m_bounds.right() - status_padding_right - width, m_bounds.bottom(), width, status_bar_height};
 }
 
-float CCarousel::ModeSwitcherTrackColumnWidth() const
+Rect Carousel::switcher_panel_rect() const
 {
-	return ModeSwitcherTrackColumnWidthFor(m_fonts.GetSecondary());
+	const float row_height = m_fonts.body().line_height() + 10.0f;
+	const float height = switcher_padding * 2.0f + row_height * switcher_row_count;
+	const float width = switcher_width + track_column_width(m_fonts.secondary());
+
+	return Rect{m_bounds.right() - width - switcher_margin, m_bounds.bottom() - height - switcher_margin, width,
+				height};
 }
 
-Rect CCarousel::ModeSwitcherPanelRect() const
+Rect Carousel::switcher_row_rect(Rect t_panel, u32 t_row) const
 {
-	const float rowsH = (m_fonts.GetBody().GetLineHeight() + 10.0f) * static_cast<float>(kCarouselViewModeCount);
-	const float h = kModeSwitcherPadding * 2.0f + rowsH;
-	const float w = kModeSwitcherWidth + ModeSwitcherTrackColumnWidth();
+	const float row_height = m_fonts.body().line_height() + 10.0f;
 
-	return Rect{m_vecBounds.X + m_vecBounds.W - w - kModeSwitcherMargin,
-				m_vecBounds.Y + m_vecBounds.H - h - kModeSwitcherMargin, w, h};
+	return Rect{t_panel.x + switcher_padding, t_panel.y + switcher_padding + row_height * t_row,
+				switcher_width - switcher_padding * 2.0f, row_height};
 }
 
-Rect CCarousel::ModeSwitcherRowRect(Rect panel, u32 index) const
+Rect Carousel::switcher_track_rect(Rect t_panel) const
 {
-	const float rowHeight = m_fonts.GetBody().GetLineHeight() + 10.0f;
+	const float column = track_column_width(m_fonts.secondary());
 
-	return Rect{panel.X + kModeSwitcherPadding, panel.Y + kModeSwitcherPadding + rowHeight * static_cast<float>(index),
-				kModeSwitcherWidth - kModeSwitcherPadding * 2.0f, rowHeight};
+	return Rect{t_panel.right() - column * 0.5f - switcher_track_width * 0.5f,
+				t_panel.y + switcher_padding + switcher_indicator_height * 0.5f, switcher_track_width,
+				t_panel.h - switcher_padding * 2.0f - switcher_indicator_height};
 }
 
-Rect CCarousel::ModeSwitcherTrackRect(Rect panel) const
+Rect Carousel::switcher_track_grab_rect(Rect t_panel) const
 {
-	const float trackColumn = ModeSwitcherTrackColumnWidth();
+	const Rect track = switcher_track_rect(t_panel);
 
-	return Rect{
-		panel.X + panel.W - trackColumn * 0.5f - kModeSwitcherTrackWidth * 0.5f,
-		panel.Y + kModeSwitcherPadding + kModeSwitcherIndicatorHeight * 0.5f,
-		kModeSwitcherTrackWidth,
-		panel.H - kModeSwitcherPadding * 2.0f - kModeSwitcherIndicatorHeight,
-	};
+	return Rect{track.x - 10.0f, t_panel.y, track.w + 20.0f, t_panel.h};
 }
 
-Rect CCarousel::ModeSwitcherTrackGrabRect(Rect panel) const
+bool Carousel::is_switcher_shown() const
 {
-	const Rect track = ModeSwitcherTrackRect(panel);
-
-	return Rect{track.X - 10.0f, panel.Y, track.W + 20.0f, panel.H};
+	return m_switcher_shown > 0.01f;
 }
 
-Rect CCarousel::ModeSwitcherHoverRect() const
+bool Carousel::is_mouse_over_switcher(Vec2 t_mouse) const
 {
-	const Rect panel = ModeSwitcherPanelRect();
-	const Rect indicator = StatusBarContentRect();
+	const Rect indicator = status_indicator_rect();
+	if (indicator.contains(t_mouse)) return true;
+	if (!is_switcher_shown()) return false;
 
-	const float left = std::min(panel.X, indicator.X);
-	const float right = std::max(panel.X + panel.W, indicator.X + indicator.W);
+	const Rect panel = switcher_panel_rect();
+	const float left = std::min(panel.x, indicator.x);
+	const Rect panel_and_indicator{left, panel.y, std::max(panel.right(), indicator.right()) - left,
+								   indicator.bottom() - panel.y};
 
-	return Rect{left, panel.Y, right - left, indicator.Y + indicator.H - panel.Y};
+	return panel_and_indicator.contains(t_mouse);
 }
 
-bool CCarousel::IsMouseOverModeSwitcher(float mouseX, float mouseY) const
+void Carousel::set_zoom_stop(i32 t_stop)
 {
-	// The status-bar indicator alone is what opens the flyout from cold: hovering where the
-	// not-yet-visible panel would appear should not summon it out of nowhere. Once it is
-	// opening, the broader union keeps it open across the gap between the two.
-	if (RectContainsPoint(StatusBarContentRect(), mouseX, mouseY)) return true;
+	t_stop = std::clamp(t_stop, 0, zoom_stop_count - 1);
 
-	return IsModeSwitcherVisible() && RectContainsPoint(ModeSwitcherHoverRect(), mouseX, mouseY);
-}
+	if (t_stop != m_zoom_stop) {
+		m_zoom_stop = t_stop;
 
-void CCarousel::SetZoomStop(i32 stop)
-{
-	stop = std::clamp(stop, 0, kCarouselZoomStopCount - 1);
-
-	if (stop != m_nZoomStop) {
-		m_nZoomStop = stop;
-
-		const ECarouselViewMode nextMode = ZoomStopViewMode(stop);
-		if (nextMode != m_viewMode) {
-			m_transitionFromMode = m_viewMode;
-			m_viewMode = nextMode;
-			m_flTransitionAmount = 1.0f;
-
-			// The new mode's content height has nothing to do with the old one's position.
-			m_wrapScroll = CScrollable{};
-		}
-	}
-
-	m_flModeSwitcherHoldSeconds = kModeSwitcherHoldDuration;
-}
-
-void CCarousel::AdjustZoomStop(float wheelDelta)
-{
-	if (wheelDelta == 0.0f) return;
-
-	// Scrolling up moves forward through the stops, starting from Carousel.
-	SetZoomStop(m_nZoomStop + (wheelDelta > 0.0f ? 1 : -1));
-}
-
-void CCarousel::ApplyZoomStop(i32 stop)
-{
-	stop = std::clamp(stop, 0, kCarouselZoomStopCount - 1);
-
-	m_nZoomStop = stop;
-	m_flZoomPercent = ZoomStopPercent(stop);
-	m_viewMode = ZoomStopViewMode(stop);
-	m_transitionFromMode = m_viewMode;
-	m_flTransitionAmount = 0.0f;
-	m_nFocusedIndex = GetSelectedIndex();
-}
-
-void CCarousel::ApplySelectedIndex(i32 index)
-{
-	const float target = ClampTarget(static_cast<float>(index));
-
-	m_flScrollOffset = target;
-	m_flTargetScrollOffset = target;
-}
-
-bool CCarousel::ModeSwitcherOnPointerDown(float x, float y)
-{
-	if (!IsModeSwitcherVisible()) return false;
-
-	const Rect panel = ModeSwitcherPanelRect();
-	if (!RectContainsPoint(panel, x, y)) return false;
-
-	m_bModeSwitcherPointerCaptured = true;
-
-	for (u32 i = 0; i < kCarouselViewModeCount; i += 1) {
-		if (RectContainsPoint(ModeSwitcherRowRect(panel, i), x, y)) {
-			SetZoomStop(kModeSwitcherRowStop[i]);
-			return true;
-		}
-	}
-
-	if (RectContainsPoint(ModeSwitcherTrackGrabRect(panel), x, y)) {
-		m_modeSwitcherDrag.Begin(x, y);
-		SetZoomStop(ZoomStopForTrackPosition(ModeSwitcherTrackRect(panel), y));
-		return true;
-	}
-
-	// Somewhere inside the panel's padding - swallow rather than fall through.
-	return true;
-}
-
-bool CCarousel::ModeSwitcherOnPointerMove(float x, float y)
-{
-	if (!m_modeSwitcherDrag.IsPressed()) return false;
-
-	m_modeSwitcherDrag.Update(x, y);
-	SetZoomStop(ZoomStopForTrackPosition(ModeSwitcherTrackRect(ModeSwitcherPanelRect()), y));
-
-	return true;
-}
-
-bool CCarousel::ModeSwitcherOnPointerUp()
-{
-	const bool wasCaptured = m_bModeSwitcherPointerCaptured;
-
-	m_bModeSwitcherPointerCaptured = false;
-	m_modeSwitcherDrag.End();
-
-	return wasCaptured;
-}
-
-bool CCarousel::OnPointerDown(float x, float y)
-{
-	m_bKeyboardFocusVisible = false;
-
-	if (ModeSwitcherOnPointerDown(x, y)) return true;
-
-	// Card dragging is Carousel mode's thing; the only draggable surface in the other two
-	// is the scrollbar thumb.
-	if (m_viewMode != ECarouselViewMode::Carousel) {
-		return m_wrapScroll.OnPointerDown(x, y, ScrollbarTrackRect(), WrapContentHeight(m_viewMode), m_vecBounds.H);
-	}
-
-	m_cardDrag.Begin(x, y);
-	m_flDragStartScrollOffset = m_flScrollOffset;
-
-	return true;
-}
-
-bool CCarousel::OnPointerMove(float x, float y)
-{
-	// Any real pointer movement retires the keyboard focus - see m_bKeyboardFocusVisible.
-	m_bKeyboardFocusVisible = false;
-
-	if (ModeSwitcherOnPointerMove(x, y)) return true;
-
-	if (m_viewMode != ECarouselViewMode::Carousel) {
-		m_wrapScroll.OnPointerMove(y, ScrollbarTrackRect(), WrapContentHeight(m_viewMode), m_vecBounds.H);
-		return m_wrapScroll.IsDragging();
-	}
-
-	if (!m_cardDrag.IsPressed()) return false;
-
-	m_cardDrag.Update(x, y);
-
-	// 1:1 tracking while dragging; easing only takes over after release.
-	const float newOffset = m_flDragStartScrollOffset - m_cardDrag.DeltaX() / kCardStride;
-	m_flScrollOffset = newOffset;
-	m_flTargetScrollOffset = newOffset;
-
-	return true;
-}
-
-bool CCarousel::OnPointerUp(float x, float y)
-{
-	m_bKeyboardFocusVisible = false;
-
-	if (ModeSwitcherOnPointerUp()) return true;
-
-	if (m_viewMode != ECarouselViewMode::Carousel) {
-		// A release ending a scrollbar drag must not also read as a card click.
-		if (m_wrapScroll.IsDragging()) {
-			m_wrapScroll.OnPointerUp();
-			return true;
+		const ViewMode mode = mode_at_stop(t_stop);
+		if (mode != m_mode) {
+			m_previous_mode = m_mode;
+			m_mode = mode;
+			m_mode_transition = 1.0f;
+			m_wrap_scroll = Scrollable{};
 		}
 
-		// No drag or selection state to update here; the owner opens the modal on any hit.
-		m_pendingClickBanner = PendingHitFromHitTest(HitTest(x, y));
-
-		return true;
+		m_commands.push(Command{.type = CommandType::save_settings});
 	}
 
-	if (!m_cardDrag.IsPressed()) return false;
-
-	const bool dragMoved = m_cardDrag.HasMoved();
-	m_cardDrag.End();
-
-	if (dragMoved) {
-		m_flTargetScrollOffset = ClampTarget(std::round(m_flScrollOffset));
-		return true;
-	}
-
-	// A click rather than a drag: only change the selection if it landed on a banner.
-	const i32 hitIndex = HitTest(x, y);
-	if (hitIndex >= 0) {
-		m_flTargetScrollOffset = ClampTarget(static_cast<float>(hitIndex));
-	}
-
-	m_pendingClickBanner = PendingHitFromHitTest(hitIndex);
-
-	return true;
+	m_switcher_hold_seconds = switcher_hold_seconds;
 }
 
-PendingHit CCarousel::ConsumePendingClick()
+i32 Carousel::focused_game() const
 {
-	const PendingHit pending = m_pendingClickBanner;
-	m_pendingClickBanner = PendingHit{};
-
-	return pending;
+	return m_mode == ViewMode::carousel ? selected_game() : m_focused_game;
 }
 
-PendingHit CCarousel::ConsumePendingActivate()
+bool Carousel::is_focus_shown(u32 t_game) const
 {
-	const PendingHit pending = m_pendingActivateBanner;
-	m_pendingActivateBanner = PendingHit{};
-
-	return pending;
+	return m_keyboard_focus_shown && m_mode != ViewMode::carousel && static_cast<i32>(t_game) == focused_game();
 }
 
-// In Carousel mode the focus and the centred card are the same thing, so moving one moves the
-// other. Grid and List have no notion of a centred card, so there the focus is only a ring, and
-// the view scrolls to keep it on screen.
-i32 CCarousel::FocusedIndex() const
+void Carousel::move_focus(i32 t_delta)
 {
-	return m_viewMode == ECarouselViewMode::Carousel ? GetSelectedIndex() : m_nFocusedIndex;
-}
+	if (game_count() == 0) return;
 
-bool CCarousel::IsFocusHighlighted(u32 index) const
-{
-	return m_bKeyboardFocusVisible && m_viewMode != ECarouselViewMode::Carousel &&
-		   static_cast<i32>(index) == FocusedIndex();
-}
+	m_keyboard_focus_shown = true;
+	m_focused_game = std::clamp(focused_game() + t_delta, 0, static_cast<i32>(game_count()) - 1);
 
-void CCarousel::MoveFocus(i32 delta)
-{
-	if (m_nBannerCount == 0) return;
-
-	// Set here rather than in OnKeyDown, so it only turns on for a key that actually moved the
-	// focus - a key the carousel declines leaves it as it was.
-	m_bKeyboardFocusVisible = true;
-
-	const auto lastIndex = static_cast<i32>(m_nBannerCount) - 1;
-	m_nFocusedIndex = std::clamp(FocusedIndex() + delta, 0, lastIndex);
-
-	// In Carousel mode the centred card is the focus, so moving one is moving the other and there
-	// is nothing separate to remember - FocusedIndex reads it back out of the scroll target.
-	if (m_viewMode == ECarouselViewMode::Carousel) {
-		m_flTargetScrollOffset = ClampTarget(static_cast<float>(m_nFocusedIndex));
+	if (m_mode == ViewMode::carousel) {
+		m_target_scroll = static_cast<float>(m_focused_game);
 		return;
 	}
 
-	ScrollFocusIntoView();
+	const Rect card = card_in_current_mode(static_cast<u32>(m_focused_game));
+	m_wrap_scroll.reveal(card.y, card.bottom(), m_bounds.y + grid_padding, m_bounds.bottom() - grid_padding,
+						 wrap_scroll_geometry());
 }
 
-void CCarousel::ScrollFocusIntoView()
+void Carousel::open_game(i32 t_game)
 {
-	const Rect card =
-		m_viewMode == ECarouselViewMode::Grid ? GridBannerRect(m_nFocusedIndex) : ListBannerRect(m_nFocusedIndex);
+	m_commands.push(Command{.type = CommandType::open_game, .index = t_game});
+}
 
-	// Measured against where the view is heading, not where it currently is: holding an arrow key
-	// would otherwise correct against a still-moving offset and overshoot a little on every press.
-	const float settleShift = m_wrapScroll.m_flScrollOffset - m_wrapScroll.m_flTargetScrollOffset;
-	const float cardTop = card.Y + settleShift;
-	const float cardBottom = cardTop + card.H;
+bool Carousel::switcher_pointer_down(Vec2 t_point)
+{
+	const Rect panel = switcher_panel_rect();
+	if (!is_switcher_shown() || !panel.contains(t_point)) return false;
 
-	const float above = m_vecBounds.Y + kGridPadding - cardTop;
-	const float below = cardBottom - (m_vecBounds.Y + m_vecBounds.H - kGridPadding);
+	m_switcher_owns_pointer = true;
 
-	if (above > 0.0f) {
-		m_wrapScroll.ScrollBy(-above, WrapContentHeight(m_viewMode), m_vecBounds.H);
-	} else if (below > 0.0f) {
-		m_wrapScroll.ScrollBy(below, WrapContentHeight(m_viewMode), m_vecBounds.H);
+	for (u32 row = 0; row < switcher_row_count; row += 1) {
+		if (switcher_row_rect(panel, row).contains(t_point)) {
+			set_zoom_stop(switcher_row_stops[row]);
+			return true;
+		}
 	}
+
+	if (switcher_track_grab_rect(panel).contains(t_point)) {
+		m_switcher_drag.begin(t_point);
+		set_zoom_stop(stop_at_track_position(switcher_track_rect(panel), t_point.y));
+	}
+
+	return true;
 }
 
-// Deliberately silent on anything else: this widget sits at the bottom of the stack, so consuming
-// a key it has no use for would take it from whatever is above.
-bool CCarousel::OnKeyDown(u32 keyCode)
+bool Carousel::switcher_pointer_move(Vec2 t_point)
 {
-	if (!m_bVisible || m_nBannerCount == 0) return false;
+	if (!m_switcher_drag.is_pressed()) return false;
 
-	// Which arrows move the focus follows what is on screen: a horizontal strip reads along, a
-	// grid reads both ways, and a list reads down.
-	const u32 columns = GridColumnsForWidth(m_vecBounds.W, m_flZoomPercent);
+	m_switcher_drag.update(t_point);
+	set_zoom_stop(stop_at_track_position(switcher_track_rect(switcher_panel_rect()), t_point.y));
 
-	switch (keyCode) {
+	return true;
+}
+
+bool Carousel::switcher_pointer_up()
+{
+	m_switcher_drag.end();
+
+	return std::exchange(m_switcher_owns_pointer, false);
+}
+
+bool Carousel::on_pointer_down(Vec2 t_point)
+{
+	m_keyboard_focus_shown = false;
+
+	if (switcher_pointer_down(t_point)) return true;
+	if (m_mode != ViewMode::carousel) return m_wrap_scroll.on_pointer_down(t_point, wrap_scroll_geometry());
+
+	m_card_drag.begin(t_point);
+	m_drag_start_scroll = m_scroll;
+
+	return true;
+}
+
+bool Carousel::on_pointer_move(Vec2 t_point)
+{
+	m_keyboard_focus_shown = false;
+
+	if (switcher_pointer_move(t_point)) return true;
+
+	if (m_mode != ViewMode::carousel) {
+		m_wrap_scroll.on_pointer_move(t_point.y, wrap_scroll_geometry());
+		return m_wrap_scroll.is_dragging();
+	}
+
+	if (!m_card_drag.is_pressed()) return false;
+
+	m_card_drag.update(t_point);
+	m_scroll = m_drag_start_scroll - m_card_drag.delta_x() / drag_pixels_per_card;
+	m_target_scroll = m_scroll;
+
+	return true;
+}
+
+bool Carousel::on_pointer_up(Vec2 t_point)
+{
+	m_keyboard_focus_shown = false;
+
+	if (switcher_pointer_up()) return true;
+
+	if (m_mode != ViewMode::carousel) {
+		if (m_wrap_scroll.is_dragging()) {
+			m_wrap_scroll.on_pointer_up();
+			return true;
+		}
+
+		if (const i32 game = game_at(t_point); game >= 0) {
+			open_game(game);
+		}
+
+		return true;
+	}
+
+	if (!m_card_drag.is_pressed()) return false;
+
+	const bool dragged = m_card_drag.has_moved();
+	m_card_drag.end();
+
+	if (dragged) {
+		m_target_scroll = clamp_scroll(std::round(m_scroll));
+		return true;
+	}
+
+	const i32 game = game_at(t_point);
+	if (game < 0) return true;
+
+	if (game == selected_game()) {
+		open_game(game);
+	}
+
+	m_target_scroll = static_cast<float>(game);
+
+	return true;
+}
+
+bool Carousel::on_scroll(Vec2, float t_wheel_delta)
+{
+	m_keyboard_focus_shown = false;
+
+	if (is_control_held()) {
+		if (t_wheel_delta != 0.0f) {
+			set_zoom_stop(m_zoom_stop + (t_wheel_delta > 0.0f ? 1 : -1));
+		}
+	} else if (m_mode == ViewMode::carousel) {
+		m_target_scroll = clamp_scroll(m_target_scroll + t_wheel_delta);
+	} else {
+		m_wrap_scroll.on_scroll(t_wheel_delta, wrap_scroll_geometry());
+	}
+
+	return true;
+}
+
+bool Carousel::on_key_down(u32 t_key)
+{
+	if (game_count() == 0) return false;
+
+	const auto columns = static_cast<i32>(grid_columns(m_bounds.w, m_zoom_percent));
+	const bool horizontal = m_mode != ViewMode::list;
+	const bool vertical = m_mode != ViewMode::carousel;
+	const i32 row_step = m_mode == ViewMode::grid ? columns : 1;
+
+	switch (t_key) {
 		case VK_LEFT:
-			if (m_viewMode == ECarouselViewMode::List) return false;
+			if (!horizontal) return false;
 
-			MoveFocus(-1);
+			move_focus(-1);
 			return true;
 
 		case VK_RIGHT:
-			if (m_viewMode == ECarouselViewMode::List) return false;
+			if (!horizontal) return false;
 
-			MoveFocus(1);
+			move_focus(1);
 			return true;
 
 		case VK_UP:
-			if (m_viewMode == ECarouselViewMode::Carousel) return false;
+			if (!vertical) return false;
 
-			MoveFocus(m_viewMode == ECarouselViewMode::Grid ? -static_cast<i32>(columns) : -1);
+			move_focus(-row_step);
 			return true;
 
 		case VK_DOWN:
-			if (m_viewMode == ECarouselViewMode::Carousel) return false;
+			if (!vertical) return false;
 
-			MoveFocus(m_viewMode == ECarouselViewMode::Grid ? static_cast<i32>(columns) : 1);
+			move_focus(row_step);
 			return true;
 
 		case VK_RETURN:
-			// Grid and List only open on Enter once the focus is actually on screen. Before that
-			// the first press reveals it, so Enter can never open a card the user could not see
-			// was focused - Carousel is exempt, since its centred card is always visibly the one.
-			if (m_viewMode != ECarouselViewMode::Carousel && !m_bKeyboardFocusVisible) {
-				m_bKeyboardFocusVisible = true;
-				ScrollFocusIntoView();
+			if (m_mode != ViewMode::carousel && !m_keyboard_focus_shown) {
+				move_focus(0);
 				return true;
 			}
 
-			m_pendingActivateBanner = PendingHitIndex(FocusedIndex());
+			open_game(focused_game());
 			return true;
 
 		default:
@@ -870,457 +660,293 @@ bool CCarousel::OnKeyDown(u32 keyCode)
 	}
 }
 
-bool CCarousel::OnScroll(float x, float y, float wheelDelta)
+CursorKind Carousel::cursor() const
 {
-	m_bKeyboardFocusVisible = false;
+	const bool dragging_cards = m_mode == ViewMode::carousel && m_card_drag.is_pressed();
+	if (m_switcher_drag.is_pressed() || dragging_cards || m_wrap_scroll.is_dragging()) return CursorKind::drag;
 
-	// Scrolling up moves toward later cards, the opposite of the vertical modes below. A wheel
-	// notch here reads as "advance the strip", not as "move the viewport up".
-	if (m_viewMode == ECarouselViewMode::Carousel) {
-		m_flTargetScrollOffset = ClampTarget(m_flTargetScrollOffset + wheelDelta);
+	if (game_count() > 0 && status_indicator_rect().contains(m_mouse)) return CursorKind::hand;
+
+	if (is_switcher_shown()) {
+		const Rect panel = switcher_panel_rect();
+
+		for (u32 row = 0; row < switcher_row_count; row += 1) {
+			if (switcher_row_rect(panel, row).contains(m_mouse)) return CursorKind::hand;
+		}
+
+		if (switcher_track_grab_rect(panel).contains(m_mouse)) return CursorKind::hand;
+	}
+
+	if (game_at(m_mouse) >= 0) return CursorKind::hand;
+
+	const bool over_scrollbar =
+		m_mode != ViewMode::carousel && m_wrap_scroll.is_over_track(m_mouse, wrap_scroll_geometry());
+
+	return over_scrollbar ? CursorKind::hand : CursorKind::arrow;
+}
+
+void Carousel::update(float t_delta_seconds)
+{
+	m_scroll = animation::ease_toward(m_scroll, m_target_scroll, scroll_ease_rate, t_delta_seconds);
+	m_mode_transition = animation::ease_toward(m_mode_transition, 0.0f, mode_transition_ease_rate, t_delta_seconds);
+	m_zoom_percent = animation::ease_toward(m_zoom_percent, stop_percent(m_zoom_stop), zoom_ease_rate, t_delta_seconds);
+	m_wrap_scroll.update(t_delta_seconds);
+
+	const i32 hovered_grid_card = m_mode == ViewMode::grid ? game_at(m_mouse) : -1;
+
+	for (u32 game = 0; game < game_count(); game += 1) {
+		const bool raised = static_cast<i32>(game) == hovered_grid_card || is_focus_shown(game);
+		m_card_hover[game] =
+			animation::ease_toward(m_card_hover[game], raised ? 1.0f : 0.0f, grid_hover_ease_rate, t_delta_seconds);
+	}
+
+	if (is_mouse_over_switcher(m_mouse)) {
+		m_switcher_hold_seconds = switcher_hold_seconds;
 	} else {
-		m_wrapScroll.OnScroll(wheelDelta, WrapContentHeight(m_viewMode), m_vecBounds.H);
+		m_switcher_hold_seconds = std::max(0.0f, m_switcher_hold_seconds - t_delta_seconds);
 	}
 
-	return true;
+	const float switcher_target = m_switcher_hold_seconds > 0.0f ? 1.0f : 0.0f;
+	m_switcher_shown = animation::ease_toward(m_switcher_shown, switcher_target, switcher_ease_rate, t_delta_seconds);
 }
 
-i32 CCarousel::HitTest(float x, float y) const
+void Carousel::draw_card(DrawList &t_draw_list, Rect t_rect, const Game &t_game, bool t_highlighted, bool t_centered,
+						 u8 t_alpha) const
 {
-	if (m_viewMode != ECarouselViewMode::Carousel) {
-		for (u32 i = 0; i < m_nBannerCount; i += 1) {
-			const Rect rect = m_viewMode == ECarouselViewMode::Grid ? GridBannerRect(i) : ListBannerRect(i);
+	const CardLook look = card_look(t_highlighted, t_centered);
 
-			// The second test rejects a row scrolled out of the visible area.
-			if (RectContainsPoint(rect, x, y) && y >= m_vecBounds.Y && y < m_vecBounds.Y + m_vecBounds.H) {
-				return static_cast<i32>(i);
-			}
+	if (look.glow_size > 0.0f) {
+		t_draw_list.add_banner_glow(t_rect, card_corner_radius, look.glow_size,
+									faded(faded(t_game.accent, look.glow_alpha), t_alpha));
+	}
+
+	t_draw_list.add_rounded_rect(t_rect, rounded(card_corner_radius), faded(look.border, t_alpha));
+
+	if (t_game.banner == nullptr) return;
+
+	const Rect art = t_rect.inset(look.border_thickness);
+	t_draw_list.add_image(art, t_game.banner, faded(color_white, t_alpha),
+						  rounded(card_corner_radius - look.border_thickness),
+						  cover_uv(art.w / art.h, t_game.banner->aspect()));
+}
+
+void Carousel::draw_carousel_mode(DrawList &t_draw_list, u8 t_alpha, float t_y_offset) const
+{
+	for (u32 game = 0; game < game_count(); game += 1) {
+		Rect card = carousel_card(game);
+		card.y += t_y_offset;
+
+		if (card.right() < m_bounds.x || card.x > m_bounds.right()) continue;
+
+		const bool centered = std::fabs(static_cast<float>(game) - m_scroll) < 0.5f;
+		const bool hovered = !centered && card.contains(m_mouse);
+
+		draw_card(t_draw_list, card, m_library.game(game), centered || hovered, centered, t_alpha);
+	}
+
+	const Color opaque = faded(color_background, t_alpha);
+	const Color clear = faded(color_background, 0);
+
+	t_draw_list.add_gradient(Rect{m_bounds.x, m_bounds.y, edge_fade_width, m_bounds.h}, opaque, clear, opaque, clear);
+	t_draw_list.add_gradient(Rect{m_bounds.right() - edge_fade_width, m_bounds.y, edge_fade_width, m_bounds.h}, clear,
+							 opaque, clear, opaque);
+}
+
+void Carousel::draw_wrap_scroll(DrawList &t_draw_list, u8 t_alpha) const
+{
+	const ScrollGeometry geometry = wrap_scroll_geometry();
+
+	m_wrap_scroll.draw_edge_fade(t_draw_list, m_bounds, geometry, faded(color_background, t_alpha));
+	m_wrap_scroll.draw(t_draw_list, geometry, faded(color_scroll_thumb, t_alpha), m_mouse);
+}
+
+void Carousel::draw_grid_mode(DrawList &t_draw_list, u8 t_alpha, float t_y_offset) const
+{
+	t_draw_list.push_clip(m_bounds);
+
+	for (u32 game = 0; game < game_count(); game += 1) {
+		Rect card = grid_card(game);
+		card.y += t_y_offset;
+
+		if (!card.overlaps_vertically(m_bounds)) continue;
+
+		const bool highlighted = card.contains(m_mouse) || is_focus_shown(game);
+		const float growth = 1.0f + grid_hover_growth * m_card_hover[game];
+		const Rect grown = card.inset(card.w * (1.0f - growth) * 0.5f, card.h * (1.0f - growth) * 0.5f);
+
+		draw_card(t_draw_list, grown, m_library.game(game), highlighted, false, t_alpha);
+	}
+
+	t_draw_list.pop_clip();
+
+	draw_wrap_scroll(t_draw_list, t_alpha);
+}
+
+void Carousel::draw_list_mode(DrawList &t_draw_list, u8 t_alpha, float t_y_offset) const
+{
+	const Font &font = m_fonts.body();
+	const float thumb_size = list_thumb_size(m_zoom_percent);
+	const Color image_tint = faded(color_white, t_alpha);
+
+	t_draw_list.push_clip(m_bounds);
+
+	for (u32 index = 0; index < game_count(); index += 1) {
+		Rect row = list_row(index);
+		row.y += t_y_offset;
+
+		if (!row.overlaps_vertically(m_bounds)) continue;
+
+		const Game &game = m_library.game(index);
+		const bool highlighted = row.contains(m_mouse) || is_focus_shown(index);
+
+		t_draw_list.add_rounded_rect(row, rounded(list_corner_radius),
+									 faded(highlighted ? color_list_row_hover : color_list_row, t_alpha));
+
+		const Rect thumb{row.x + 12.0f, row.y + (row.h - thumb_size) * 0.5f, thumb_size, thumb_size};
+
+		if (game.icon != nullptr) {
+			t_draw_list.add_image(thumb, game.icon, image_tint, rounded(list_corner_radius));
+		} else if (game.banner != nullptr) {
+			t_draw_list.add_image(thumb, game.banner, image_tint, rounded(list_corner_radius),
+								  cover_uv(1.0f, game.banner->aspect()));
 		}
 
-		return -1;
+		draw_text(t_draw_list, font, Vec2{thumb.right() + 16.0f, font.centered_baseline(row)}, game.title,
+				  faded(color_list_text, t_alpha));
 	}
 
-	// Carousel cards overlap, so the most centred candidate wins - matching what is visually
-	// on top.
-	i32 bestIndex = -1;
-	float bestDistance = 0.0f;
+	t_draw_list.pop_clip();
 
-	for (u32 i = 0; i < m_nBannerCount; i += 1) {
-		if (!RectContainsPoint(GetBannerRect(i), x, y)) continue;
-
-		const float distance = std::fabs(static_cast<float>(i) - m_flScrollOffset);
-		if (bestIndex < 0 || distance < bestDistance) {
-			bestIndex = static_cast<i32>(i);
-			bestDistance = distance;
-		}
-	}
-
-	return bestIndex;
+	draw_wrap_scroll(t_draw_list, t_alpha);
 }
 
-ECursorKind CCarousel::GetDesiredCursor() const
+void Carousel::draw_mode(DrawList &t_draw_list, ViewMode t_mode, u8 t_alpha, float t_y_offset) const
 {
-	const bool draggingCards = m_viewMode == ECarouselViewMode::Carousel && m_cardDrag.IsPressed();
-	const bool draggingScrollbar = m_viewMode != ECarouselViewMode::Carousel && m_wrapScroll.IsDragging();
-
-	if (m_modeSwitcherDrag.IsPressed() || draggingCards || draggingScrollbar) return ECursorKind::Drag;
-
-	if (m_nBannerCount > 0 && RectContainsPoint(StatusBarContentRect(), m_flMouseX, m_flMouseY)) {
-		return ECursorKind::Hand;
-	}
-
-	if (IsModeSwitcherVisible()) {
-		const Rect panel = ModeSwitcherPanelRect();
-
-		if (RectContainsPoint(panel, m_flMouseX, m_flMouseY)) {
-			for (u32 i = 0; i < kCarouselViewModeCount; i += 1) {
-				if (RectContainsPoint(ModeSwitcherRowRect(panel, i), m_flMouseX, m_flMouseY)) {
-					return ECursorKind::Hand;
-				}
-			}
-
-			if (RectContainsPoint(ModeSwitcherTrackGrabRect(panel), m_flMouseX, m_flMouseY)) {
-				return ECursorKind::Hand;
-			}
-		}
-	}
-
-	if (HitTest(m_flMouseX, m_flMouseY) >= 0) return ECursorKind::Hand;
-
-	if (m_viewMode != ECarouselViewMode::Carousel) {
-		const float contentHeight = WrapContentHeight(m_viewMode);
-
-		if (CScrollable::IsVisible(contentHeight, m_vecBounds.H) &&
-			RectContainsPoint(ScrollbarTrackRect(), m_flMouseX, m_flMouseY)) {
-			return ECursorKind::Hand;
-		}
-	}
-
-	return ECursorKind::Arrow;
-}
-
-void CCarousel::Update(float deltaSeconds)
-{
-	m_flScrollOffset = CAnimator::EaseToward(m_flScrollOffset, m_flTargetScrollOffset, kEaseRate, deltaSeconds);
-	m_flTransitionAmount = CAnimator::EaseToward(m_flTransitionAmount, 0.0f, kViewModeTransitionEaseRate, deltaSeconds);
-	m_flZoomPercent =
-		CAnimator::EaseToward(m_flZoomPercent, ZoomStopPercent(m_nZoomStop), kZoomPercentEaseRate, deltaSeconds);
-
-	if (m_flTransitionAmount < 0.002f) {
-		m_flTransitionAmount = 0.0f;
-	}
-
-	m_wrapScroll.Update(deltaSeconds);
-
-	// Only one card ever hit-tests as hovered, but every card's scale eases independently, so
-	// an outgoing card shrinks back while the incoming one grows.
-	const i32 gridHoveredIndex = m_viewMode == ECarouselViewMode::Grid ? HitTest(m_flMouseX, m_flMouseY) : -1;
-
-	for (u32 i = 0; i < m_nBannerCount; i += 1) {
-		// The keyboard focus pops the same way hovering does, or arrowing onto a card would light it
-		// up without the growth that every hovered card has.
-		const bool focused = static_cast<i32>(i) == gridHoveredIndex || IsFocusHighlighted(i);
-		const float target = focused ? 1.0f : 0.0f;
-		m_aGridHoverScale[i] =
-			CAnimator::EaseToward(m_aGridHoverScale[i], target, kGridHoverScaleEaseRate, deltaSeconds);
-	}
-
-	if (IsMouseOverModeSwitcher(m_flMouseX, m_flMouseY)) {
-		m_flModeSwitcherHoldSeconds = kModeSwitcherHoldDuration;
-	} else {
-		m_flModeSwitcherHoldSeconds = std::max(0.0f, m_flModeSwitcherHoldSeconds - deltaSeconds);
-	}
-
-	const float switcherTarget = m_flModeSwitcherHoldSeconds > 0.0f ? 1.0f : 0.0f;
-	m_flModeSwitcherVisibleAmount =
-		CAnimator::EaseToward(m_flModeSwitcherVisibleAmount, switcherTarget, kModeSwitcherEaseRate, deltaSeconds);
-
-	if (m_flModeSwitcherVisibleAmount < 0.002f) {
-		m_flModeSwitcherVisibleAmount = 0.0f;
-	}
-}
-
-i32 CCarousel::GetSelectedIndex() const
-{
-	return static_cast<i32>(ClampTarget(std::round(m_flTargetScrollOffset)));
-}
-
-// A rounded stroke is not a primitive here, so the border is a full-size rounded rect with the
-// smaller-radius art drawn on top, inset by the border thickness. The glow quad extends past
-// the card on every side; the shader builds its distance field from the card's rect.
-void CCarousel::DrawBannerCard(CDrawList &drawList, Rect rect, const Banner &banner, bool highlighted, bool strong,
-							   u8 alpha) const
-{
-	const CardVisualState state = CardVisualStateFor(highlighted, strong);
-
-	if (state.GlowSize > 0.0f && state.GlowAlpha != 0) {
-		const Color glowColor = ColorScaleAlpha(ColorScaleAlpha(banner.Accent, state.GlowAlpha), alpha);
-		drawList.AddRectRoundedBannerGlow(rect.X, rect.Y, rect.W, rect.H, kCarouselCardCornerRadius, state.GlowSize,
-										  glowColor);
-	}
-
-	drawList.AddRectRoundedFilled(rect.X, rect.Y, rect.W, rect.H, CDrawList::UniformRadii(kCarouselCardCornerRadius),
-								  ColorScaleAlpha(state.BorderColor, alpha));
-
-	if (banner.pTexture == nullptr) return;
-
-	const float innerW = rect.W - state.BorderThickness * 2.0f;
-	const float innerH = rect.H - state.BorderThickness * 2.0f;
-	const CornerRadii innerRadii = CDrawList::UniformRadii(kCarouselCardCornerRadius - state.BorderThickness);
-	const UvRect uv = CDrawList::ComputeCoverUv(innerW, innerH, banner.TextureAspect, 1.0f);
-
-	drawList.AddRectRoundedTexturedUv(rect.X + state.BorderThickness, rect.Y + state.BorderThickness, innerW, innerH,
-									  innerRadii, uv.U0, uv.V0, uv.U1, uv.V1, banner.pTexture,
-									  ColorScaleAlpha(kColorWhite, alpha));
-}
-
-void CCarousel::DrawCarouselMode(CDrawList &drawList, u8 alpha, float yOffset, float mouseX, float mouseY) const
-{
-	const float areaX = m_vecBounds.X;
-	const float areaW = m_vecBounds.W;
-
-	for (u32 i = 0; i < m_nBannerCount; i += 1) {
-		Rect rect = GetBannerRect(i);
-		rect.Y += yOffset;
-
-		if (rect.X + rect.W < areaX || rect.X > areaX + areaW) continue;
-
-		const bool isSelected = std::fabs(static_cast<float>(i) - m_flScrollOffset) < 0.5f;
-		const bool isHovered = !isSelected && RectContainsPoint(rect, mouseX, mouseY);
-
-		DrawBannerCard(drawList, rect, m_aBanners[i], isSelected || isHovered, isSelected, alpha);
-	}
-
-	// The bounds span the full window width with no side margin, so a card mid-scroll touches
-	// the window edge exactly. A gradient from the clear colour to transparent reads as an
-	// intentional vignette rather than a card bleeding into the border.
-	constexpr float kEdgeFadeWidth = 64.0f;
-	const Color fadeOpaque = ColorScaleAlpha(kColorBackground, alpha);
-	const Color fadeClear = ColorScaleAlpha(kColorBackground, 0);
-
-	drawList.AddRectGradientCorners(areaX, m_vecBounds.Y, kEdgeFadeWidth, m_vecBounds.H, fadeOpaque, fadeClear,
-									fadeOpaque, fadeClear);
-	drawList.AddRectGradientCorners(areaX + areaW - kEdgeFadeWidth, m_vecBounds.Y, kEdgeFadeWidth, m_vecBounds.H,
-									fadeClear, fadeOpaque, fadeClear, fadeOpaque);
-}
-
-void CCarousel::DrawWrapChrome(CDrawList &drawList, float contentHeight, u8 alpha, float mouseX, float mouseY) const
-{
-	m_wrapScroll.DrawEdgeFade(drawList, m_vecBounds, contentHeight, m_vecBounds.H,
-							  ColorScaleAlpha(kColorBackground, alpha));
-	m_wrapScroll.Draw(drawList, ScrollbarTrackRect(), contentHeight, m_vecBounds.H,
-					  ColorScaleAlpha(kColorScrollThumb, alpha), mouseX, mouseY);
-}
-
-void CCarousel::DrawGridMode(CDrawList &drawList, u8 alpha, float yOffset, float mouseX, float mouseY) const
-{
-	const Rect region = m_vecBounds;
-
-	drawList.PushClipRect(region);
-
-	for (u32 i = 0; i < m_nBannerCount; i += 1) {
-		Rect rect = GridBannerRect(i);
-		rect.Y += yOffset;
-
-		if (rect.Y + rect.H < region.Y || rect.Y > region.Y + region.H) continue;
-
-		// No persistent selected look here: the hovered card is highlighted, and a keyboard focus is
-		// drawn as one, since to the reader they mean the same thing.
-		const bool isHovered = RectContainsPoint(rect, mouseX, mouseY) || IsFocusHighlighted(i);
-
-		// Grows around the card's centre.
-		const float hoverScale = 1.0f + kGridHoverScaleAmount * m_aGridHoverScale[i];
-		if (hoverScale != 1.0f) {
-			const float cx = rect.X + rect.W * 0.5f;
-			const float cy = rect.Y + rect.H * 0.5f;
-			rect.W *= hoverScale;
-			rect.H *= hoverScale;
-			rect.X = cx - rect.W * 0.5f;
-			rect.Y = cy - rect.H * 0.5f;
-		}
-
-		DrawBannerCard(drawList, rect, m_aBanners[i], isHovered, false, alpha);
-	}
-
-	drawList.PopClipRect();
-
-	DrawWrapChrome(drawList, GridContentHeight(), alpha, mouseX, mouseY);
-}
-
-void CCarousel::DrawListMode(CDrawList &drawList, u8 alpha, float yOffset, float mouseX, float mouseY) const
-{
-	const Rect region = m_vecBounds;
-	const CFont &body = m_fonts.GetBody();
-	const float thumbSize = ListThumbSizeFor(m_flZoomPercent);
-	const Color imageTint = ColorScaleAlpha(kColorWhite, alpha);
-
-	drawList.PushClipRect(region);
-
-	for (u32 i = 0; i < m_nBannerCount; i += 1) {
-		Rect rect = ListBannerRect(i);
-		rect.Y += yOffset;
-
-		if (rect.Y + rect.H < region.Y || rect.Y > region.Y + region.H) continue;
-
-		const Banner &banner = m_aBanners[i];
-		const bool isHovered = RectContainsPoint(rect, mouseX, mouseY) || IsFocusHighlighted(i);
-		const Color rowBg = isHovered ? kColorListRowBgHover : kColorListRowBg;
-
-		drawList.AddRectRoundedFilled(rect.X, rect.Y, rect.W, rect.H, CDrawList::UniformRadii(10.0f),
-									  ColorScaleAlpha(rowBg, alpha));
-
-		const Rect thumb{rect.X + 12.0f, rect.Y + (rect.H - thumbSize) * 0.5f, thumbSize, thumbSize};
-
-		if (banner.pIcon != nullptr) {
-			// Already square, so a plain 0..1 UV rather than a cover-fit crop.
-			drawList.AddRectRoundedTextured(thumb.X, thumb.Y, thumb.W, thumb.H, CDrawList::UniformRadii(10.0f),
-											banner.pIcon, imageTint);
-		} else if (banner.pTexture != nullptr) {
-			// Falls back to a crop of the banner art for a game added without its own icon.
-			const UvRect uv = CDrawList::ComputeCoverUv(thumb.W, thumb.H, banner.TextureAspect, 1.0f);
-			drawList.AddRectRoundedTexturedUv(thumb.X, thumb.Y, thumb.W, thumb.H, CDrawList::UniformRadii(10.0f), uv.U0,
-											  uv.V0, uv.U1, uv.V1, banner.pTexture, imageTint);
-		}
-
-		const float baselineY = rect.Y + rect.H * 0.5f + (body.GetAscent() + body.GetDescent()) * 0.5f;
-		DrawText(drawList, body, thumb.X + thumb.W + 16.0f, baselineY, banner.Title,
-				 ColorScaleAlpha(kColorListText, alpha));
-	}
-
-	drawList.PopClipRect();
-
-	DrawWrapChrome(drawList, ListContentHeight(), alpha, mouseX, mouseY);
-}
-
-void CCarousel::DrawMode(CDrawList &drawList, ECarouselViewMode mode, u8 alpha, float yOffset, float mouseX,
-						 float mouseY) const
-{
-	switch (mode) {
-		case ECarouselViewMode::Carousel:
-			DrawCarouselMode(drawList, alpha, yOffset, mouseX, mouseY);
+	switch (t_mode) {
+		case ViewMode::carousel:
+			draw_carousel_mode(t_draw_list, t_alpha, t_y_offset);
 			break;
-		case ECarouselViewMode::Grid:
-			DrawGridMode(drawList, alpha, yOffset, mouseX, mouseY);
+		case ViewMode::grid:
+			draw_grid_mode(t_draw_list, t_alpha, t_y_offset);
 			break;
-		case ECarouselViewMode::List:
-			DrawListMode(drawList, alpha, yOffset, mouseX, mouseY);
+		case ViewMode::list:
+			draw_list_mode(t_draw_list, t_alpha, t_y_offset);
 			break;
 	}
 }
 
-// No background pill of its own: the status bar underneath is the only backing this needs.
-void CCarousel::DrawStatusBarContent(CDrawList &drawList) const
+void Carousel::draw_status_bar(DrawList &t_draw_list) const
 {
-	if (m_nBannerCount == 0) return;
+	if (game_count() == 0) return;
 
 	char buffer[48];
-	const std::string_view text = FormatStatusBarText(m_viewMode, buffer, sizeof(buffer));
+	const Font &font = m_fonts.secondary();
+	const Rect indicator = status_indicator_rect();
+	const Rect icon{indicator.x, indicator.y + (indicator.h - status_icon_size) * 0.5f, status_icon_size,
+					status_icon_size};
 
-	const CFont &secondary = m_fonts.GetSecondary();
-	const Rect content = StatusBarContentRect();
-	const Rect iconBox{content.X, content.Y + (content.H - kStatusBarIconSize) * 0.5f, kStatusBarIconSize,
-					   kStatusBarIconSize};
-
-	DrawModeGlyph(drawList, m_assets, m_viewMode, iconBox, kColorStatusBarIcon);
-
-	const float baselineY =
-		content.Y + content.H * 0.5f + (secondary.GetAscent() + secondary.GetDescent()) * 0.5f - kBaselineVisualNudge;
-	DrawText(drawList, secondary, iconBox.X + kStatusBarIconSize + kStatusBarIconGap, baselineY, text,
-			 kColorStatusBarText);
+	t_draw_list.add_image(icon, m_assets.get(mode_icon(m_mode)), color_status_icon);
+	draw_text(t_draw_list, font,
+			  Vec2{icon.right() + status_icon_gap, font.centered_baseline(indicator) - baseline_nudge},
+			  status_text(m_mode, buffer), color_status_text);
 }
 
-void CCarousel::DrawModeSwitcherRows(CDrawList &drawList, Rect panel, u8 alpha) const
+void Carousel::draw_switcher_rows(DrawList &t_draw_list, Rect t_panel, u8 t_alpha) const
 {
-	const CFont &body = m_fonts.GetBody();
+	const Font &font = m_fonts.body();
 
-	for (u32 i = 0; i < kCarouselViewModeCount; i += 1) {
-		const ECarouselViewMode mode = kModeSwitcherRowMode[i];
-		const Rect row = ModeSwitcherRowRect(panel, i);
-		const bool active = mode == m_viewMode;
-
-		// A fixed inset for the icon and text column, well clear of the active row's bar.
-		const float contentX = row.X + kModeSwitcherRowContentInsetX;
+	for (u32 index = 0; index < switcher_row_count; index += 1) {
+		const ViewMode mode = switcher_row_modes[index];
+		const Rect row = switcher_row_rect(t_panel, index);
+		const bool active = mode == m_mode;
 
 		if (active) {
-			drawList.AddRectRoundedFilled(row.X, row.Y, row.W, row.H, CDrawList::UniformRadii(6.0f),
-										  ColorScaleAlpha(kModeSwitcherActiveRowFill, alpha));
-			// The bar is the one thing in this row that follows the accent.
-			drawList.AddRectRoundedFilled(row.X + 2.0f, row.Y + 3.0f, 3.0f, row.H - 6.0f, CDrawList::UniformRadii(1.5f),
-										  ColorScaleAlpha(m_clrAccent, alpha));
+			t_draw_list.add_rounded_rect(row, rounded(6.0f), faded(color_switcher_active_row, t_alpha));
+			t_draw_list.add_rounded_rect(Rect{row.x + 2.0f, row.y + 3.0f, 3.0f, row.h - 6.0f}, rounded(1.5f),
+										 faded(m_settings.accent, t_alpha));
 		}
 
-		const Color rowContent = ColorScaleAlpha(active ? kModeSwitcherTextActive : kModeSwitcherText, alpha);
-		const Rect iconBox{
-			contentX,
-			IconCenterYFor(row.Y + row.H * 0.5f, body.GetAscent()) - kModeSwitcherRowIconSize * 0.5f,
-			kModeSwitcherRowIconSize,
-			kModeSwitcherRowIconSize,
-		};
+		const Color content = faded(active ? color_switcher_text_active : color_switcher_text, t_alpha);
+		const float icon_center_y = row.center().y + font.ascent() * 0.15f;
+		const Rect icon{row.x + switcher_content_inset, icon_center_y - switcher_icon_size * 0.5f, switcher_icon_size,
+						switcher_icon_size};
 
-		DrawModeGlyph(drawList, m_assets, mode, iconBox, rowContent);
-
-		const float baselineY = row.Y + row.H * 0.5f + (body.GetAscent() + body.GetDescent()) * 0.5f;
-		DrawText(drawList, body, contentX + kModeSwitcherRowIconSize + kModeSwitcherRowIconGap, baselineY,
-				 ViewModeName(mode), rowContent);
+		t_draw_list.add_image(icon, m_assets.get(mode_icon(mode)), content);
+		draw_text(t_draw_list, font, Vec2{icon.right() + switcher_icon_gap, font.centered_baseline(row)},
+				  mode_name(mode), content);
 	}
 }
 
-// Ticks at every zoom stop, not just the three named modes, so the discrete steps underneath
-// the continuous indicator position stay visible.
-void CCarousel::DrawModeSwitcherSlider(CDrawList &drawList, Rect panel, u8 alpha) const
+void Carousel::draw_switcher_slider(DrawList &t_draw_list, Rect t_panel, u8 t_alpha) const
 {
-	const CFont &secondary = m_fonts.GetSecondary();
-	const Rect track = ModeSwitcherTrackRect(panel);
+	const Font &font = m_fonts.secondary();
+	const Rect track = switcher_track_rect(t_panel);
 
-	drawList.AddRectRoundedFilled(track.X, track.Y, track.W, track.H, CDrawList::UniformRadii(track.W * 0.5f),
-								  ColorScaleAlpha(kModeSwitcherTrackBg, alpha));
+	t_draw_list.add_rounded_rect(track, rounded(track.w * 0.5f), faded(color_switcher_track, t_alpha));
 
-	for (i32 stop = 0; stop < kCarouselZoomStopCount; stop += 1) {
-		const float tickY = track.Y + track.H * (1.0f - ZoomStopPercent(stop) / 100.0f);
-		drawList.AddRectFilled(track.X - 3.0f, tickY - 0.75f, track.W + 6.0f, 1.5f,
-							   ColorScaleAlpha(kModeSwitcherTickColor, alpha));
+	for (i32 stop = 0; stop < zoom_stop_count; stop += 1) {
+		const float tick_y = track.y + track.h * (1.0f - stop_percent(stop) / 100.0f);
+		t_draw_list.add_rect(Rect{track.x - 3.0f, tick_y - 0.75f, track.w + 6.0f, 1.5f},
+							 faded(color_switcher_tick, t_alpha));
 	}
 
-	char percentBuffer[8];
-	const int written =
-		std::snprintf(percentBuffer, sizeof(percentBuffer), "%d%%", static_cast<int>(m_flZoomPercent + 0.5f));
-	const std::string_view percentText{percentBuffer, written > 0 ? static_cast<u64>(written) : 0};
+	char buffer[8];
+	const int written = std::snprintf(buffer, sizeof(buffer), "%d%%", static_cast<int>(m_zoom_percent + 0.5f));
+	const std::string_view percent{buffer, static_cast<usize>(std::max(written, 0))};
 
-	const float indicatorW = TextWidth(secondary, percentText) + kModeSwitcherIndicatorPaddingX * 2.0f;
-	const float t = std::clamp(m_flZoomPercent / 100.0f, 0.0f, 1.0f);
-	const float indicatorCy = track.Y + track.H * (1.0f - t);
+	const float indicator_width = text_width(font, percent) + switcher_indicator_padding * 2.0f;
+	const float indicator_center_y = track.y + track.h * (1.0f - std::clamp(m_zoom_percent / 100.0f, 0.0f, 1.0f));
+	const Rect indicator{track.center().x - indicator_width * 0.5f,
+						 indicator_center_y - switcher_indicator_height * 0.5f, indicator_width,
+						 switcher_indicator_height};
 
-	const Rect indicator{
-		track.X + track.W * 0.5f - indicatorW * 0.5f,
-		indicatorCy - kModeSwitcherIndicatorHeight * 0.5f,
-		indicatorW,
-		kModeSwitcherIndicatorHeight,
-	};
-
-	// A ring plus the fill, so the pill reads as a real control sitting on the track rather
-	// than a flat patch of colour. Both follow the accent, and the readout contrasts against
-	// that fill rather than being a fixed near-black that only worked against one purple.
-	drawList.AddRectRoundedBordered(indicator.X - 1.0f, indicator.Y - 1.0f, indicator.W + 2.0f, indicator.H + 2.0f,
-									CDrawList::UniformRadii(indicator.H * 0.5f + 1.0f),
-									ColorScaleAlpha(m_clrAccent, alpha),
-									ColorScaleAlpha(ColorOutlineOn(m_clrAccent), alpha), 1.0f);
-
-	const float baselineY =
-		indicator.Y + indicator.H * 0.5f + (secondary.GetAscent() + secondary.GetDescent()) * 0.5f - 1.0f;
-	DrawText(drawList, secondary, indicator.X + kModeSwitcherIndicatorPaddingX, baselineY, percentText,
-			 ColorScaleAlpha(ColorForegroundOn(m_clrAccent), alpha));
+	t_draw_list.add_bordered_rect(indicator.inset(-1.0f), rounded(indicator.h * 0.5f + 1.0f),
+								  faded(m_settings.accent, t_alpha), faded(outline_on(m_settings.accent), t_alpha),
+								  1.0f);
+	draw_text(t_draw_list, font,
+			  Vec2{indicator.x + switcher_indicator_padding, font.centered_baseline(indicator) - 1.0f}, percent,
+			  faded(foreground_on(m_settings.accent), t_alpha));
 }
 
-void CCarousel::DrawModeSwitcher(CDrawList &drawList) const
+void Carousel::draw_switcher(DrawList &t_draw_list) const
 {
-	if (m_flModeSwitcherVisibleAmount <= 0.001f) return;
+	if (m_switcher_shown <= 0.001f) return;
 
-	const auto alpha = static_cast<u8>(255.0f * m_flModeSwitcherVisibleAmount);
-	const Rect panel = ModeSwitcherPanelRect();
-	const float slide = (1.0f - m_flModeSwitcherVisibleAmount) * kModeSwitcherSlidePixels;
-	const Rect shifted{panel.X, panel.Y + slide, panel.W, panel.H};
+	const auto alpha = static_cast<u8>(255.0f * m_switcher_shown);
+	Rect panel = switcher_panel_rect();
+	panel.y += (1.0f - m_switcher_shown) * switcher_slide_distance;
 
-	// Three layered, progressively larger and dimmer rounded rects offset downward, so the
-	// flyout reads as lifted off the carousel rather than pasted flat onto it.
-	for (i32 i = 3; i >= 1; i -= 1) {
-		const float t = static_cast<float>(i) / 3.0f;
-		const float offset = 7.0f * t;
-		const auto layerAlpha = static_cast<u8>(30.0f * (1.0f - t * 0.6f) * (static_cast<float>(alpha) / 255.0f));
+	for (i32 layer = 3; layer >= 1; layer -= 1) {
+		const float t = layer / 3.0f;
+		const float drop = 7.0f * t;
+		const auto layer_alpha = static_cast<u8>(30.0f * (1.0f - t * 0.6f) * (alpha / 255.0f));
+		if (layer_alpha == 0) continue;
 
-		if (layerAlpha == 0) continue;
-
-		drawList.AddRectRoundedFilled(shifted.X - offset * 0.3f, shifted.Y + offset, shifted.W + offset * 0.6f,
-									  shifted.H + offset, CDrawList::UniformRadii(kModeSwitcherRadius + offset * 0.3f),
-									  Color{0, 0, 0, layerAlpha});
+		const Rect shadow{panel.x - drop * 0.3f, panel.y + drop, panel.w + drop * 0.6f, panel.h + drop};
+		t_draw_list.add_rounded_rect(shadow, rounded(switcher_radius + drop * 0.3f), Color{0, 0, 0, layer_alpha});
 	}
 
-	drawList.AddRectRoundedFilled(shifted.X, shifted.Y, shifted.W, shifted.H,
-								  CDrawList::UniformRadii(kModeSwitcherRadius),
-								  ColorScaleAlpha(kModeSwitcherBorder, alpha));
-	drawList.AddRectRoundedFilled(shifted.X + 1.0f, shifted.Y + 1.0f, shifted.W - 2.0f, shifted.H - 2.0f,
-								  CDrawList::UniformRadii(kModeSwitcherRadius - 1.0f),
-								  ColorScaleAlpha(kModeSwitcherBg, alpha));
+	t_draw_list.add_bordered_rect(panel, rounded(switcher_radius), faded(color_switcher_background, alpha),
+								  faded(color_switcher_border, alpha), 1.0f);
 
-	DrawModeSwitcherRows(drawList, shifted, alpha);
-	DrawModeSwitcherSlider(drawList, shifted, alpha);
+	draw_switcher_rows(t_draw_list, panel, alpha);
+	draw_switcher_slider(t_draw_list, panel, alpha);
 }
 
-void CCarousel::Draw(CDrawList &drawList)
+void Carousel::draw(DrawList &t_draw_list)
 {
 	PULSAR_PROFILE_SCOPE("Carousel.Draw");
 
-	if (m_flTransitionAmount > 0.001f) {
-		const auto outgoingAlpha = static_cast<u8>(255.0f * m_flTransitionAmount);
-		const auto incomingAlpha = static_cast<u8>(255.0f * (1.0f - m_flTransitionAmount));
-		const float slide = m_flTransitionAmount * kViewModeSlidePixels;
+	if (m_mode_transition > 0.001f) {
+		const float slide = m_mode_transition * mode_slide_distance;
 
-		DrawMode(drawList, m_transitionFromMode, outgoingAlpha, -slide, m_flMouseX, m_flMouseY);
-		DrawMode(drawList, m_viewMode, incomingAlpha, slide, m_flMouseX, m_flMouseY);
+		draw_mode(t_draw_list, m_previous_mode, static_cast<u8>(255.0f * m_mode_transition), -slide);
+		draw_mode(t_draw_list, m_mode, static_cast<u8>(255.0f * (1.0f - m_mode_transition)), slide);
 	} else {
-		DrawMode(drawList, m_viewMode, 255, 0.0f, m_flMouseX, m_flMouseY);
+		draw_mode(t_draw_list, m_mode, 255, 0.0f);
 	}
 
-	if (m_nBannerCount > 0) {
-		DrawModeSwitcher(drawList);
+	if (game_count() > 0) {
+		draw_switcher(t_draw_list);
 	}
 }

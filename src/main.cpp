@@ -7,64 +7,47 @@
 #include "core/updater.h"
 
 namespace {
-/// Starts the diagnostic log on construction and stops it on destruction. Declared as the first
-/// local in main(), so reverse-order teardown destroys it last and every other destructor still
-/// has somewhere to log - which is how a worker wedged in a UI Automation call at shutdown gets
-/// recorded at all.
-class CDebugLogSession {
+class DebugLogSession {
   public:
-	CDebugLogSession()
+	DebugLogSession()
 	{
-		DebugLog::Init();
+		debug_log::init();
 	}
 
-	~CDebugLogSession()
+	~DebugLogSession()
 	{
-		DebugLog::Shutdown();
+		debug_log::shutdown();
 	}
 
-	CDebugLogSession(const CDebugLogSession &) = delete;
-	CDebugLogSession &operator=(const CDebugLogSession &) = delete;
+	DebugLogSession(const DebugLogSession &) = delete;
+	DebugLogSession &operator=(const DebugLogSession &) = delete;
 };
-} // namespace
+}
 
 int main()
 {
-	// Before literally anything else, including the crash handler - see
-	// CUpdater::RunStartupRecoveryAndMaybeExit's comment. A true return means this process
-	// has nothing further to do: it either just relaunched a repaired copy of itself, or there
-	// was nothing for it to do at all.
-	if (CUpdater::RunStartupRecoveryAndMaybeExit()) return 0;
+	if (Updater::handed_off_to_repaired_copy()) return 0;
 
-	// Everything it installs is process-wide, so this one call covers every thread this process
-	// ever creates, not just this one.
-	InstallCrashHandler();
+	install_crash_handler();
 
-	// Right after the crash handler and before anything that could hang: this is what turns "it
-	// froze" into a log naming the exact call that never returned, plus a minidump of every
-	// thread taken while it is still stuck.
-	const CDebugLogSession debugLogSession;
-	if (DebugLog::IsEnabled() && DebugLog::GetFilePath()[0] != '\0') {
-		std::println("Diagnostic log: {}", DebugLog::GetFilePath());
+	const DebugLogSession debug_log_session;
+	if (debug_log::is_enabled() && debug_log::file_path()[0] != '\0') {
+		std::println("Diagnostic log: {}", debug_log::file_path());
 	}
 
-	// Heap-allocated rather than a local: CApp holds every subsystem inline and comes to a little
-	// over 100 KB, which is a tenth of the default stack for one object. Its address has to stay
-	// put either way - the window procedure keeps a pointer to it.
-	const auto pApp = std::make_unique<CApp>();
+	const auto app = std::make_unique<App>();
 
-	switch (pApp->Init()) {
-		case CApp::EStartResult::Ok:
-			break;
-
-		case CApp::EStartResult::AlreadyRunning:
+	switch (app->start()) {
+		case App::StartResult::ok:
+			app->run();
 			return 0;
 
-		case CApp::EStartResult::Failed:
+		case App::StartResult::already_running:
+			return 0;
+
+		case App::StartResult::failed:
 			return 1;
 	}
 
-	pApp->Run();
-
-	return 0;
+	return 1;
 }

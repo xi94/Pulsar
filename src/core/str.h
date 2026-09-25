@@ -1,15 +1,23 @@
 #pragma once
 
+#include <algorithm>
 #include <cstring>
+#include <string>
 #include <string_view>
 
-/// Copies `text` into a fixed char buffer, writing at most `capacity - 1` bytes and always
-/// null-terminating. std::string_view::copy does neither, and every fixed-size field in this
-/// project is a C string.
-inline void CopyTo(std::string_view text, char *pDest, usize capacity)
+inline void copy_to(std::string_view t_text, char *t_destination, usize t_capacity)
 {
-	const usize copied = text.size() < capacity - 1 ? text.size() : capacity - 1;
+	const usize length = std::min(t_text.size(), t_capacity - 1);
 
-	std::memcpy(pDest, text.data(), copied);
-	pDest[copied] = '\0';
+	std::memcpy(t_destination, t_text.data(), length);
+	t_destination[length] = '\0';
 }
+
+template <usize Capacity>
+void copy_to(std::string_view t_text, char (&t_destination)[Capacity])
+{
+	copy_to(t_text, t_destination, Capacity);
+}
+
+std::string to_utf8(std::wstring_view t_wide);
+std::wstring to_wide(std::string_view t_utf8);

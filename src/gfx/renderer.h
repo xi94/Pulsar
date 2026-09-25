@@ -1,105 +1,135 @@
 #pragma once
 
-#include <Windows.h>
+#include <d3d11.h>
+#include <wrl/client.h>
 
 #include "core/types.h"
 
-// The seam between UI code and the graphics backend. Exactly one implementation is compiled
-// in, selected by the PULSAR_GFX_BACKEND CMake option - this interface exists for a clean
-// boundary, not for runtime polymorphism.
+class DrawList;
+class Renderer;
+class Window;
+struct DrawCommand;
 
-/// Width and Height are physical pixels, the actual swapchain size. LogicalWidth and
-/// LogicalHeight are the space every draw-list coordinate is authored in; the two differ on a
-/// DPI-scaled monitor.
-struct RendererConfig {
-	HWND Window;
-	u32 Width;
-	u32 Height;
-	float LogicalWidth;
-	float LogicalHeight;
-};
-
-/// Floating-point RGBA, for renderer-internal values only. Not named Color, which
-/// is the RGBA8 struct every widget uses - one name for both would mean a silent precision loss
-/// at every call site.
-struct ColorF {
-	float R;
-	float G;
-	float B;
-	float A;
-};
-
-/// Position is in logical pixels, origin top-left, y-down; the backend projects to NDC. Color
-/// is RGBA8 packed low byte first. Solid draws ignore U/V; textured draws sample there and
-/// multiply by Color, so a texture can be tinted or faded through vertex alpha.
-struct Vertex2D {
-	float X;
-	float Y;
-	float U;
-	float V;
-	u32 Color;
-};
-
-static_assert(sizeof(Vertex2D) == 20);
-
-/// Set once per draw-list command by whoever submits it, in the same "set the pending
-/// parameter, then submit" shape as SetEffectTime.
-struct ClipRect {
-	bool Enabled;
-	Rect Bounds;
-};
-
-class IRenderer {
+class Texture {
   public:
-	virtual ~IRenderer() = default;
+	Texture(Renderer &t_renderer, const u8 *t_rgba_pixels, u32 t_width, u32 t_height);
+	~Texture();
 
-	/// Must succeed before any other call.
-	virtual bool Init(const RendererConfig &config) = 0;
-	virtual void Shutdown() = 0;
+	Texture(const Texture &) = delete;
+	Texture &operator=(const Texture &) = delete;
 
-	/// Call after the client area changes size, including a DPI change, before the next frame.
-	virtual void Resize(u32 width, u32 height, float logicalWidth, float logicalHeight) = 0;
+	bool is_valid() const;
 
-	virtual void BeginFrame() = 0;
-	virtual void Clear(ColorF color) = 0;
-	virtual void EndFrame() = 0;
+	u32 slot() const
+	{
+		return m_slot;
+	}
 
-	/// One indexed triangle-list batch in logical-pixel screen space.
-	virtual void Draw2D(const Vertex2D *pVertices, u32 vertexCount, const u32 *pIndices, u32 indexCount) = 0;
+	u32 width() const
+	{
+		return m_width;
+	}
 
-	/// Samples pTextureHandle at each vertex's U/V, tinted by vertex color.
-	virtual void Draw2DTextured(void *pTextureHandle, const Vertex2D *pVertices, u32 vertexCount, const u32 *pIndices,
-								u32 indexCount) = 0;
+	u32 height() const
+	{
+		return m_height;
+	}
 
-	/// The animated glow around a selected carousel card. quadWidth and quadHeight are the drawn
-	/// quad's full size, cornerRadius is the card's rounding rather than the expanded quad's,
-	/// and ringWidth is the glow margin - together they let the shader build a rounded-box
-	/// distance field so the glow hugs the card's real outline.
-	virtual void Draw2DBannerGlow(const Vertex2D *pVertices, u32 vertexCount, const u32 *pIndices, u32 indexCount,
-								  float quadWidth, float quadHeight, float cornerRadius, float ringWidth) = 0;
+	float aspect() const
+	{
+		return m_height > 0 ? static_cast<float>(m_width) / static_cast<float>(m_height) : 1.0f;
+	}
 
-	/// The colour picker's saturation/value square, as a real per-pixel HSV conversion: that
-	/// gradient has a saturation-times-value cross term, and only affine functions survive
-	/// triangle-linear interpolation. Hue travels in per-vertex, in the red channel.
-	virtual void Draw2DColorPickerSv(const Vertex2D *pVertices, u32 vertexCount, const u32 *pIndices,
-									 u32 indexCount) = 0;
+  private:
+	Renderer &m_renderer;
+	u32 m_slot;
+	u32 m_width;
+	u32 m_height;
+};
 
-	/// The account modal's login ring, per-pixel rather than tessellated so the band, comet
-	/// tail, rounded caps and glow stay smooth at any size. The quad is the ring expanded by its
-	/// glow margin, the same convention Draw2DBannerGlow uses. Angles are radians, and a sweep
-	/// of at least a full turn draws a solid ring. glowStrength is 0..1 with any pulse already
-	/// baked in by the caller.
-	virtual void Draw2DCircularProgress(const Vertex2D *pVertices, u32 vertexCount, const u32 *pIndices, u32 indexCount,
-										float quadWidth, float quadHeight, float outerRadius, float innerRadius,
-										float startAngle, float sweepAngle, float glowStrength) = 0;
+class Renderer {
+  public:
+	static constexpr u32 invalid_texture_slot = 0xFFFFFFFFu;
 
-	/// Seconds since Init, read by every banner-glow draw until the next set.
-	virtual void SetEffectTime(float timeSeconds) = 0;
+	Renderer() = default;
 
-	virtual void SetClipRect(ClipRect clip) = 0;
+	Renderer(const Renderer &) = delete;
+	Renderer &operator=(const Renderer &) = delete;
 
-	/// Tightly-packed RGBA8, row-major. Only CTexture should call these; everything else owns a
-	/// CTexture rather than a raw handle.
-	virtual void *CreateTexture(const u8 *pRgbaPixels, u32 width, u32 height) = 0;
-	virtual void DestroyTexture(void *pHandle) = 0;
+	bool init(const Window &t_window);
+	void resize(const Window &t_window);
+
+	void set_effect_time(float t_seconds)
+	{
+		m_effect_time_seconds = t_seconds;
+	}
+
+	void render(const DrawList &t_draw_list, Color t_clear_color);
+
+	u32 create_texture(const u8 *t_rgba_pixels, u32 t_width, u32 t_height);
+	void destroy_texture(u32 t_slot);
+
+  private:
+	template <typename T>
+	using ComPtr = Microsoft::WRL::ComPtr<T>;
+
+	struct TextureSlot {
+		ComPtr<ID3D11Texture2D> texture;
+		ComPtr<ID3D11ShaderResourceView> view;
+	};
+
+	static constexpr u32 max_textures = 32;
+	static constexpr u32 initial_vertex_capacity = 1024;
+	static constexpr u32 initial_index_capacity = 1536;
+	static constexpr UINT msaa_sample_count = 4;
+
+	bool create_render_target_view();
+	bool create_shaders();
+	bool create_constant_buffers();
+	bool create_pipeline_states();
+	bool create_vertex_buffer(u32 t_capacity);
+	bool create_index_buffer(u32 t_capacity);
+	void set_viewport(u32 t_width, u32 t_height, float t_logical_width, float t_logical_height);
+
+	void upload_geometry(const DrawList &t_draw_list);
+	void bind_shared_state();
+	void apply_clip(const DrawCommand &t_command);
+	void draw_command(const DrawCommand &t_command);
+
+	ComPtr<ID3D11Device> m_device;
+	ComPtr<ID3D11DeviceContext> m_context;
+	ComPtr<IDXGISwapChain> m_swap_chain;
+	ComPtr<ID3D11RenderTargetView> m_render_target_view;
+
+	ComPtr<ID3D11VertexShader> m_vertex_shader;
+	ComPtr<ID3D11PixelShader> m_solid_shader;
+	ComPtr<ID3D11PixelShader> m_textured_shader;
+	ComPtr<ID3D11PixelShader> m_banner_glow_shader;
+	ComPtr<ID3D11PixelShader> m_color_picker_shader;
+	ComPtr<ID3D11PixelShader> m_circular_progress_shader;
+	ComPtr<ID3D11InputLayout> m_input_layout;
+
+	ComPtr<ID3D11Buffer> m_viewport_constants;
+	ComPtr<ID3D11Buffer> m_banner_glow_constants;
+	ComPtr<ID3D11Buffer> m_circular_progress_constants;
+
+	ComPtr<ID3D11BlendState> m_blend_state;
+	ComPtr<ID3D11RasterizerState> m_rasterizer_state;
+	ComPtr<ID3D11SamplerState> m_sampler_state;
+
+	ComPtr<ID3D11Buffer> m_vertex_buffer;
+	ComPtr<ID3D11Buffer> m_index_buffer;
+	u32 m_vertex_capacity = 0;
+	u32 m_index_capacity = 0;
+
+	TextureSlot m_textures[max_textures];
+	u32 m_free_texture_slots[max_textures]{};
+	u32 m_free_texture_count = 0;
+	u32 m_texture_high_water = 0;
+
+	u32 m_physical_width = 0;
+	u32 m_physical_height = 0;
+	float m_logical_width = 0.0f;
+	float m_logical_height = 0.0f;
+	float m_effect_time_seconds = 0.0f;
 };

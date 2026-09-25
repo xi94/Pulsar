@@ -1,302 +1,407 @@
 #include "ui/text_input.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cmath>
 #include <cstring>
+#include <optional>
 
 #include <Windows.h>
 
+#include "gfx/draw_list.h"
 #include "gfx/font.h"
-#include "ui/draw_list.h"
+#include "platform/clipboard.h"
 #include "ui/text.h"
 
 namespace {
-constexpr float kCaretBlinkPeriodSeconds = 1.0f;
-constexpr float kCaretWidth = 1.5f;
-constexpr float kTextPadding = 8.0f;
+constexpr float caret_blink_period = 1.0f;
+constexpr float caret_width = 1.5f;
+constexpr float text_padding = 8.0f;
+constexpr float highlight_inset = 4.0f;
+constexpr u8 selection_alpha = 70;
+constexpr float multi_click_slop = 4.0f;
+constexpr u32 clicks_per_cycle = 3;
 
-bool IsPrintableAscii(u32 character)
+enum class CharClass : u8 {
+	space,
+	word,
+	symbol,
+};
+
+CharClass class_of(char t_character)
 {
-	return character >= 0x20 && character <= 0x7E;
+	if (t_character == ' ') return CharClass::space;
+	if (std::isalnum(static_cast<unsigned char>(t_character)) || t_character == '_') return CharClass::word;
+
+	return CharClass::symbol;
 }
 
-// CF_TEXT rather than the wide variant, since this buffer is already plain ASCII.
-void CopyToClipboard(std::string_view text)
+bool is_printable(u32 t_character)
 {
-	if (text.empty() || !OpenClipboard(nullptr)) return;
-
-	EmptyClipboard();
-
-	const HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, static_cast<SIZE_T>(text.size()) + 1);
-	if (memory != nullptr) {
-		auto *pDestination = static_cast<char *>(GlobalLock(memory));
-		if (pDestination != nullptr) {
-			std::memcpy(pDestination, text.data(), text.size());
-			pDestination[text.size()] = '\0';
-			GlobalUnlock(memory);
-			SetClipboardData(CF_TEXT, memory);
-		}
-	}
-
-	CloseClipboard();
+	return t_character >= 0x20 && t_character <= 0x7E;
 }
 
-bool IsKeyDown(int virtualKey)
+bool is_key_down(int t_virtual_key)
 {
-	return (GetKeyState(virtualKey) & 0x8000) != 0;
-}
-} // namespace
-
-void CTextInput::Init(std::string_view initialValue)
-{
-	m_bFocused = false;
-	m_flCaretBlinkSeconds = 0.0f;
-
-	SetValue(initialValue);
+	return (GetKeyState(t_virtual_key) & 0x8000) != 0;
 }
 
-void CTextInput::SetValue(std::string_view value)
+std::optional<TextEdit> shortcut_for(u32 t_key)
 {
-	const auto length = static_cast<u32>(std::min<u64>(value.size(), kTextInputCapacity));
-	std::memcpy(m_szBuffer, value.data(), length);
-
-	m_nLength = length;
-	m_nCursor = length;
-	m_nSelectionAnchor = -1;
-}
-
-CTextInput::Range CTextInput::SelectionRange() const
-{
-	const auto anchor = static_cast<u32>(m_nSelectionAnchor);
-
-	return Range{std::min(anchor, m_nCursor), std::max(anchor, m_nCursor)};
-}
-
-void CTextInput::EraseRange(u32 start, u32 count)
-{
-	if (count == 0 || start >= m_nLength) return;
-
-	count = std::min(count, m_nLength - start);
-	std::memmove(m_szBuffer + start, m_szBuffer + start + count, m_nLength - start - count);
-
-	m_nLength -= count;
-	m_nCursor = start;
-	m_nSelectionAnchor = -1;
-}
-
-void CTextInput::DeleteSelection()
-{
-	if (!HasSelection()) return;
-
-	const Range range = SelectionRange();
-	EraseRange(range.Start, range.End - range.Start);
-}
-
-void CTextInput::InsertText(std::string_view text)
-{
-	DeleteSelection();
-
-	char accepted[kTextInputCapacity];
-	u32 acceptedCount = 0;
-
-	for (u64 i = 0; i < text.size() && m_nLength + acceptedCount < kTextInputCapacity; i += 1) {
-		const auto c = static_cast<unsigned char>(text.data()[i]);
-		if (IsPrintableAscii(c)) {
-			accepted[acceptedCount] = static_cast<char>(c);
-			acceptedCount += 1;
-		}
-	}
-
-	if (acceptedCount == 0) return;
-
-	std::memmove(m_szBuffer + m_nCursor + acceptedCount, m_szBuffer + m_nCursor, m_nLength - m_nCursor);
-	std::memcpy(m_szBuffer + m_nCursor, accepted, acceptedCount);
-
-	m_nLength += acceptedCount;
-	m_nCursor += acceptedCount;
-	m_nSelectionAnchor = -1;
-}
-
-void CTextInput::MoveCursorTo(u32 target, bool extendSelection)
-{
-	if (extendSelection) {
-		if (m_nSelectionAnchor < 0) {
-			m_nSelectionAnchor = static_cast<i32>(m_nCursor);
-		}
-	} else {
-		m_nSelectionAnchor = -1;
-	}
-
-	m_nCursor = target;
-}
-
-void CTextInput::OnChar(u32 character)
-{
-	if (!m_bFocused || !IsPrintableAscii(character)) return;
-
-	if (!HasSelection() && m_nLength >= kTextInputCapacity) return;
-
-	const char typed = static_cast<char>(character);
-	InsertText(std::string_view{&typed, 1});
-
-	// Typing keeps the caret solid rather than leaving it mid-blink.
-	m_flCaretBlinkSeconds = 0.0f;
-}
-
-void CTextInput::PasteFromClipboard()
-{
-	if (!OpenClipboard(nullptr)) return;
-
-	const HANDLE handle = GetClipboardData(CF_TEXT);
-	if (handle != nullptr) {
-		const auto *pData = static_cast<const char *>(GlobalLock(handle));
-		if (pData != nullptr) {
-			InsertText(std::string_view{pData});
-			GlobalUnlock(handle);
-		}
-	}
-
-	CloseClipboard();
-}
-
-bool CTextInput::HandleControlKey(u32 keyCode)
-{
-	switch (keyCode) {
+	switch (t_key) {
 		case 'A':
-			m_nSelectionAnchor = 0;
-			m_nCursor = m_nLength;
-			return true;
-
-		case 'E':
-			MoveCursorTo(m_nLength, false);
-			return true;
-
+			return TextEdit::select_all;
 		case 'C':
-			if (HasSelection()) {
-				const Range range = SelectionRange();
-				CopyToClipboard(std::string_view{m_szBuffer + range.Start, range.End - range.Start});
-			}
-
-			return true;
-
+			return TextEdit::copy;
 		case 'X':
-			if (HasSelection()) {
-				const Range range = SelectionRange();
-				CopyToClipboard(std::string_view{m_szBuffer + range.Start, range.End - range.Start});
-				DeleteSelection();
-			}
-
-			return true;
-
+			return TextEdit::cut;
 		case 'V':
-			PasteFromClipboard();
-			return true;
-
+			return TextEdit::paste;
 		default:
-			return false;
+			return std::nullopt;
 	}
 }
 
-void CTextInput::OnKey(u32 keyCode)
+u32 previous_word_start(std::string_view t_text, u32 t_index)
 {
-	if (!m_bFocused) return;
+	while (t_index > 0 && class_of(t_text[t_index - 1]) == CharClass::space) {
+		t_index -= 1;
+	}
 
-	if (IsKeyDown(VK_CONTROL) && HandleControlKey(keyCode)) {
-		m_flCaretBlinkSeconds = 0.0f;
+	const CharClass word = t_index > 0 ? class_of(t_text[t_index - 1]) : CharClass::space;
+	while (t_index > 0 && class_of(t_text[t_index - 1]) == word) {
+		t_index -= 1;
+	}
+
+	return t_index;
+}
+
+u32 next_word_start(std::string_view t_text, u32 t_index)
+{
+	const auto length = static_cast<u32>(t_text.size());
+
+	const CharClass word = t_index < length ? class_of(t_text[t_index]) : CharClass::space;
+	while (t_index < length && class_of(t_text[t_index]) == word) {
+		t_index += 1;
+	}
+
+	while (t_index < length && class_of(t_text[t_index]) == CharClass::space) {
+		t_index += 1;
+	}
+
+	return t_index;
+}
+
+TextRange word_at(std::string_view t_text, u32 t_index)
+{
+	if (t_text.empty()) return TextRange{0, 0};
+
+	const auto length = static_cast<u32>(t_text.size());
+	const u32 inside = std::min(t_index, length - 1);
+	const CharClass word = class_of(t_text[inside]);
+
+	TextRange range{inside, inside + 1};
+	while (range.start > 0 && class_of(t_text[range.start - 1]) == word) {
+		range.start -= 1;
+	}
+
+	while (range.end < length && class_of(t_text[range.end]) == word) {
+		range.end += 1;
+	}
+
+	return range;
+}
+}
+
+void TextInput::set_value(std::string_view t_value)
+{
+	std::memset(m_text, 0, sizeof(m_text));
+
+	m_length = static_cast<u32>(std::min<usize>(t_value.size(), m_max_length));
+	std::memcpy(m_text, t_value.data(), m_length);
+
+	move_cursor(m_length, false);
+	m_scroll_x = 0.0f;
+	restart_caret_blink();
+}
+
+void TextInput::set_max_length(u32 t_max_length)
+{
+	m_max_length = std::min(t_max_length, text_input_capacity);
+}
+
+bool TextInput::can_apply(TextEdit t_edit) const
+{
+	switch (t_edit) {
+		case TextEdit::cut:
+		case TextEdit::copy:
+			return has_selection() && !m_masked;
+		case TextEdit::paste:
+			return clipboard_has_text();
+		case TextEdit::select_all:
+			return m_length > 0;
+	}
+
+	return false;
+}
+
+void TextInput::apply(TextEdit t_edit)
+{
+	if (!can_apply(t_edit)) return;
+
+	const TextRange range = selection();
+	const std::string_view selected{m_text + range.start, range.end - range.start};
+
+	switch (t_edit) {
+		case TextEdit::cut:
+			set_clipboard_text(selected);
+			erase(range);
+			break;
+
+		case TextEdit::copy:
+			set_clipboard_text(selected);
+			break;
+
+		case TextEdit::paste:
+			insert(clipboard_text());
+			break;
+
+		case TextEdit::select_all:
+			select(TextRange{0, m_length});
+			break;
+	}
+
+	restart_caret_blink();
+}
+
+void TextInput::on_char(u32 t_character)
+{
+	if (!m_focused || !is_printable(t_character)) return;
+
+	const char typed = static_cast<char>(t_character);
+	insert(std::string_view{&typed, 1});
+	restart_caret_blink();
+}
+
+void TextInput::on_key_down(u32 t_key)
+{
+	if (!m_focused) return;
+
+	const bool control = is_key_down(VK_CONTROL);
+	const bool shift = is_key_down(VK_SHIFT);
+
+	if (const std::optional<TextEdit> edit = control ? shortcut_for(t_key) : std::nullopt) {
+		apply(*edit);
 		return;
 	}
 
-	const bool shiftDown = IsKeyDown(VK_SHIFT);
+	char mask[text_input_capacity];
+	const std::string_view shown = shown_text(mask);
+	const TextRange range = selection();
 
-	switch (keyCode) {
+	const u32 previous = control ? previous_word_start(shown, m_cursor) : (m_cursor > 0 ? m_cursor - 1 : 0);
+	const u32 next = control ? next_word_start(shown, m_cursor) : std::min(m_cursor + 1, m_length);
+	const bool collapse_selection = has_selection() && !shift;
+
+	switch (t_key) {
 		case VK_BACK:
-			if (HasSelection()) {
-				DeleteSelection();
-			} else if (m_nCursor > 0) {
-				EraseRange(m_nCursor - 1, 1);
-			} else {
-				return;
-			}
-
+			erase(has_selection() ? range : TextRange{previous, m_cursor});
 			break;
 
 		case VK_DELETE:
-			if (HasSelection()) {
-				DeleteSelection();
-			} else if (m_nCursor < m_nLength) {
-				EraseRange(m_nCursor, 1);
-			} else {
-				return;
-			}
-
+			erase(has_selection() ? range : TextRange{m_cursor, next});
 			break;
 
-		// Without shift, an active selection collapses to its edge rather than moving the
-		// cursor a further character.
-		case VK_LEFT: {
-			const u32 back = m_nCursor > 0 ? m_nCursor - 1 : 0;
-			MoveCursorTo(!shiftDown && HasSelection() ? SelectionRange().Start : back, shiftDown);
+		case VK_LEFT:
+			move_cursor(collapse_selection ? range.start : previous, shift);
 			break;
-		}
 
-		case VK_RIGHT: {
-			const u32 forward = m_nCursor < m_nLength ? m_nCursor + 1 : m_nLength;
-			MoveCursorTo(!shiftDown && HasSelection() ? SelectionRange().End : forward, shiftDown);
+		case VK_RIGHT:
+			move_cursor(collapse_selection ? range.end : next, shift);
 			break;
-		}
 
 		case VK_HOME:
-			MoveCursorTo(0, shiftDown);
+			move_cursor(0, shift);
 			break;
 
 		case VK_END:
-			MoveCursorTo(m_nLength, shiftDown);
+			move_cursor(m_length, shift);
+			break;
+
+		case 'E':
+			if (!control) return;
+
+			move_cursor(m_length, false);
 			break;
 
 		default:
 			return;
 	}
 
-	m_flCaretBlinkSeconds = 0.0f;
+	restart_caret_blink();
 }
 
-void CTextInput::Update(float deltaSeconds)
+void TextInput::on_pointer_down(const Font &t_font, Rect t_field, float t_x)
 {
-	m_flCaretBlinkSeconds += deltaSeconds;
+	const u64 now_ms = GetTickCount64();
+	const bool quick_repeat = now_ms - m_last_click_ms <= GetDoubleClickTime();
+	const bool same_spot = std::fabs(t_x - m_last_click_x) <= multi_click_slop;
 
-	if (m_flCaretBlinkSeconds > kCaretBlinkPeriodSeconds) {
-		m_flCaretBlinkSeconds -= kCaretBlinkPeriodSeconds;
+	m_click_count = quick_repeat && same_spot ? m_click_count % clicks_per_cycle + 1 : 1;
+	m_last_click_ms = now_ms;
+	m_last_click_x = t_x;
+
+	char mask[text_input_capacity];
+	const u32 index = index_at(t_font, t_field, t_x);
+
+	if (m_click_count == 1) {
+		move_cursor(index, is_key_down(VK_SHIFT));
+	} else if (m_click_count == 2) {
+		select(word_at(shown_text(mask), index));
+	} else {
+		select(TextRange{0, m_length});
+	}
+
+	m_selecting = true;
+	restart_caret_blink();
+}
+
+void TextInput::on_pointer_move(const Font &t_font, Rect t_field, float t_x)
+{
+	if (!m_selecting || m_click_count != 1) return;
+
+	m_cursor = index_at(t_font, t_field, t_x);
+	restart_caret_blink();
+}
+
+void TextInput::on_pointer_up()
+{
+	m_selecting = false;
+}
+
+void TextInput::on_right_click(const Font &t_font, Rect t_field, float t_x)
+{
+	const u32 index = index_at(t_font, t_field, t_x);
+	const TextRange range = selection();
+
+	if (index < range.start || index > range.end) {
+		move_cursor(index, false);
 	}
 }
 
-void CTextInput::Draw(CDrawList &drawList, const CFont &font, float x, float y, float w, float h, Color textColor,
-					  Color caretColor, bool masked) const
+void TextInput::update(float t_delta_seconds)
 {
-	char maskBuffer[kTextInputCapacity];
-	std::string_view value = GetValue();
+	m_caret_blink_seconds = std::fmod(m_caret_blink_seconds + t_delta_seconds, caret_blink_period);
+}
 
-	if (masked) {
-		std::memset(maskBuffer, '*', m_nLength);
-		value = std::string_view{maskBuffer, m_nLength};
+void TextInput::draw(DrawList &t_draw_list, const Font &t_font, Rect t_field, Color t_text_color, Color t_caret_color)
+{
+	char mask[text_input_capacity];
+	const std::string_view shown = shown_text(mask);
+
+	const Rect content = t_field.inset(text_padding, 0.0f);
+	const float visible_width = std::max(0.0f, content.w - caret_width);
+	const float caret_offset = text_width(t_font, shown.substr(0, m_cursor));
+
+	m_scroll_x = std::clamp(m_scroll_x, caret_offset - visible_width, caret_offset);
+	m_scroll_x = std::clamp(m_scroll_x, 0.0f, std::max(0.0f, text_width(t_font, shown) - visible_width));
+
+	const float origin_x = content.x - m_scroll_x;
+	const float highlight_y = t_field.y + highlight_inset;
+	const float highlight_height = t_field.h - highlight_inset * 2.0f;
+
+	t_draw_list.push_clip(content);
+
+	if (m_focused && has_selection()) {
+		const TextRange range = selection();
+		const float start_x = origin_x + text_width(t_font, shown.substr(0, range.start));
+		const float end_x = origin_x + text_width(t_font, shown.substr(0, range.end));
+
+		t_draw_list.add_rect(Rect{start_x, highlight_y, end_x - start_x, highlight_height},
+							 faded(t_caret_color, selection_alpha));
 	}
 
-	const float textX = x + kTextPadding;
+	draw_text(t_draw_list, t_font, Vec2{origin_x, t_font.centered_baseline(t_field)}, shown, t_text_color);
 
-	if (m_bFocused && HasSelection()) {
-		const Range range = SelectionRange();
-		const float startX = textX + TextWidth(font, std::string_view{value.data(), range.Start});
-		const float endX = textX + TextWidth(font, std::string_view{value.data(), range.End});
-
-		drawList.AddRectFilled(startX, y + 4.0f, endX - startX, h - 8.0f, ColorScaleAlpha(caretColor, 70));
+	if (m_focused && m_caret_blink_seconds < caret_blink_period * 0.5f) {
+		t_draw_list.add_rect(Rect{origin_x + caret_offset, highlight_y, caret_width, highlight_height}, t_caret_color);
 	}
 
-	// Centres the value's visual middle, not its ascent - the descent is negative, and leaving
-	// it out sits every typed value visibly low in its box.
-	const float baselineY = y + h * 0.5f + (font.GetAscent() + font.GetDescent()) * 0.5f;
-	DrawText(drawList, font, textX, baselineY, value, textColor);
+	t_draw_list.pop_clip();
+}
 
-	// Half the blink period on, half off.
-	if (!m_bFocused || m_flCaretBlinkSeconds >= kCaretBlinkPeriodSeconds * 0.5f) return;
+TextRange TextInput::selection() const
+{
+	return TextRange{std::min(m_anchor, m_cursor), std::max(m_anchor, m_cursor)};
+}
 
-	const float caretX = textX + TextWidth(font, std::string_view{value.data(), m_nCursor});
-	drawList.AddRectFilled(std::min(caretX, x + w - kCaretWidth), y + 4.0f, kCaretWidth, h - 8.0f, caretColor);
+std::string_view TextInput::shown_text(char (&t_mask)[text_input_capacity]) const
+{
+	if (!m_masked) return value();
+
+	std::memset(t_mask, '*', m_length);
+
+	return std::string_view{t_mask, m_length};
+}
+
+u32 TextInput::index_at(const Font &t_font, Rect t_field, float t_x) const
+{
+	char mask[text_input_capacity];
+	const float origin_x = t_field.x + text_padding - m_scroll_x;
+
+	return text_index_at(t_font, shown_text(mask), t_x - origin_x);
+}
+
+void TextInput::move_cursor(u32 t_index, bool t_extend_selection)
+{
+	m_cursor = t_index;
+
+	if (!t_extend_selection) {
+		m_anchor = t_index;
+	}
+}
+
+void TextInput::select(TextRange t_range)
+{
+	m_anchor = t_range.start;
+	m_cursor = t_range.end;
+}
+
+void TextInput::erase(TextRange t_range)
+{
+	const u32 removed = t_range.end - t_range.start;
+
+	std::memmove(m_text + t_range.start, m_text + t_range.end, m_length - t_range.end);
+	m_length -= removed;
+	std::memset(m_text + m_length, 0, removed);
+
+	move_cursor(t_range.start, false);
+}
+
+void TextInput::insert(std::string_view t_text)
+{
+	erase(selection());
+
+	char accepted[text_input_capacity];
+	u32 accepted_count = 0;
+
+	for (const char character : t_text) {
+		if (m_length + accepted_count >= m_max_length) break;
+
+		if (is_printable(static_cast<unsigned char>(character))) {
+			accepted[accepted_count] = character;
+			accepted_count += 1;
+		}
+	}
+
+	std::memmove(m_text + m_cursor + accepted_count, m_text + m_cursor, m_length - m_cursor);
+	std::memcpy(m_text + m_cursor, accepted, accepted_count);
+	m_length += accepted_count;
+
+	move_cursor(m_cursor + accepted_count, false);
+}
+
+void TextInput::restart_caret_blink()
+{
+	m_caret_blink_seconds = 0.0f;
 }

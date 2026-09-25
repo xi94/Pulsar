@@ -1,58 +1,53 @@
 #pragma once
 
-/// "Press somewhere, track the pointer while held, tell a click apart from a real drag" - the
-/// shared component behind the carousel's card drag, the mode-switcher thumb, the colour
-/// picker's square and the settings sliders.
-///
-/// It holds no opinion about what the drag controls: a caller begins tracking on pointer-down,
-/// feeds every move through Update, and reads the deltas back to apply whatever conversion is
-/// specific to that widget.
-class CDraggable {
+#include <cmath>
+
+#include "core/types.h"
+
+class Draggable {
   public:
-	void Begin(float x, float y);
-
-	/// Call on every pointer move while pressed. Once the pointer has travelled far enough,
-	/// HasMoved latches true for the rest of this press - which is what keeps a plain click from
-	/// being misread as a zero-length drag.
-	void Update(float x, float y);
-
-	void End();
-
-	bool IsPressed() const
+	void begin(Vec2 t_point)
 	{
-		return m_bPressed;
+		m_pressed = true;
+		m_moved = false;
+		m_start = t_point;
+		m_current = t_point;
 	}
 
-	bool HasMoved() const
+	void update(Vec2 t_point)
 	{
-		return m_bHasMoved;
+		constexpr float drag_threshold = 4.0f;
+
+		if (!m_pressed) return;
+
+		m_current = t_point;
+		m_moved = m_moved || std::hypot(m_current.x - m_start.x, m_current.y - m_start.y) > drag_threshold;
 	}
 
-	float StartX() const
+	void end()
 	{
-		return m_flStartX;
+		m_pressed = false;
+		m_moved = false;
 	}
 
-	float StartY() const
+	bool is_pressed() const
 	{
-		return m_flStartY;
+		return m_pressed;
 	}
 
-	float DeltaX() const
+	bool has_moved() const
 	{
-		return m_flCurrentX - m_flStartX;
+		return m_moved;
 	}
 
-	float DeltaY() const
+	float delta_x() const
 	{
-		return m_flCurrentY - m_flStartY;
+		return m_current.x - m_start.x;
 	}
 
   private:
-	bool m_bPressed = false;
-	bool m_bHasMoved = false;
-	float m_flStartX = 0.0f;
-	float m_flStartY = 0.0f;
-	float m_flCurrentX = 0.0f;
-	float m_flCurrentY = 0.0f;
+	bool m_pressed = false;
+	bool m_moved = false;
+	Vec2 m_start{};
+	Vec2 m_current{};
 };

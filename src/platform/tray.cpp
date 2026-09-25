@@ -1,676 +1,553 @@
 #include "platform/tray.h"
 
+#include <algorithm>
+#include <cwchar>
+#include <utility>
+
 #include <shellapi.h>
-#include <wchar.h>
 
 #include "core/app_identity.h"
 #include "core/debug_log.h"
 #include "platform/app_icon.h"
-#include "platform/resource.h"
 #include "stb/stb_image.h"
 
 namespace {
-constexpr const char *kLogCategory = "tray";
+constexpr const char *log_category = "tray";
 
-constexpr UINT kTrayCallbackMessage = WM_APP + 1;
-constexpr UINT_PTR kTrayIconId = 1;
-constexpr UINT_PTR kRetryTimerId = 1;
-constexpr UINT kRetryIntervalMs = 1000;
-constexpr u32 kMaxAddAttempts = 10;
+constexpr UINT tray_callback_message = WM_APP + 1;
+constexpr UINT_PTR tray_icon_id = 1;
+constexpr UINT_PTR add_icon_retry_timer = 1;
+constexpr UINT add_icon_retry_interval_ms = 1000;
+constexpr u32 max_add_icon_attempts = 10;
 
-constexpr UINT kMenuIdShow = 1001;
-constexpr UINT kMenuIdExit = 1002;
-constexpr UINT kMenuIdPlaceholder = 1003;
-constexpr UINT kMenuIdQuickLoginBase = 2000;
+constexpr UINT show_command = 1001;
+constexpr UINT exit_command = 1002;
+constexpr UINT placeholder_command = 1003;
+constexpr UINT first_quick_login_command = 2000;
 
-constexpr int kItemHeight = 26;
-constexpr int kSeparatorHeight = 7;
-constexpr int kPaddingX = 12;
-constexpr int kArrowWidth = 18;
-constexpr int kIconGap = 8;
-constexpr int kMinItemWidth = 170;
+constexpr int row_height = 26;
+constexpr int separator_height = 7;
+constexpr int padding_x = 12;
+constexpr int submenu_arrow_width = 18;
+constexpr int icon_gap = 8;
+constexpr int min_row_width = 170;
 
-constexpr Color kColorBg{30, 30, 34, 255};
-constexpr Color kColorText{220, 220, 224, 255};
-constexpr Color kColorTextDim{140, 140, 148, 255};
-constexpr Color kColorSeparator{60, 60, 66, 255};
+constexpr Color color_background{30, 30, 34, 255};
+constexpr Color color_text{220, 220, 224, 255};
+constexpr Color color_text_disabled{140, 140, 148, 255};
+constexpr Color color_separator{60, 60, 66, 255};
 
-// Deliberately larger than the shell would draw a small icon: this menu is owner-drawn, so its row
-// height is ours to choose, and a game icon is the only thing in a row that identifies it at a
-// glance. Scaled off the app-icon size so it tracks display scaling with everything else.
-int MenuIconSize()
+int menu_icon_size()
 {
-	constexpr int kMenuIconScaleNumerator = 3;
-	constexpr int kMenuIconScaleDenominator = 2;
-
-	return AppIconPixelSize(EAppIconSize::Small) * kMenuIconScaleNumerator / kMenuIconScaleDenominator;
+	return app_icon_pixel_size(AppIconSize::small_icon) * 3 / 2;
 }
 
-// Explorer broadcasts this after a restart; the icon has to be re-added or it is gone for the
-// rest of the session.
-UINT TaskbarCreatedMessage()
+UINT taskbar_created_message()
 {
 	static const UINT message = RegisterWindowMessageW(L"TaskbarCreated");
 
 	return message;
 }
 
-COLORREF ToColorRef(Color color)
+COLORREF to_colorref(Color t_color)
 {
-	return RGB(color.R, color.G, color.B);
+	return RGB(t_color.r, t_color.g, t_color.b);
 }
 
-void ToWide(const char *pUtf8, wchar_t *pOut, int outCapacity)
+void utf8_to_wide(const char *t_utf8, wchar_t *t_out, int t_capacity)
 {
-	if (MultiByteToWideChar(CP_UTF8, 0, pUtf8, -1, pOut, outCapacity) <= 0) {
-		pOut[0] = L'\0';
+	if (MultiByteToWideChar(CP_UTF8, 0, t_utf8, -1, t_out, t_capacity) <= 0) {
+		t_out[0] = L'\0';
 	}
 }
 
-HFONT CreateMenuFont()
-{
-	NONCLIENTMETRICSW metrics{};
-	metrics.cbSize = sizeof(metrics);
-
-	if (!SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0)) return nullptr;
-
-	return CreateFontIndirectW(&metrics.lfMenuFont);
-}
-
-struct BoxSample {
-	u32 R;
-	u32 G;
-	u32 B;
-	u32 A;
-};
-
-// Averages the source texels covering one destination pixel.
-BoxSample AverageBox(const unsigned char *pPixels, int width, int height, int x0, int x1, int y0, int y1)
-{
-	BoxSample sum{};
-	u32 samples = 0;
-
-	for (int y = y0; y < y1 && y < height; y += 1) {
-		for (int x = x0; x < x1 && x < width; x += 1) {
-			const unsigned char *pTexel = pPixels + (static_cast<usize>(y) * width + x) * 4;
-			sum.R += pTexel[0];
-			sum.G += pTexel[1];
-			sum.B += pTexel[2];
-			sum.A += pTexel[3];
-			samples += 1;
-		}
-	}
-
-	if (samples == 0) return BoxSample{};
-
-	return BoxSample{sum.R / samples, sum.G / samples, sum.B / samples, sum.A / samples};
-}
-
-// Box-filtered rather than letting AlphaBlend stretch: these icons are a few hundred pixels
-// square, and a nearest-neighbour drop to 16px looks obviously broken next to the rest of the
-// app. The result is premultiplied BGRA so AlphaBlend can draw it straight onto the menu.
-HBITMAP DecodePngToPremultipliedDib(const u8 *pBytes, u64 length, int targetSize)
+HBITMAP decode_icon_bitmap(std::span<const u8> t_png, int t_size)
 {
 	int width = 0;
 	int height = 0;
 	int channels = 0;
-	unsigned char *pPixels = stbi_load_from_memory(pBytes, static_cast<int>(length), &width, &height, &channels, 4);
-	if (pPixels == nullptr || width <= 0 || height <= 0) return nullptr;
+	u8 *pixels = stbi_load_from_memory(t_png.data(), static_cast<int>(t_png.size()), &width, &height, &channels, 4);
+	if (pixels == nullptr) return nullptr;
 
 	BITMAPINFO info{};
 	info.bmiHeader.biSize = sizeof(info.bmiHeader);
-	info.bmiHeader.biWidth = targetSize;
-	info.bmiHeader.biHeight = -targetSize; // top-down
+	info.bmiHeader.biWidth = t_size;
+	info.bmiHeader.biHeight = -t_size;
 	info.bmiHeader.biPlanes = 1;
 	info.bmiHeader.biBitCount = 32;
 	info.bmiHeader.biCompression = BI_RGB;
 
-	void *pDibBits = nullptr;
-	const HBITMAP hBitmap = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &pDibBits, nullptr, 0);
-	if (hBitmap == nullptr || pDibBits == nullptr) {
-		stbi_image_free(pPixels);
-		return nullptr;
-	}
+	void *bits = nullptr;
+	const HBITMAP bitmap = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
 
-	auto *pOut = static_cast<u8 *>(pDibBits);
+	if (bitmap != nullptr && bits != nullptr) {
+		auto *out = static_cast<u8 *>(bits);
 
-	for (int y = 0; y < targetSize; y += 1) {
-		const int srcY0 = y * height / targetSize;
-		const int srcY1 = std::max((y + 1) * height / targetSize, srcY0 + 1);
+		for (int y = 0; y < t_size; y += 1) {
+			const int source_y0 = y * height / t_size;
+			const int source_y1 = std::max((y + 1) * height / t_size, source_y0 + 1);
 
-		for (int x = 0; x < targetSize; x += 1) {
-			const int srcX0 = x * width / targetSize;
-			const int srcX1 = std::max((x + 1) * width / targetSize, srcX0 + 1);
+			for (int x = 0; x < t_size; x += 1) {
+				const int source_x0 = x * width / t_size;
+				const int source_x1 = std::max((x + 1) * width / t_size, source_x0 + 1);
 
-			const BoxSample sample = AverageBox(pPixels, width, height, srcX0, srcX1, srcY0, srcY1);
+				u32 sum[4]{};
+				u32 samples = 0;
+				for (int sy = source_y0; sy < std::min(source_y1, height); sy += 1) {
+					for (int sx = source_x0; sx < std::min(source_x1, width); sx += 1) {
+						const u8 *texel = pixels + (static_cast<usize>(sy) * width + sx) * 4;
+						for (int channel = 0; channel < 4; channel += 1) {
+							sum[channel] += texel[channel];
+						}
 
-			u8 *pDest = pOut + (static_cast<usize>(y) * targetSize + x) * 4;
-			pDest[0] = static_cast<u8>(sample.B * sample.A / 255);
-			pDest[1] = static_cast<u8>(sample.G * sample.A / 255);
-			pDest[2] = static_cast<u8>(sample.R * sample.A / 255);
-			pDest[3] = static_cast<u8>(sample.A);
+						samples += 1;
+					}
+				}
+
+				const u32 alpha = samples > 0 ? sum[3] / samples : 0;
+				const auto premultiplied = [&](int t_channel) {
+					return static_cast<u8>(samples > 0 ? sum[t_channel] / samples * alpha / 255 : 0);
+				};
+
+				u8 *destination = out + (static_cast<usize>(y) * t_size + x) * 4;
+				destination[0] = premultiplied(2);
+				destination[1] = premultiplied(1);
+				destination[2] = premultiplied(0);
+				destination[3] = static_cast<u8>(alpha);
+			}
 		}
 	}
 
-	stbi_image_free(pPixels);
+	stbi_image_free(pixels);
 
-	return hBitmap;
+	return bitmap;
+}
 }
 
-TrayMenuEntry MakeEntry(const wchar_t *pLabel, HBITMAP hIcon, bool bIndent, bool bSubmenu, bool bSeparator,
-						bool bDisabled)
+Tray::~Tray()
 {
-	TrayMenuEntry entry{};
-	entry.hIcon = hIcon;
-	entry.bIndent = bIndent;
-	entry.bSubmenu = bSubmenu;
-	entry.bSeparator = bSeparator;
-	entry.bDisabled = bDisabled;
+	remove_icon();
 
-	if (pLabel != nullptr) {
-		wcsncpy_s(entry.szLabel, pLabel, _TRUNCATE);
+	if (m_window != nullptr) {
+		KillTimer(m_window, add_icon_retry_timer);
+		DestroyWindow(m_window);
 	}
 
-	return entry;
-}
-} // namespace
-
-CTray::~CTray()
-{
-	RemoveIcon();
-
-	if (m_hWnd != nullptr) {
-		KillTimer(m_hWnd, kRetryTimerId);
-		DestroyWindow(m_hWnd);
+	if (m_owns_menu_font) {
+		DeleteObject(m_menu_font);
 	}
 
-	if (m_hMenuFont != nullptr) {
-		DeleteObject(m_hMenuFont);
-	}
+	DeleteObject(m_background_brush);
+	DeleteObject(m_hover_brush);
 
-	if (m_hBackBrush != nullptr) {
-		DeleteObject(m_hBackBrush);
-	}
-
-	if (m_hHoverBrush != nullptr) {
-		DeleteObject(m_hHoverBrush);
-	}
-
-	for (HBITMAP hIcon : m_gameIcons) {
-		if (hIcon != nullptr) {
-			DeleteObject(hIcon);
+	for (const HBITMAP icon : m_game_icons) {
+		if (icon != nullptr) {
+			DeleteObject(icon);
 		}
 	}
 }
 
-bool CTray::Create(const wchar_t *pTooltip)
+bool Tray::create(const wchar_t *t_tooltip)
 {
 	const HINSTANCE instance = GetModuleHandleW(nullptr);
 
-	WNDCLASSEXW windowClass{};
-	windowClass.cbSize = sizeof(WNDCLASSEXW);
-	windowClass.lpfnWndProc = WindowProc;
-	windowClass.hInstance = instance;
-	windowClass.lpszClassName = kTrayWindowClassName;
+	const WNDCLASSEXW window_class{
+		.cbSize = sizeof(WNDCLASSEXW),
+		.lpfnWndProc = window_proc,
+		.hInstance = instance,
+		.lpszClassName = tray_window_class_name,
+	};
 
-	if (RegisterClassExW(&windowClass) == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
-		DebugLog::Write(kLogCategory, "RegisterClassExW failed, err=%lu", GetLastError());
+	if (RegisterClassExW(&window_class) == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+		debug_log::write(log_category, "RegisterClassExW failed, err=%lu", GetLastError());
 		return false;
 	}
 
-	if (CreateWindowExW(0, kTrayWindowClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, instance, this) ==
+	if (CreateWindowExW(0, tray_window_class_name, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, instance, this) ==
 		nullptr) {
-		DebugLog::Write(kLogCategory, "failed to create the tray window, err=%lu", GetLastError());
-		m_hWnd = nullptr;
+		debug_log::write(log_category, "failed to create the tray window, err=%lu", GetLastError());
+		m_window = nullptr;
 		return false;
 	}
 
-	wcsncpy_s(m_szTooltip, pTooltip, _TRUNCATE);
+	wcsncpy_s(m_tooltip, t_tooltip, _TRUNCATE);
 
-	m_hIcon = LoadAppIcon(EAppIconSize::Small);
-	if (m_hIcon == nullptr) {
-		m_hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+	m_icon = load_app_icon(AppIconSize::small_icon);
+	if (m_icon == nullptr) {
+		m_icon = LoadIconW(nullptr, IDI_APPLICATION);
 	}
 
-	m_hMenuFont = CreateMenuFont();
-	if (m_hMenuFont == nullptr) {
-		m_hMenuFont = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+	NONCLIENTMETRICSW metrics{.cbSize = sizeof(NONCLIENTMETRICSW)};
+	if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0)) {
+		m_menu_font = CreateFontIndirectW(&metrics.lfMenuFont);
+		m_owns_menu_font = m_menu_font != nullptr;
 	}
 
-	RebuildBrushes();
-	AddIcon();
+	if (m_menu_font == nullptr) {
+		m_menu_font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+	}
+
+	rebuild_brushes();
+	add_icon();
 
 	return true;
 }
 
-void CTray::SetMenuCallback(TrayMenuCallback callback, void *pUserData)
+void Tray::on_menu_open(std::function<void(TrayMenu &)> t_fill_menu)
 {
-	m_pMenuCallback = callback;
-	m_pMenuCallbackUserData = pUserData;
+	m_fill_menu = std::move(t_fill_menu);
 }
 
-ETrayEventType CTray::TakeEvent()
+TrayEvent Tray::take_event()
 {
-	const ETrayEventType event = m_pendingEvent;
-	m_pendingEvent = ETrayEventType::None;
-
-	return event;
+	return std::exchange(m_pending_event, TrayEvent{});
 }
 
-void CTray::RebuildBrushes()
+void Tray::rebuild_brushes()
 {
-	if (m_hBackBrush != nullptr) {
-		DeleteObject(m_hBackBrush);
-	}
+	DeleteObject(m_background_brush);
+	DeleteObject(m_hover_brush);
 
-	if (m_hHoverBrush != nullptr) {
-		DeleteObject(m_hHoverBrush);
-	}
-
-	m_hBackBrush = CreateSolidBrush(ToColorRef(kColorBg));
-	m_hHoverBrush = CreateSolidBrush(ToColorRef(ColorLerp(kColorBg, m_accent, 0.42f)));
+	m_background_brush = CreateSolidBrush(to_colorref(color_background));
+	m_hover_brush = CreateSolidBrush(to_colorref(mix(color_background, m_accent, 0.42f)));
 }
 
-void CTray::SetAccentColor(Color accent)
+void Tray::set_accent(Color t_accent)
 {
-	if (accent.R == m_accent.R && accent.G == m_accent.G && accent.B == m_accent.B) return;
+	if (t_accent.r == m_accent.r && t_accent.g == m_accent.g && t_accent.b == m_accent.b) return;
 
-	m_accent = accent;
-	RebuildBrushes();
+	m_accent = t_accent;
+	rebuild_brushes();
 }
 
-// Only the bytes are kept here. Decoding all of them at startup cost more than the tray menu is
-// worth, given most launches never open it, so the actual decode happens on first use.
-void CTray::SetGameIcon(i32 bannerIndex, const u8 *pPngBytes, u64 length)
+void Tray::set_game_icon(u32 t_game, std::span<const u8> t_png)
 {
-	if (bannerIndex < 0 || static_cast<u32>(bannerIndex) >= kTrayMaxGames || pPngBytes == nullptr) return;
+	if (t_game >= tray_max_games) return;
 
-	m_gameIconSources[bannerIndex] = EmbeddedImageBytes{pPngBytes, length};
+	m_game_icon_sources[t_game] = t_png;
 
-	if (m_gameIcons[bannerIndex] != nullptr) {
-		DeleteObject(m_gameIcons[bannerIndex]);
-		m_gameIcons[bannerIndex] = nullptr;
+	if (m_game_icons[t_game] != nullptr) {
+		DeleteObject(m_game_icons[t_game]);
+		m_game_icons[t_game] = nullptr;
 	}
 }
 
-// Decoded once, the first time a menu that shows it is actually built.
-HBITMAP CTray::GameIcon(i32 bannerIndex)
+HBITMAP Tray::game_icon(i32 t_game)
 {
-	if (bannerIndex < 0 || static_cast<u32>(bannerIndex) >= kTrayMaxGames) return nullptr;
+	if (t_game < 0 || static_cast<u32>(t_game) >= tray_max_games) return nullptr;
 
-	if (m_gameIcons[bannerIndex] == nullptr && m_gameIconSources[bannerIndex].pBytes != nullptr) {
-		m_gameIcons[bannerIndex] = DecodePngToPremultipliedDib(m_gameIconSources[bannerIndex].pBytes,
-															   m_gameIconSources[bannerIndex].Length, MenuIconSize());
+	HBITMAP &icon = m_game_icons[t_game];
+	if (icon == nullptr && !m_game_icon_sources[t_game].empty()) {
+		icon = decode_icon_bitmap(m_game_icon_sources[t_game], menu_icon_size());
 	}
 
-	return m_gameIcons[bannerIndex];
+	return icon;
 }
 
-TrayMenuEntry *CTray::PushEntry(const TrayMenuEntry &entry)
+void Tray::append_row(HMENU t_menu, UINT t_flags, UINT_PTR t_id, const MenuRow &t_row)
 {
-	if (m_entryCount >= kTrayMaxMenuEntries) return nullptr;
+	if (m_row_count >= max_menu_rows) return;
 
-	m_entries[m_entryCount] = entry;
-	m_entryCount += 1;
+	MenuRow &stored = m_rows[m_row_count];
+	stored = t_row;
+	m_row_count += 1;
 
-	return &m_entries[m_entryCount - 1];
+	AppendMenuW(t_menu, t_flags | MF_OWNERDRAW, t_id, reinterpret_cast<LPCWSTR>(&stored));
 }
 
-void CTray::AppendRow(HMENU target, UINT flags, UINT_PTR id, const TrayMenuEntry &entry)
-{
-	const TrayMenuEntry *pStored = PushEntry(entry);
-	if (pStored == nullptr) return;
-
-	AppendMenuW(target, flags | MF_OWNERDRAW, id, reinterpret_cast<LPCWSTR>(pStored));
-}
-
-void CTray::AppendCommand(HMENU target, UINT_PTR id, const wchar_t *pLabel, bool bIndent)
-{
-	AppendRow(target, MF_STRING, id, MakeEntry(pLabel, nullptr, bIndent, false, false, false));
-}
-
-void CTray::AppendSubmenu(HMENU target, HMENU submenu, const wchar_t *pLabel, HBITMAP hIcon)
-{
-	AppendRow(target, MF_POPUP, reinterpret_cast<UINT_PTR>(submenu),
-			  MakeEntry(pLabel, hIcon, true, true, false, false));
-}
-
-void CTray::AppendPlaceholder(HMENU target, const wchar_t *pLabel, bool bIndent)
-{
-	AppendRow(target, MF_DISABLED | MF_GRAYED, kMenuIdPlaceholder,
-			  MakeEntry(pLabel, nullptr, bIndent, false, false, true));
-}
-
-void CTray::AppendSeparator(HMENU target)
-{
-	AppendRow(target, MF_DISABLED | MF_GRAYED, 0, MakeEntry(L"", nullptr, false, false, true, true));
-}
-
-HMENU CTray::BuildGameSubmenu(const TrayGameItem &game)
+HMENU Tray::build_game_submenu(const TrayGame &t_game)
 {
 	const HMENU submenu = CreatePopupMenu();
 
-	for (u32 i = 0; i < game.AccountCount; i += 1) {
-		const u32 accountIndex = game.FirstAccount + i;
-		if (accountIndex >= m_model.AccountCount) break;
+	for (u32 i = 0; i < t_game.account_count; i += 1) {
+		const u32 account = t_game.first_account + i;
+		if (account >= m_menu.account_count) break;
 
-		wchar_t label[96];
-		ToWide(m_model.Accounts[accountIndex].Label, label, ARRAYSIZE(label));
-		AppendCommand(submenu, kMenuIdQuickLoginBase + accountIndex, label, false);
+		MenuRow row{};
+		utf8_to_wide(m_menu.accounts[account].label, row.label, ARRAYSIZE(row.label));
+		append_row(submenu, MF_STRING, first_quick_login_command + account, row);
 	}
 
-	if (game.AccountCount == 0) {
-		AppendPlaceholder(submenu, L"No accounts", false);
+	if (t_game.account_count == 0) {
+		append_row(submenu, MF_DISABLED | MF_GRAYED, placeholder_command,
+				   MenuRow{.label = L"No accounts", .disabled = true});
 	}
 
 	return submenu;
 }
 
-HMENU CTray::BuildMenu()
+HMENU Tray::build_menu()
 {
 	const HMENU menu = CreatePopupMenu();
 
-	for (u32 i = 0; i < m_model.GameCount; i += 1) {
-		const TrayGameItem &game = m_model.Games[i];
+	for (const TrayGame &game : std::span{m_menu.games, m_menu.game_count}) {
+		MenuRow row{.icon = game_icon(game.game), .indented = true, .submenu = true};
+		utf8_to_wide(game.title, row.label, ARRAYSIZE(row.label));
 
-		wchar_t title[96];
-		ToWide(game.Title, title, ARRAYSIZE(title));
-
-		AppendSubmenu(menu, BuildGameSubmenu(game), title, GameIcon(game.BannerIndex));
+		append_row(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(build_game_submenu(game)), row);
 	}
 
-	if (m_model.GameCount == 0) {
-		AppendPlaceholder(menu, L"No games", true);
+	if (m_menu.game_count == 0) {
+		append_row(menu, MF_DISABLED | MF_GRAYED, placeholder_command,
+				   MenuRow{.label = L"No games", .indented = true, .disabled = true});
 	}
 
-	AppendSeparator(menu);
-	AppendCommand(menu, kMenuIdShow, L"Show Application", true);
-	AppendCommand(menu, kMenuIdExit, L"Exit Application", true);
+	append_row(menu, MF_DISABLED | MF_GRAYED, 0, MenuRow{.separator = true, .disabled = true});
+	append_row(menu, MF_STRING, show_command, MenuRow{.label = L"Show Application", .indented = true});
+	append_row(menu, MF_STRING, exit_command, MenuRow{.label = L"Exit Application", .indented = true});
 
-	// MIM_APPLYTOSUBMENUS only reaches submenus that already exist, so this runs last.
-	MENUINFO menuInfo{};
-	menuInfo.cbSize = sizeof(menuInfo);
-	menuInfo.fMask = MIM_BACKGROUND | MIM_APPLYTOSUBMENUS;
-	menuInfo.hbrBack = m_hBackBrush;
-	SetMenuInfo(menu, &menuInfo);
+	const MENUINFO menu_info{
+		.cbSize = sizeof(MENUINFO),
+		.fMask = MIM_BACKGROUND | MIM_APPLYTOSUBMENUS,
+		.hbrBack = m_background_brush,
+	};
+	SetMenuInfo(menu, &menu_info);
 
 	return menu;
 }
 
-void CTray::ShowContextMenu()
+void Tray::show_menu()
 {
 	POINT cursor;
 	GetCursorPos(&cursor);
 
-	m_model = TrayMenuModel{};
-	if (m_pMenuCallback != nullptr) {
-		m_pMenuCallback(m_pMenuCallbackUserData, m_model);
+	m_menu = TrayMenu{};
+	if (m_fill_menu) {
+		m_fill_menu(m_menu);
 	}
 
-	m_entryCount = 0;
-	const HMENU menu = BuildMenu();
+	m_row_count = 0;
+	const HMENU menu = build_menu();
 
-	// Required so the menu dismisses when the user clicks away from it.
-	SetForegroundWindow(m_hWnd);
+	// Without foreground, the menu does not dismiss when the user clicks elsewhere.
+	SetForegroundWindow(m_window);
 
-	// TPM_WORKAREA keeps the menu off the taskbar: by default Windows only flips a menu up when
-	// it would not fit on the monitor, so one that fits on screen but not above the taskbar gets
-	// drawn underneath it. It is only honoured by TrackPopupMenuEx with a TPMPARAMS, and
-	// rcExclude is degenerate at the cursor - an all-zero rect names the screen's top-left.
-	TPMPARAMS popupParams{};
-	popupParams.cbSize = sizeof(popupParams);
-	popupParams.rcExclude = RECT{cursor.x, cursor.y, cursor.x, cursor.y};
-
-	TrackPopupMenuEx(menu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON | TPM_WORKAREA, cursor.x, cursor.y, m_hWnd,
-					 &popupParams);
-	PostMessageW(m_hWnd, WM_NULL, 0, 0);
+	TPMPARAMS placement{.cbSize = sizeof(TPMPARAMS), .rcExclude = RECT{cursor.x, cursor.y, cursor.x, cursor.y}};
+	TrackPopupMenuEx(menu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON | TPM_WORKAREA, cursor.x, cursor.y, m_window,
+					 &placement);
+	PostMessageW(m_window, WM_NULL, 0, 0);
 
 	DestroyMenu(menu);
-	m_entryCount = 0;
+	m_row_count = 0;
 }
 
-void CTray::OnMeasureItem(MEASUREITEMSTRUCT *pMeasure) const
+void Tray::measure_row(MEASUREITEMSTRUCT &t_measure) const
 {
-	const auto *pEntry = reinterpret_cast<const TrayMenuEntry *>(pMeasure->itemData);
-	if (pEntry == nullptr) return;
+	const auto &row = *reinterpret_cast<const MenuRow *>(t_measure.itemData);
 
-	if (pEntry->bSeparator) {
-		pMeasure->itemWidth = kMinItemWidth;
-		pMeasure->itemHeight = kSeparatorHeight;
+	if (row.separator) {
+		t_measure.itemWidth = min_row_width;
+		t_measure.itemHeight = separator_height;
 		return;
 	}
 
-	int textWidth = 0;
-	const HDC hdc = GetDC(m_hWnd);
-	if (hdc != nullptr) {
-		const HGDIOBJ previousFont = SelectObject(hdc, m_hMenuFont);
-
-		SIZE size{};
-		if (GetTextExtentPoint32W(hdc, pEntry->szLabel, static_cast<int>(wcslen(pEntry->szLabel)), &size)) {
-			textWidth = size.cx;
-		}
-
-		SelectObject(hdc, previousFont);
-		ReleaseDC(m_hWnd, hdc);
+	SIZE text_size{};
+	if (const HDC dc = GetDC(m_window)) {
+		const HGDIOBJ previous_font = SelectObject(dc, m_menu_font);
+		GetTextExtentPoint32W(dc, row.label, static_cast<int>(wcslen(row.label)), &text_size);
+		SelectObject(dc, previous_font);
+		ReleaseDC(m_window, dc);
 	}
 
-	const int indent = pEntry->bIndent ? MenuIconSize() + kIconGap : 0;
-	const int width = kPaddingX * 2 + indent + textWidth + (pEntry->bSubmenu ? kArrowWidth : 0);
+	const int indent = row.indented ? menu_icon_size() + icon_gap : 0;
+	const int width = padding_x * 2 + indent + text_size.cx + (row.submenu ? submenu_arrow_width : 0);
 
-	pMeasure->itemWidth = static_cast<UINT>(width > kMinItemWidth ? width : kMinItemWidth);
-	pMeasure->itemHeight = kItemHeight;
+	t_measure.itemWidth = static_cast<UINT>(std::max(width, min_row_width));
+	t_measure.itemHeight = row_height;
 }
 
-void CTray::OnDrawItem(const DRAWITEMSTRUCT *pDraw) const
+void Tray::draw_row(const DRAWITEMSTRUCT &t_draw) const
 {
-	const auto *pEntry = reinterpret_cast<const TrayMenuEntry *>(pDraw->itemData);
-	if (pEntry == nullptr) return;
+	const auto &row = *reinterpret_cast<const MenuRow *>(t_draw.itemData);
+	const HDC dc = t_draw.hDC;
+	const RECT rect = t_draw.rcItem;
+	const int middle_y = (rect.top + rect.bottom) / 2;
 
-	RECT rect = pDraw->rcItem;
-	const bool bSelected = (pDraw->itemState & ODS_SELECTED) != 0 && !pEntry->bSeparator && !pEntry->bDisabled;
-	FillRect(pDraw->hDC, &rect, bSelected ? m_hHoverBrush : m_hBackBrush);
+	const bool hovered = (t_draw.itemState & ODS_SELECTED) != 0 && !row.separator && !row.disabled;
+	FillRect(dc, &rect, hovered ? m_hover_brush : m_background_brush);
 
-	if (pEntry->bSeparator) {
-		const int middle = (rect.top + rect.bottom) / 2;
-		RECT line{rect.left + kPaddingX, middle, rect.right - kPaddingX, middle + 1};
-
-		const HBRUSH hBrush = CreateSolidBrush(ToColorRef(kColorSeparator));
-		FillRect(pDraw->hDC, &line, hBrush);
-		DeleteObject(hBrush);
-
+	if (row.separator) {
+		const RECT line{rect.left + padding_x, middle_y, rect.right - padding_x, middle_y + 1};
+		const HBRUSH brush = CreateSolidBrush(to_colorref(color_separator));
+		FillRect(dc, &line, brush);
+		DeleteObject(brush);
 		return;
 	}
 
-	const int iconSize = MenuIconSize();
+	const int icon_size = menu_icon_size();
 
-	if (pEntry->hIcon != nullptr) {
-		const HDC hdcMem = CreateCompatibleDC(pDraw->hDC);
-		if (hdcMem != nullptr) {
-			const HGDIOBJ previousBitmap = SelectObject(hdcMem, pEntry->hIcon);
+	if (row.icon != nullptr) {
+		if (const HDC memory_dc = CreateCompatibleDC(dc)) {
+			const HGDIOBJ previous_bitmap = SelectObject(memory_dc, row.icon);
 			const BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
 
-			AlphaBlend(pDraw->hDC, rect.left + kPaddingX, (rect.top + rect.bottom - iconSize) / 2, iconSize, iconSize,
-					   hdcMem, 0, 0, iconSize, iconSize, blend);
+			AlphaBlend(dc, rect.left + padding_x, middle_y - icon_size / 2, icon_size, icon_size, memory_dc, 0, 0,
+					   icon_size, icon_size, blend);
 
-			SelectObject(hdcMem, previousBitmap);
-			DeleteDC(hdcMem);
+			SelectObject(memory_dc, previous_bitmap);
+			DeleteDC(memory_dc);
 		}
 	}
 
-	SetBkMode(pDraw->hDC, TRANSPARENT);
-	SetTextColor(pDraw->hDC, ToColorRef(pEntry->bDisabled ? kColorTextDim : kColorText));
-	const HGDIOBJ previousFont = SelectObject(pDraw->hDC, m_hMenuFont);
+	const Color text_color = row.disabled ? color_text_disabled : color_text;
+	SetBkMode(dc, TRANSPARENT);
+	SetTextColor(dc, to_colorref(text_color));
+	const HGDIOBJ previous_font = SelectObject(dc, m_menu_font);
 
-	const int indent = pEntry->bIndent ? iconSize + kIconGap : 0;
-	RECT textRect{rect.left + kPaddingX + indent, rect.top, rect.right - kPaddingX, rect.bottom};
-	DrawTextW(pDraw->hDC, pEntry->szLabel, -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+	const int indent = row.indented ? icon_size + icon_gap : 0;
+	RECT text_rect{rect.left + padding_x + indent, rect.top, rect.right - padding_x, rect.bottom};
+	DrawTextW(dc, row.label, -1, &text_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 
-	if (pEntry->bSubmenu) {
-		const int cx = rect.right - kPaddingX - 4;
-		const int cy = (rect.top + rect.bottom) / 2;
-		const POINT arrow[3]{{cx - 4, cy - 4}, {cx, cy}, {cx - 4, cy + 4}};
+	if (row.submenu) {
+		const int tip_x = rect.right - padding_x - 4;
+		const POINT arrow[3]{{tip_x - 4, middle_y - 4}, {tip_x, middle_y}, {tip_x - 4, middle_y + 4}};
 
-		const HBRUSH hBrush = CreateSolidBrush(ToColorRef(pEntry->bDisabled ? kColorTextDim : kColorText));
-		const HGDIOBJ previousBrush = SelectObject(pDraw->hDC, hBrush);
-		const HGDIOBJ previousPen = SelectObject(pDraw->hDC, GetStockObject(NULL_PEN));
+		const HBRUSH brush = CreateSolidBrush(to_colorref(text_color));
+		const HGDIOBJ previous_brush = SelectObject(dc, brush);
+		const HGDIOBJ previous_pen = SelectObject(dc, GetStockObject(NULL_PEN));
 
-		Polygon(pDraw->hDC, arrow, 3);
+		Polygon(dc, arrow, 3);
 
-		SelectObject(pDraw->hDC, previousPen);
-		SelectObject(pDraw->hDC, previousBrush);
-		DeleteObject(hBrush);
+		SelectObject(dc, previous_pen);
+		SelectObject(dc, previous_brush);
+		DeleteObject(brush);
 	}
 
-	SelectObject(pDraw->hDC, previousFont);
+	SelectObject(dc, previous_font);
 }
 
-bool CTray::AddIcon()
+bool Tray::add_icon()
 {
-	if (m_bIconAdded) return true;
+	if (m_icon_added) return true;
 
-	NOTIFYICONDATAW iconData{};
-	iconData.cbSize = sizeof(NOTIFYICONDATAW);
-	iconData.hWnd = m_hWnd;
-	iconData.uID = kTrayIconId;
-	iconData.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
-	iconData.uCallbackMessage = kTrayCallbackMessage;
-	iconData.hIcon = m_hIcon;
-	wcsncpy_s(iconData.szTip, m_szTooltip, _TRUNCATE);
+	NOTIFYICONDATAW icon{
+		.cbSize = sizeof(NOTIFYICONDATAW),
+		.hWnd = m_window,
+		.uID = tray_icon_id,
+		.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP,
+		.uCallbackMessage = tray_callback_message,
+		.hIcon = m_icon,
+	};
+	wcsncpy_s(icon.szTip, m_tooltip, _TRUNCATE);
 
-	m_addAttempts += 1;
+	m_add_attempts += 1;
 
-	if (Shell_NotifyIconW(NIM_ADD, &iconData) == TRUE) {
-		m_bIconAdded = true;
-		KillTimer(m_hWnd, kRetryTimerId);
-		DebugLog::Write(kLogCategory, "tray icon added on attempt %u", m_addAttempts);
-
+	if (Shell_NotifyIconW(NIM_ADD, &icon)) {
+		m_icon_added = true;
+		KillTimer(m_window, add_icon_retry_timer);
+		debug_log::write(log_category, "tray icon added on attempt %u", m_add_attempts);
 		return true;
 	}
 
-	// This legitimately fails while the shell is still starting up, so it is a retry rather
-	// than an error until the attempts run out.
-	DebugLog::Write(kLogCategory, "Shell_NotifyIcon(NIM_ADD) failed on attempt %u, err=%lu", m_addAttempts,
-					GetLastError());
+	debug_log::write(log_category, "Shell_NotifyIcon(NIM_ADD) failed on attempt %u, err=%lu", m_add_attempts,
+					 GetLastError());
 
-	if (m_addAttempts < kMaxAddAttempts) {
-		SetTimer(m_hWnd, kRetryTimerId, kRetryIntervalMs, nullptr);
+	if (m_add_attempts < max_add_icon_attempts) {
+		SetTimer(m_window, add_icon_retry_timer, add_icon_retry_interval_ms, nullptr);
 	} else {
-		KillTimer(m_hWnd, kRetryTimerId);
-		DebugLog::Write(kLogCategory, "giving up on the tray icon after %u attempts", m_addAttempts);
+		KillTimer(m_window, add_icon_retry_timer);
+		debug_log::write(log_category, "giving up on the tray icon after %u attempts", m_add_attempts);
 	}
 
 	return false;
 }
 
-void CTray::RemoveIcon()
+void Tray::remove_icon()
 {
-	if (!m_bIconAdded) return;
+	if (!m_icon_added) return;
 
-	NOTIFYICONDATAW iconData{};
-	iconData.cbSize = sizeof(NOTIFYICONDATAW);
-	iconData.hWnd = m_hWnd;
-	iconData.uID = kTrayIconId;
-
-	Shell_NotifyIconW(NIM_DELETE, &iconData);
-	m_bIconAdded = false;
+	NOTIFYICONDATAW icon{.cbSize = sizeof(NOTIFYICONDATAW), .hWnd = m_window, .uID = tray_icon_id};
+	Shell_NotifyIconW(NIM_DELETE, &icon);
+	m_icon_added = false;
 }
 
-void CTray::HandleCommand(UINT commandId)
+void Tray::handle_command(UINT t_command)
 {
-	if (commandId == kMenuIdShow) {
-		m_pendingEvent = ETrayEventType::ShowWindow;
+	if (t_command == show_command) {
+		m_pending_event = TrayEvent{.type = TrayEventType::show_window};
 		return;
 	}
 
-	if (commandId == kMenuIdExit) {
-		m_pendingEvent = ETrayEventType::ExitRequested;
+	if (t_command == exit_command) {
+		m_pending_event = TrayEvent{.type = TrayEventType::exit};
 		return;
 	}
 
-	if (commandId < kMenuIdQuickLoginBase || commandId >= kMenuIdQuickLoginBase + kTrayMaxAccountItems) return;
+	const UINT account = t_command - first_quick_login_command;
+	if (t_command < first_quick_login_command || account >= m_menu.account_count) return;
 
-	const UINT index = commandId - kMenuIdQuickLoginBase;
-	if (index >= m_model.AccountCount) return;
-
-	m_pendingEvent = ETrayEventType::QuickLogin;
-	m_nPendingBannerIndex = m_model.Accounts[index].BannerIndex;
-	m_nPendingAccountIndex = m_model.Accounts[index].QueryIndex;
+	m_pending_event = TrayEvent{
+		.type = TrayEventType::quick_login,
+		.game = m_menu.accounts[account].game,
+		.row = m_menu.accounts[account].row,
+	};
 }
 
-LRESULT CTray::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
+LRESULT Tray::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 {
-	if (message == TaskbarCreatedMessage()) {
-		DebugLog::Write(kLogCategory, "Explorer restarted - re-adding the tray icon");
-		m_bIconAdded = false;
-		m_addAttempts = 0;
-		AddIcon();
-
+	if (t_message == taskbar_created_message()) {
+		debug_log::write(log_category, "Explorer restarted - re-adding the tray icon");
+		m_icon_added = false;
+		m_add_attempts = 0;
+		add_icon();
 		return 0;
 	}
 
-	switch (message) {
-		case kTrayCallbackMessage: {
-			const auto mouseMessage = static_cast<UINT>(LOWORD(lParam));
-
-			if (mouseMessage == WM_LBUTTONUP) {
-				m_pendingEvent = ETrayEventType::ShowWindow;
-			} else if (mouseMessage == WM_RBUTTONUP || mouseMessage == WM_CONTEXTMENU) {
-				ShowContextMenu();
+	switch (t_message) {
+		case tray_callback_message:
+			if (LOWORD(t_lparam) == WM_LBUTTONUP) {
+				m_pending_event = TrayEvent{.type = TrayEventType::show_window};
+			} else if (LOWORD(t_lparam) == WM_RBUTTONUP || LOWORD(t_lparam) == WM_CONTEXTMENU) {
+				show_menu();
 			}
 
 			return 0;
-		}
 
 		case WM_TIMER:
-			if (wParam == kRetryTimerId) {
-				AddIcon();
+			if (t_wparam == add_icon_retry_timer) {
+				add_icon();
 			}
 
 			return 0;
 
 		case WM_MEASUREITEM: {
-			auto *pMeasure = reinterpret_cast<MEASUREITEMSTRUCT *>(lParam);
-			if (pMeasure == nullptr || pMeasure->CtlType != ODT_MENU) break;
+			auto &measure = *reinterpret_cast<MEASUREITEMSTRUCT *>(t_lparam);
+			if (measure.CtlType != ODT_MENU || measure.itemData == 0) break;
 
-			OnMeasureItem(pMeasure);
-
+			measure_row(measure);
 			return TRUE;
 		}
 
 		case WM_DRAWITEM: {
-			const auto *pDraw = reinterpret_cast<const DRAWITEMSTRUCT *>(lParam);
-			if (pDraw == nullptr || pDraw->CtlType != ODT_MENU) break;
+			const auto &draw = *reinterpret_cast<const DRAWITEMSTRUCT *>(t_lparam);
+			if (draw.CtlType != ODT_MENU || draw.itemData == 0) break;
 
-			OnDrawItem(pDraw);
-
+			draw_row(draw);
 			return TRUE;
 		}
 
 		case WM_COMMAND:
-			HandleCommand(LOWORD(wParam));
+			handle_command(LOWORD(t_wparam));
 			return 0;
 
 		default:
 			break;
 	}
 
-	return DefWindowProcW(m_hWnd, message, wParam, lParam);
+	return DefWindowProcW(m_window, t_message, t_wparam, t_lparam);
 }
 
-LRESULT CALLBACK CTray::WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK Tray::window_proc(HWND t_window, UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 {
-	if (message == WM_NCCREATE) {
-		const auto *pCreate = reinterpret_cast<const CREATESTRUCTW *>(lParam);
-		SetWindowLongPtrW(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pCreate->lpCreateParams));
+	if (t_message == WM_NCCREATE) {
+		const auto &create = *reinterpret_cast<const CREATESTRUCTW *>(t_lparam);
+		SetWindowLongPtrW(t_window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create.lpCreateParams));
 	}
 
-	auto *pTray = reinterpret_cast<CTray *>(GetWindowLongPtrW(hWnd, GWLP_USERDATA));
-	if (pTray == nullptr) return DefWindowProcW(hWnd, message, wParam, lParam);
+	auto *tray = reinterpret_cast<Tray *>(GetWindowLongPtrW(t_window, GWLP_USERDATA));
+	if (tray == nullptr) return DefWindowProcW(t_window, t_message, t_wparam, t_lparam);
 
-	// Assigned before dispatching, not after CreateWindowExW returns: HandleMessage passes this
-	// to DefWindowProcW, and WM_NCCREATE arrives while creation is still in flight - a null
-	// handle there makes DefWindowProcW return 0, which aborts the whole creation.
-	pTray->m_hWnd = hWnd;
+	tray->m_window = t_window;
 
-	return pTray->HandleMessage(message, wParam, lParam);
+	return tray->handle_message(t_message, t_wparam, t_lparam);
 }

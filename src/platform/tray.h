@@ -1,162 +1,119 @@
 #pragma once
 
+#include <functional>
+#include <span>
+
 #include <Windows.h>
 
 #include "core/types.h"
-#include "gfx/asset_manager.h"
 
-// A tray icon backed by a hidden message-only window, sharing the main window's thread and
-// message pump - the frame loop just calls TakeEvent after pumping to see what happened.
-//
-// The context menu is owner-drawn to match the app's palette: every game with its icon and a
-// submenu of the accounts visible under it, then a separator, then Show and Exit. It is
-// rebuilt from the live carousel every time it opens, so account edits show up immediately
-// with nothing to invalidate.
-
-enum class ETrayEventType : u8 {
-	None,
-	ShowWindow,
-	ExitRequested,
-	QuickLogin, // GetPendingBannerIndex and GetPendingAccountIndex identify the account
+enum class TrayEventType : u8 {
+	none,
+	show_window,
+	exit,
+	quick_login,
 };
 
-constexpr u32 kTrayMaxGames = 16;
-constexpr u32 kTrayMaxAccountItems = 256;
-
-struct TrayGameItem {
-	char Title[64];
-	i32 BannerIndex;
-	u32 FirstAccount; // index into TrayMenuModel::Accounts
-	u32 AccountCount;
+struct TrayEvent {
+	TrayEventType type = TrayEventType::none;
+	i32 game = -1;
+	i32 row = -1;
 };
 
-/// BannerIndex is the game this row is listed under and QueryIndex is its position within that
-/// banner's visible-account query - not the owning banner and a raw account index. That pairing
-/// is what makes a cross-visible account log into the game the user actually picked it under.
-struct TrayAccountItem {
-	/// The account's note when it has one, otherwise its username. The note is the name a
-	/// person actually gave the account, so it identifies the row better than a login does, and
-	/// the fallback means a row is never blank.
-	char Label[64];
-	i32 BannerIndex;
-	i32 QueryIndex;
+constexpr u32 tray_max_games = 16;
+constexpr u32 tray_max_accounts = 256;
+
+struct TrayGame {
+	char title[64];
+	i32 game;
+	u32 first_account;
+	u32 account_count;
 };
 
-struct TrayMenuModel {
-	TrayGameItem Games[kTrayMaxGames];
-	u32 GameCount;
-	TrayAccountItem Accounts[kTrayMaxAccountItems];
-	u32 AccountCount;
+struct TrayAccount {
+	char label[64];
+	i32 game;
+	i32 row;
 };
 
-/// Fills the model for one menu open. Called synchronously from inside the menu handler,
-/// because TrackPopupMenu blocks the frame loop's thread for as long as the menu is open and
-/// nothing polled once per frame could answer in time. Read-only.
-using TrayMenuCallback = void (*)(void *pUserData, TrayMenuModel &outModel);
-
-/// One owner-drawn row. Lives in CTray for the duration of one menu; the pointer is what the
-/// menu item carries as its data.
-struct TrayMenuEntry {
-	wchar_t szLabel[96];
-	HBITMAP hIcon;
-	bool bIndent;
-	bool bSubmenu;
-	bool bSeparator;
-	bool bDisabled;
+struct TrayMenu {
+	TrayGame games[tray_max_games];
+	u32 game_count;
+	TrayAccount accounts[tray_max_accounts];
+	u32 account_count;
 };
 
-constexpr u32 kTrayMaxMenuEntries = kTrayMaxAccountItems + kTrayMaxGames + 8;
-
-class CTray {
+class Tray {
   public:
-	CTray() = default;
-	~CTray();
+	Tray() = default;
+	~Tray();
 
-	CTray(const CTray &) = delete;
-	CTray &operator=(const CTray &) = delete;
+	Tray(const Tray &) = delete;
+	Tray &operator=(const Tray &) = delete;
 
-	/// False only if the message-only window itself could not be created. A failed
-	/// Shell_NotifyIcon is retried on a timer and again whenever Explorer restarts, so it is
-	/// not fatal here.
-	bool Create(const wchar_t *pTooltip);
+	bool create(const wchar_t *t_tooltip);
 
-	void SetMenuCallback(TrayMenuCallback callback, void *pUserData);
+	void on_menu_open(std::function<void(TrayMenu &)> t_fill_menu);
+	void set_game_icon(u32 t_game, std::span<const u8> t_png);
+	void set_accent(Color t_accent);
 
-	/// Decodes an embedded PNG into the menu's icon column. Safe to skip; a game without one
-	/// just draws no icon.
-	void SetGameIcon(i32 bannerIndex, const u8 *pPngBytes, u64 length);
-
-	/// Drives the menu's hover highlight. Call whenever the accent may have changed.
-	void SetAccentColor(Color accent);
-
-	bool IsIconVisible() const
+	bool is_icon_visible() const
 	{
-		return m_bIconAdded;
+		return m_icon_added;
 	}
 
-	ETrayEventType TakeEvent();
-
-	i32 GetPendingBannerIndex() const
-	{
-		return m_nPendingBannerIndex;
-	}
-
-	i32 GetPendingAccountIndex() const
-	{
-		return m_nPendingAccountIndex;
-	}
+	TrayEvent take_event();
 
   private:
-	static LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+	struct MenuRow {
+		wchar_t label[96];
+		HBITMAP icon;
+		bool indented;
+		bool submenu;
+		bool separator;
+		bool disabled;
+	};
 
-	LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
-	void HandleCommand(UINT commandId);
+	static constexpr u32 max_menu_rows = tray_max_accounts + tray_max_games + 8;
 
-	bool AddIcon();
-	void RemoveIcon();
-	void RebuildBrushes();
+	static LRESULT CALLBACK window_proc(HWND t_window, UINT t_message, WPARAM t_wparam, LPARAM t_lparam);
 
-	void ShowContextMenu();
-	HMENU BuildMenu();
-	HMENU BuildGameSubmenu(const TrayGameItem &game);
+	LRESULT handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam);
+	void handle_command(UINT t_command);
 
-	/// The menu bitmap for one game, decoded on first use and cached from then on.
-	HBITMAP GameIcon(i32 bannerIndex);
+	bool add_icon();
+	void remove_icon();
+	void rebuild_brushes();
 
-	/// Copies the row into m_entries and appends it, carrying the stored entry as the item's
-	/// data. Null if the entry table is full.
-	TrayMenuEntry *PushEntry(const TrayMenuEntry &entry);
-	void AppendRow(HMENU target, UINT flags, UINT_PTR id, const TrayMenuEntry &entry);
-	void AppendCommand(HMENU target, UINT_PTR id, const wchar_t *pLabel, bool bIndent);
-	void AppendSubmenu(HMENU target, HMENU submenu, const wchar_t *pLabel, HBITMAP hIcon);
-	void AppendPlaceholder(HMENU target, const wchar_t *pLabel, bool bIndent);
-	void AppendSeparator(HMENU target);
+	void show_menu();
+	HMENU build_menu();
+	HMENU build_game_submenu(const TrayGame &t_game);
+	HBITMAP game_icon(i32 t_game);
 
-	void OnMeasureItem(MEASUREITEMSTRUCT *pMeasure) const;
-	void OnDrawItem(const DRAWITEMSTRUCT *pDraw) const;
+	void append_row(HMENU t_menu, UINT t_flags, UINT_PTR t_id, const MenuRow &t_row);
 
-	HWND m_hWnd = nullptr;
-	HICON m_hIcon = nullptr;
-	bool m_bIconAdded = false;
-	u32 m_addAttempts = 0;
-	wchar_t m_szTooltip[128]{};
+	void measure_row(MEASUREITEMSTRUCT &t_measure) const;
+	void draw_row(const DRAWITEMSTRUCT &t_draw) const;
 
-	HFONT m_hMenuFont = nullptr;
-	HBRUSH m_hBackBrush = nullptr;
-	HBRUSH m_hHoverBrush = nullptr;
+	HWND m_window = nullptr;
+	HICON m_icon = nullptr;
+	bool m_icon_added = false;
+	u32 m_add_attempts = 0;
+	wchar_t m_tooltip[128]{};
+
+	HFONT m_menu_font = nullptr;
+	bool m_owns_menu_font = false;
+	HBRUSH m_background_brush = nullptr;
+	HBRUSH m_hover_brush = nullptr;
 	Color m_accent{108, 90, 220, 255};
-	/// The undecoded bytes, kept until a menu actually needs the bitmap - see SetGameIcon.
-	EmbeddedImageBytes m_gameIconSources[kTrayMaxGames]{};
-	HBITMAP m_gameIcons[kTrayMaxGames]{};
 
-	ETrayEventType m_pendingEvent = ETrayEventType::None;
-	i32 m_nPendingBannerIndex = -1;
-	i32 m_nPendingAccountIndex = -1;
+	std::span<const u8> m_game_icon_sources[tray_max_games]{};
+	HBITMAP m_game_icons[tray_max_games]{};
 
-	TrayMenuModel m_model{};
-	TrayMenuEntry m_entries[kTrayMaxMenuEntries]{};
-	u32 m_entryCount = 0;
+	TrayEvent m_pending_event{};
 
-	TrayMenuCallback m_pMenuCallback = nullptr;
-	void *m_pMenuCallbackUserData = nullptr;
+	std::function<void(TrayMenu &)> m_fill_menu;
+	TrayMenu m_menu{};
+	MenuRow m_rows[max_menu_rows]{};
+	u32 m_row_count = 0;
 };

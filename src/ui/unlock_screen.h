@@ -1,123 +1,79 @@
 #pragma once
 
-#include "gfx/font_manager.h"
+#include "ui/commands.h"
 #include "ui/text_input.h"
 #include "ui/widget.h"
 
-class CAssetManager;
-class CMasterKey;
-class CWindow;
+class Assets;
+class Fonts;
+class MasterKey;
+class Window;
 struct Settings;
 
-/// The master-password gate. Every vault has one, so this widget covers both situations that
-/// creates:
-///
-///   Unlock - a password exists but this session has not unlocked it yet. One field.
-///   Setup  - no password exists yet, or the user asked to replace theirs from Settings. Two
-///            fields with a shared reveal toggle, so a typo in something nothing can recover
-///            is not silently locked in.
-///
-/// The whole app is blocked behind this while active: every other widget exists underneath but
-/// input does not reach it. That falls out of the stack's gating cascade, with no
-/// special-casing needed - only the title bar's window buttons still work, since it dispatches
-/// above everything regardless.
-///
-/// Setup mode is not cancelable. A first run has nothing to cancel back to, and a
-/// voluntary reset already closed Settings before this activated, so there is nowhere sensible
-/// to return to either.
-///
-/// The owner activates the right mode from what CStorage::Load reported, then polls the two
-/// Consume methods. Their follow-ups differ: an unlock needs a reload, to backfill the account
-/// passwords left blank while locked, while a setup needs a full save, to re-encrypt every
-/// password under the fresh key and persist the new parameters.
-class CUnlockScreen : public CWidget {
+class UnlockScreen : public Widget {
   public:
-	/// All held by reference for this widget's lifetime. settings is mutable because a
-	/// successful setup writes the new key parameters into it directly.
-	CUnlockScreen(const CFontManager &fonts, const CWindow &window, Settings *pSettings, CMasterKey *pMasterKey,
-				  const CAssetManager &assets);
+	UnlockScreen(Settings &t_settings, MasterKey &t_master_key, const Fonts &t_fonts, const Assets &t_assets,
+				 const Window &t_window, CommandQueue &t_commands);
 
-	void ActivateForUnlock();
-	void ActivateForSetup();
-	void Deactivate();
+	void show_unlock();
+	void show_setup();
+	void hide();
 
-	void Update(float deltaSeconds) override;
-	void Draw(CDrawList &drawList) override;
+	void update(float t_delta_seconds) override;
+	void draw(DrawList &t_draw_list) override;
 
-	/// Routes to whichever field is focused - there is always exactly one, in either mode.
-	bool OnChar(u32 character) override;
+	bool on_pointer_down(Vec2 t_point) override;
+	bool on_pointer_move(Vec2 t_point) override;
+	bool on_pointer_up(Vec2 t_point) override;
+	bool on_right_click(Vec2 t_point) override;
+	bool on_key_down(u32 t_key) override;
+	bool on_char(u32 t_character) override;
 
-	/// Return attempts the unlock or the submit, Tab swaps fields in setup mode, and everything
-	/// else routes into the focused field. No Escape handling in either mode; see this class's
-	/// note on why setup is not cancelable, and unlock has nothing to cancel back to.
-	bool OnKeyDown(u32 keyCode) override;
-
-	/// Focuses the clicked field, toggles the reveal, or attempts the submit. Consumes every
-	/// click while active.
-	bool OnPointerUp(float x, float y) override;
-
-	/// These carry no affordance here but must still be swallowed rather than falling through to
-	/// what is underneath - a wheel notch does not need real cursor coordinates to scroll
-	/// something invisible.
-	bool OnPointerDown(float x, float y) override
+	bool is_blocking() const override
 	{
-		return IsBlocking();
+		return m_active;
 	}
 
-	bool OnScroll(float x, float y, float wheelDelta) override
-	{
-		return IsBlocking();
-	}
-
-	bool OnRightPointerUp(float x, float y) override
-	{
-		return IsBlocking();
-	}
-
-	bool IsBlocking() const override
-	{
-		return m_bActive;
-	}
-
-	ECursorKind GetDesiredCursor() const override;
-
-	/// Both one-shot: true for the frame the attempt succeeded, then cleared.
-	bool ConsumeUnlockSucceeded();
-	bool ConsumeSetupSucceeded();
+	CursorKind cursor() const override;
 
   private:
-	/// Tries the typed password against the persisted parameters, clears the field either way,
-	/// and leaves an inline error plus focus for a retry on failure.
-	bool AttemptUnlock();
+	static constexpr u32 password = 0;
+	static constexpr u32 confirmation = 1;
 
-	/// Validates that both fields are non-empty and agree before ever deriving a key, so a
-	/// genuine derivation failure is never confused with a mistyped confirmation.
-	bool AttemptSetup();
+	u32 field_count() const
+	{
+		return m_setup ? 2 : 1;
+	}
 
-	void DrawUnlockCard(CDrawList &drawList, Rect card);
-	void DrawSetupCard(CDrawList &drawList, Rect card);
-	void DrawPasswordField(CDrawList &drawList, Rect field, CTextInput &input);
+	Rect card_rect() const;
+	Rect field_rect(u32 t_field) const;
+	Rect field_text_rect(u32 t_field) const;
+	Rect reveal_rect(u32 t_field) const;
+	Rect submit_rect() const;
+	i32 field_at(Vec2 t_point) const;
+	bool is_reveal_hit(Vec2 t_point) const;
 
-	const CFontManager &m_fonts;
-	const CWindow &m_window;
-	Settings *m_pSettings = nullptr;
-	CMasterKey *m_pMasterKey = nullptr;
-	const CAssetManager &m_assets;
+	void reset_fields();
+	void focus_field(u32 t_field);
+	void submit();
+	void attempt_unlock();
+	void attempt_setup();
 
-	bool m_bActive = false;
-	bool m_bSetupMode = false;
+	void draw_field(DrawList &t_draw_list, u32 t_field);
+	void draw_submit_button(DrawList &t_draw_list, std::string_view t_label) const;
 
-	CTextInput m_passwordInput;
-	bool m_bWrongPassword = false; // unlock mode's inline error, shown until the next attempt
+	Settings &m_settings;
+	MasterKey &m_master_key;
+	const Fonts &m_fonts;
+	const Assets &m_assets;
+	const Window &m_window;
+	CommandQueue &m_commands;
 
-	/// Setup's two fields share one flag, since they represent the same value being
-	/// double-checked. Reset on every activation so one mode's state never carries into the next.
-	bool m_bPasswordRevealed = false;
+	bool m_active = false;
+	bool m_setup = false;
+	bool m_wrong_password = false;
+	bool m_passwords_differ = false;
+	bool m_setup_failed = false;
 
-	CTextInput m_confirmPasswordInput;
-	bool m_bPasswordMismatch = false; // the two fields disagreed on the last submit
-	bool m_bSetupFailed = false;	  // key derivation itself failed - rare, but real
-
-	bool m_bUnlockSucceededThisFrame = false;
-	bool m_bSetupSucceededThisFrame = false;
+	TextInput m_fields[2];
 };

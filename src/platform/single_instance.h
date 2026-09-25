@@ -2,28 +2,22 @@
 
 #include <Windows.h>
 
-/// A named-mutex guard so only one instance runs at a time. The mutex, not a window lookup, is what
-/// decides: an instance still starting up has no window yet, and two launches racing would both
-/// conclude they were first.
-class CSingleInstanceGuard {
+class SingleInstanceGuard {
   public:
-	CSingleInstanceGuard();
-	~CSingleInstanceGuard();
+	SingleInstanceGuard();
+	~SingleInstanceGuard();
 
-	CSingleInstanceGuard(const CSingleInstanceGuard &) = delete;
-	CSingleInstanceGuard &operator=(const CSingleInstanceGuard &) = delete;
+	SingleInstanceGuard(const SingleInstanceGuard &) = delete;
+	SingleInstanceGuard &operator=(const SingleInstanceGuard &) = delete;
 
-	bool IsFirstInstance() const
+	bool is_first_instance() const
 	{
-		return m_bFirstInstance;
+		return m_first_instance;
 	}
 
-	/// Hands the claim back early. The updater's relaunch needs this: the replacement build would
-	/// otherwise see this still-running process's mutex and exit as a duplicate instead of
-	/// starting.
-	void Release();
+	void release();
 
   private:
-	HANDLE m_hMutex = nullptr;
-	bool m_bFirstInstance = false;
+	HANDLE m_mutex = nullptr;
+	bool m_first_instance = false;
 };

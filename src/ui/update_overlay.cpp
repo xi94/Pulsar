@@ -2,218 +2,208 @@
 
 #include <algorithm>
 #include <cstdio>
-#include <cstring>
+#include <span>
 
-#include "core/settings.h"
-#include "core/updater.h"
 #include "core/app_identity.h"
-#include "gfx/font_manager.h"
+#include "core/settings.h"
+#include "gfx/draw_list.h"
+#include "gfx/font.h"
 #include "platform/window.h"
 #include "ui/controls.h"
-#include "ui/layout.h"
-#include "ui/draw_list.h"
 #include "ui/text.h"
 
 namespace {
-constexpr float kCardWidth = 460.0f;
+constexpr float card_width = 460.0f;
+constexpr float card_height = 300.0f;
+constexpr float card_radius = 16.0f;
+constexpr float card_padding = 28.0f;
+constexpr float button_height = 40.0f;
+constexpr float gap = 14.0f;
+constexpr float progress_height = 10.0f;
+constexpr float progress_glow = 3.0f;
+constexpr float close_size = 28.0f;
+constexpr float close_margin = 14.0f;
+constexpr float notes_padding = 12.0f;
+constexpr float notes_scrollbar_room = 14.0f;
+constexpr u32 max_note_lines = 256;
+constexpr u32 max_error_lines = 4;
 
-// Fixed: the notes box scrolls its own overflow rather than the card growing to fit it.
-constexpr float kCardHeight = 300.0f;
+constexpr Color color_card{26, 26, 30, 255};
+constexpr Color color_card_border{54, 54, 62, 255};
+constexpr Color color_card_top_edge{92, 92, 104, 90};
+constexpr Color color_notes{22, 22, 25, 255};
+constexpr Color color_notes_border{44, 44, 52, 255};
+constexpr Color color_text_bright{232, 232, 236, 255};
+constexpr Color color_text_dim{150, 150, 156, 255};
+constexpr Color color_error{220, 90, 80, 255};
+constexpr Color color_track{40, 40, 45, 255};
+constexpr Color color_button{40, 40, 45, 255};
+constexpr Color color_button_hover{56, 56, 62, 255};
+constexpr Color color_scroll_thumb{120, 120, 128, 190};
+constexpr Color color_backdrop{8, 8, 10, 200};
 
-constexpr float kCardRadius = 16.0f;
-constexpr float kCardPadding = 28.0f;
-constexpr float kButtonHeight = 40.0f;
-constexpr float kGap = 14.0f;
-constexpr float kProgressBarHeight = 10.0f;
-constexpr float kCloseButtonSize = 28.0f;
-
-constexpr float kNotesBoxPadding = 12.0f;
-constexpr float kNotesScrollbarMargin = 14.0f; // reserved on the box's right edge; text never wraps into it
-constexpr u32 kMaxNotesLines = 256;
-constexpr u32 kMaxMessageLines = 4;
-
-constexpr Color kColorCard{26, 26, 30, 255};
-constexpr Color kColorCardBorder{54, 54, 62, 255};
-
-/// A hairline along the card's top edge - the usual "catching light from above" cue for a raised
-/// surface, which reads better than a drop shadow alone against an already-dark backdrop.
-constexpr Color kColorCardTopEdge{92, 92, 104, 90};
-
-constexpr Color kColorNotesBg{22, 22, 25, 255};
-constexpr Color kColorNotesBorder{44, 44, 52, 255};
-constexpr Color kColorTextBright{232, 232, 236, 255};
-constexpr Color kColorTextDim{150, 150, 156, 255};
-constexpr Color kColorError{220, 90, 80, 255};
-constexpr Color kColorTrack{40, 40, 45, 255};
-constexpr Color kColorNeutralButton{40, 40, 45, 255};
-constexpr Color kColorNeutralButtonHover{56, 56, 62, 255};
-constexpr Color kColorScrollThumb{120, 120, 128, 190};
-
-// Semi-transparent, unlike the unlock screen's opaque backdrop: this can be dismissed, so
-// whatever is behind it staying faintly visible reads as "on top of the app" rather than "a
-// separate screen".
-constexpr Color kColorBackdrop{8, 8, 10, 200};
-
-Rect CloseButtonRect(Rect card)
+bool can_dismiss(UpdateStage t_stage)
 {
-	return Rect{card.X + card.W - kCloseButtonSize - 14.0f, card.Y + 14.0f, kCloseButtonSize, kCloseButtonSize};
+	return t_stage != UpdateStage::downloading && t_stage != UpdateStage::verifying &&
+		   t_stage != UpdateStage::installing;
 }
 
-Rect PrimaryButtonRect(Rect card)
+bool has_primary_action(UpdateStage t_stage)
 {
-	return Rect{card.X + kCardPadding, card.Y + card.H - kCardPadding - kButtonHeight, card.W - kCardPadding * 2.0f,
-				kButtonHeight};
-}
-
-// Just past where the title and subtitle actually end, so the box's top cannot drift out of sync
-// with them at a different font size.
-float NotesBoxTopY(Rect card, const CFontManager &fonts)
-{
-	const CFont &body = fonts.GetBody();
-	const CFont &secondary = fonts.GetSecondary();
-	const float titleBaselineY = card.Y + kCardPadding + body.GetAscent();
-	const float subtitleBaselineY = titleBaselineY + body.GetLineHeight() + 10.0f + secondary.GetAscent();
-
-	return subtitleBaselineY + secondary.GetDescent() + kGap;
-}
-
-// From past the title down to just above the primary button, so how much scrolls is whatever
-// is left over rather than a hand-tuned number that could drift from the button's position.
-Rect NotesBoxRect(Rect card, const CFontManager &fonts)
-{
-	const float top = NotesBoxTopY(card, fonts);
-	const float bottom = PrimaryButtonRect(card).Y - kGap;
-
-	return Rect{card.X + kCardPadding, top, card.W - kCardPadding * 2.0f, bottom - top};
-}
-
-// Not while something is in flight: backing out is only disruptive in exactly that window.
-bool StageIsDismissable(EUpdateStage stage)
-{
-	return stage != EUpdateStage::Downloading && stage != EUpdateStage::Verifying && stage != EUpdateStage::Installing;
-}
-
-bool StageHasPrimaryAction(EUpdateStage stage)
-{
-	switch (stage) {
-		case EUpdateStage::Available:
-		case EUpdateStage::Downloading:
-		case EUpdateStage::Error:
-		case EUpdateStage::Cancelled:
-		case EUpdateStage::UpToDate:
-		case EUpdateStage::CheckFailed:
+	switch (t_stage) {
+		case UpdateStage::available:
+		case UpdateStage::downloading:
+		case UpdateStage::error:
+		case UpdateStage::cancelled:
+		case UpdateStage::up_to_date:
+		case UpdateStage::check_failed:
 			return true;
-
 		default:
 			return false;
 	}
 }
 
-void FormatBytes(u64 bytes, char *pOut, usize outCapacity)
+std::string_view format_size(double t_bytes, const char *t_suffix, char (&t_buffer)[32])
 {
-	if (bytes >= 1024ull * 1024ull) {
-		std::snprintf(pOut, outCapacity, "%.1f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));
-	} else {
-		std::snprintf(pOut, outCapacity, "%.0f KB", static_cast<double>(bytes) / 1024.0);
+	constexpr double kilobyte = 1024.0;
+	constexpr double megabyte = kilobyte * kilobyte;
+
+	const int written = t_bytes >= megabyte
+							? std::snprintf(t_buffer, sizeof(t_buffer), "%.1f MB%s", t_bytes / megabyte, t_suffix)
+							: std::snprintf(t_buffer, sizeof(t_buffer), "%.0f KB%s", t_bytes / kilobyte, t_suffix);
+
+	return std::string_view{t_buffer, static_cast<usize>(std::max(written, 0))};
+}
+}
+
+UpdateOverlay::UpdateOverlay(Updater &t_updater, const Settings &t_settings, const Fonts &t_fonts,
+							 const Window &t_window)
+	: m_updater(t_updater)
+	, m_settings(t_settings)
+	, m_fonts(t_fonts)
+	, m_window(t_window)
+{
+}
+
+void UpdateOverlay::open()
+{
+	m_open = true;
+}
+
+void UpdateOverlay::close()
+{
+	m_open = false;
+}
+
+void UpdateOverlay::update(float t_delta_seconds)
+{
+	m_notes_scroll.update(t_delta_seconds);
+}
+
+Rect UpdateOverlay::card_rect() const
+{
+	const Vec2 window = m_window.size();
+
+	return Rect{0.0f, 0.0f, window.x, window.y}.centered(card_width, card_height);
+}
+
+Rect UpdateOverlay::close_button_rect() const
+{
+	const Rect card = card_rect();
+
+	return Rect{card.right() - close_size - close_margin, card.y + close_margin, close_size, close_size};
+}
+
+Rect UpdateOverlay::primary_button_rect() const
+{
+	const Rect card = card_rect();
+
+	return Rect{card.x + card_padding, card.bottom() - card_padding - button_height, card.w - card_padding * 2.0f,
+				button_height};
+}
+
+float UpdateOverlay::text_column_x() const
+{
+	return card_rect().x + card_padding;
+}
+
+float UpdateOverlay::text_column_width() const
+{
+	return card_rect().w - card_padding * 2.0f;
+}
+
+UpdateOverlay::Notes UpdateOverlay::notes() const
+{
+	const Font &body = m_fonts.body();
+	const Font &secondary = m_fonts.secondary();
+	const Rect card = card_rect();
+
+	const float subtitle_baseline =
+		card.y + card_padding + body.ascent() + body.line_height() + 10.0f + secondary.ascent();
+	const float top = subtitle_baseline + secondary.descent() + gap;
+	const Rect box{card.x + card_padding, top, card.w - card_padding * 2.0f, primary_button_rect().y - gap - top};
+
+	std::string_view lines[max_note_lines];
+	const u32 line_count = wrap_text(secondary, m_updater.manifest().notes, box.w - notes_scrollbar_room, lines);
+	const Rect track{box.right() - scrollbar_width, box.y, scrollbar_width, box.h};
+
+	return Notes{box, ScrollGeometry{track, line_count * secondary.line_height(), box.h}};
+}
+
+bool UpdateOverlay::on_pointer_down(Vec2 t_point)
+{
+	if (!m_open) return false;
+
+	if (m_updater.stage() == UpdateStage::available) {
+		m_notes_scroll.on_pointer_down(t_point, notes().scroll);
 	}
+
+	return true;
 }
 
-void FormatSpeed(double bytesPerSecond, char *pOut, usize outCapacity)
+bool UpdateOverlay::on_pointer_move(Vec2 t_point)
 {
-	if (bytesPerSecond >= 1024.0 * 1024.0) {
-		std::snprintf(pOut, outCapacity, "%.1f MB/s", bytesPerSecond / (1024.0 * 1024.0));
-	} else {
-		std::snprintf(pOut, outCapacity, "%.0f KB/s", bytesPerSecond / 1024.0);
+	if (!m_open) return false;
+
+	if (m_notes_scroll.is_dragging()) {
+		m_notes_scroll.on_pointer_move(t_point.y, notes().scroll);
 	}
-}
-} // namespace
 
-CUpdateOverlay::CUpdateOverlay(const CFontManager &fonts, const CWindow &window, Settings *pSettings,
-							   CUpdater *pUpdater)
-	: m_fonts(fonts)
-	, m_window(window)
-	, m_pSettings(pSettings)
-	, m_pUpdater(pUpdater)
-{
+	return true;
 }
 
-void CUpdateOverlay::Open()
+bool UpdateOverlay::on_pointer_up(Vec2 t_point)
 {
-	m_bActive = true;
-}
+	if (!m_open) return false;
 
-void CUpdateOverlay::Close()
-{
-	m_bActive = false;
-}
-
-void CUpdateOverlay::Update(float deltaSeconds)
-{
-	m_notesScroll.Update(deltaSeconds);
-}
-
-Rect CUpdateOverlay::CardRect() const
-{
-	const auto windowW = static_cast<float>(m_window.GetWidth());
-	const auto windowH = static_cast<float>(m_window.GetHeight());
-
-	return Rect{(windowW - kCardWidth) * 0.5f, (windowH - kCardHeight) * 0.5f, kCardWidth, kCardHeight};
-}
-
-CUpdateOverlay::NotesLayout CUpdateOverlay::ComputeNotesLayout() const
-{
-	const Rect box = NotesBoxRect(CardRect(), m_fonts);
-	const CFont &secondary = m_fonts.GetSecondary();
-
-	std::string_view lines[kMaxNotesLines];
-	const u32 lineCount =
-		WrapText(secondary, m_pUpdater->GetManifest().szNotes, box.W - kNotesScrollbarMargin, lines, kMaxNotesLines);
-
-	const Rect track{box.X + box.W - kScrollbarWidth, box.Y, kScrollbarWidth, box.H};
-
-	return NotesLayout{box, track, static_cast<float>(lineCount) * secondary.GetLineHeight()};
-}
-
-bool CUpdateOverlay::OnPointerUp(float x, float y)
-{
-	if (!m_bActive) return false;
-
-	// A scrollbar drag ending on this release should not also register as a click on whatever
-	// is underneath: the drag ending is the interaction.
-	if (m_notesScroll.IsDragging()) {
-		m_notesScroll.OnPointerUp();
+	if (m_notes_scroll.is_dragging()) {
+		m_notes_scroll.on_pointer_up();
 		return true;
 	}
 
-	const Rect card = CardRect();
-	const EUpdateStage stage = m_pUpdater->GetStage();
+	const UpdateStage stage = m_updater.stage();
 
-	if (StageIsDismissable(stage) && RectContainsPoint(CloseButtonRect(card), x, y)) {
-		Close();
+	if (can_dismiss(stage) && close_button_rect().contains(t_point)) {
+		close();
 		return true;
 	}
 
-	if (!RectContainsPoint(PrimaryButtonRect(card), x, y)) return true;
+	if (!primary_button_rect().contains(t_point)) return true;
 
 	switch (stage) {
-		case EUpdateStage::Available:
-			m_pUpdater->StartDownloadAsync();
+		case UpdateStage::available:
+		case UpdateStage::error:
+		case UpdateStage::cancelled:
+			m_updater.start_download();
 			break;
 
-		case EUpdateStage::Downloading:
-			m_pUpdater->RequestCancel();
+		case UpdateStage::downloading:
+			m_updater.request_cancel();
 			break;
 
-		case EUpdateStage::Error:
-		case EUpdateStage::Cancelled:
-			// A plain retry against the manifest already in hand; no fresh check needed.
-			m_pUpdater->StartDownloadAsync();
-			break;
-
-		case EUpdateStage::UpToDate:
-		case EUpdateStage::CheckFailed:
-			// A fresh fetch this time - there is no download to retry yet.
-			m_pUpdater->CheckForUpdateAsync(kAppVersion);
+		case UpdateStage::up_to_date:
+		case UpdateStage::check_failed:
+			m_updater.check_for_update();
 			break;
 
 		default:
@@ -223,330 +213,224 @@ bool CUpdateOverlay::OnPointerUp(float x, float y)
 	return true;
 }
 
-bool CUpdateOverlay::OnPointerDown(float x, float y)
+bool UpdateOverlay::on_scroll(Vec2 t_point, float t_wheel_delta)
 {
-	if (!m_bActive) return false;
+	if (!m_open) return false;
 
-	if (m_pUpdater->GetStage() == EUpdateStage::Available) {
-		const NotesLayout notes = ComputeNotesLayout();
-		m_notesScroll.OnPointerDown(x, y, notes.Track, notes.ContentHeight, notes.Box.H);
-	}
+	if (m_updater.stage() == UpdateStage::available) {
+		const Notes current = notes();
 
-	return IsBlocking();
-}
-
-bool CUpdateOverlay::OnPointerMove(float x, float y)
-{
-	if (!m_bActive) return false;
-
-	if (m_notesScroll.IsDragging()) {
-		const NotesLayout notes = ComputeNotesLayout();
-		m_notesScroll.OnPointerMove(y, notes.Track, notes.ContentHeight, notes.Box.H);
-	}
-
-	return IsBlocking();
-}
-
-bool CUpdateOverlay::OnScroll(float x, float y, float wheelDelta)
-{
-	if (!m_bActive) return false;
-
-	if (m_pUpdater->GetStage() == EUpdateStage::Available) {
-		const NotesLayout notes = ComputeNotesLayout();
-
-		if (RectContainsPoint(notes.Box, x, y)) {
-			m_notesScroll.OnScroll(wheelDelta, notes.ContentHeight, notes.Box.H);
+		if (current.box.contains(t_point)) {
+			m_notes_scroll.on_scroll(t_wheel_delta, current.scroll);
 		}
 	}
 
-	return IsBlocking();
+	return true;
 }
 
-ECursorKind CUpdateOverlay::GetDesiredCursor() const
+CursorKind UpdateOverlay::cursor() const
 {
-	if (!m_bActive) return ECursorKind::Arrow;
+	if (!m_open) return CursorKind::arrow;
 
-	const Rect card = CardRect();
-	const EUpdateStage stage = m_pUpdater->GetStage();
+	const UpdateStage stage = m_updater.stage();
+	const bool over_close = can_dismiss(stage) && close_button_rect().contains(m_mouse);
+	const bool over_primary = has_primary_action(stage) && primary_button_rect().contains(m_mouse);
 
-	const bool overClose =
-		StageIsDismissable(stage) && RectContainsPoint(CloseButtonRect(card), m_flMouseX, m_flMouseY);
-	const bool overPrimary =
-		StageHasPrimaryAction(stage) && RectContainsPoint(PrimaryButtonRect(card), m_flMouseX, m_flMouseY);
-
-	return overClose || overPrimary ? ECursorKind::Hand : ECursorKind::Arrow;
+	return over_close || over_primary ? CursorKind::hand : CursorKind::arrow;
 }
 
-void CUpdateOverlay::DrawCloseButton(CDrawList &drawList, Rect card) const
+void UpdateOverlay::draw_close_button(DrawList &t_draw_list) const
 {
-	const Rect close = CloseButtonRect(card);
-	const bool hovered = RectContainsPoint(close, m_flMouseX, m_flMouseY);
+	const Rect close = close_button_rect();
+	const bool hovered = close.contains(m_mouse);
+	const Vec2 center = close.center();
+	const Color glyph = hovered ? color_text_bright : color_text_dim;
 
 	if (hovered) {
-		drawList.AddRectRoundedFilled(close.X, close.Y, close.W, close.H, CDrawList::UniformRadii(close.W * 0.5f),
-									  kColorNeutralButtonHover);
+		t_draw_list.add_rounded_rect(close, rounded(close.w * 0.5f), color_button_hover);
 	}
 
-	const float cx = close.X + close.W * 0.5f;
-	const float cy = close.Y + close.H * 0.5f;
-	const Color glyphColor = hovered ? kColorTextBright : kColorTextDim;
-
-	drawList.AddLine(cx - 5.0f, cy - 5.0f, cx + 5.0f, cy + 5.0f, 1.5f, glyphColor);
-	drawList.AddLine(cx - 5.0f, cy + 5.0f, cx + 5.0f, cy - 5.0f, 1.5f, glyphColor);
+	t_draw_list.add_line({center.x - 5.0f, center.y - 5.0f}, {center.x + 5.0f, center.y + 5.0f}, 1.5f, glyph);
+	t_draw_list.add_line({center.x - 5.0f, center.y + 5.0f}, {center.x + 5.0f, center.y - 5.0f}, 1.5f, glyph);
 }
 
-// The title column starts to the right of the header badge, so every stage's text lines up with
-// every other stage's whatever it says.
-void CUpdateOverlay::DrawCardTitle(CDrawList &drawList, Rect card, float &cursorY, std::string_view title) const
+void UpdateOverlay::draw_title(DrawList &t_draw_list, float &t_baseline, std::string_view t_title) const
 {
-	const CFont &body = m_fonts.GetBody();
+	const Font &body = m_fonts.body();
 
-	DrawText(drawList, body, TextColumnX(card), cursorY, title, kColorTextBright);
-	cursorY += body.GetLineHeight() + 10.0f + m_fonts.GetSecondary().GetAscent();
+	draw_text(t_draw_list, body, Vec2{text_column_x(), t_baseline}, t_title, color_text_bright);
+	t_baseline += body.line_height() + 10.0f + m_fonts.secondary().ascent();
 }
 
-float CUpdateOverlay::TextColumnX(Rect card) const
+void UpdateOverlay::draw_detail(DrawList &t_draw_list, float t_baseline, std::string_view t_text) const
 {
-	return card.X + kCardPadding;
+	draw_text(t_draw_list, m_fonts.secondary(), Vec2{text_column_x(), t_baseline}, t_text, color_text_dim);
 }
 
-float CUpdateOverlay::TextColumnWidth(Rect card) const
+void UpdateOverlay::draw_primary_button(DrawList &t_draw_list, std::string_view t_label, bool t_accented) const
 {
-	return card.X + card.W - kCardPadding - TextColumnX(card);
-}
+	const Rect button = primary_button_rect();
+	const Color accent = m_settings.accent;
 
-void CUpdateOverlay::DrawPrimaryButton(CDrawList &drawList, Rect card, std::string_view label, bool accented) const
-{
-	const Rect button = PrimaryButtonRect(card);
-	const Color accent = m_pSettings->m_clrAccent;
-
-	if (accented) {
-		drawList.AddRectRoundedBordered(button.X, button.Y, button.W, button.H, CDrawList::UniformRadii(8.0f), accent,
-										ColorOutlineOn(accent), 1.0f);
-		DrawCenteredText(drawList, m_fonts.GetBody(), button.X, button.Y, button.W, button.H, label,
-						 ColorForegroundOn(accent));
+	if (t_accented) {
+		t_draw_list.add_bordered_rect(button, rounded(8.0f), accent, outline_on(accent), 1.0f);
+		draw_text_centered(t_draw_list, m_fonts.body(), button, t_label, foreground_on(accent));
 		return;
 	}
 
-	const bool hovered = RectContainsPoint(button, m_flMouseX, m_flMouseY);
-	drawList.AddRectRoundedFilled(button.X, button.Y, button.W, button.H, CDrawList::UniformRadii(8.0f),
-								  hovered ? kColorNeutralButtonHover : kColorNeutralButton);
-	DrawCenteredText(drawList, m_fonts.GetBody(), button.X, button.Y, button.W, button.H, label, kColorTextBright);
+	t_draw_list.add_rounded_rect(button, rounded(8.0f), button.contains(m_mouse) ? color_button_hover : color_button);
+	draw_text_centered(t_draw_list, m_fonts.body(), button, t_label, color_text_bright);
 }
 
-// Idle only shows up here for a frame at most: opening from the menu's Check row kicks a check
-// first, which moves the stage on before the next draw.
-void CUpdateOverlay::DrawCheckingStage(CDrawList &drawList, Rect card, float &cursorY)
+void UpdateOverlay::draw_notes(DrawList &t_draw_list) const
 {
-	DrawCardTitle(drawList, card, cursorY, "Checking for Updates");
-	DrawText(drawList, m_fonts.GetSecondary(), TextColumnX(card), cursorY, "This will only take a moment.",
-			 kColorTextDim);
-}
+	const Notes current = notes();
+	const Font &font = m_fonts.secondary();
+	const float line_height = font.line_height();
 
-void CUpdateOverlay::DrawUpToDateStage(CDrawList &drawList, Rect card, float &cursorY)
-{
-	DrawCardTitle(drawList, card, cursorY, "You're Up to Date");
+	t_draw_list.add_bordered_rect(current.box, rounded(8.0f), color_notes, color_notes_border, 1.0f);
 
-	char line[64];
-	std::snprintf(line, sizeof(line), "%s %s is the latest version.", kAppName, kAppVersion);
-	DrawText(drawList, m_fonts.GetSecondary(), TextColumnX(card), cursorY, line, kColorTextDim);
+	std::string_view lines[max_note_lines];
+	const u32 line_count = wrap_text(font, m_updater.manifest().notes, current.box.w - notes_scrollbar_room, lines);
 
-	DrawPrimaryButton(drawList, card, "Check Again", false);
-}
+	t_draw_list.push_clip(current.box);
 
-void CUpdateOverlay::DrawCheckFailedStage(CDrawList &drawList, Rect card, float &cursorY)
-{
-	DrawCardTitle(drawList, card, cursorY, "Couldn't Check for Updates");
-	DrawWrappedText(drawList, m_fonts.GetSecondary(), TextColumnX(card), cursorY, TextColumnWidth(card),
-					m_pUpdater->GetErrorMessage(), kColorError, kMaxMessageLines);
-
-	DrawPrimaryButton(drawList, card, "Try Again", true);
-}
-
-void CUpdateOverlay::DrawNotesBox(CDrawList &drawList)
-{
-	const NotesLayout notes = ComputeNotesLayout();
-	const CFont &secondary = m_fonts.GetSecondary();
-
-	drawList.AddRectRoundedBordered(notes.Box.X, notes.Box.Y, notes.Box.W, notes.Box.H, CDrawList::UniformRadii(8.0f),
-									kColorNotesBg, kColorNotesBorder, 1.0f);
-
-	std::string_view lines[kMaxNotesLines];
-	const u32 lineCount = WrapText(secondary, m_pUpdater->GetManifest().szNotes, notes.Box.W - kNotesScrollbarMargin,
-								   lines, kMaxNotesLines);
-	const float lineHeight = secondary.GetLineHeight();
-
-	drawList.PushClipRect(notes.Box);
-
-	float y = notes.Box.Y + kNotesBoxPadding + secondary.GetAscent() - m_notesScroll.m_flScrollOffset;
-	for (u32 i = 0; i < lineCount; i += 1) {
-		if (y > notes.Box.Y - lineHeight && y < notes.Box.Y + notes.Box.H + lineHeight) {
-			DrawText(drawList, secondary, notes.Box.X + kNotesBoxPadding, y, lines[i], kColorTextDim);
+	float baseline = current.box.y + notes_padding + font.ascent() - m_notes_scroll.offset();
+	for (const std::string_view line : std::span{lines, line_count}) {
+		if (baseline > current.box.y - line_height && baseline < current.box.bottom() + line_height) {
+			draw_text(t_draw_list, font, Vec2{current.box.x + notes_padding, baseline}, line, color_text_dim);
 		}
 
-		y += lineHeight;
+		baseline += line_height;
 	}
 
-	drawList.PopClipRect();
+	t_draw_list.pop_clip();
 
-	m_notesScroll.DrawEdgeFade(drawList, notes.Box, notes.ContentHeight, notes.Box.H, kColorNotesBg);
-	m_notesScroll.Draw(drawList, notes.Track, notes.ContentHeight, notes.Box.H, kColorScrollThumb, m_flMouseX,
-					   m_flMouseY);
+	m_notes_scroll.draw_edge_fade(t_draw_list, current.box, current.scroll, color_notes);
+	m_notes_scroll.draw(t_draw_list, current.scroll, color_scroll_thumb, m_mouse);
 }
 
-void CUpdateOverlay::DrawAvailableStage(CDrawList &drawList, Rect card, float &cursorY)
+void UpdateOverlay::draw_progress(DrawList &t_draw_list, float t_baseline, UpdateStage t_stage) const
 {
-	DrawCardTitle(drawList, card, cursorY, "Update Available");
+	const Color accent = m_settings.accent;
+	const u64 downloaded = m_updater.bytes_downloaded();
+	const u64 total = m_updater.total_bytes();
+	const float download_fraction = total > 0 ? static_cast<float>(downloaded) / static_cast<float>(total) : 0.0f;
+	const float progress = t_stage == UpdateStage::downloading ? download_fraction : 1.0f;
+
+	const Rect track{text_column_x(), t_baseline + 8.0f, text_column_width(), progress_height};
+	const Rect fill{track.x, track.y, track.w * std::max(progress, 0.02f), track.h};
+
+	t_draw_list.add_rounded_rect(track, rounded(track.h * 0.5f), color_track);
+	t_draw_list.add_rounded_rect(Rect{fill.x - progress_glow, fill.y - progress_glow * 0.5f,
+									  fill.w + progress_glow * 2.0f, fill.h + progress_glow},
+								 rounded(track.h * 0.5f + progress_glow), with_alpha(accent, 40));
+	t_draw_list.add_rounded_rect(fill, rounded(track.h * 0.5f), accent);
 
 	char line[64];
-	std::snprintf(line, sizeof(line), "Version %s is ready to install.", m_pUpdater->GetManifest().szVersion);
-	DrawText(drawList, m_fonts.GetSecondary(), TextColumnX(card), cursorY, line, kColorTextDim);
+	if (t_stage == UpdateStage::downloading) {
+		char downloaded_text[32];
+		char total_text[32];
+		char speed_text[32];
+		const std::string_view downloaded_size = format_size(static_cast<double>(downloaded), "", downloaded_text);
+		const std::string_view total_size = format_size(static_cast<double>(total), "", total_text);
+		const std::string_view speed = format_size(m_updater.bytes_per_second(), "/s", speed_text);
 
-	DrawNotesBox(drawList);
-	DrawPrimaryButton(drawList, card, "Download & Install", true);
-}
-
-void CUpdateOverlay::DrawManualUpgradeStage(CDrawList &drawList, Rect card, float &cursorY)
-{
-	const CFont &secondary = m_fonts.GetSecondary();
-
-	DrawCardTitle(drawList, card, cursorY, "Manual Update Required");
-
-	char line[64];
-	std::snprintf(line, sizeof(line), "Version %s is out - please download it manually",
-				  m_pUpdater->GetManifest().szVersion);
-	DrawText(drawList, secondary, TextColumnX(card), cursorY, line, kColorTextDim);
-
-	cursorY += secondary.GetLineHeight();
-	DrawText(drawList, secondary, TextColumnX(card), cursorY, "from the GitHub releases page.", kColorTextDim);
-}
-
-void CUpdateOverlay::DrawProgressStage(CDrawList &drawList, Rect card, float &cursorY, EUpdateStage stage)
-{
-	const CFont &secondary = m_fonts.GetSecondary();
-	const Color accent = m_pSettings->m_clrAccent;
-
-	DrawCardTitle(drawList, card, cursorY, "Updating");
-
-	const u64 downloaded = m_pUpdater->GetBytesDownloaded();
-	const u64 total = m_pUpdater->GetTotalBytes();
-	const float downloadFraction = total > 0 ? static_cast<float>(downloaded) / static_cast<float>(total) : 0.0f;
-	const float progress = stage == EUpdateStage::Downloading ? downloadFraction : 1.0f;
-
-	const Rect track{TextColumnX(card), cursorY + 8.0f, TextColumnWidth(card), kProgressBarHeight};
-	drawList.AddRectRoundedFilled(track.X, track.Y, track.W, track.H, CDrawList::UniformRadii(track.H * 0.5f),
-								  kColorTrack);
-
-	// A sliver stays visible at 0%, so the bar is never literally invisible.
-	const float fillWidth = track.W * std::max(progress, 0.02f);
-	const CornerRadii fillRadii = CDrawList::UniformRadii(track.H * 0.5f);
-
-	// A soft halo under the filled part, so the bar has some depth rather than reading as two flat
-	// rectangles. Inset vertically, since a halo the full height of the bar just looks blurry.
-	constexpr float kGlowExpand = 3.0f;
-	drawList.AddRectRoundedFilled(track.X - kGlowExpand, track.Y - kGlowExpand * 0.5f, fillWidth + kGlowExpand * 2.0f,
-								  track.H + kGlowExpand, CDrawList::UniformRadii(track.H * 0.5f + kGlowExpand),
-								  ColorWithAlpha(accent, 40));
-	drawList.AddRectRoundedFilled(track.X, track.Y, fillWidth, track.H, fillRadii, accent);
-
-	cursorY = track.Y + track.H + 14.0f + secondary.GetAscent();
-
-	char line[64];
-	if (stage == EUpdateStage::Downloading) {
-		char downloadedText[32];
-		char totalText[32];
-		char speedText[32];
-		FormatBytes(downloaded, downloadedText, sizeof(downloadedText));
-		FormatBytes(total, totalText, sizeof(totalText));
-		FormatSpeed(m_pUpdater->GetBytesPerSecond(), speedText, sizeof(speedText));
-
-		std::snprintf(line, sizeof(line), "%s / %s  -  %s", downloadedText, totalText, speedText);
+		std::snprintf(line, sizeof(line), "%.*s / %.*s  -  %.*s", static_cast<int>(downloaded_size.size()),
+					  downloaded_size.data(), static_cast<int>(total_size.size()), total_size.data(),
+					  static_cast<int>(speed.size()), speed.data());
 	} else {
-		std::snprintf(line, sizeof(line), stage == EUpdateStage::Verifying ? "Verifying..." : "Installing...");
+		std::snprintf(line, sizeof(line), "%s", t_stage == UpdateStage::verifying ? "Verifying..." : "Installing...");
 	}
 
-	DrawText(drawList, secondary, TextColumnX(card), cursorY, line, kColorTextDim);
+	draw_detail(t_draw_list, track.bottom() + 14.0f + m_fonts.secondary().ascent(), line);
 
-	if (stage == EUpdateStage::Downloading) {
-		DrawPrimaryButton(drawList, card, "Cancel", false);
+	if (t_stage == UpdateStage::downloading) {
+		draw_primary_button(t_draw_list, "Cancel", false);
 	}
 }
 
-void CUpdateOverlay::DrawFailedStage(CDrawList &drawList, Rect card, float &cursorY, EUpdateStage stage)
+void UpdateOverlay::draw(DrawList &t_draw_list)
 {
-	const bool errored = stage == EUpdateStage::Error;
+	if (!m_open) return;
 
-	DrawCardTitle(drawList, card, cursorY, errored ? "Update Failed" : "Update Cancelled");
+	const Vec2 window = m_window.size();
+	const Rect card = card_rect();
+	const UpdateStage stage = m_updater.stage();
+	const Font &secondary = m_fonts.secondary();
+	const float edge_inset = scaled_radius(card_radius);
 
-	if (errored) {
-		DrawWrappedText(drawList, m_fonts.GetSecondary(), TextColumnX(card), cursorY, TextColumnWidth(card),
-						m_pUpdater->GetErrorMessage(), kColorError, kMaxMessageLines);
+	t_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y}, color_backdrop);
+	controls::draw_panel_shadow(t_draw_list, card, card_radius, 1.0f);
+	t_draw_list.add_bordered_rect(card, rounded(card_radius), color_card, color_card_border, 1.0f);
+	t_draw_list.add_rect(Rect{card.x + edge_inset, card.y + 1.0f, card.w - edge_inset * 2.0f, 1.0f},
+						 color_card_top_edge);
+
+	if (can_dismiss(stage)) {
+		draw_close_button(t_draw_list);
 	}
 
-	DrawPrimaryButton(drawList, card, "Try Again", true);
-}
-
-void CUpdateOverlay::Draw(CDrawList &drawList)
-{
-	if (!m_bActive) return;
-
-	const auto windowW = static_cast<float>(m_window.GetWidth());
-	const auto windowH = static_cast<float>(m_window.GetHeight());
-	drawList.AddRectFilled(0.0f, 0.0f, windowW, windowH, kColorBackdrop);
-
-	const Rect card = CardRect();
-
-	Controls::DrawPanelShadow(drawList, card, kCardRadius, 1.0f);
-	drawList.AddRectRoundedBordered(card.X, card.Y, card.W, card.H, CDrawList::UniformRadii(kCardRadius), kColorCard,
-									kColorCardBorder, 1.0f);
-
-	// Inset by the corner radius so it stops exactly where the curve starts; at any other inset it
-	// either leaves a gap at both ends or runs past the curve.
-	const float edgeInset = CDrawList::ScaledRadius(kCardRadius);
-	drawList.AddRectFilled(card.X + edgeInset, card.Y + 1.0f, card.W - edgeInset * 2.0f, 1.0f, kColorCardTopEdge);
-
-	const EUpdateStage stage = m_pUpdater->GetStage();
-	if (StageIsDismissable(stage)) {
-		DrawCloseButton(drawList, card);
-	}
-
-	float cursorY = card.Y + kCardPadding + m_fonts.GetBody().GetAscent();
+	float baseline = card.y + card_padding + m_fonts.body().ascent();
+	char line[96];
 
 	switch (stage) {
-		case EUpdateStage::Idle:
-		case EUpdateStage::Checking:
-			DrawCheckingStage(drawList, card, cursorY);
+		case UpdateStage::idle:
+		case UpdateStage::checking:
+			draw_title(t_draw_list, baseline, "Checking for Updates");
+			draw_detail(t_draw_list, baseline, "This will only take a moment.");
 			break;
 
-		case EUpdateStage::UpToDate:
-			DrawUpToDateStage(drawList, card, cursorY);
+		case UpdateStage::up_to_date:
+			draw_title(t_draw_list, baseline, "You're Up to Date");
+			std::snprintf(line, sizeof(line), "%s %s is the latest version.", app_name, app_version);
+			draw_detail(t_draw_list, baseline, line);
+			draw_primary_button(t_draw_list, "Check Again", false);
 			break;
 
-		case EUpdateStage::CheckFailed:
-			DrawCheckFailedStage(drawList, card, cursorY);
+		case UpdateStage::check_failed:
+			draw_title(t_draw_list, baseline, "Couldn't Check for Updates");
+			draw_wrapped_text(t_draw_list, secondary, Vec2{text_column_x(), baseline}, text_column_width(),
+							  m_updater.error_message(), color_error, max_error_lines);
+			draw_primary_button(t_draw_list, "Try Again", true);
 			break;
 
-		case EUpdateStage::Available:
-			DrawAvailableStage(drawList, card, cursorY);
+		case UpdateStage::available:
+			draw_title(t_draw_list, baseline, "Update Available");
+			std::snprintf(line, sizeof(line), "Version %s is ready to install.", m_updater.manifest().version);
+			draw_detail(t_draw_list, baseline, line);
+			draw_notes(t_draw_list);
+			draw_primary_button(t_draw_list, "Download & Install", true);
 			break;
 
-		case EUpdateStage::ManualUpgradeRequired:
-			DrawManualUpgradeStage(drawList, card, cursorY);
+		case UpdateStage::manual_upgrade_required:
+			draw_title(t_draw_list, baseline, "Manual Update Required");
+			std::snprintf(line, sizeof(line), "Version %s is out - please download it manually",
+						  m_updater.manifest().version);
+			draw_detail(t_draw_list, baseline, line);
+			draw_detail(t_draw_list, baseline + secondary.line_height(), "from the GitHub releases page.");
 			break;
 
-		case EUpdateStage::Downloading:
-		case EUpdateStage::Verifying:
-		case EUpdateStage::Installing:
-			DrawProgressStage(drawList, card, cursorY, stage);
+		case UpdateStage::downloading:
+		case UpdateStage::verifying:
+		case UpdateStage::installing:
+			draw_title(t_draw_list, baseline, "Updating");
+			draw_progress(t_draw_list, baseline, stage);
 			break;
 
-		case EUpdateStage::ReadyToRelaunch:
-			DrawCardTitle(drawList, card, cursorY, "Restarting...");
+		case UpdateStage::ready_to_relaunch:
+			draw_title(t_draw_list, baseline, "Restarting...");
 			break;
 
-		case EUpdateStage::Error:
-		case EUpdateStage::Cancelled:
-			DrawFailedStage(drawList, card, cursorY, stage);
+		case UpdateStage::error:
+		case UpdateStage::cancelled:
+			draw_title(t_draw_list, baseline, stage == UpdateStage::error ? "Update Failed" : "Update Cancelled");
+
+			if (stage == UpdateStage::error) {
+				draw_wrapped_text(t_draw_list, secondary, Vec2{text_column_x(), baseline}, text_column_width(),
+								  m_updater.error_message(), color_error, max_error_lines);
+			}
+
+			draw_primary_button(t_draw_list, "Try Again", true);
 			break;
 	}
 }

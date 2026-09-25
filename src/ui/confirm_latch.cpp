@@ -1,46 +1,39 @@
 #include "ui/confirm_latch.h"
 
-#include "core/animator.h"
+#include "core/animation.h"
 
 namespace {
-constexpr float kArmEaseRate = 18.0f;
+constexpr float arm_ease_rate = 18.0f;
 }
 
-bool CConfirmLatch::ClickArmedOrCommit(i32 target)
+bool ConfirmLatch::confirm(i32 t_target)
 {
-	if (m_nTarget == target) {
-		Disarm();
+	if (is_armed(t_target)) {
+		disarm();
 		return true;
 	}
 
-	m_nTarget = target;
-	m_flRemainingSeconds = kWindowSeconds;
+	m_target = t_target;
+	m_remaining_seconds = window_seconds;
 
 	return false;
 }
 
-void CConfirmLatch::Disarm()
+void ConfirmLatch::disarm()
 {
-	m_nTarget = -1;
-	m_flRemainingSeconds = 0.0f;
+	m_target = -1;
+	m_remaining_seconds = 0.0f;
 }
 
-float CConfirmLatch::ArmedAmount(i32 target) const
+void ConfirmLatch::update(float t_delta_seconds)
 {
-	return IsArmed(target) ? m_flArmedAmount : 0.0f;
-}
+	if (is_armed()) {
+		m_remaining_seconds -= t_delta_seconds;
 
-// The eased amount keeps running after the latch disarms, so an expired button fades back to its
-// normal colour instead of snapping.
-void CConfirmLatch::Update(float deltaSeconds)
-{
-	if (m_nTarget >= 0) {
-		m_flRemainingSeconds -= deltaSeconds;
-
-		if (m_flRemainingSeconds <= 0.0f) {
-			Disarm();
+		if (m_remaining_seconds <= 0.0f) {
+			disarm();
 		}
 	}
 
-	m_flArmedAmount = CAnimator::EaseToward(m_flArmedAmount, m_nTarget >= 0 ? 1.0f : 0.0f, kArmEaseRate, deltaSeconds);
+	m_armed_amount = animation::ease_toward(m_armed_amount, is_armed() ? 1.0f : 0.0f, arm_ease_rate, t_delta_seconds);
 }

@@ -2,159 +2,156 @@
 
 #include <algorithm>
 
-// Screen-space geometry and color, in logical (DPI-independent) pixels with the origin at
-// the top-left. Plain data with no behavior, so no C-prefix - the same treatment Source
-// gives Vector and color32.
+struct Vec2 {
+	float x;
+	float y;
+};
 
 struct Rect {
-	float X;
-	float Y;
-	float W;
-	float H;
+	float x;
+	float y;
+	float w;
+	float h;
+
+	bool operator==(const Rect &) const = default;
+
+	float right() const
+	{
+		return x + w;
+	}
+
+	float bottom() const
+	{
+		return y + h;
+	}
+
+	Vec2 center() const
+	{
+		return Vec2{x + w * 0.5f, y + h * 0.5f};
+	}
+
+	bool contains(Vec2 t_point) const
+	{
+		return t_point.x >= x && t_point.x < x + w && t_point.y >= y && t_point.y < y + h;
+	}
+
+	bool overlaps_vertically(Rect t_other) const
+	{
+		return bottom() > t_other.y && y < t_other.bottom();
+	}
+
+	Rect inset(float t_horizontal, float t_vertical) const
+	{
+		return Rect{x + t_horizontal, y + t_vertical, std::max(0.0f, w - t_horizontal * 2.0f),
+					std::max(0.0f, h - t_vertical * 2.0f)};
+	}
+
+	Rect inset(float t_amount) const
+	{
+		return inset(t_amount, t_amount);
+	}
+
+	Rect intersect(Rect t_other) const
+	{
+		const float left = std::max(x, t_other.x);
+		const float top = std::max(y, t_other.y);
+
+		return Rect{left, top, std::max(0.0f, std::min(right(), t_other.right()) - left),
+					std::max(0.0f, std::min(bottom(), t_other.bottom()) - top)};
+	}
+
+	Rect centered(float t_width, float t_height) const
+	{
+		return Rect{x + (w - t_width) * 0.5f, y + (h - t_height) * 0.5f, t_width, t_height};
+	}
+
+	Rect split_top(float t_amount)
+	{
+		const float taken = std::min(t_amount, h);
+		const Rect strip{x, y, w, taken};
+		y += taken;
+		h -= taken;
+
+		return strip;
+	}
+
+	Rect split_bottom(float t_amount)
+	{
+		const float taken = std::min(t_amount, h);
+		h -= taken;
+
+		return Rect{x, y + h, w, taken};
+	}
 };
 
-struct Vec2 {
-	float X;
-	float Y;
-};
-
-/// RGBA8, stored exactly as Vertex2D::Color wants it so no conversion happens between the
-/// color a widget picks and the color the GPU rasterizes.
 struct Color {
-	u8 R;
-	u8 G;
-	u8 B;
-	u8 A;
+	u8 r;
+	u8 g;
+	u8 b;
+	u8 a;
 };
 
-/// Per-corner rounding for a rounded rectangle; zero squares that corner off.
 struct CornerRadii {
-	float TopLeft;
-	float TopRight;
-	float BottomLeft;
-	float BottomRight;
+	float top_left;
+	float top_right;
+	float bottom_right;
+	float bottom_left;
 };
 
-constexpr CornerRadii kCornerRadiiNone{0.0f, 0.0f, 0.0f, 0.0f};
+constexpr CornerRadii square_corners{0.0f, 0.0f, 0.0f, 0.0f};
 
-inline CornerRadii CornerRadiiUniform(float radius)
+inline Color with_alpha(Color t_color, u8 t_alpha)
 {
-	return CornerRadii{radius, radius, radius, radius};
+	return Color{t_color.r, t_color.g, t_color.b, t_alpha};
 }
 
-inline bool RectContainsPoint(const Rect &rect, float x, float y)
+inline Color faded(Color t_color, u8 t_alpha)
 {
-	return x >= rect.X && x < rect.X + rect.W && y >= rect.Y && y < rect.Y + rect.H;
+	return with_alpha(t_color, static_cast<u8>(t_color.a * t_alpha / 255));
 }
 
-/// Empty (never negative) when the two don't overlap. CDrawList holds a single clip slot
-/// rather than a stack, so nesting one clip inside another goes through this: intersect,
-/// push the result, then re-push the outer rect instead of popping.
-inline Rect RectIntersect(const Rect &a, const Rect &b)
+inline Color lightened(Color t_color, u8 t_amount)
 {
-	const float x0 = std::max(a.X, b.X);
-	const float y0 = std::max(a.Y, b.Y);
-	const float x1 = std::min(a.X + a.W, b.X + b.W);
-	const float y1 = std::min(a.Y + a.H, b.Y + b.H);
+	const auto brighten = [t_amount](u8 t_channel) { return static_cast<u8>(std::min(255, t_channel + t_amount)); };
 
-	return Rect{x0, y0, std::max(0.0f, x1 - x0), std::max(0.0f, y1 - y0)};
+	return Color{brighten(t_color.r), brighten(t_color.g), brighten(t_color.b), t_color.a};
 }
 
-inline Color ColorWithAlpha(Color color, u8 alpha)
+inline Color mix(Color t_from, Color t_to, float t_amount)
 {
-	return Color{color.R, color.G, color.B, alpha};
-}
-
-inline Color ColorLighten(Color color, u8 amount)
-{
-	auto Clamp255 = [](int value) { return static_cast<u8>(value > 255 ? 255 : value); };
-
-	return Color{Clamp255(color.R + amount), Clamp255(color.G + amount), Clamp255(color.B + amount), color.A};
-}
-
-inline Color ColorLerp(Color a, Color b, float t)
-{
-	auto Lerp8 = [t](u8 from, u8 to) {
-		const float lerped = static_cast<float>(from) + (static_cast<float>(to) - static_cast<float>(from)) * t;
-		return static_cast<u8>(lerped);
+	const auto blend = [t_amount](u8 t_start, u8 t_end) {
+		return static_cast<u8>(static_cast<float>(t_start) + (static_cast<float>(t_end) - t_start) * t_amount);
 	};
 
-	return Color{Lerp8(a.R, b.R), Lerp8(a.G, b.G), Lerp8(a.B, b.B), 255};
+	return Color{blend(t_from.r, t_to.r), blend(t_from.g, t_to.g), blend(t_from.b, t_to.b), 255};
 }
 
-/// Perceived brightness, 0 (black) to 1 (white). Channels are linearized with a plain
-/// square rather than sRGB's piecewise curve: the only consumer is the light/dark choice
-/// below, and the two formulas disagree only within a hair of its crossover.
-inline float ColorRelativeLuminance(Color color)
+inline float luminance(Color t_color)
 {
-	const float r = static_cast<float>(color.R) / 255.0f;
-	const float g = static_cast<float>(color.G) / 255.0f;
-	const float b = static_cast<float>(color.B) / 255.0f;
+	const float r = t_color.r / 255.0f;
+	const float g = t_color.g / 255.0f;
+	const float b = t_color.b / 255.0f;
 
 	return 0.2126f * r * r + 0.7152f * g * g + 0.0722f * b * b;
 }
 
-/// The foreground that stays readable on `background` - every accent-filled surface draws
-/// its content through this, since the accent color is the user's to choose.
-///
-/// The 0.22 crossover is tuned against this app's default accent rather than WCAG's 0.179:
-/// the default sits at ~0.181, a hair the wrong side of the strict boundary, which flipped
-/// the shipped look to black text on a purple that white reads perfectly well on.
-inline Color ColorForegroundOn(Color background)
+inline Color foreground_on(Color t_background)
 {
-	constexpr Color kOnLight{18, 18, 20, 255};
-	constexpr Color kOnDark{245, 245, 248, 255};
+	constexpr Color dark_text{18, 18, 20, 255};
+	constexpr Color light_text{245, 245, 248, 255};
+	constexpr float default_accent_stays_light = 0.22f;
 
-	return ColorRelativeLuminance(background) > 0.22f ? kOnLight : kOnDark;
+	return luminance(t_background) > default_accent_stays_light ? dark_text : light_text;
 }
 
-/// The outline for a shape filled with `fill`: its contrasting foreground, pulled most of
-/// the way back toward the fill so it separates the shape without drawing more attention
-/// than the control itself.
-inline Color ColorOutlineOn(Color fill)
+inline Color outline_on(Color t_fill)
 {
-	constexpr float kStrength = 0.6f;
-
-	return ColorLerp(fill, ColorForegroundOn(fill), kStrength);
+	return mix(t_fill, foreground_on(t_fill), 0.6f);
 }
 
-/// A one-shot "did a click land on something" result: a widget latches one on pointer-up
-/// and a coordinating owner polls it once through a Consume* method.
-///
-/// The three outcomes are named rather than packed into an int's sentinel range (-2/-1/>=0),
-/// which is what a past bug collapsed by turning "hit nothing specific" into "nothing
-/// pending", firing every caller's != check on every frame.
-enum class EPendingHitKind : u8 {
-	None,
-	Miss,  // landed inside the widget, but not on any item
-	Index, // landed on PendingHit::Index
-};
-
-struct PendingHit {
-	EPendingHitKind Kind = EPendingHitKind::None;
-	i32 Index = -1;
-};
-
-inline PendingHit PendingHitMiss()
-{
-	return PendingHit{EPendingHitKind::Miss, -1};
-}
-
-inline PendingHit PendingHitIndex(i32 index)
-{
-	return PendingHit{EPendingHitKind::Index, index};
-}
-
-inline PendingHit PendingHitFromHitTest(i32 hitTestResult)
-{
-	return hitTestResult >= 0 ? PendingHitIndex(hitTestResult) : PendingHitMiss();
-}
-
-/// Arrow doubles as "no opinion", so CWidgetStack can keep walking down the stack without a
-/// separate has-an-opinion bit.
-enum class ECursorKind : u8 {
-	Arrow,
-	Hand,
-	IBeam,
-	Drag,
+enum class CursorKind : u8 {
+	arrow,
+	hand,
+	ibeam,
+	drag,
 };

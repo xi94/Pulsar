@@ -2,302 +2,278 @@
 
 #include <algorithm>
 #include <cmath>
-#include <utility>
+#include <span>
 
-#include "ui/draw_list.h"
+#include "gfx/draw_list.h"
 
 namespace {
-constexpr float kPopupPadding = 12.0f;
-constexpr float kPopupRadius = 12.0f;
-constexpr float kSvSize = 180.0f;
-constexpr float kStripGap = 10.0f;
-constexpr float kAlphaStripWidth = 20.0f;
-constexpr float kHueStripHeight = 16.0f;
-constexpr float kHandleRadius = 6.0f;
-constexpr float kWindowMargin = 8.0f;
-constexpr float kAnchorGap = 8.0f;
+constexpr float popup_padding = 12.0f;
+constexpr float popup_radius = 12.0f;
+constexpr float square_size = 180.0f;
+constexpr float strip_gap = 10.0f;
+constexpr float alpha_strip_width = 20.0f;
+constexpr float hue_strip_height = 16.0f;
+constexpr float handle_radius = 6.0f;
+constexpr float window_margin = 8.0f;
+constexpr float anchor_gap = 8.0f;
 
-constexpr Color kColorBg{30, 30, 34, 255};
-constexpr Color kColorBorder{70, 70, 76, 255};
-constexpr Color kColorMarker{255, 255, 255, 255};
+constexpr Color color_background{30, 30, 34, 255};
+constexpr Color color_border{70, 70, 76, 255};
+constexpr Color color_marker{255, 255, 255, 255};
 
-// The hue circle in RGB space is piecewise-linear through exactly these points, so linear
-// gradients between them are mathematically exact rather than an approximation.
-constexpr Color kHueStops[]{
+constexpr Color hue_stops[]{
 	{255, 0, 0, 255}, {255, 255, 0, 255}, {0, 255, 0, 255}, {0, 255, 255, 255},
 	{0, 0, 255, 255}, {255, 0, 255, 255}, {255, 0, 0, 255},
 };
 
-constexpr u32 kHueStopCount = sizeof(kHueStops) / sizeof(kHueStops[0]);
-
 struct Hsv {
-	float Hue;
-	float Saturation;
-	float Value;
+	float hue;
+	float saturation;
+	float value;
 };
 
-Color HsvToRgb(float hue, float saturation, float value)
+Color hsv_to_rgb(float t_hue, float t_saturation, float t_value)
 {
-	const float c = value * saturation;
-	const float hPrime = std::fmod(hue, 360.0f) / 60.0f;
-	const float x = c * (1.0f - std::fabs(std::fmod(hPrime, 2.0f) - 1.0f));
+	const float chroma = t_value * t_saturation;
+	const float sector = std::fmod(t_hue, 360.0f) / 60.0f;
+	const float secondary = chroma * (1.0f - std::fabs(std::fmod(sector, 2.0f) - 1.0f));
 
 	float r = 0.0f;
 	float g = 0.0f;
 	float b = 0.0f;
 
-	if (hPrime < 1.0f) {
-		r = c;
-		g = x;
-	} else if (hPrime < 2.0f) {
-		r = x;
-		g = c;
-	} else if (hPrime < 3.0f) {
-		g = c;
-		b = x;
-	} else if (hPrime < 4.0f) {
-		g = x;
-		b = c;
-	} else if (hPrime < 5.0f) {
-		r = x;
-		b = c;
-	} else {
-		r = c;
-		b = x;
+	switch (static_cast<int>(sector)) {
+		case 0:
+			r = chroma;
+			g = secondary;
+			break;
+		case 1:
+			r = secondary;
+			g = chroma;
+			break;
+		case 2:
+			g = chroma;
+			b = secondary;
+			break;
+		case 3:
+			g = secondary;
+			b = chroma;
+			break;
+		case 4:
+			r = secondary;
+			b = chroma;
+			break;
+		default:
+			r = chroma;
+			b = secondary;
+			break;
 	}
 
-	const float m = value - c;
-	const auto toByte = [](float channel) { return static_cast<u8>(std::clamp(channel * 255.0f, 0.0f, 255.0f)); };
+	const float lift = t_value - chroma;
+	const auto to_byte = [lift](float t_channel) {
+		return static_cast<u8>(std::clamp((t_channel + lift) * 255.0f, 0.0f, 255.0f));
+	};
 
-	return Color{toByte(r + m), toByte(g + m), toByte(b + m), 255};
+	return Color{to_byte(r), to_byte(g), to_byte(b), 255};
 }
 
-Hsv RgbToHsv(Color color)
+Hsv rgb_to_hsv(Color t_color)
 {
-	const float r = static_cast<float>(color.R) / 255.0f;
-	const float g = static_cast<float>(color.G) / 255.0f;
-	const float b = static_cast<float>(color.B) / 255.0f;
+	const float r = t_color.r / 255.0f;
+	const float g = t_color.g / 255.0f;
+	const float b = t_color.b / 255.0f;
 
-	const float maxC = std::max({r, g, b});
-	const float minC = std::min({r, g, b});
-	const float delta = maxC - minC;
+	const float max_channel = std::max({r, g, b});
+	const float delta = max_channel - std::min({r, g, b});
 
 	float hue = 0.0f;
 	if (delta > 0.0001f) {
-		if (maxC == r) {
+		if (max_channel == r) {
 			hue = 60.0f * std::fmod((g - b) / delta, 6.0f);
-		} else if (maxC == g) {
+		} else if (max_channel == g) {
 			hue = 60.0f * ((b - r) / delta + 2.0f);
 		} else {
 			hue = 60.0f * ((r - g) / delta + 4.0f);
 		}
 	}
 
-	if (hue < 0.0f) {
-		hue += 360.0f;
+	return Hsv{hue < 0.0f ? hue + 360.0f : hue, max_channel > 0.0001f ? delta / max_channel : 0.0f, max_channel};
+}
+
+Rect saturation_value_rect(Rect t_popup)
+{
+	return Rect{t_popup.x + popup_padding, t_popup.y + popup_padding, square_size, square_size};
+}
+
+Rect hue_rect(Rect t_popup)
+{
+	const Rect square = saturation_value_rect(t_popup);
+
+	return Rect{square.x, square.bottom() + strip_gap, square_size, hue_strip_height};
+}
+
+Rect alpha_rect(Rect t_popup)
+{
+	const Rect square = saturation_value_rect(t_popup);
+
+	return Rect{square.right() + strip_gap, square.y, alpha_strip_width, square_size};
+}
+
+float fraction_along(float t_position, float t_start, float t_length)
+{
+	return std::clamp((t_position - t_start) / t_length, 0.0f, 1.0f);
+}
+
+void draw_handle(DrawList &t_draw_list, Vec2 t_center, Color t_fill)
+{
+	const float inner_radius = handle_radius - 2.5f;
+
+	t_draw_list.add_rounded_rect(
+		Rect{t_center.x - handle_radius, t_center.y - handle_radius, handle_radius * 2.0f, handle_radius * 2.0f},
+		rounded(handle_radius), foreground_on(t_fill));
+	t_draw_list.add_rounded_rect(
+		Rect{t_center.x - inner_radius, t_center.y - inner_radius, inner_radius * 2.0f, inner_radius * 2.0f},
+		rounded(inner_radius), t_fill);
+}
+}
+
+Rect ColorPicker::popup_rect() const
+{
+	const float width = popup_padding * 2.0f + square_size + strip_gap + alpha_strip_width;
+	const float height = popup_padding * 2.0f + square_size + strip_gap + hue_strip_height;
+	const float max_x = std::max(window_margin, m_window_size.x - window_margin - width);
+	const float max_y = std::max(window_margin, m_window_size.y - window_margin - height);
+
+	float y = m_anchor.bottom() + anchor_gap;
+	if (y + height > m_window_size.y - window_margin) {
+		y = m_anchor.y - anchor_gap - height;
 	}
 
-	return Hsv{hue, maxC > 0.0001f ? delta / maxC : 0.0f, maxC};
+	return Rect{std::clamp(m_anchor.right() - width, window_margin, max_x), std::clamp(y, window_margin, max_y), width,
+				height};
 }
 
-std::pair<float, float> PopupSize()
+void ColorPicker::end_drags()
 {
-	return {kPopupPadding * 2.0f + kSvSize + kStripGap + kAlphaStripWidth,
-			kPopupPadding * 2.0f + kSvSize + kStripGap + kHueStripHeight};
+	m_saturation_value_drag.end();
+	m_hue_drag.end();
+	m_alpha_drag.end();
 }
 
-Rect SvRect(Rect popup)
+void ColorPicker::open(Color t_initial, Rect t_anchor, Vec2 t_window_size)
 {
-	return Rect{popup.X + kPopupPadding, popup.Y + kPopupPadding, kSvSize, kSvSize};
+	const Hsv hsv = rgb_to_hsv(t_initial);
+	m_hue = hsv.hue;
+	m_saturation = hsv.saturation;
+	m_value = hsv.value;
+	m_alpha = t_initial.a;
+
+	m_anchor = t_anchor;
+	m_window_size = t_window_size;
+	m_open = true;
+
+	end_drags();
 }
 
-Rect HueRect(Rect popup)
+void ColorPicker::close()
 {
-	const Rect sv = SvRect(popup);
-
-	return Rect{sv.X, sv.Y + sv.H + kStripGap, kSvSize, kHueStripHeight};
+	m_open = false;
+	end_drags();
 }
 
-Rect AlphaRect(Rect popup)
+Color ColorPicker::color() const
 {
-	const Rect sv = SvRect(popup);
-
-	return Rect{sv.X + sv.W + kStripGap, sv.Y, kAlphaStripWidth, kSvSize};
+	return with_alpha(hsv_to_rgb(m_hue, m_saturation, m_value), m_alpha);
 }
 
-// A ring around the picked colour rather than a plain dot, which would disappear against a
-// same-coloured background. The ring contrasts against the colour it points at instead of
-// being a fixed white - white on the square's white corner is as invisible as no ring.
-void DrawHandleRing(CDrawList &drawList, float cx, float cy, Color fill)
+bool ColorPicker::on_pointer_down(Vec2 t_point)
 {
-	drawList.AddRectRoundedFilled(cx - kHandleRadius, cy - kHandleRadius, kHandleRadius * 2.0f, kHandleRadius * 2.0f,
-								  CDrawList::UniformRadii(kHandleRadius), ColorForegroundOn(fill));
+	const Rect popup = popup_rect();
+	if (!m_open || !popup.contains(t_point)) return false;
 
-	const float inner = kHandleRadius - 2.5f;
-	drawList.AddRectRoundedFilled(cx - inner, cy - inner, inner * 2.0f, inner * 2.0f, CDrawList::UniformRadii(inner),
-								  fill);
-}
-} // namespace
-
-// The one geometry function every hit-test and draw shares, so the popup's position and its
-// clickable area can never drift apart.
-Rect CColorPicker::PopupRect() const
-{
-	const auto [w, h] = PopupSize();
-
-	// Right-aligned under the swatch, flipped above if it would not fit below.
-	const float x = std::clamp(m_anchor.X + m_anchor.W - w, kWindowMargin,
-							   std::max(kWindowMargin, m_flWindowW - kWindowMargin - w));
-
-	float y = m_anchor.Y + m_anchor.H + kAnchorGap;
-	if (y + h > m_flWindowH - kWindowMargin) {
-		y = m_anchor.Y - kAnchorGap - h;
+	if (saturation_value_rect(popup).contains(t_point)) {
+		m_saturation_value_drag.begin(t_point);
+	} else if (hue_rect(popup).contains(t_point)) {
+		m_hue_drag.begin(t_point);
+	} else if (alpha_rect(popup).contains(t_point)) {
+		m_alpha_drag.begin(t_point);
 	}
 
-	y = std::clamp(y, kWindowMargin, std::max(kWindowMargin, m_flWindowH - kWindowMargin - h));
-
-	return Rect{x, y, w, h};
-}
-
-void CColorPicker::EndAllDrags()
-{
-	m_dragSv.End();
-	m_dragHue.End();
-	m_dragAlpha.End();
-}
-
-void CColorPicker::Open(Color initial, Rect anchor, float windowW, float windowH)
-{
-	const Hsv hsv = RgbToHsv(initial);
-	m_flHue = hsv.Hue;
-	m_flSaturation = hsv.Saturation;
-	m_flValue = hsv.Value;
-	m_uAlpha = initial.A;
-
-	m_anchor = anchor;
-	m_flWindowW = windowW;
-	m_flWindowH = windowH;
-	m_bOpen = true;
-
-	EndAllDrags();
-}
-
-void CColorPicker::Close()
-{
-	m_bOpen = false;
-	EndAllDrags();
-}
-
-Color CColorPicker::GetCurrentColor() const
-{
-	return ColorWithAlpha(HsvToRgb(m_flHue, m_flSaturation, m_flValue), m_uAlpha);
-}
-
-bool CColorPicker::OnPointerDown(float x, float y)
-{
-	if (!m_bOpen) return false;
-
-	const Rect popup = PopupRect();
-	if (!RectContainsPoint(popup, x, y)) return false;
-
-	if (RectContainsPoint(SvRect(popup), x, y)) {
-		m_dragSv.Begin(x, y);
-	} else if (RectContainsPoint(HueRect(popup), x, y)) {
-		m_dragHue.Begin(x, y);
-	} else if (RectContainsPoint(AlphaRect(popup), x, y)) {
-		m_dragAlpha.Begin(x, y);
-	}
-
-	// Applying through the move path means a plain click picks a colour immediately, without
-	// duplicating the clamping here.
-	OnPointerMove(x, y);
+	on_pointer_move(t_point);
 
 	return true;
 }
 
-bool CColorPicker::OnPointerMove(float x, float y)
+void ColorPicker::on_pointer_move(Vec2 t_point)
 {
-	if (!IsDragging()) return false;
+	const Rect popup = popup_rect();
 
-	const Rect popup = PopupRect();
-
-	if (m_dragSv.IsPressed()) {
-		const Rect sv = SvRect(popup);
-		m_dragSv.Update(x, y);
-		m_flSaturation = std::clamp((x - sv.X) / sv.W, 0.0f, 1.0f);
-		m_flValue = std::clamp(1.0f - (y - sv.Y) / sv.H, 0.0f, 1.0f);
+	if (m_saturation_value_drag.is_pressed()) {
+		const Rect square = saturation_value_rect(popup);
+		m_saturation_value_drag.update(t_point);
+		m_saturation = fraction_along(t_point.x, square.x, square.w);
+		m_value = 1.0f - fraction_along(t_point.y, square.y, square.h);
 	}
 
-	if (m_dragHue.IsPressed()) {
-		const Rect hue = HueRect(popup);
-		m_dragHue.Update(x, y);
-		m_flHue = std::clamp((x - hue.X) / hue.W, 0.0f, 1.0f) * 360.0f;
+	if (m_hue_drag.is_pressed()) {
+		const Rect hue = hue_rect(popup);
+		m_hue_drag.update(t_point);
+		m_hue = fraction_along(t_point.x, hue.x, hue.w) * 360.0f;
 	}
 
-	if (m_dragAlpha.IsPressed()) {
-		const Rect alpha = AlphaRect(popup);
-		m_dragAlpha.Update(x, y);
-		m_uAlpha = static_cast<u8>(std::clamp(1.0f - (y - alpha.Y) / alpha.H, 0.0f, 1.0f) * 255.0f);
+	if (m_alpha_drag.is_pressed()) {
+		const Rect alpha = alpha_rect(popup);
+		m_alpha_drag.update(t_point);
+		m_alpha = static_cast<u8>((1.0f - fraction_along(t_point.y, alpha.y, alpha.h)) * 255.0f);
 	}
-
-	return true;
 }
 
-bool CColorPicker::OnPointerUp(float x, float y)
+void ColorPicker::on_pointer_up()
 {
-	const bool wasDragging = IsDragging();
-	EndAllDrags();
-
-	return wasDragging;
+	end_drags();
 }
 
-ECursorKind CColorPicker::GetDesiredCursor() const
+CursorKind ColorPicker::cursor(Vec2 t_mouse) const
 {
-	if (!m_bOpen) return ECursorKind::Arrow;
+	if (!m_open) return CursorKind::arrow;
+	if (is_dragging()) return CursorKind::drag;
 
-	if (IsDragging()) return ECursorKind::Drag;
+	const Rect popup = popup_rect();
+	const bool over_control = saturation_value_rect(popup).contains(t_mouse) || hue_rect(popup).contains(t_mouse) ||
+							  alpha_rect(popup).contains(t_mouse);
 
-	const Rect popup = PopupRect();
-	const bool overControl = RectContainsPoint(SvRect(popup), m_flMouseX, m_flMouseY) ||
-							 RectContainsPoint(HueRect(popup), m_flMouseX, m_flMouseY) ||
-							 RectContainsPoint(AlphaRect(popup), m_flMouseX, m_flMouseY);
-
-	return overControl ? ECursorKind::Hand : ECursorKind::Arrow;
+	return over_control ? CursorKind::hand : CursorKind::arrow;
 }
 
-void CColorPicker::Draw(CDrawList &drawList)
+void ColorPicker::draw(DrawList &t_draw_list) const
 {
-	if (!m_bOpen) return;
+	if (!m_open) return;
 
-	const Rect popup = PopupRect();
-	drawList.AddRectRoundedFilled(popup.X - 1.0f, popup.Y - 1.0f, popup.W + 2.0f, popup.H + 2.0f,
-								  CDrawList::UniformRadii(kPopupRadius), kColorBorder);
-	drawList.AddRectRoundedFilled(popup.X, popup.Y, popup.W, popup.H, CDrawList::UniformRadii(kPopupRadius - 1.0f),
-								  kColorBg);
+	const Rect popup = popup_rect();
+	t_draw_list.add_bordered_rect(popup.inset(-1.0f), rounded(popup_radius), color_background, color_border, 1.0f);
 
-	const Color picked = HsvToRgb(m_flHue, m_flSaturation, m_flValue);
+	const Color picked = hsv_to_rgb(m_hue, m_saturation, m_value);
 
-	const Rect sv = SvRect(popup);
-	drawList.AddRectColorPickerSv(sv.X, sv.Y, sv.W, sv.H, m_flHue);
-	DrawHandleRing(drawList, sv.X + m_flSaturation * sv.W, sv.Y + (1.0f - m_flValue) * sv.H, picked);
+	const Rect square = saturation_value_rect(popup);
+	t_draw_list.add_color_picker_square(square, m_hue);
+	draw_handle(t_draw_list, Vec2{square.x + m_saturation * square.w, square.y + (1.0f - m_value) * square.h}, picked);
 
-	const Rect hue = HueRect(popup);
-	const float hueSegmentWidth = hue.W / static_cast<float>(kHueStopCount - 1);
-	for (u32 i = 0; i + 1 < kHueStopCount; i += 1) {
-		drawList.AddRectGradientCorners(hue.X + static_cast<float>(i) * hueSegmentWidth, hue.Y, hueSegmentWidth, hue.H,
-										kHueStops[i], kHueStops[i + 1], kHueStops[i], kHueStops[i + 1]);
+	const Rect hue = hue_rect(popup);
+	const std::span<const Color> stops = hue_stops;
+	const float segment_width = hue.w / static_cast<float>(stops.size() - 1);
+
+	for (usize i = 0; i + 1 < stops.size(); i += 1) {
+		const Rect segment{hue.x + i * segment_width, hue.y, segment_width, hue.h};
+		t_draw_list.add_gradient(segment, stops[i], stops[i + 1], stops[i], stops[i + 1]);
 	}
 
-	const float hueMarkerX = hue.X + (m_flHue / 360.0f) * hue.W;
-	drawList.AddRectFilled(hueMarkerX - 1.5f, hue.Y - 2.0f, 3.0f, hue.H + 4.0f, kColorMarker);
+	const float hue_marker_x = hue.x + m_hue / 360.0f * hue.w;
+	t_draw_list.add_rect(Rect{hue_marker_x - 1.5f, hue.y - 2.0f, 3.0f, hue.h + 4.0f}, color_marker);
 
-	// One exact vertical gradient; the renderer's existing blend state does the real per-pixel
-	// alpha against the background beneath.
-	const Rect alpha = AlphaRect(popup);
-	const Color opaque = ColorWithAlpha(picked, 255);
-	const Color transparent = ColorWithAlpha(picked, 0);
-	drawList.AddRectGradientCorners(alpha.X, alpha.Y, alpha.W, alpha.H, opaque, opaque, transparent, transparent);
+	const Rect alpha = alpha_rect(popup);
+	t_draw_list.add_gradient(alpha, with_alpha(picked, 255), with_alpha(picked, 255), with_alpha(picked, 0),
+							 with_alpha(picked, 0));
 
-	const float alphaMarkerY = alpha.Y + (1.0f - static_cast<float>(m_uAlpha) / 255.0f) * alpha.H;
-	drawList.AddRectFilled(alpha.X - 2.0f, alphaMarkerY - 1.5f, alpha.W + 4.0f, 3.0f, kColorMarker);
+	const float alpha_marker_y = alpha.y + (1.0f - m_alpha / 255.0f) * alpha.h;
+	t_draw_list.add_rect(Rect{alpha.x - 2.0f, alpha_marker_y - 1.5f, alpha.w + 4.0f, 3.0f}, color_marker);
 }

@@ -1,8 +1,8 @@
 #include "core/riot_client.h"
 
 #include <algorithm>
-#include <chrono>
 #include <fstream>
+#include <span>
 #include <thread>
 #include <vector>
 
@@ -11,686 +11,546 @@
 #include <nlohmann/json.hpp>
 
 #include "core/debug_log.h"
+#include "core/str.h"
 #include "core/thread_util.h"
 
 namespace {
-constexpr const char *kLogCategory = "riot";
+constexpr const char *log_category = "riot";
 
-constexpr const char *kInstallsJsonPath = "C:\\ProgramData\\Riot Games\\RiotClientInstalls.json";
-constexpr const char *kExecutablePathKey = "rc_default";
+constexpr const char *installs_json_path = "C:\\ProgramData\\Riot Games\\RiotClientInstalls.json";
+constexpr const char *executable_path_key = "rc_default";
 
-// Every name below was confirmed via Inspect against a real install.
-constexpr const wchar_t *kClientWindowTitle = L"Riot Client";
-constexpr const wchar_t *kUsernameFieldName = L"USERNAME";
-constexpr const wchar_t *kPasswordFieldName = L"PASSWORD";
-constexpr const wchar_t *kPlayButtonName = L"Play";
-
-// The generic heading shown for every login failure. It does not say which one happened - the
-// reason is a separate element, matched independently.
-constexpr const wchar_t *kLoginErrorToolTipName = L"Login error";
-
-// The two failure reasons seen so far. Riot may have others; anything else falls back to the
-// generic heading above.
-constexpr const wchar_t *kInvalidCredentialsReasonText =
-	L"Your login credentials don't match an account in our system.";
-constexpr const wchar_t *kTroubleSigningInReasonText =
+constexpr const wchar_t *client_window_title = L"Riot Client";
+constexpr const wchar_t *username_field_name = L"USERNAME";
+constexpr const wchar_t *password_field_name = L"PASSWORD";
+constexpr const wchar_t *play_button_name = L"Play";
+constexpr const wchar_t *login_error_tooltip_name = L"Login error";
+constexpr const wchar_t *invalid_credentials_reason = L"Your login credentials don't match an account in our system.";
+constexpr const wchar_t *trouble_signing_in_reason =
 	L"Sorry, we're having trouble signing you in right now. Please try again later.";
 
-constexpr const wchar_t *const kClientProcessNames[]{
+constexpr const wchar_t *client_process_names[]{
 	L"Riot Client.exe",	 L"RiotClientServices.exe", L"RiotClientUx.exe", L"RiotClientUxRender.exe",
 	L"LeagueClient.exe", L"LeagueClientUx.exe",		L"LoR.exe",
 };
 
-// The in-match processes a kill must never touch. "League of Legends.exe" is the real game,
-// distinct from LeagueClient.exe's lobby launcher, which is safe to kill.
-constexpr const wchar_t *const kGameProcessNames[]{
+constexpr const wchar_t *game_process_names[]{
 	L"VALORANT-Win64-Shipping.exe",
 	L"League of Legends.exe",
 };
 
-// Generous: a client tree normally unwinds well inside this.
-constexpr auto kProcessExitTimeout = std::chrono::milliseconds(3000);
+constexpr auto process_exit_timeout = std::chrono::milliseconds(3000);
+constexpr auto activation_timeout = std::chrono::milliseconds(3000);
+constexpr auto window_element_lifetime = std::chrono::milliseconds(2000);
+constexpr auto poll_interval = std::chrono::milliseconds(100);
+constexpr u32 responsiveness_probe_ms = 750;
+constexpr u32 focus_settle_ms = 500;
 
-constexpr u32 kResponsiveProbeTimeoutMs = 750;
-constexpr auto kActivateTimeout = std::chrono::milliseconds(3000);
-constexpr auto kPollInterval = std::chrono::milliseconds(100);
-
-// Ordinal rather than culture-aware: process image names are ASCII.
-bool ProcessNameEquals(const wchar_t *pExeFileName, const wchar_t *pTarget)
+bool is_cancelled(const std::atomic<bool> &t_cancel)
 {
-	return CompareStringOrdinal(pExeFileName, -1, pTarget, -1, TRUE) == CSTR_EQUAL;
+	return t_cancel.load(std::memory_order_relaxed);
 }
 
-bool MatchesAnyName(const wchar_t *pExeFileName, const wchar_t *const *pNames, usize nameCount)
+std::chrono::steady_clock::time_point deadline_after(u32 t_timeout_ms)
 {
-	for (usize i = 0; i < nameCount; i += 1) {
-		if (ProcessNameEquals(pExeFileName, pNames[i])) return true;
-	}
-
-	return false;
+	return std::chrono::steady_clock::now() + std::chrono::milliseconds(t_timeout_ms);
 }
 
-bool AnyProcessNameMatches(const wchar_t *const *pNames, usize nameCount)
+bool is_past(std::chrono::steady_clock::time_point t_deadline)
+{
+	return std::chrono::steady_clock::now() >= t_deadline;
+}
+
+bool matches_any(const wchar_t *t_exe_name, std::span<const wchar_t *const> t_names)
+{
+	return std::ranges::any_of(t_names, [t_exe_name](const wchar_t *t_name) {
+		return CompareStringOrdinal(t_exe_name, -1, t_name, -1, TRUE) == CSTR_EQUAL;
+	});
+}
+
+template <typename Visitor>
+void for_each_process(Visitor t_visitor)
 {
 	const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-	if (snapshot == INVALID_HANDLE_VALUE) return false;
+	if (snapshot == INVALID_HANDLE_VALUE) return;
 
-	bool found = false;
 	PROCESSENTRY32W entry{.dwSize = sizeof(entry)};
-
-	if (Process32FirstW(snapshot, &entry)) {
-		do {
-			found = MatchesAnyName(entry.szExeFile, pNames, nameCount);
-		} while (!found && Process32NextW(snapshot, &entry));
+	for (bool more = Process32FirstW(snapshot, &entry); more; more = Process32NextW(snapshot, &entry)) {
+		t_visitor(entry);
 	}
 
 	CloseHandle(snapshot);
-
-	return found;
 }
 
-// A window whose owning process is not the one Launch started means this latched onto a dying
-// client's about-to-vanish handle.
-void LogWindowIdentity(const char *pWhat, HWND hWnd)
+void log_window_identity(const char *t_what, HWND t_window)
 {
-	if (!DebugLog::IsEnabled()) return;
+	if (!debug_log::is_enabled()) return;
 
-	if (hWnd == nullptr) {
-		DebugLog::Write(kLogCategory, "%s: no client window found", pWhat);
-		return;
-	}
-
-	DWORD processId = 0;
-	const DWORD threadId = GetWindowThreadProcessId(hWnd, &processId);
+	DWORD process_id = 0;
+	const DWORD thread_id = GetWindowThreadProcessId(t_window, &process_id);
 
 	wchar_t title[128]{};
-	GetWindowTextW(hWnd, title, ARRAYSIZE(title));
+	GetWindowTextW(t_window, title, ARRAYSIZE(title));
 
-	DebugLog::Write(kLogCategory, "%s: hwnd=0x%p owned by pid %lu / thread t%lu, title \"%ls\"", pWhat, hWnd, processId,
-					threadId, title);
+	debug_log::write(log_category, "%s: hwnd=0x%p owned by pid %lu / thread t%lu, title \"%ls\"", t_what, t_window,
+					 process_id, thread_id, title);
 }
 
-// Waits for every handle against one shared deadline, batched because WaitForMultipleObjects
-// caps out below the process count a Riot Client tree mid-teardown can reach. Consumes them
-// either way.
-void WaitForProcessesToExit(std::vector<HANDLE> &processes, std::chrono::milliseconds timeout)
+void wait_for_processes_to_exit(const std::vector<HANDLE> &t_processes)
 {
-	const auto deadline = std::chrono::steady_clock::now() + timeout;
+	const auto deadline = std::chrono::steady_clock::now() + process_exit_timeout;
+	bool timed_out = false;
 
-	bool bTimedOut = false;
-	for (usize offset = 0; offset < processes.size(); offset += MAXIMUM_WAIT_OBJECTS) {
-		const auto count = static_cast<DWORD>(std::min<usize>(MAXIMUM_WAIT_OBJECTS, processes.size() - offset));
-		const auto now = std::chrono::steady_clock::now();
-		const DWORD remainingMs =
-			now >= deadline
-				? 0
-				: static_cast<DWORD>(std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count());
+	for (usize offset = 0; offset < t_processes.size(); offset += MAXIMUM_WAIT_OBJECTS) {
+		const auto count = static_cast<DWORD>(std::min<usize>(MAXIMUM_WAIT_OBJECTS, t_processes.size() - offset));
+		const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::max(deadline - std::chrono::steady_clock::now(), std::chrono::steady_clock::duration::zero()));
 
-		bTimedOut =
-			WaitForMultipleObjects(count, processes.data() + offset, TRUE, remainingMs) == WAIT_TIMEOUT || bTimedOut;
+		timed_out = WaitForMultipleObjects(count, t_processes.data() + offset, TRUE,
+										   static_cast<DWORD>(remaining.count())) == WAIT_TIMEOUT ||
+					timed_out;
 	}
 
-	if (bTimedOut) {
-		DebugLog::Write(kLogCategory, "TIMED OUT waiting for killed processes to exit - launching anyway");
+	if (timed_out) {
+		debug_log::write(log_category, "TIMED OUT waiting for killed processes to exit - launching anyway");
 	}
-
-	for (const HANDLE process : processes) {
-		CloseHandle(process);
-	}
-
-	processes.clear();
 }
 
-// SYNCHRONIZE alongside PROCESS_TERMINATE purely so the handle can be waited on afterwards.
-std::vector<HANDLE> TerminateMatchingProcesses(const wchar_t *const *pNames, usize nameCount)
+std::vector<HANDLE> terminate_processes(std::span<const wchar_t *const> t_names)
 {
 	std::vector<HANDLE> terminated;
 
-	const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-	if (snapshot == INVALID_HANDLE_VALUE) return terminated;
+	for_each_process([&](const PROCESSENTRY32W &t_entry) {
+		if (!matches_any(t_entry.szExeFile, t_names)) return;
 
-	PROCESSENTRY32W entry{.dwSize = sizeof(entry)};
-	if (Process32FirstW(snapshot, &entry)) {
-		do {
-			if (!MatchesAnyName(entry.szExeFile, pNames, nameCount)) continue;
+		const HANDLE process = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, t_entry.th32ProcessID);
+		if (process == nullptr) return;
 
-			const HANDLE process = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, entry.th32ProcessID);
-			if (process == nullptr) continue;
-
-			if (TerminateProcess(process, 0)) {
-				DebugLog::Write(kLogCategory, "terminated %ls (pid %lu)", entry.szExeFile, entry.th32ProcessID);
-				terminated.push_back(process);
-			} else {
-				DebugLog::Write(kLogCategory, "TerminateProcess FAILED for %ls (pid %lu), err=%lu", entry.szExeFile,
-								entry.th32ProcessID, GetLastError());
-				CloseHandle(process);
-			}
-		} while (Process32NextW(snapshot, &entry));
-	}
-
-	CloseHandle(snapshot);
+		if (TerminateProcess(process, 0)) {
+			debug_log::write(log_category, "terminated %ls (pid %lu)", t_entry.szExeFile, t_entry.th32ProcessID);
+			terminated.push_back(process);
+		} else {
+			debug_log::write(log_category, "TerminateProcess FAILED for %ls (pid %lu), err=%lu", t_entry.szExeFile,
+							 t_entry.th32ProcessID, GetLastError());
+			CloseHandle(process);
+		}
+	});
 
 	return terminated;
 }
 
-void KillProcessesByName(const wchar_t *const *pNames, usize nameCount)
+bool is_window_responsive(HWND t_window)
 {
-	std::vector<HANDLE> terminated = TerminateMatchingProcesses(pNames, nameCount);
+	const debug_log::Scope scope(log_category, "WM_NULL responsiveness probe (hwnd=0x%p)", t_window);
 
-	const DebugLog::CScope scope(kLogCategory, "wait for %zu killed client process(es) to exit", terminated.size());
-	WaitForProcessesToExit(terminated, kProcessExitTimeout);
+	DWORD_PTR ignored = 0;
 
-	DebugLog::Write(kLogCategory, "killed client processes gone after %llums",
-					static_cast<unsigned long long>(scope.ElapsedMs()));
+	return SendMessageTimeoutW(t_window, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, responsiveness_probe_ms,
+							   &ignored) != 0;
 }
 
-std::wstring Utf8ToWide(std::string_view text)
-{
-	if (text.empty()) return std::wstring{};
-
-	const int length = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
-	if (length <= 0) return std::wstring{};
-
-	std::wstring wide(static_cast<usize>(length), L'\0');
-	MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), wide.data(), length);
-
-	return wide;
-}
-
-bool IsCancelled(const std::atomic<bool> *pCancelRequested)
-{
-	return pCancelRequested != nullptr && pCancelRequested->load(std::memory_order_relaxed);
-}
-
-// The standard WM_NULL hung-app probe. AttachThreadInput hangs outright against a thread that is
-// not pumping, and the client's window matches by title seconds before its UI thread starts.
-bool IsWindowResponsive(HWND hWnd, u32 timeoutMs)
-{
-	const DebugLog::CScope scope(kLogCategory, "WM_NULL responsiveness probe (hwnd=0x%p)", hWnd);
-
-	DWORD_PTR probeResult = 0;
-
-	return SendMessageTimeoutW(hWnd, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, timeoutMs, &probeResult) != 0;
-}
-
-// Windows silently ignores SetForegroundWindow and SetFocus aimed at a window whose thread is
-// not part of the caller's input queue, so activation has to attach first.
-//
-// Only ever constructed on ActivateWindowBounded's throwaway thread: both AttachThreadInput
-// calls are unbounded trips into the target's thread, and the probe above does not guard the
-// detach - once attached the two threads share one input queue.
-class CScopedThreadInputAttach {
+class AttachedInputQueue {
   public:
-	explicit CScopedThreadInputAttach(HWND hWnd)
+	explicit AttachedInputQueue(HWND t_window)
 	{
-		if (!IsWindowResponsive(hWnd, kResponsiveProbeTimeoutMs)) {
-			DebugLog::Write(kLogCategory, "activation: target window is not pumping - skipping AttachThreadInput");
+		if (!is_window_responsive(t_window)) {
+			debug_log::write(log_category, "activation: target window is not pumping - skipping AttachThreadInput");
 			return;
 		}
 
-		m_targetThreadId = GetWindowThreadProcessId(hWnd, nullptr);
-		m_currentThreadId = GetCurrentThreadId();
+		m_target_thread = GetWindowThreadProcessId(t_window, nullptr);
+		m_current_thread = GetCurrentThreadId();
 
-		if (m_targetThreadId != 0 && m_targetThreadId != m_currentThreadId) {
-			const DebugLog::CScope scope(kLogCategory, "AttachThreadInput(TRUE) to t%lu", m_targetThreadId);
-			m_bAttached = AttachThreadInput(m_currentThreadId, m_targetThreadId, TRUE) != 0;
+		if (m_target_thread != 0 && m_target_thread != m_current_thread) {
+			const debug_log::Scope scope(log_category, "AttachThreadInput(TRUE) to t%lu", m_target_thread);
+			m_attached = AttachThreadInput(m_current_thread, m_target_thread, TRUE) != 0;
 		}
 
-		DebugLog::Write(kLogCategory, "activation: input queue %s target thread t%lu",
-						m_bAttached ? "attached to" : "NOT attached to", m_targetThreadId);
+		debug_log::write(log_category, "activation: input queue %s target thread t%lu",
+						 m_attached ? "attached to" : "NOT attached to", m_target_thread);
 	}
 
-	~CScopedThreadInputAttach()
+	~AttachedInputQueue()
 	{
-		if (m_bAttached) {
-			const DebugLog::CScope scope(kLogCategory, "AttachThreadInput(FALSE) from t%lu", m_targetThreadId);
-			AttachThreadInput(m_currentThreadId, m_targetThreadId, FALSE);
-		}
+		if (!m_attached) return;
+
+		const debug_log::Scope scope(log_category, "AttachThreadInput(FALSE) from t%lu", m_target_thread);
+		AttachThreadInput(m_current_thread, m_target_thread, FALSE);
 	}
 
-	CScopedThreadInputAttach(const CScopedThreadInputAttach &) = delete;
-	CScopedThreadInputAttach &operator=(const CScopedThreadInputAttach &) = delete;
+	AttachedInputQueue(const AttachedInputQueue &) = delete;
+	AttachedInputQueue &operator=(const AttachedInputQueue &) = delete;
 
   private:
-	DWORD m_targetThreadId = 0;
-	DWORD m_currentThreadId = 0;
-	bool m_bAttached = false;
+	DWORD m_target_thread = 0;
+	DWORD m_current_thread = 0;
+	bool m_attached = false;
 };
 
-// Every call here is an unbounded trip through the target's window procedure, so this only runs
-// via ActivateWindowBounded. Each gets a breadcrumb naming the call that never came back.
-void ActivateWindowNow(HWND hWnd, bool bAlsoFocus)
+void activate_window(HWND t_window, bool t_take_focus)
 {
-	const CScopedThreadInputAttach attach(hWnd);
+	// Windows ignores SetForegroundWindow and SetFocus from a thread outside the target's input queue.
+	const AttachedInputQueue attached(t_window);
 
-	if (IsIconic(hWnd)) {
-		const DebugLog::CScope scope(kLogCategory, "ShowWindow(SW_RESTORE)");
-		ShowWindow(hWnd, SW_RESTORE);
+	if (IsIconic(t_window)) {
+		const debug_log::Scope scope(log_category, "ShowWindow(SW_RESTORE)");
+		ShowWindow(t_window, SW_RESTORE);
 	}
 
 	{
-		const DebugLog::CScope scope(kLogCategory, "SetForegroundWindow");
-		SetForegroundWindow(hWnd);
+		const debug_log::Scope scope(log_category, "SetForegroundWindow");
+		SetForegroundWindow(t_window);
 	}
 
 	{
-		const DebugLog::CScope scope(kLogCategory, "BringWindowToTop");
-		BringWindowToTop(hWnd);
+		const debug_log::Scope scope(log_category, "BringWindowToTop");
+		BringWindowToTop(t_window);
 	}
 
-	if (bAlsoFocus) {
-		// Only meaningful while the attach above is still in effect.
-		const DebugLog::CScope scope(kLogCategory, "SetFocus");
-		SetFocus(hWnd);
+	if (t_take_focus) {
+		const debug_log::Scope scope(log_category, "SetFocus");
+		SetFocus(t_window);
 	}
 }
 
-// False means the pass is still stuck inside the client's window procedure on a thread that has
-// been abandoned. The client simply does not come forward, which both callers tolerate.
-bool ActivateWindowBounded(HWND hWnd, bool bAlsoFocus)
+bool activate_window_or_abandon(HWND t_window, bool t_take_focus)
 {
-	DebugLog::Write(kLogCategory, "activation pass starting (hwnd=0x%p, focus=%s)", hWnd, bAlsoFocus ? "yes" : "no");
+	debug_log::write(log_category, "activation pass starting (hwnd=0x%p, focus=%s)", t_window,
+					 t_take_focus ? "yes" : "no");
 
-	const bool bCompleted =
-		RunBoundedOrAbandon([hWnd, bAlsoFocus]() { ActivateWindowNow(hWnd, bAlsoFocus); }, kActivateTimeout);
+	const bool completed =
+		run_or_abandon([t_window, t_take_focus]() { activate_window(t_window, t_take_focus); }, activation_timeout);
 
-	DebugLog::Write(kLogCategory, "activation pass %s",
-					bCompleted ? "completed" : "ABANDONED - a thread is stuck in the client's window procedure");
+	debug_log::write(log_category, "activation pass %s",
+					 completed ? "completed" : "ABANDONED - a thread is stuck in the client's window procedure");
 
-	return bCompleted;
+	return completed;
 }
 
-// SetFocus can return success before the focus change takes effect, and a keystroke synthesized
-// in that gap goes nowhere. Proceeds anyway on timeout - this is insurance, not a requirement.
-void WaitForKeyboardFocus(const CUiElement &element, u32 timeoutMs)
+void wait_for_keyboard_focus(const UiElement &t_element)
 {
-	const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+	const auto deadline = deadline_after(focus_settle_ms);
 
-	while (!element.HasKeyboardFocus()) {
-		if (std::chrono::steady_clock::now() >= deadline) return;
-
+	while (!t_element.has_keyboard_focus() && !is_past(deadline)) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(20));
 	}
 }
 
-void SetFieldValue(const CUiAutomation &uiAutomation, const CUiElement &field, const std::wstring &value)
+void fill_field(const UiAutomation &t_automation, const UiElement &t_field, const std::wstring &t_value)
 {
-	if (field.SetValue(value.c_str())) return;
+	if (t_field.set_value(t_value.c_str())) return;
 
-	field.SetFocus();
-	WaitForKeyboardFocus(field, 500);
-	uiAutomation.SendKeystrokes(value.c_str());
+	t_field.focus();
+	wait_for_keyboard_focus(t_field);
+	t_automation.type_text(t_value.c_str());
 }
 
-// The tooltip only says that some error is showing. The specific reason is a separate element,
-// searched for across the whole window rather than under the tooltip.
-std::wstring ResolveLoginErrorMessage(const CUiAutomation &uiAutomation, const CUiElement &window)
+std::wstring login_error_reason(const UiAutomation &t_automation, const UiElement &t_window)
 {
-	if (uiAutomation.FindFirstDescendantByName(window, kInvalidCredentialsReasonText).IsValid()) {
-		return kInvalidCredentialsReasonText;
+	for (const wchar_t *reason : {invalid_credentials_reason, trouble_signing_in_reason}) {
+		if (t_automation.find_descendant(t_window, reason).is_valid()) return reason;
 	}
 
-	if (uiAutomation.FindFirstDescendantByName(window, kTroubleSigningInReasonText).IsValid()) {
-		return kTroubleSigningInReasonText;
-	}
-
-	return kLoginErrorToolTipName;
+	return login_error_tooltip_name;
 }
-} // namespace
+}
 
-CRiotClient::~CRiotClient()
+RiotClient::~RiotClient()
 {
-	// Not a kill: the point is to leave the user logged in, not close the client on them.
-	if (m_hProcess != nullptr) {
-		CloseHandle(m_hProcess);
+	if (m_process != nullptr) {
+		CloseHandle(m_process);
 	}
 }
 
-bool CRiotClient::IsGameInProgress()
+bool RiotClient::is_game_in_progress()
 {
-	const bool bInProgress = AnyProcessNameMatches(kGameProcessNames, ARRAYSIZE(kGameProcessNames));
-	DebugLog::Write(kLogCategory, "IsGameInProgress -> %s", bInProgress ? "yes" : "no");
+	bool in_progress = false;
+	for_each_process([&in_progress](const PROCESSENTRY32W &t_entry) {
+		in_progress = in_progress || matches_any(t_entry.szExeFile, game_process_names);
+	});
 
-	return bInProgress;
+	debug_log::write(log_category, "is_game_in_progress -> %s", in_progress ? "yes" : "no");
+
+	return in_progress;
 }
 
-void CRiotClient::KillAllClientProcesses()
+void RiotClient::kill_all_client_processes()
 {
-	DebugLog::Write(kLogCategory, "killing every known Riot Client process");
-	KillProcessesByName(kClientProcessNames, ARRAYSIZE(kClientProcessNames));
+	debug_log::write(log_category, "killing every known Riot Client process");
+
+	const std::vector<HANDLE> terminated = terminate_processes(client_process_names);
+
+	const debug_log::Scope scope(log_category, "wait for %zu killed client process(es) to exit", terminated.size());
+	wait_for_processes_to_exit(terminated);
+
+	for (const HANDLE process : terminated) {
+		CloseHandle(process);
+	}
+
+	debug_log::write(log_category, "killed client processes gone after %llums", scope.elapsed_ms());
 }
 
-std::string_view CRiotClient::LaunchProductForBannerTitle(std::string_view bannerTitle)
+std::string_view RiotClient::launch_product_for(std::string_view t_game_title)
 {
-	if (bannerTitle == "League of Legends" || bannerTitle == "Teamfight Tactics") return "league_of_legends";
-
-	if (bannerTitle == "Valorant") return "valorant";
-
-	if (bannerTitle == "Legends of Runeterra") return "bacon";
-
-	if (bannerTitle == "2XKO") return "lion";
+	if (t_game_title == "League of Legends" || t_game_title == "Teamfight Tactics") return "league_of_legends";
+	if (t_game_title == "Valorant") return "valorant";
+	if (t_game_title == "Legends of Runeterra") return "bacon";
+	if (t_game_title == "2XKO") return "lion";
 
 	return "";
 }
 
-bool CRiotClient::ResolveExecutablePath()
+bool RiotClient::resolve_executable_path()
 {
-	m_executablePath.clear();
+	m_executable_path.clear();
 
-	std::ifstream file(kInstallsJsonPath);
+	std::ifstream file(installs_json_path);
 	if (!file.is_open()) return false;
 
-	nlohmann::json parsed;
-	try {
-		file >> parsed;
-	} catch (const nlohmann::json::exception &) {
-		return false;
-	}
+	const nlohmann::json installs = nlohmann::json::parse(file, nullptr, false);
+	if (!installs.is_object()) return false;
 
-	const auto it = parsed.find(kExecutablePathKey);
-	if (it == parsed.end() || !it->is_string()) return false;
+	const auto path = installs.find(executable_path_key);
+	if (path == installs.end() || !path->is_string()) return false;
 
-	const std::string path = it->get<std::string>();
-	if (path.empty()) return false;
+	m_executable_path = to_wide(path->get_ref<const std::string &>());
+	std::ranges::replace(m_executable_path, L'/', L'\\');
 
-	m_executablePath = Utf8ToWide(std::string_view{path.data(), path.size()});
+	debug_log::write(log_category, "resolved Riot Client executable: %ls", m_executable_path.c_str());
 
-	// The JSON stores forward slashes; CreateProcessW accepts either, but normalizing keeps this
-	// consistent with every other path here.
-	for (wchar_t &c : m_executablePath) {
-		if (c == L'/') {
-			c = L'\\';
-		}
-	}
-
-	DebugLog::Write(kLogCategory, "resolved Riot Client executable: %ls", m_executablePath.c_str());
-
-	return !m_executablePath.empty();
+	return !m_executable_path.empty();
 }
 
-bool CRiotClient::Launch(std::string_view launchProduct)
+bool RiotClient::launch(std::string_view t_launch_product)
 {
-	if (m_executablePath.empty()) return false;
+	if (m_executable_path.empty()) return false;
 
-	// CreateProcessW may rewrite lpCommandLine in place, so this has to be a mutable local.
-	std::wstring commandLine = L"\"" + m_executablePath + L"\"";
-	if (!launchProduct.empty()) {
-		commandLine += L" --launch-product=" + Utf8ToWide(launchProduct) + L" --launch-patchline=live";
+	std::wstring command_line = L"\"" + m_executable_path + L"\"";
+	if (!t_launch_product.empty()) {
+		command_line += L" --launch-product=" + to_wide(t_launch_product) + L" --launch-patchline=live";
 	}
 
-	STARTUPINFOW startupInfo{.cb = sizeof(startupInfo)};
-	PROCESS_INFORMATION processInfo{};
+	STARTUPINFOW startup_info{.cb = sizeof(startup_info)};
+	PROCESS_INFORMATION process_info{};
 
-	if (!CreateProcessW(m_executablePath.c_str(), commandLine.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr,
-						&startupInfo, &processInfo)) {
-		DebugLog::Write(kLogCategory, "CreateProcessW FAILED err=%lu for %ls", GetLastError(),
-						m_executablePath.c_str());
+	if (!CreateProcessW(m_executable_path.c_str(), command_line.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr,
+						&startup_info, &process_info)) {
+		debug_log::write(log_category, "CreateProcessW FAILED err=%lu for %ls", GetLastError(),
+						 m_executable_path.c_str());
 		return false;
 	}
 
-	DebugLog::Write(kLogCategory, "launched Riot Client pid %lu (%ls)", processInfo.dwProcessId, commandLine.c_str());
-	CloseHandle(processInfo.hThread);
+	debug_log::write(log_category, "launched Riot Client pid %lu (%ls)", process_info.dwProcessId,
+					 command_line.c_str());
+	CloseHandle(process_info.hThread);
 
-	if (m_hProcess != nullptr) {
-		CloseHandle(m_hProcess); // releases this instance's handle, does not kill the process
+	if (m_process != nullptr) {
+		CloseHandle(m_process);
 	}
 
-	m_hProcess = processInfo.hProcess;
-	m_processId = processInfo.dwProcessId;
+	m_process = process_info.hProcess;
+	m_process_id = process_info.dwProcessId;
 
 	return true;
 }
 
-bool CRiotClient::IsRunning() const
+HWND RiotClient::find_client_window() const
 {
-	if (m_hProcess == nullptr) return false;
+	const HWND window = UiAutomation::find_window_by_title(client_window_title);
+	if (window != nullptr || m_process_id == 0) return window;
 
-	DWORD exitCode = 0;
-
-	return GetExitCodeProcess(m_hProcess, &exitCode) != 0 && exitCode == STILL_ACTIVE;
+	return UiAutomation::find_top_level_window(m_process_id);
 }
 
-HWND CRiotClient::FindClientWindow() const
+UiElement RiotClient::current_window_element(const UiAutomation &t_automation) const
 {
-	HWND hWnd = CUiAutomation::FindWindowByName(kClientWindowTitle);
-
-	if (hWnd == nullptr && m_processId != 0) {
-		hWnd = CUiAutomation::FindTopLevelWindow(m_processId);
-	}
-
-	return hWnd;
-}
-
-CUiElement CRiotClient::CurrentWindowElement(const CUiAutomation &uiAutomation) const
-{
-	const HWND hWnd = FindClientWindow();
-	if (hWnd == nullptr) return CUiElement{};
-
-	// Cached because every poll loop below calls this each iteration and ElementFromWindow is the
-	// expensive cross-process half: a ten-second form wait was making a hundred of these, each
-	// another chance for the provider to wedge.
-	//
-	// A changed handle invalidates it, since the splash window and the real login window are
-	// different handles. So does the short expiry, since one handle can outlive the accessibility
-	// tree underneath it.
-	constexpr auto kWindowElementCacheLifetime = std::chrono::milliseconds(2000);
+	const HWND window = find_client_window();
+	if (window == nullptr) return {};
 
 	const auto now = std::chrono::steady_clock::now();
-	if (hWnd == m_cachedWindowHandle && m_cachedWindowElement.IsValid() && now < m_cachedWindowExpiry) {
-		return m_cachedWindowElement;
+	if (window == m_cached_window && m_cached_window_element.is_valid() && now < m_cached_window_expiry) {
+		return m_cached_window_element;
 	}
 
-	CUiElement element = uiAutomation.ElementFromWindow(hWnd);
-	m_cachedWindowHandle = element.IsValid() ? hWnd : nullptr;
-	m_cachedWindowElement = element;
-	m_cachedWindowExpiry = now + kWindowElementCacheLifetime;
+	UiElement element = t_automation.element_from_window(window);
+	m_cached_window = element.is_valid() ? window : nullptr;
+	m_cached_window_element = element;
+	m_cached_window_expiry = now + window_element_lifetime;
 
 	return element;
 }
 
-HWND CRiotClient::WaitForResponsiveClientWindow(u32 timeoutMs, const std::atomic<bool> *pCancelRequested) const
+HWND RiotClient::wait_for_responsive_window(u32 t_timeout_ms, const std::atomic<bool> &t_cancel) const
 {
-	const bool bWaitForever = timeoutMs == kWaitForeverMs;
+	const bool wait_forever = t_timeout_ms == wait_forever_ms;
 	const auto started = std::chrono::steady_clock::now();
-	const auto deadline = started + std::chrono::milliseconds(bWaitForever ? 0 : timeoutMs);
+	const auto deadline = deadline_after(wait_forever ? 0 : t_timeout_ms);
 
-	// No CScope around the loop: it legitimately runs for as long as a cold client takes to
-	// start, so a breadcrumb here would report "stuck" on every slow-but-normal launch. The calls
-	// inside carry their own.
-	DebugLog::Write(kLogCategory, "waiting for a responsive client window (%s)",
-					bWaitForever ? "no deadline - until cancelled" : "bounded");
+	debug_log::write(log_category, "waiting for a responsive client window (%s)",
+					 wait_forever ? "no deadline - until cancelled" : "bounded");
 
 	u32 polls = 0;
-	u32 nextProgressPoll = 20; // ~2s in, then every ~5s
+	u32 next_progress_report = 20;
 
 	for (;;) {
-		// Both halves every iteration: "exists but not pumping yet" is normal for the first
-		// seconds of a cold start, and callers must not act on it.
-		const HWND hWnd = FindClientWindow();
-		if (hWnd != nullptr && IsWindowResponsive(hWnd, kResponsiveProbeTimeoutMs)) {
-			LogWindowIdentity("responsive client window", hWnd);
-			return hWnd;
+		const HWND window = find_client_window();
+		if (window != nullptr && is_window_responsive(window)) {
+			log_window_identity("responsive client window", window);
+			return window;
 		}
 
 		polls += 1;
-		if (polls >= nextProgressPoll) {
-			nextProgressPoll = polls + 50;
-			const auto waitedMs =
-				std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started)
-					.count();
+		if (polls >= next_progress_report) {
+			next_progress_report = polls + 50;
+			const auto waited =
+				std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started);
 
-			DebugLog::Write(kLogCategory, "still waiting for a responsive client window after %lldms (%s)",
-							static_cast<long long>(waitedMs),
-							hWnd == nullptr ? "no window yet" : "window exists but is not pumping messages");
+			debug_log::write(log_category, "still waiting for a responsive client window after %lldms (%s)",
+							 waited.count(), window == nullptr ? "no window yet" : "window is not pumping messages");
 		}
 
-		if (IsCancelled(pCancelRequested) || (!bWaitForever && std::chrono::steady_clock::now() >= deadline)) {
-			DebugLog::Write(kLogCategory, "gave up waiting for a responsive client window (%s)",
-							IsCancelled(pCancelRequested) ? "cancelled" : "timed out");
+		if (is_cancelled(t_cancel) || (!wait_forever && is_past(deadline))) {
+			debug_log::write(log_category, "gave up waiting for a responsive client window (%s)",
+							 is_cancelled(t_cancel) ? "cancelled" : "timed out");
 			return nullptr;
 		}
 
-		std::this_thread::sleep_for(kPollInterval);
+		std::this_thread::sleep_for(poll_interval);
 	}
 }
 
-bool CRiotClient::WaitForWindow(u32 timeoutMs, const std::atomic<bool> *pCancelRequested) const
+bool RiotClient::wait_for_window(u32 t_timeout_ms, const std::atomic<bool> &t_cancel) const
 {
-	return WaitForResponsiveClientWindow(timeoutMs, pCancelRequested) != nullptr;
+	return wait_for_responsive_window(t_timeout_ms, t_cancel) != nullptr;
 }
 
-bool CRiotClient::BringToForeground(u32 timeoutMs, const std::atomic<bool> *pCancelRequested) const
+bool RiotClient::bring_to_foreground(u32 t_timeout_ms, const std::atomic<bool> &t_cancel) const
 {
-	const HWND hWnd = WaitForResponsiveClientWindow(timeoutMs, pCancelRequested);
-	if (hWnd == nullptr) {
-		DebugLog::Write(kLogCategory, "BringToForeground: no responsive window to activate");
-		return false;
-	}
+	const HWND window = wait_for_responsive_window(t_timeout_ms, t_cancel);
 
-	return ActivateWindowBounded(hWnd, false);
+	return window != nullptr && activate_window_or_abandon(window, false);
 }
 
-bool CRiotClient::SetKeyboardFocus(u32 timeoutMs, const std::atomic<bool> *pCancelRequested) const
+bool RiotClient::take_keyboard_focus(u32 t_timeout_ms, const std::atomic<bool> &t_cancel) const
 {
-	const HWND hWnd = WaitForResponsiveClientWindow(timeoutMs, pCancelRequested);
-	if (hWnd == nullptr) {
-		DebugLog::Write(kLogCategory, "SetKeyboardFocus: no responsive window to focus");
-		return false;
-	}
+	const HWND window = wait_for_responsive_window(t_timeout_ms, t_cancel);
 
-	return ActivateWindowBounded(hWnd, true);
+	return window != nullptr && activate_window_or_abandon(window, true);
 }
 
-bool CRiotClient::SubmitLogin(const CUiAutomation &uiAutomation, std::string_view username, std::string_view password,
-							  u32 timeoutMs, const std::atomic<bool> *pCancelRequested) const
+bool RiotClient::submit_login(const UiAutomation &t_automation, std::string_view t_username,
+							  std::string_view t_password, u32 t_timeout_ms, const std::atomic<bool> &t_cancel) const
 {
-	// Re-resolves the window and both fields together every iteration: an earlier-found window
-	// can turn out to have been the splash screen, which never grows these fields. Polling the
-	// pairing as a unit stays correct however many window transitions happen.
-	const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+	const auto deadline = deadline_after(t_timeout_ms);
 
-	CUiElement usernameField;
-	CUiElement passwordField;
+	UiElement username_field;
+	UiElement password_field;
 	u32 polls = 0;
 
-	DebugLog::Write(kLogCategory, "looking for the login form (up to %ums)", timeoutMs);
+	debug_log::write(log_category, "looking for the login form (up to %ums)", t_timeout_ms);
 
 	for (;;) {
-		const CUiElement window = CurrentWindowElement(uiAutomation);
-		if (window.IsValid()) {
-			usernameField =
-				uiAutomation.FindFirstDescendantByNameAndControlType(window, kUsernameFieldName, UIA_EditControlTypeId);
-			passwordField =
-				uiAutomation.FindFirstDescendantByNameAndControlType(window, kPasswordFieldName, UIA_EditControlTypeId);
+		const UiElement window = current_window_element(t_automation);
+		if (window.is_valid()) {
+			username_field = t_automation.find_descendant(window, username_field_name, UIA_EditControlTypeId);
+			password_field = t_automation.find_descendant(window, password_field_name, UIA_EditControlTypeId);
 
-			if (usernameField.IsValid() && passwordField.IsValid()) {
-				DebugLog::Write(kLogCategory, "login form found after %u poll(s)", polls);
+			if (username_field.is_valid() && password_field.is_valid()) {
+				debug_log::write(log_category, "login form found after %u poll(s)", polls);
 				break;
 			}
 		}
 
 		polls += 1;
 
-		if (IsCancelled(pCancelRequested) || uiAutomation.HasWedged() || std::chrono::steady_clock::now() >= deadline) {
-			// No window at all is a launch problem; a window without the fields usually means an
-			// already-logged-in client.
-			DebugLog::Write(kLogCategory,
-							"login form NOT found after %u poll(s) (%s; window %s, username %s, password %s)", polls,
-							IsCancelled(pCancelRequested) ? "cancelled" : "timed out",
-							CurrentWindowElement(uiAutomation).IsValid() ? "yes" : "no",
-							usernameField.IsValid() ? "yes" : "no", passwordField.IsValid() ? "yes" : "no");
+		if (is_cancelled(t_cancel) || t_automation.has_wedged() || is_past(deadline)) {
+			debug_log::write(log_category,
+							 "login form NOT found after %u poll(s) (%s; window %s, username %s, password %s)", polls,
+							 is_cancelled(t_cancel) ? "cancelled" : "timed out", window.is_valid() ? "yes" : "no",
+							 username_field.is_valid() ? "yes" : "no", password_field.is_valid() ? "yes" : "no");
 			return false;
 		}
 
-		std::this_thread::sleep_for(kPollInterval);
+		std::this_thread::sleep_for(poll_interval);
 	}
 
-	SetFieldValue(uiAutomation, usernameField, Utf8ToWide(username));
-	SetFieldValue(uiAutomation, passwordField, Utf8ToWide(password));
+	fill_field(t_automation, username_field, to_wide(t_username));
+	fill_field(t_automation, password_field, to_wide(t_password));
 
-	// Enter rather than a button, since no button's name has been confirmed. The focus wait is
-	// what makes it reliable: a key sent straight after SetFocus can land nowhere.
-	passwordField.SetFocus();
-	WaitForKeyboardFocus(passwordField, 500);
+	password_field.focus();
+	wait_for_keyboard_focus(password_field);
 
-	DebugLog::Write(kLogCategory, "submitting the login form (password field %s real keyboard focus)",
-					passwordField.HasKeyboardFocus() ? "has" : "does NOT have");
-	uiAutomation.SendKey(VK_RETURN);
+	debug_log::write(log_category, "submitting the login form (password field %s real keyboard focus)",
+					 password_field.has_keyboard_focus() ? "has" : "does NOT have");
+	t_automation.press_key(VK_RETURN);
 
 	return true;
 }
 
-bool CRiotClient::WaitForLoginError(const CUiAutomation &uiAutomation, std::wstring &outMessage, u32 timeoutMs,
-									const std::atomic<bool> *pCancelRequested, const std::wstring *pIgnoreMessage) const
+bool RiotClient::wait_for_login_error(const UiAutomation &t_automation, std::wstring &t_out_message, u32 t_timeout_ms,
+									  const std::atomic<bool> &t_cancel, const std::wstring *t_error_to_ignore) const
 {
-	const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
-
-	// Starts true when there is nothing to ignore, so a first attempt accepts a match at once.
-	bool sawTooltipAbsent = pIgnoreMessage == nullptr;
+	const auto deadline = deadline_after(t_timeout_ms);
+	bool saw_no_tooltip = t_error_to_ignore == nullptr;
 
 	for (;;) {
-		const CUiElement window = CurrentWindowElement(uiAutomation);
-		const bool tooltipPresent =
-			window.IsValid() && uiAutomation.FindFirstDescendantByName(window, kLoginErrorToolTipName).IsValid();
+		const UiElement window = current_window_element(t_automation);
+		const bool tooltip_shown =
+			window.is_valid() && t_automation.find_descendant(window, login_error_tooltip_name).is_valid();
 
-		if (tooltipPresent) {
-			std::wstring message = ResolveLoginErrorMessage(uiAutomation, window);
+		if (tooltip_shown) {
+			std::wstring message = login_error_reason(t_automation, window);
 
-			if (sawTooltipAbsent || pIgnoreMessage == nullptr || message != *pIgnoreMessage) {
-				DebugLog::Write(kLogCategory, "login error shown: \"%ls\"", message.c_str());
-				outMessage = std::move(message);
+			if (saw_no_tooltip || message != *t_error_to_ignore) {
+				debug_log::write(log_category, "login error shown: \"%ls\"", message.c_str());
+				t_out_message = std::move(message);
 				return true;
 			}
 
-			DebugLog::Write(kLogCategory, "ignoring the previous attempt's error tooltip, still on screen");
+			debug_log::write(log_category, "ignoring the previous attempt's error tooltip, still on screen");
 		} else {
-			sawTooltipAbsent = true;
+			saw_no_tooltip = true;
 		}
 
-		if (uiAutomation.HasWedged()) {
-			// Every lookup fails instantly now, so "no error found" means nothing. The caller
-			// checks HasWedged before inferring success.
-			DebugLog::Write(kLogCategory,
-							"abandoning the login-result wait - UI Automation has given up on the client");
+		if (t_automation.has_wedged()) {
+			debug_log::write(log_category,
+							 "abandoning the login-result wait - UI Automation has given up on the client");
 			return false;
 		}
 
-		if (IsCancelled(pCancelRequested) || std::chrono::steady_clock::now() >= deadline) {
-			// "Nothing happened" and "we stopped looking" are otherwise the same line.
-			DebugLog::Write(kLogCategory, "no login error appeared (%s) - treating the attempt as successful",
-							IsCancelled(pCancelRequested) ? "cancelled" : "waited the full timeout");
+		if (is_cancelled(t_cancel) || is_past(deadline)) {
+			debug_log::write(log_category, "no login error appeared (%s) - treating the attempt as successful",
+							 is_cancelled(t_cancel) ? "cancelled" : "waited the full timeout");
 			return false;
 		}
 
-		std::this_thread::sleep_for(kPollInterval);
+		std::this_thread::sleep_for(poll_interval);
 	}
 }
 
-bool CRiotClient::WaitForPlayButtonAndClick(const CUiAutomation &uiAutomation, u32 timeoutMs,
-											const std::atomic<bool> *pCancelRequested) const
+bool RiotClient::click_play_when_ready(const UiAutomation &t_automation, u32 t_timeout_ms,
+									   const std::atomic<bool> &t_cancel) const
 {
-	const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+	const auto deadline = deadline_after(t_timeout_ms);
 
 	for (;;) {
-		const CUiElement window = CurrentWindowElement(uiAutomation);
-		if (window.IsValid()) {
-			const CUiElement playButton =
-				uiAutomation.FindFirstDescendantByNameAndControlType(window, kPlayButtonName, UIA_ButtonControlTypeId);
+		const UiElement window = current_window_element(t_automation);
+		const UiElement play_button =
+			window.is_valid() ? t_automation.find_descendant(window, play_button_name, UIA_ButtonControlTypeId)
+							  : UiElement{};
 
-			if (playButton.IsValid()) {
-				DebugLog::Write(kLogCategory, "Play button found - invoking it");
-				playButton.Invoke();
-				return true;
-			}
+		if (play_button.is_valid()) {
+			debug_log::write(log_category, "Play button found - invoking it");
+			play_button.invoke();
+			return true;
 		}
 
-		if (IsCancelled(pCancelRequested) || std::chrono::steady_clock::now() >= deadline) {
-			// Not load-bearing: the login already succeeded by the time this runs.
-			DebugLog::Write(kLogCategory, "Play button not found (%s) - leaving the game unlaunched",
-							IsCancelled(pCancelRequested) ? "cancelled" : "timed out");
+		if (is_cancelled(t_cancel) || is_past(deadline)) {
+			debug_log::write(log_category, "Play button not found (%s) - leaving the game unlaunched",
+							 is_cancelled(t_cancel) ? "cancelled" : "timed out");
 			return false;
 		}
 
-		std::this_thread::sleep_for(kPollInterval);
+		std::this_thread::sleep_for(poll_interval);
 	}
 }

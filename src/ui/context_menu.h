@@ -1,96 +1,51 @@
 #pragma once
 
+#include <span>
 #include <string_view>
-#include "gfx/font_manager.h"
+
+#include "ui/commands.h"
 #include "ui/widget.h"
 
-constexpr u32 kContextMenuMaxItems = 12;
-constexpr u32 kContextMenuNoSelection = 0xFFFFFFFFu;
+class Fonts;
 
-// An in-app right-click popup: structurally like the app menu, but built fresh from a
-// caller-supplied item list each time it opens, since what it offers is contextual. No open
-// animation - a right-click menu reads as instant everywhere else in Windows - and no
-// submenus, since a flat list covers every real use here.
-//
-// Meant to sit above every other popup without being the title bar's alwaysTopmost special
-// case: an owner achieves that simply by pushing it onto the stack last. Like the app menu,
-// every input event is swallowed while open, not just clicks landing on a row.
-
-/// Label is a non-owning view. Every current call site passes a literal; a caller wanting a
-/// dynamic label would need its own storage for it.
 struct ContextMenuItem {
-	std::string_view Label;
-	u32 Id;
+	std::string_view label;
+	Command command;
+	bool enabled = true;
 };
 
-class CContextMenu : public CWidget {
+class ContextMenu : public Widget {
   public:
-	explicit CContextMenu(const CFontManager &fonts);
+	ContextMenu(const Fonts &t_fonts, CommandQueue &t_commands);
 
-	/// Opens at the right-click position, clamped so the menu never spills off the window edge.
-	/// Items are copied in.
-	void Open(float x, float y, const ContextMenuItem *pItems, u32 itemCount, float windowW, float windowH);
+	void open(Vec2 t_position, std::span<const ContextMenuItem> t_items, Vec2 t_window_size);
+	void close();
 
-	void Close()
+	void draw(DrawList &t_draw_list) override;
+
+	bool on_pointer_up(Vec2 t_point) override;
+	bool on_right_click(Vec2 t_point) override;
+	bool on_key_down(u32 t_key) override;
+
+	bool is_blocking() const override
 	{
-		m_bOpen = false;
+		return m_open;
 	}
 
-	void Update(float deltaSeconds) override {}
-	void Draw(CDrawList &drawList) override;
-
-	bool OnPointerDown(float x, float y) override
-	{
-		return IsBlocking();
-	}
-
-	bool OnPointerMove(float x, float y) override
-	{
-		return IsBlocking();
-	}
-
-	/// Always closes, hit or not, and latches the clicked item's id for ConsumeSelection.
-	bool OnPointerUp(float x, float y) override;
-
-	bool OnScroll(float x, float y, float wheelDelta) override
-	{
-		return IsBlocking();
-	}
-
-	bool OnKeyDown(u32 keyCode) override
-	{
-		return IsBlocking();
-	}
-
-	bool OnChar(u32 character) override
-	{
-		return IsBlocking();
-	}
-
-	/// No animation, so this is a plain open check rather than an eased-amount threshold.
-	bool IsBlocking() const override
-	{
-		return m_bOpen;
-	}
-
-	ECursorKind GetDesiredCursor() const override;
-
-	/// Cleared on read; the no-selection sentinel if nothing was clicked, or the click missed
-	/// every row, since the last Open.
-	u32 ConsumeSelection();
+	CursorKind cursor() const override;
 
   private:
-	Rect MenuRect() const;
-	Rect ItemRect(u32 index) const;
+	static constexpr u32 max_items = 8;
 
-	const CFontManager &m_fonts;
-	bool m_bOpen = false;
+	Rect menu_rect() const;
+	Rect item_rect(u32 t_index) const;
+	i32 item_at(Vec2 t_point) const;
 
-	/// The top-left corner, already clamped to the window by Open.
-	float m_flAnchorX = 0.0f;
-	float m_flAnchorY = 0.0f;
+	const Fonts &m_fonts;
+	CommandQueue &m_commands;
 
-	ContextMenuItem m_aItems[kContextMenuMaxItems]{};
-	u32 m_nItemCount = 0;
-	u32 m_pendingSelection = kContextMenuNoSelection;
+	bool m_open = false;
+	Vec2 m_position{};
+	ContextMenuItem m_items[max_items]{};
+	u32 m_item_count = 0;
 };

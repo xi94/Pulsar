@@ -2,40 +2,40 @@
 
 #include <sodium.h>
 
-void CCrypto::RandomBytes(u8 *pOut, u32 length)
+void crypto::random_bytes(std::span<u8> t_out)
 {
-	randombytes_buf(pOut, length);
+	randombytes_buf(t_out.data(), t_out.size());
 }
 
-bool CCrypto::Argon2idDeriveKey(std::string_view password, const u8 salt[kSaltSize], u64 opsLimit, usize memLimit,
-								u8 outKey[kKeySize])
+bool crypto::derive_key(std::string_view t_password, const u8 *t_salt, u64 t_ops_limit, usize t_mem_limit,
+						u8 *t_out_key)
 {
-	return crypto_pwhash(outKey, kKeySize, password.data(), static_cast<unsigned long long>(password.size()), salt,
-						 opsLimit, memLimit, crypto_pwhash_ALG_ARGON2ID13) == 0;
+	return crypto_pwhash(t_out_key, key_size, t_password.data(), t_password.size(), t_salt, t_ops_limit, t_mem_limit,
+						 crypto_pwhash_ALG_ARGON2ID13) == 0;
 }
 
-u64 CCrypto::DefaultOpsLimit()
+u64 crypto::default_ops_limit()
 {
 	return crypto_pwhash_OPSLIMIT_MODERATE;
 }
 
-usize CCrypto::DefaultMemLimit()
+usize crypto::default_mem_limit()
 {
 	return crypto_pwhash_MEMLIMIT_MODERATE;
 }
 
-bool CCrypto::Encrypt(const u8 key[kKeySize], const u8 nonce[kNonceSize], const u8 *pPlaintext, u32 length,
-					  u8 *pCiphertext, u8 outTag[kTagSize])
+bool crypto::encrypt(const u8 *t_key, const u8 *t_nonce, std::span<const u8> t_plaintext, u8 *t_out_ciphertext,
+					 u8 *t_out_tag)
 {
-	unsigned long long tagLength = 0;
-
-	return crypto_aead_xchacha20poly1305_ietf_encrypt_detached(pCiphertext, outTag, &tagLength, pPlaintext, length,
-															   nullptr, 0, nullptr, nonce, key) == 0;
+	return crypto_aead_xchacha20poly1305_ietf_encrypt_detached(t_out_ciphertext, t_out_tag, nullptr, t_plaintext.data(),
+															   t_plaintext.size(), nullptr, 0, nullptr, t_nonce,
+															   t_key) == 0;
 }
 
-bool CCrypto::Decrypt(const u8 key[kKeySize], const u8 nonce[kNonceSize], const u8 *pCiphertext, u32 length,
-					  const u8 tag[kTagSize], u8 *pOutPlaintext)
+bool crypto::decrypt(const u8 *t_key, const u8 *t_nonce, std::span<const u8> t_ciphertext, const u8 *t_tag,
+					 u8 *t_out_plaintext)
 {
-	return crypto_aead_xchacha20poly1305_ietf_decrypt_detached(pOutPlaintext, nullptr, pCiphertext, length, tag,
-															   nullptr, 0, nonce, key) == 0;
+	return crypto_aead_xchacha20poly1305_ietf_decrypt_detached(t_out_plaintext, nullptr, t_ciphertext.data(),
+															   t_ciphertext.size(), t_tag, nullptr, 0, t_nonce,
+															   t_key) == 0;
 }

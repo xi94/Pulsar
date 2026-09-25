@@ -1,575 +1,570 @@
 #include "core/updater.h"
 
+#include <array>
 #include <chrono>
+#include <compare>
 #include <cstdio>
 #include <cstring>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <Windows.h>
 #include <winhttp.h>
 
+#include <nlohmann/json.hpp>
 #include <sodium.h>
 
 #include "core/app_identity.h"
-#include "core/semver.h"
+#include "core/str.h"
 #include "core/thread_util.h"
-#include "core/update_signing_key.h"
 
 namespace {
-constexpr wchar_t kUserAgent[] = L"Pulsar-Updater/1.0";
+constexpr wchar_t user_agent[] = L"Pulsar-Updater/1.0";
 
-enum class EHttpResult : u8 {
-	Ok,
-	Cancelled,
-	Failed,
+constexpr std::array<u8, 32> release_signing_public_key{
+	0xD0, 0x82, 0xF5, 0xE2, 0x12, 0xC9, 0x37, 0x3F, 0x4E, 0xEE, 0x56, 0x8D, 0xA3, 0x32, 0x8A, 0x64,
+	0x3E, 0x73, 0x86, 0xBA, 0x0F, 0xE6, 0x13, 0xC3, 0x7F, 0x70, 0x23, 0x76, 0x63, 0x73, 0xF5, 0xE3,
 };
 
-struct HttpProgress {
-	std::atomic<bool> *pCancelRequested = nullptr;
-	std::atomic<u64> *pBytesDownloaded = nullptr;
-	std::atomic<u64> *pTotalBytes = nullptr;
-	std::atomic<double> *pBytesPerSecond = nullptr;
+constexpr int resolve_timeout_ms = 10000;
+constexpr int connect_timeout_ms = 10000;
+constexpr int send_timeout_ms = 15000;
+constexpr int receive_timeout_ms = 15000;
+constexpr auto shutdown_join_timeout = std::chrono::milliseconds(3000);
+
+enum class HttpResult : u8 {
+	ok,
+	cancelled,
+	failed,
 };
 
-struct CInternetHandle {
-	HINTERNET Handle = nullptr;
+struct DownloadProgress {
+	std::atomic<bool> *cancel_requested = nullptr;
+	std::atomic<u64> *bytes_downloaded = nullptr;
+	std::atomic<u64> *total_bytes = nullptr;
+	std::atomic<double> *bytes_per_second = nullptr;
+};
 
-	~CInternetHandle()
+class InternetHandle {
+  public:
+	explicit InternetHandle(HINTERNET t_handle)
+		: m_handle(t_handle)
 	{
-		if (Handle != nullptr) {
-			WinHttpCloseHandle(Handle);
+	}
+
+	~InternetHandle()
+	{
+		if (m_handle != nullptr) {
+			WinHttpCloseHandle(m_handle);
 		}
 	}
 
+	InternetHandle(const InternetHandle &) = delete;
+	InternetHandle &operator=(const InternetHandle &) = delete;
+
 	operator HINTERNET() const
 	{
-		return Handle;
+		return m_handle;
 	}
+
+  private:
+	HINTERNET m_handle;
 };
 
-struct CrackedUrl {
-	std::wstring Host;
-	std::wstring PathAndQuery;
-	INTERNET_PORT Port = 0;
-	bool Https = false;
+struct SemVer {
+	u32 major = 0;
+	u32 minor = 0;
+	u32 patch = 0;
+
+	auto operator<=>(const SemVer &) const = default;
 };
 
-bool CrackUrl(const wchar_t *pUrl, CrackedUrl &out)
+bool parse_version_component(std::string_view t_text, usize &t_index, u32 &t_out_value)
 {
-	wchar_t host[256]{};
-	wchar_t path[2048]{};
-	wchar_t extra[2048]{};
+	const usize start = t_index;
+	t_out_value = 0;
 
-	URL_COMPONENTS components{};
-	components.dwStructSize = sizeof(components);
-	components.lpszHostName = host;
-	components.dwHostNameLength = static_cast<DWORD>(std::size(host));
-	components.lpszUrlPath = path;
-	components.dwUrlPathLength = static_cast<DWORD>(std::size(path));
-	components.lpszExtraInfo = extra;
-	components.dwExtraInfoLength = static_cast<DWORD>(std::size(extra));
+	while (t_index < t_text.size() && t_text[t_index] >= '0' && t_text[t_index] <= '9') {
+		t_out_value = t_out_value * 10 + static_cast<u32>(t_text[t_index] - '0');
+		t_index += 1;
+	}
 
-	if (!WinHttpCrackUrl(pUrl, 0, 0, &components)) return false;
+	if (t_index < t_text.size() && t_text[t_index] == '.') {
+		t_index += 1;
+	}
 
-	out.Host = host;
-	out.PathAndQuery = std::wstring(path) + extra;
-	out.Port = components.nPort;
-	out.Https = components.nScheme == INTERNET_SCHEME_HTTPS;
+	return t_index > start;
+}
+
+bool parse_version(std::string_view t_text, SemVer &t_out_version)
+{
+	t_out_version = SemVer{};
+
+	usize index = 0;
+	if (!parse_version_component(t_text, index, t_out_version.major)) return false;
+
+	parse_version_component(t_text, index, t_out_version.minor);
+	parse_version_component(t_text, index, t_out_version.patch);
 
 	return true;
 }
 
-// Only ever used to fold an ASCII hostname into an error message.
-std::string WideToUtf8(const std::wstring &wide)
+template <usize Capacity>
+bool copy_string_field(const nlohmann::json &t_json, const char *t_key, char (&t_destination)[Capacity])
 {
-	if (wide.empty()) return {};
+	const auto field = t_json.find(t_key);
+	if (field == t_json.end() || !field->is_string()) return false;
 
-	const int length =
-		WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr);
-	if (length <= 0) return {};
+	copy_to(field->get_ref<const std::string &>(), t_destination);
 
-	std::string result(static_cast<usize>(length), '\0');
-	WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), result.data(), length, nullptr,
-						nullptr);
-
-	return result;
+	return true;
 }
 
-std::wstring Utf8ToWide(const char *pUtf8)
+bool parse_manifest(const std::vector<u8> &t_json, UpdateManifest &t_out_manifest)
 {
-	const int length = MultiByteToWideChar(CP_UTF8, 0, pUtf8, -1, nullptr, 0);
-	if (length <= 0) return L"";
+	const nlohmann::json parsed = nlohmann::json::parse(t_json.begin(), t_json.end(), nullptr, false);
+	if (!parsed.is_object()) return false;
 
-	std::wstring result(static_cast<usize>(length - 1), L'\0');
-	MultiByteToWideChar(CP_UTF8, 0, pUtf8, -1, result.data(), length);
+	const bool has_required_fields = copy_string_field(parsed, "version", t_out_manifest.version) &&
+									 copy_string_field(parsed, "url", t_out_manifest.url) &&
+									 copy_string_field(parsed, "sha256", t_out_manifest.sha256_hex) &&
+									 copy_string_field(parsed, "signature", t_out_manifest.signature_base64);
+	if (!has_required_fields) return false;
 
-	return result;
+	if (!copy_string_field(parsed, "min_upgrade_version", t_out_manifest.min_upgrade_version)) {
+		copy_to("0.0.0", t_out_manifest.min_upgrade_version);
+	}
+
+	if (!copy_string_field(parsed, "notes", t_out_manifest.notes)) {
+		t_out_manifest.notes[0] = '\0';
+	}
+
+	return true;
 }
 
-// Explicit rather than WinHTTP's platform default: a connection that is accepted and then never
-// sends anything would otherwise block every call below. Resolve and connect get a shorter
-// budget than send and receive, which need room for a multi-megabyte download.
-void ApplyRequestTimeouts(HINTERNET session)
+HINTERNET open_request(HINTERNET t_connection, const std::wstring &t_path, bool t_https)
 {
-	WinHttpSetTimeouts(session, 10000, 10000, 15000, 15000);
-}
+	const HINTERNET request = WinHttpOpenRequest(t_connection, L"GET", t_path.c_str(), nullptr, WINHTTP_NO_REFERER,
+												 WINHTTP_DEFAULT_ACCEPT_TYPES, t_https ? WINHTTP_FLAG_SECURE : 0);
 
-CInternetHandle OpenRequest(const CrackedUrl &cracked, HINTERNET connect)
-{
-	const DWORD requestFlags = cracked.Https ? WINHTTP_FLAG_SECURE : 0;
-	CInternetHandle request{WinHttpOpenRequest(connect, L"GET", cracked.PathAndQuery.c_str(), nullptr,
-											   WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, requestFlags)};
-
-	if (request.Handle != nullptr) {
-		// Explicit, because WinHTTP's default follows HTTPS to HTTPS but not HTTPS to HTTP -
-		// and the github.com to CDN hop every fetch here goes through needs this.
-		DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
-		WinHttpSetOption(request, WINHTTP_OPTION_REDIRECT_POLICY, &redirectPolicy, sizeof(redirectPolicy));
+	if (request != nullptr) {
+		// The github.com to CDN redirect crosses hosts, which WinHTTP's default policy refuses.
+		DWORD redirect_policy = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
+		WinHttpSetOption(request, WINHTTP_OPTION_REDIRECT_POLICY, &redirect_policy, sizeof(redirect_policy));
 	}
 
 	return request;
 }
 
-bool ReadStatusCode(HINTERNET request, DWORD &outStatusCode)
+bool query_number_header(HINTERNET t_request, DWORD t_header, DWORD &t_out_value)
 {
-	DWORD size = sizeof(outStatusCode);
+	DWORD size = sizeof(t_out_value);
 
-	return WinHttpQueryHeaders(request, WINHTTP_QUERY_FLAG_NUMBER | WINHTTP_QUERY_STATUS_CODE,
-							   WINHTTP_HEADER_NAME_BY_INDEX, &outStatusCode, &size, WINHTTP_NO_HEADER_INDEX) != 0;
+	return WinHttpQueryHeaders(t_request, WINHTTP_QUERY_FLAG_NUMBER | t_header, WINHTTP_HEADER_NAME_BY_INDEX,
+							   &t_out_value, &size, WINHTTP_NO_HEADER_INDEX) != 0;
 }
 
-void ReserveForContentLength(HINTERNET request, std::vector<u8> &outBody, const HttpProgress &progress)
+HttpResult read_body(HINTERNET t_request, std::vector<u8> &t_out_body, const DownloadProgress &t_progress,
+					 std::string &t_out_error)
 {
-	DWORD contentLength = 0;
-	DWORD contentLengthSize = sizeof(contentLength);
+	DWORD content_length = 0;
+	if (query_number_header(t_request, WINHTTP_QUERY_CONTENT_LENGTH, content_length)) {
+		t_out_body.reserve(content_length);
 
-	if (!WinHttpQueryHeaders(request, WINHTTP_QUERY_FLAG_NUMBER | WINHTTP_QUERY_CONTENT_LENGTH,
-							 WINHTTP_HEADER_NAME_BY_INDEX, &contentLength, &contentLengthSize,
-							 WINHTTP_NO_HEADER_INDEX)) {
-		return;
+		if (t_progress.total_bytes != nullptr) {
+			t_progress.total_bytes->store(content_length, std::memory_order_relaxed);
+		}
 	}
 
-	if (progress.pTotalBytes != nullptr) {
-		progress.pTotalBytes->store(contentLength, std::memory_order_relaxed);
-	}
-
-	outBody.reserve(contentLength);
-}
-
-EHttpResult ReadResponseBody(HINTERNET request, std::vector<u8> &outBody, const HttpProgress &progress,
-							 std::string &outError)
-{
-	const ULONGLONG startTick = GetTickCount64();
-	u64 totalRead = 0;
+	const auto started = std::chrono::steady_clock::now();
 
 	for (;;) {
-		if (progress.pCancelRequested != nullptr && progress.pCancelRequested->load(std::memory_order_relaxed)) {
-			return EHttpResult::Cancelled;
+		if (t_progress.cancel_requested != nullptr && t_progress.cancel_requested->load(std::memory_order_relaxed)) {
+			return HttpResult::cancelled;
 		}
 
 		DWORD available = 0;
-		if (!WinHttpQueryDataAvailable(request, &available)) {
-			outError = "the connection was interrupted while reading";
-			return EHttpResult::Failed;
+		if (!WinHttpQueryDataAvailable(t_request, &available)) {
+			t_out_error = "the connection was interrupted while reading";
+			return HttpResult::failed;
 		}
 
-		if (available == 0) return EHttpResult::Ok;
+		if (available == 0) return HttpResult::ok;
 
-		const usize previousSize = outBody.size();
-		outBody.resize(previousSize + available);
+		const usize previous_size = t_out_body.size();
+		t_out_body.resize(previous_size + available);
 
-		DWORD bytesRead = 0;
-		if (!WinHttpReadData(request, outBody.data() + previousSize, available, &bytesRead)) {
-			outError = "the connection was interrupted while reading";
-			return EHttpResult::Failed;
+		DWORD read = 0;
+		if (!WinHttpReadData(t_request, t_out_body.data() + previous_size, available, &read)) {
+			t_out_error = "the connection was interrupted while reading";
+			return HttpResult::failed;
 		}
 
-		outBody.resize(previousSize + bytesRead);
-		totalRead += bytesRead;
+		t_out_body.resize(previous_size + read);
 
-		if (progress.pBytesDownloaded != nullptr) {
-			progress.pBytesDownloaded->store(totalRead, std::memory_order_relaxed);
+		if (t_progress.bytes_downloaded != nullptr) {
+			t_progress.bytes_downloaded->store(t_out_body.size(), std::memory_order_relaxed);
 		}
 
-		const ULONGLONG elapsedMs = GetTickCount64() - startTick;
-		if (progress.pBytesPerSecond != nullptr && elapsedMs > 0) {
-			const double seconds = static_cast<double>(elapsedMs) / 1000.0;
-			progress.pBytesPerSecond->store(static_cast<double>(totalRead) / seconds, std::memory_order_relaxed);
+		const std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - started;
+		if (t_progress.bytes_per_second != nullptr && elapsed.count() > 0.0) {
+			t_progress.bytes_per_second->store(static_cast<double>(t_out_body.size()) / elapsed.count(),
+											   std::memory_order_relaxed);
 		}
 	}
 }
 
-// A blocking GET that follows redirects, including across hosts. The manifest fetch passes an
-// empty progress block; cancellation is only polled between reads, which is fine for a few
-// hundred bytes.
-EHttpResult HttpGet(const std::wstring &url, std::vector<u8> &outBody, const HttpProgress &progress,
-					std::string &outError)
+HttpResult http_get(const std::wstring &t_url, std::vector<u8> &t_out_body, const DownloadProgress &t_progress,
+					std::string &t_out_error)
 {
-	CrackedUrl cracked;
-	if (!CrackUrl(url.c_str(), cracked)) {
-		outError = "could not parse the update URL";
-		return EHttpResult::Failed;
+	wchar_t host[256]{};
+	wchar_t path[2048]{};
+	wchar_t query[2048]{};
+
+	URL_COMPONENTS url{
+		.dwStructSize = sizeof(URL_COMPONENTS),
+		.lpszHostName = host,
+		.dwHostNameLength = ARRAYSIZE(host),
+		.lpszUrlPath = path,
+		.dwUrlPathLength = ARRAYSIZE(path),
+		.lpszExtraInfo = query,
+		.dwExtraInfoLength = ARRAYSIZE(query),
+	};
+
+	if (!WinHttpCrackUrl(t_url.c_str(), 0, 0, &url)) {
+		t_out_error = "could not parse the update URL";
+		return HttpResult::failed;
 	}
 
-	CInternetHandle session{WinHttpOpen(kUserAgent, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
-										WINHTTP_NO_PROXY_BYPASS, 0)};
-	if (session.Handle == nullptr) {
-		outError = "could not open an HTTP session";
-		return EHttpResult::Failed;
+	const InternetHandle session{WinHttpOpen(user_agent, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
+											 WINHTTP_NO_PROXY_BYPASS, 0)};
+	if (session == nullptr) {
+		t_out_error = "could not open an HTTP session";
+		return HttpResult::failed;
 	}
 
-	ApplyRequestTimeouts(session);
+	WinHttpSetTimeouts(session, resolve_timeout_ms, connect_timeout_ms, send_timeout_ms, receive_timeout_ms);
 
-	CInternetHandle connect{WinHttpConnect(session, cracked.Host.c_str(), cracked.Port, 0)};
-	if (connect.Handle == nullptr) {
-		outError = "could not connect to " + WideToUtf8(cracked.Host);
-		return EHttpResult::Failed;
+	const InternetHandle connection{WinHttpConnect(session, host, url.nPort, 0)};
+	if (connection == nullptr) {
+		t_out_error = "could not connect to " + to_utf8(host);
+		return HttpResult::failed;
 	}
 
-	CInternetHandle request = OpenRequest(cracked, connect);
-	if (request.Handle == nullptr) {
-		outError = "could not open an HTTP request";
-		return EHttpResult::Failed;
+	const InternetHandle request{
+		open_request(connection, std::wstring{path} + query, url.nScheme == INTERNET_SCHEME_HTTPS)};
+	if (request == nullptr) {
+		t_out_error = "could not open an HTTP request";
+		return HttpResult::failed;
 	}
 
 	if (!WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
-		outError = "the request failed to send";
-		return EHttpResult::Failed;
+		t_out_error = "the request failed to send";
+		return HttpResult::failed;
 	}
 
 	if (!WinHttpReceiveResponse(request, nullptr)) {
-		outError = "no response was received";
-		return EHttpResult::Failed;
+		t_out_error = "no response was received";
+		return HttpResult::failed;
 	}
 
-	DWORD statusCode = 0;
-	ReadStatusCode(request, statusCode);
-	if (statusCode < 200 || statusCode >= 300) {
-		outError = "server returned HTTP " + std::to_string(statusCode);
-		return EHttpResult::Failed;
+	DWORD status = 0;
+	query_number_header(request, WINHTTP_QUERY_STATUS_CODE, status);
+	if (status < 200 || status >= 300) {
+		t_out_error = "server returned HTTP " + std::to_string(status);
+		return HttpResult::failed;
 	}
 
-	ReserveForContentLength(request, outBody, progress);
-
-	return ReadResponseBody(request, outBody, progress, outError);
+	return read_body(request, t_out_body, t_progress, t_out_error);
 }
 
-void BytesToHexLower(const unsigned char *pBytes, usize length, char *pOut)
+bool verify_download(const std::vector<u8> &t_body, const UpdateManifest &t_manifest, std::string &t_out_error)
 {
-	static constexpr char kHexDigits[] = "0123456789abcdef";
+	u8 digest[crypto_hash_sha256_BYTES];
+	crypto_hash_sha256(digest, t_body.data(), t_body.size());
 
-	for (usize i = 0; i < length; i += 1) {
-		pOut[i * 2] = kHexDigits[pBytes[i] >> 4];
-		pOut[i * 2 + 1] = kHexDigits[pBytes[i] & 0x0F];
-	}
+	char digest_hex[crypto_hash_sha256_BYTES * 2 + 1];
+	sodium_bin2hex(digest_hex, sizeof(digest_hex), digest, sizeof(digest));
 
-	pOut[length * 2] = '\0';
-}
-
-// Integrity then authenticity - see updater.h on why neither substitutes for the other.
-bool VerifyDownload(const std::vector<u8> &body, const UpdateManifest &manifest, std::string &outError)
-{
-	unsigned char digest[crypto_hash_sha256_BYTES];
-	crypto_hash_sha256(digest, body.data(), body.size());
-
-	char hex[crypto_hash_sha256_BYTES * 2 + 1];
-	BytesToHexLower(digest, sizeof(digest), hex);
-
-	if (_stricmp(hex, manifest.szSha256Hex) != 0) {
-		outError = "the download doesn't match the manifest's SHA-256 - it may be corrupted or truncated";
+	if (_stricmp(digest_hex, t_manifest.sha256_hex) != 0) {
+		t_out_error = "the download doesn't match the manifest's SHA-256 - it may be corrupted or truncated";
 		return false;
 	}
 
-	unsigned char signature[crypto_sign_BYTES];
-	usize signatureLength = 0;
-	if (sodium_base642bin(signature, sizeof(signature), manifest.szSignatureBase64,
-						  std::strlen(manifest.szSignatureBase64), nullptr, &signatureLength, nullptr,
-						  sodium_base64_VARIANT_ORIGINAL) != 0 ||
-		signatureLength != crypto_sign_BYTES) {
-		outError = "the manifest's signature is malformed";
+	u8 signature[crypto_sign_BYTES];
+	usize signature_length = 0;
+	const bool decoded = sodium_base642bin(signature, sizeof(signature), t_manifest.signature_base64,
+										   std::strlen(t_manifest.signature_base64), nullptr, &signature_length,
+										   nullptr, sodium_base64_VARIANT_ORIGINAL) == 0 &&
+						 signature_length == crypto_sign_BYTES;
+
+	if (!decoded) {
+		t_out_error = "the manifest's signature is malformed";
 		return false;
 	}
 
-	if (crypto_sign_verify_detached(signature, digest, sizeof(digest), rift::update::kEd25519PublicKey.data()) != 0) {
-		outError = "signature verification failed - refusing to install an unsigned or tampered update";
+	if (crypto_sign_verify_detached(signature, digest, sizeof(digest), release_signing_public_key.data()) != 0) {
+		t_out_error = "signature verification failed - refusing to install an unsigned or tampered update";
 		return false;
 	}
 
 	return true;
 }
 
-bool WriteFileBytes(const std::wstring &path, const std::vector<u8> &bytes)
+std::wstring executable_path()
 {
-	const HANDLE hFile =
-		CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-	if (hFile == INVALID_HANDLE_VALUE) return false;
+	wchar_t path[MAX_PATH];
+	const DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
 
-	DWORD written = 0;
-	const BOOL wroteOk = WriteFile(hFile, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr);
-	CloseHandle(hFile);
-
-	return wroteOk != FALSE && written == bytes.size();
+	return length > 0 && length < MAX_PATH ? std::wstring{path, length} : std::wstring{};
 }
 
-// The atomic path first: a same-volume MoveFileExW is one NTFS transaction, so the exe path
-// never stops existing, and Windows permits renaming a running image's backing file.
-//
-// When that is refused (a file lock, some antivirus configurations), the fallback renames self
-// to "<exe>.old" and moves the new build in. A crash between those two leaves "<exe>.old"
-// holding a known-good build, which RunStartupRecoveryAndMaybeExit recovers from.
-bool ApplyDownloadedExe(const std::vector<u8> &newExeBytes, std::string &outError)
+bool write_bytes(const std::wstring &t_path, const std::vector<u8> &t_bytes)
 {
-	wchar_t selfPath[MAX_PATH];
-	const DWORD selfPathLength = GetModuleFileNameW(nullptr, selfPath, MAX_PATH);
-	if (selfPathLength == 0 || selfPathLength == MAX_PATH) {
-		outError = "could not resolve this program's path";
+	const HANDLE file =
+		CreateFileW(t_path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+	if (file == INVALID_HANDLE_VALUE) return false;
+
+	DWORD written = 0;
+	const bool ok = WriteFile(file, t_bytes.data(), static_cast<DWORD>(t_bytes.size()), &written, nullptr) &&
+					written == t_bytes.size();
+	CloseHandle(file);
+
+	return ok;
+}
+
+bool replace_running_executable(const std::vector<u8> &t_new_executable, std::string &t_out_error)
+{
+	const std::wstring self_path = executable_path();
+	if (self_path.empty()) {
+		t_out_error = "could not resolve this program's path";
 		return false;
 	}
 
-	const std::wstring updatePath = std::wstring(selfPath) + L".update";
-	const std::wstring oldPath = std::wstring(selfPath) + L".old";
+	const std::wstring update_path = self_path + L".update";
+	const std::wstring backup_path = self_path + L".old";
 
-	if (!WriteFileBytes(updatePath, newExeBytes)) {
-		DeleteFileW(updatePath.c_str());
-		outError = "could not write the downloaded update to disk (disk full?)";
+	if (!write_bytes(update_path, t_new_executable)) {
+		DeleteFileW(update_path.c_str());
+		t_out_error = "could not write the downloaded update to disk (disk full?)";
 		return false;
 	}
 
-	if (MoveFileExW(updatePath.c_str(), selfPath, MOVEFILE_REPLACE_EXISTING)) {
-		DeleteFileW(oldPath.c_str()); // best effort, for a stale .old from a previous fallback
+	if (MoveFileExW(update_path.c_str(), self_path.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+		DeleteFileW(backup_path.c_str());
 		return true;
 	}
 
-	if (!MoveFileExW(selfPath, oldPath.c_str(), MOVEFILE_REPLACE_EXISTING)) {
-		DeleteFileW(updatePath.c_str());
-		outError = "could not replace the running executable (it may be locked by another program)";
+	// A crash between these two renames leaves only the .old copy, which handed_off_to_repaired_copy restores.
+	if (!MoveFileExW(self_path.c_str(), backup_path.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+		DeleteFileW(update_path.c_str());
+		t_out_error = "could not replace the running executable (it may be locked by another program)";
 		return false;
 	}
 
-	if (!MoveFileExW(updatePath.c_str(), selfPath, MOVEFILE_REPLACE_EXISTING)) {
-		MoveFileExW(oldPath.c_str(), selfPath, MOVEFILE_REPLACE_EXISTING); // best-effort restore
-		outError = "could not move the new build into place";
+	if (!MoveFileExW(update_path.c_str(), self_path.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+		MoveFileExW(backup_path.c_str(), self_path.c_str(), MOVEFILE_REPLACE_EXISTING);
+		t_out_error = "could not move the new build into place";
 		return false;
 	}
 
 	return true;
 }
 
-// Deletes a leftover "<exe>.old", retried briefly because the previous process can still hold
-// it open for a moment after spawning this one.
-void DeleteStaleBackup(const std::wstring &oldPath)
+void delete_stale_backup(const std::wstring &t_backup_path)
 {
-	for (int attempt = 0; attempt < 20; attempt += 1) {
-		if (DeleteFileW(oldPath.c_str()) || GetLastError() == ERROR_FILE_NOT_FOUND) return;
+	constexpr int attempts = 20;
+
+	for (int attempt = 0; attempt < attempts; attempt += 1) {
+		if (DeleteFileW(t_backup_path.c_str()) || GetLastError() == ERROR_FILE_NOT_FOUND) return;
 
 		Sleep(50);
 	}
 }
-} // namespace
 
-CUpdater::~CUpdater()
+void launch_process(const std::wstring &t_path)
 {
-	RequestCancel();
+	STARTUPINFOW startup_info{.cb = sizeof(startup_info)};
+	PROCESS_INFORMATION process_info{};
 
-	// Bounded rather than a bare join: a WinHTTP call with no response and a cancellation flag
-	// only checked between reads is the same "stuck inside one blocking call" risk the login
-	// worker has.
-	JoinWithTimeoutOrDetach(m_worker, std::chrono::milliseconds(3000));
+	if (CreateProcessW(t_path.c_str(), nullptr, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup_info,
+					   &process_info)) {
+		CloseHandle(process_info.hProcess);
+		CloseHandle(process_info.hThread);
+	}
+}
 }
 
-void CUpdater::Init()
+Updater::~Updater()
 {
-	m_stage.store(EUpdateStage::Idle, std::memory_order_relaxed);
-	m_bCancelRequested.store(false, std::memory_order_relaxed);
-	m_bWorkerFinished.store(false, std::memory_order_relaxed);
-	m_bActive = false;
-	m_bReadyToRelaunchLatched = false;
+	request_cancel();
+	join_or_abandon(m_worker, shutdown_join_timeout);
 }
 
-void CUpdater::CheckForUpdateAsync(const char *currentVersion)
+bool Updater::handed_off_to_repaired_copy()
 {
-	if (m_bActive) return;
+	const std::wstring self_path = executable_path();
+	if (self_path.empty()) return false;
+
+	constexpr std::wstring_view backup_suffix = L".old";
+	if (!self_path.ends_with(backup_suffix)) {
+		delete_stale_backup(self_path + std::wstring{backup_suffix});
+		return false;
+	}
+
+	const std::wstring canonical_path = self_path.substr(0, self_path.size() - backup_suffix.size());
+	if (GetFileAttributesW(canonical_path.c_str()) == INVALID_FILE_ATTRIBUTES) {
+		CopyFileW(self_path.c_str(), canonical_path.c_str(), FALSE);
+	}
+
+	launch_process(canonical_path);
+
+	return true;
+}
+
+void Updater::check_for_update()
+{
+	const UpdateStage current = stage();
+	const bool nothing_pending =
+		current == UpdateStage::idle || current == UpdateStage::up_to_date || current == UpdateStage::check_failed;
+	if (m_worker_active || !nothing_pending) return;
+
+	prepare_new_worker();
+	m_stage.store(UpdateStage::checking, std::memory_order_relaxed);
+	m_worker = std::thread([this]() { check_for_update_on_worker(); });
+}
+
+void Updater::start_download()
+{
+	const UpdateStage current = stage();
+	const bool have_manifest =
+		current == UpdateStage::available || current == UpdateStage::error || current == UpdateStage::cancelled;
+	if (m_worker_active || !have_manifest) return;
+
+	prepare_new_worker();
+	m_worker = std::thread([this, manifest = m_manifest]() { download_and_install_on_worker(manifest); });
+}
+
+void Updater::update()
+{
+	if (!m_worker_active || !m_worker_finished.load(std::memory_order_acquire)) return;
 
 	if (m_worker.joinable()) {
 		m_worker.join();
 	}
 
-	m_bCancelRequested.store(false, std::memory_order_relaxed);
-	m_bWorkerFinished.store(false, std::memory_order_relaxed);
-	m_stage.store(EUpdateStage::Checking, std::memory_order_relaxed);
-	m_bActive = true;
-
-	std::string versionCopy(currentVersion);
-	m_worker = std::thread(
-		[this, versionCopy = std::move(versionCopy)]() mutable { WorkerCheckForUpdate(std::move(versionCopy)); });
+	m_worker_active = false;
+	m_ready_to_relaunch = stage() == UpdateStage::ready_to_relaunch;
 }
 
-void CUpdater::StartDownloadAsync()
+bool Updater::consume_ready_to_relaunch()
 {
-	if (m_bActive || m_stage.load(std::memory_order_acquire) != EUpdateStage::Available) return;
+	return std::exchange(m_ready_to_relaunch, false);
+}
 
+void Updater::prepare_new_worker()
+{
 	if (m_worker.joinable()) {
 		m_worker.join();
 	}
 
-	m_bCancelRequested.store(false, std::memory_order_relaxed);
-	m_bWorkerFinished.store(false, std::memory_order_relaxed);
-	m_bActive = true;
-
-	const UpdateManifest manifestCopy = m_manifest;
-	m_worker = std::thread([this, manifestCopy]() { WorkerDownloadAndInstall(manifestCopy); });
+	m_cancel_requested.store(false, std::memory_order_relaxed);
+	m_worker_finished.store(false, std::memory_order_relaxed);
+	m_worker_active = true;
 }
 
-void CUpdater::Update()
+void Updater::finish_worker(UpdateStage t_stage)
 {
-	if (!m_bActive || !m_bWorkerFinished.load(std::memory_order_acquire)) return;
-
-	if (m_worker.joinable()) {
-		m_worker.join();
-	}
-
-	m_bActive = false;
-
-	if (GetStage() == EUpdateStage::ReadyToRelaunch) {
-		m_bReadyToRelaunchLatched = true;
-	}
+	m_stage.store(t_stage, std::memory_order_release);
+	m_worker_finished.store(true, std::memory_order_release);
 }
 
-bool CUpdater::ConsumeReadyToRelaunch()
+void Updater::fail_worker(UpdateStage t_stage, const char *t_prefix, const char *t_detail)
 {
-	const bool ready = m_bReadyToRelaunchLatched;
-	m_bReadyToRelaunchLatched = false;
-
-	return ready;
+	std::snprintf(m_error_message, sizeof(m_error_message), "%s%s", t_prefix, t_detail);
+	finish_worker(t_stage);
 }
 
-void CUpdater::FinishWorker(EUpdateStage stage)
+void Updater::check_for_update_on_worker()
 {
-	m_stage.store(stage, std::memory_order_release);
-	m_bWorkerFinished.store(true, std::memory_order_release);
-}
+	constexpr const char *prefix = "Couldn't check for updates: ";
 
-void CUpdater::FailWorker(EUpdateStage stage, const char *pPrefix, const char *pDetail)
-{
-	std::snprintf(m_szErrorMessage, sizeof(m_szErrorMessage), "%s%s", pPrefix, pDetail);
-	FinishWorker(stage);
-}
-
-void CUpdater::WorkerCheckForUpdate(std::string currentVersion)
-{
 	std::vector<u8> body;
 	std::string error;
 
-	if (HttpGet(kUpdateManifestUrl, body, HttpProgress{}, error) != EHttpResult::Ok) {
-		FailWorker(EUpdateStage::CheckFailed, "Couldn't check for updates: ", error.c_str());
+	if (http_get(update_manifest_url, body, DownloadProgress{}, error) != HttpResult::ok) {
+		fail_worker(UpdateStage::check_failed, prefix, error.c_str());
 		return;
 	}
 
 	UpdateManifest manifest{};
-	if (!ParseUpdateManifest(reinterpret_cast<const char *>(body.data()), body.size(), &manifest)) {
-		FailWorker(EUpdateStage::CheckFailed, "Couldn't check for updates: ", "malformed manifest");
+	if (!parse_manifest(body, manifest)) {
+		fail_worker(UpdateStage::check_failed, prefix, "malformed manifest");
 		return;
 	}
 
 	SemVer latest{};
-	if (!SemVerParse(manifest.szVersion, latest)) {
-		FailWorker(EUpdateStage::CheckFailed, "Couldn't check for updates: ", "manifest has an unparseable version");
+	if (!parse_version(manifest.version, latest)) {
+		fail_worker(UpdateStage::check_failed, prefix, "manifest has an unparseable version");
 		return;
 	}
 
 	SemVer current{};
-	SemVer minUpgrade{};
-	SemVerParse(currentVersion.c_str(), current);
-	SemVerParse(manifest.szMinUpgradeVersion, minUpgrade);
+	SemVer minimum_for_auto_update{};
+	parse_version(app_version, current);
+	parse_version(manifest.min_upgrade_version, minimum_for_auto_update);
 
 	m_manifest = manifest;
 
-	EUpdateStage finalStage = EUpdateStage::UpToDate;
-	if (latest > current) {
-		finalStage = current < minUpgrade ? EUpdateStage::ManualUpgradeRequired : EUpdateStage::Available;
+	if (latest <= current) {
+		finish_worker(UpdateStage::up_to_date);
+	} else if (current < minimum_for_auto_update) {
+		finish_worker(UpdateStage::manual_upgrade_required);
+	} else {
+		finish_worker(UpdateStage::available);
 	}
-
-	FinishWorker(finalStage);
 }
 
-void CUpdater::WorkerDownloadAndInstall(UpdateManifest manifest)
+void Updater::download_and_install_on_worker(UpdateManifest t_manifest)
 {
-	m_bytesDownloaded.store(0, std::memory_order_relaxed);
-	m_totalBytes.store(0, std::memory_order_relaxed);
-	m_bytesPerSecond.store(0.0, std::memory_order_relaxed);
-	m_stage.store(EUpdateStage::Downloading, std::memory_order_release);
+	m_bytes_downloaded.store(0, std::memory_order_relaxed);
+	m_total_bytes.store(0, std::memory_order_relaxed);
+	m_bytes_per_second.store(0.0, std::memory_order_relaxed);
+	m_stage.store(UpdateStage::downloading, std::memory_order_release);
 
-	const HttpProgress progress{&m_bCancelRequested, &m_bytesDownloaded, &m_totalBytes, &m_bytesPerSecond};
+	const DownloadProgress progress{&m_cancel_requested, &m_bytes_downloaded, &m_total_bytes, &m_bytes_per_second};
 
 	std::vector<u8> body;
 	std::string error;
-	const EHttpResult result = HttpGet(Utf8ToWide(manifest.szUrl), body, progress, error);
+	const HttpResult result = http_get(to_wide(t_manifest.url), body, progress, error);
 
-	if (result == EHttpResult::Cancelled) {
-		FinishWorker(EUpdateStage::Cancelled);
+	if (result == HttpResult::cancelled) {
+		finish_worker(UpdateStage::cancelled);
 		return;
 	}
 
-	if (result != EHttpResult::Ok) {
-		FailWorker(EUpdateStage::Error, "Download failed: ", error.c_str());
+	if (result != HttpResult::ok) {
+		fail_worker(UpdateStage::error, "Download failed: ", error.c_str());
 		return;
 	}
 
-	m_stage.store(EUpdateStage::Verifying, std::memory_order_release);
-	if (!VerifyDownload(body, manifest, error)) {
-		FailWorker(EUpdateStage::Error, "", error.c_str());
+	m_stage.store(UpdateStage::verifying, std::memory_order_release);
+	if (!verify_download(body, t_manifest, error)) {
+		fail_worker(UpdateStage::error, "", error.c_str());
 		return;
 	}
 
-	if (m_bCancelRequested.load(std::memory_order_relaxed)) {
-		FinishWorker(EUpdateStage::Cancelled);
+	if (m_cancel_requested.load(std::memory_order_relaxed)) {
+		finish_worker(UpdateStage::cancelled);
 		return;
 	}
 
-	m_stage.store(EUpdateStage::Installing, std::memory_order_release);
-	if (!ApplyDownloadedExe(body, error)) {
-		FailWorker(EUpdateStage::Error, "", error.c_str());
+	m_stage.store(UpdateStage::installing, std::memory_order_release);
+	if (!replace_running_executable(body, error)) {
+		fail_worker(UpdateStage::error, "", error.c_str());
 		return;
 	}
 
-	FinishWorker(EUpdateStage::ReadyToRelaunch);
-}
-
-bool CUpdater::RunStartupRecoveryAndMaybeExit()
-{
-	wchar_t selfPathBuffer[MAX_PATH];
-	const DWORD length = GetModuleFileNameW(nullptr, selfPathBuffer, MAX_PATH);
-	if (length == 0 || length == MAX_PATH) return false;
-
-	const std::wstring selfPath(selfPathBuffer);
-
-	constexpr std::wstring_view kOldSuffix = L".old";
-	const bool isOldCopy = selfPath.size() > kOldSuffix.size() &&
-						   selfPath.compare(selfPath.size() - kOldSuffix.size(), kOldSuffix.size(), kOldSuffix) == 0;
-
-	if (!isOldCopy) {
-		DeleteStaleBackup(selfPath + L".old");
-		return false;
-	}
-
-	// This process is the ".old" leftover, launched directly by a stale shortcut or a curious
-	// user. If the canonical exe is missing, the two-step fallback crashed between its renames -
-	// exactly the window this exists to close. These bytes are known good, so recovery is just
-	// copying them back under the canonical name and handing off.
-	const std::wstring canonicalPath = selfPath.substr(0, selfPath.size() - kOldSuffix.size());
-	if (GetFileAttributesW(canonicalPath.c_str()) == INVALID_FILE_ATTRIBUTES) {
-		CopyFileW(selfPath.c_str(), canonicalPath.c_str(), FALSE);
-	}
-
-	STARTUPINFOW startupInfo{sizeof(startupInfo)};
-	PROCESS_INFORMATION processInfo{};
-
-	if (CreateProcessW(canonicalPath.c_str(), nullptr, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startupInfo,
-					   &processInfo)) {
-		CloseHandle(processInfo.hProcess);
-		CloseHandle(processInfo.hThread);
-	}
-
-	return true;
+	finish_worker(UpdateStage::ready_to_relaunch);
 }
