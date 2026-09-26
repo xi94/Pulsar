@@ -84,6 +84,13 @@ class Window {
 		return Vec2{static_cast<float>(m_width), static_cast<float>(m_height)};
 	}
 
+	Rect content_rect() const
+	{
+		const Vec2 window = size();
+
+		return Rect{0.0f, title_bar_height, window.x, std::max(0.0f, window.y - title_bar_height - status_bar_height)};
+	}
+
 	u32 physical_width() const
 	{
 		return m_physical_width;

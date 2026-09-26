@@ -30,6 +30,10 @@ constexpr float mode_slide_distance = 18.0f;
 constexpr float zoom_ease_rate = 9.0f;
 constexpr float edge_fade_width = 64.0f;
 
+constexpr Vec2 reference_view_size{1042.0f, 609.0f};
+constexpr float min_view_scale = 0.75f;
+constexpr float max_view_scale = 1.5f;
+
 constexpr Vec2 grid_card_min_size{160.0f, 220.0f};
 constexpr Vec2 grid_card_max_size{224.0f, 308.0f};
 constexpr float grid_gap = 24.0f;
@@ -99,31 +103,39 @@ float zoom_within(float t_percent, i32 t_first_stop, i32 t_last_stop)
 	return std::clamp((t_percent - first) / (last - first), 0.0f, 1.0f);
 }
 
-Vec2 grid_card_size(float t_zoom_percent)
+float view_scale_for(Rect t_bounds)
+{
+	const float fit = std::min(t_bounds.w / reference_view_size.x, t_bounds.h / reference_view_size.y);
+
+	return std::clamp(fit, min_view_scale, max_view_scale);
+}
+
+Vec2 grid_card_size(float t_zoom_percent, float t_view_scale)
 {
 	const float t = zoom_within(t_zoom_percent, grid_first_stop, grid_last_stop);
 
-	return Vec2{grid_card_min_size.x + (grid_card_max_size.x - grid_card_min_size.x) * t,
-				grid_card_min_size.y + (grid_card_max_size.y - grid_card_min_size.y) * t};
+	return Vec2{(grid_card_min_size.x + (grid_card_max_size.x - grid_card_min_size.x) * t) * t_view_scale,
+				(grid_card_min_size.y + (grid_card_max_size.y - grid_card_min_size.y) * t) * t_view_scale};
 }
 
-float list_thumb_size(float t_zoom_percent)
+float list_thumb_size(float t_zoom_percent, float t_view_scale)
 {
 	const float t = zoom_within(t_zoom_percent, list_first_stop, zoom_stop_count - 1);
 
-	return list_thumb_min_size + (list_thumb_max_size - list_thumb_min_size) * t;
+	return (list_thumb_min_size + (list_thumb_max_size - list_thumb_min_size) * t) * t_view_scale;
 }
 
-float list_row_height(float t_zoom_percent)
+float list_row_height(float t_zoom_percent, float t_view_scale)
 {
-	return list_thumb_size(t_zoom_percent) + list_row_padding_y * 2.0f;
+	return list_thumb_size(t_zoom_percent, t_view_scale) + list_row_padding_y * 2.0f;
 }
 
-u32 grid_columns(float t_width, float t_zoom_percent)
+u32 grid_columns(float t_width, float t_zoom_percent, float t_view_scale)
 {
 	const float usable = t_width - grid_padding * 2.0f + grid_gap;
+	const float card_width_with_gap = grid_card_size(t_zoom_percent, t_view_scale).x + grid_gap;
 
-	return std::max<u32>(1, static_cast<u32>(usable / (grid_card_size(t_zoom_percent).x + grid_gap)));
+	return std::max<u32>(1, static_cast<u32>(usable / card_width_with_gap));
 }
 
 float card_scale(float t_slots_from_center)
@@ -256,21 +268,27 @@ float Carousel::clamp_scroll(float t_offset) const
 	return game_count() == 0 ? 0.0f : std::clamp(t_offset, 0.0f, static_cast<float>(game_count() - 1));
 }
 
+float Carousel::view_scale() const
+{
+	return view_scale_for(m_bounds);
+}
+
 Rect Carousel::carousel_card(u32 t_game) const
 {
 	const float slot = static_cast<float>(t_game) - m_scroll;
-	const float scale = card_scale(std::fabs(slot));
+	const float view = view_scale();
+	const float scale = card_scale(std::fabs(slot)) * view;
 	const float width = card_width * scale;
 	const float height = card_height * scale;
-	const float center_x = m_bounds.center().x + center_offset_of_slot(slot);
+	const float center_x = m_bounds.center().x + center_offset_of_slot(slot) * view;
 
 	return Rect{center_x - width * 0.5f, m_bounds.y + (m_bounds.h - height) * 0.5f, width, height};
 }
 
 Rect Carousel::grid_card(u32 t_game) const
 {
-	const Vec2 size = grid_card_size(m_zoom_percent);
-	const u32 columns = grid_columns(m_bounds.w, m_zoom_percent);
+	const Vec2 size = grid_card_size(m_zoom_percent, view_scale());
+	const u32 columns = grid_columns(m_bounds.w, m_zoom_percent, view_scale());
 	const u32 column = t_game % columns;
 	const u32 row = t_game / columns;
 
@@ -283,7 +301,7 @@ Rect Carousel::grid_card(u32 t_game) const
 
 Rect Carousel::list_row(u32 t_game) const
 {
-	const float height = list_row_height(m_zoom_percent);
+	const float height = list_row_height(m_zoom_percent, view_scale());
 	const float y = m_bounds.y + list_padding + t_game * (height + list_gap) - m_wrap_scroll.offset();
 
 	return Rect{m_bounds.x + list_padding, y, m_bounds.w - list_padding * 2.0f, height};
@@ -308,14 +326,15 @@ float Carousel::wrap_content_height() const
 	if (game_count() == 0) return 0.0f;
 
 	if (m_mode == ViewMode::grid) {
-		const u32 columns = grid_columns(m_bounds.w, m_zoom_percent);
+		const u32 columns = grid_columns(m_bounds.w, m_zoom_percent, view_scale());
 		const u32 rows = (game_count() + columns - 1) / columns;
 
-		return grid_padding * 2.0f + rows * grid_card_size(m_zoom_percent).y + (rows - 1) * grid_gap;
+		return grid_padding * 2.0f + rows * grid_card_size(m_zoom_percent, view_scale()).y + (rows - 1) * grid_gap;
 	}
 
 	if (m_mode == ViewMode::list) {
-		return list_padding * 2.0f + game_count() * list_row_height(m_zoom_percent) + (game_count() - 1) * list_gap;
+		return list_padding * 2.0f + game_count() * list_row_height(m_zoom_percent, view_scale()) +
+			   (game_count() - 1) * list_gap;
 	}
 
 	return 0.0f;
@@ -537,7 +556,7 @@ bool Carousel::on_pointer_move(Vec2 t_point)
 	if (!m_card_drag.is_pressed()) return false;
 
 	m_card_drag.update(t_point);
-	m_scroll = m_drag_start_scroll - m_card_drag.delta_x() / drag_pixels_per_card;
+	m_scroll = m_drag_start_scroll - m_card_drag.delta_x() / (drag_pixels_per_card * view_scale());
 	m_target_scroll = m_scroll;
 
 	return true;
@@ -605,7 +624,7 @@ bool Carousel::on_key_down(u32 t_key)
 {
 	if (game_count() == 0) return false;
 
-	const auto columns = static_cast<i32>(grid_columns(m_bounds.w, m_zoom_percent));
+	const auto columns = static_cast<i32>(grid_columns(m_bounds.w, m_zoom_percent, view_scale()));
 	const bool horizontal = m_mode != ViewMode::list;
 	const bool vertical = m_mode != ViewMode::carousel;
 	const i32 row_step = m_mode == ViewMode::grid ? columns : 1;
@@ -677,7 +696,7 @@ CursorKind Carousel::cursor() const
 void Carousel::update(float t_delta_seconds)
 {
 	m_scroll = animation::ease_toward(m_scroll, m_target_scroll, scroll_ease_rate, t_delta_seconds,
-									  animation::settled_pixels / drag_pixels_per_card);
+									  animation::settled_pixels / (drag_pixels_per_card * view_scale()));
 	m_mode_transition = animation::ease_toward(m_mode_transition, 0.0f, mode_transition_ease_rate, t_delta_seconds);
 	m_zoom_percent = animation::ease_toward(m_zoom_percent, stop_percent(m_zoom_stop), zoom_ease_rate, t_delta_seconds);
 	m_wrap_scroll.update(t_delta_seconds);
@@ -775,7 +794,7 @@ void Carousel::draw_grid_mode(DrawList &t_draw_list, u8 t_alpha, float t_y_offse
 void Carousel::draw_list_mode(DrawList &t_draw_list, u8 t_alpha, float t_y_offset) const
 {
 	const Font &font = m_fonts.body();
-	const float thumb_size = list_thumb_size(m_zoom_percent);
+	const float thumb_size = list_thumb_size(m_zoom_percent, view_scale());
 	const Color image_tint = faded(color_image, t_alpha);
 
 	t_draw_list.push_clip(m_bounds);

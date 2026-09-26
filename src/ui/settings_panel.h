@@ -66,6 +66,7 @@ class SettingsPanel : public Widget {
 		Rect header;
 		Rect footer;
 		Rect rows_region;
+		bool docked;
 	};
 
 	struct Rows {

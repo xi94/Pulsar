@@ -27,6 +27,7 @@ constexpr float reset_appear_rate = 20.0f;
 constexpr float reset_spin_rate = 6.0f;
 
 constexpr Vec2 panel_max_size{570.0f, 480.0f};
+constexpr Vec2 panel_min_size{460.0f, 380.0f};
 constexpr float reference_body_pixel_height = 24.0f;
 constexpr float reference_secondary_pixel_height = 20.0f;
 constexpr float panel_margin = 48.0f;
@@ -433,7 +434,9 @@ SettingsPanel::Layout SettingsPanel::layout() const
 	const float scale = panel_closed_scale + (1.0f - panel_closed_scale) * m_open_amount;
 
 	Layout result{};
-	result.panel = Rect{0.0f, 0.0f, window.x, window.y}.centered(width * scale, height * scale);
+	result.docked = width < panel_min_size.x * size_scale || height < panel_min_size.y * size_scale;
+	result.panel = result.docked ? m_window.content_rect().inset(0.0f, 1.0f)
+								 : Rect{0.0f, 0.0f, window.x, window.y}.centered(width * scale, height * scale);
 	result.inner = result.panel.inset(panel_border);
 
 	Rect remaining = result.inner;
@@ -837,8 +840,7 @@ void SettingsPanel::update(float t_delta_seconds)
 	update_hover_hints(t_delta_seconds);
 
 	const Rows current_rows = rows(layout());
-	const Vec2 window = m_window.size();
-	const Rect popup_bounds{0.0f, title_bar_height, window.x, window.y - title_bar_height - status_bar_height};
+	const Rect popup_bounds = m_window.content_rect();
 
 	m_font_list.update(t_delta_seconds, dropdown_rect(current_rows.font, m_fonts), popup_bounds);
 	m_theme_list.update(t_delta_seconds, dropdown_rect(current_rows.theme, m_fonts), popup_bounds);
@@ -1192,8 +1194,12 @@ void SettingsPanel::draw_chrome(DrawList &t_draw_list, const Layout &t_layout, u
 
 	t_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y},
 						 faded(colors.scrim, static_cast<u8>(255.0f * m_open_amount)));
-	t_draw_list.add_bordered_rect(t_layout.panel, rounded(panel_radius), faded(colors.surface, t_alpha),
-								  faded(colors.border, t_alpha), panel_border);
+	if (t_layout.docked) {
+		t_draw_list.add_rect(t_layout.panel, faded(colors.surface, t_alpha));
+	} else {
+		t_draw_list.add_bordered_rect(t_layout.panel, rounded(panel_radius), faded(colors.surface, t_alpha),
+									  faded(colors.border, t_alpha), panel_border);
+	}
 
 	draw_text(t_draw_list, body, Vec2{t_layout.header.x + row_padding_x, body.centered_baseline(t_layout.header)},
 			  "Settings", faded(colors.text, t_alpha));

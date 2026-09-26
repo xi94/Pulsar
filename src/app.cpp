@@ -593,7 +593,7 @@ void App::frame()
 		m_settings.window_height = m_window.height();
 	}
 
-	m_carousel.set_bounds(Rect{0.0f, title_bar_height, window.x, window.y - title_bar_height - status_bar_height});
+	m_carousel.set_bounds(m_window.content_rect());
 	set_pixel_scale(m_window.dpi_scale());
 	update_theme(delta_seconds);
 

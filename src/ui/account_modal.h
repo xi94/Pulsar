@@ -79,6 +79,8 @@ class AccountModal : public Widget {
 	};
 
 	bool has_game() const;
+	Vec2 floating_panel_size() const;
+	bool is_docked() const;
 	Rect panel_rect() const;
 	Layout layout() const;
 	AccountRows account_rows(const Layout &t_layout) const;
@@ -92,6 +94,8 @@ class AccountModal : public Widget {
 	Rect primary_button_rect(Rect t_footer) const;
 	Rect cancel_button_rect(Rect t_primary) const;
 	Rect delete_button_rect(Rect t_footer) const;
+	Rect form_region(Rect t_main) const;
+	ScrollGeometry form_scroll(Rect t_main) const;
 	Rect field_block_rect(Rect t_main, u32 t_field) const;
 	Rect field_input_rect(Rect t_main, u32 t_field) const;
 	Rect field_text_rect(Rect t_main, u32 t_field) const;
@@ -111,6 +115,8 @@ class AccountModal : public Widget {
 	i32 focused_field() const;
 	void focus_field(i32 t_field);
 	i32 field_at(Rect t_main, Vec2 t_point) const;
+	bool is_reveal_hit(Rect t_main, Vec2 t_point) const;
+	void reveal_field(i32 t_field);
 
 	void start_adding();
 	void start_editing(u32 t_row);
@@ -162,6 +168,7 @@ class AccountModal : public Widget {
 	i32 m_selected_row = -1;
 	Mode m_mode = Mode::account_list;
 	Scrollable m_rows_scroll;
+	Scrollable m_form_scroll;
 	ConfirmLatch m_row_delete;
 	ConfirmLatch m_form_delete;
 

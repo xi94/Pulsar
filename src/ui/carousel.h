@@ -58,6 +58,7 @@ class Carousel : public Widget {
 	float wrap_content_height() const;
 	ScrollGeometry wrap_scroll_geometry() const;
 
+	float view_scale() const;
 	Rect carousel_card(u32 t_game) const;
 	Rect grid_card(u32 t_game) const;
 	Rect list_row(u32 t_game) const;
