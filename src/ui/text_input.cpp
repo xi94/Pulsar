@@ -12,6 +12,7 @@
 #include "gfx/font.h"
 #include "platform/clipboard.h"
 #include "ui/text.h"
+#include "ui/theme.h"
 
 namespace {
 constexpr float caret_blink_period = 1.0f;
@@ -321,7 +322,14 @@ void TextInput::draw(DrawList &t_draw_list, const Font &t_font, Rect t_field, Co
 							 faded(t_caret_color, selection_alpha));
 	}
 
-	draw_text(t_draw_list, t_font, Vec2{origin_x, t_font.centered_baseline(t_field)}, shown, t_text_color);
+	const float baseline = t_font.centered_baseline(t_field);
+
+	if (m_length == 0) {
+		draw_text(t_draw_list, t_font, Vec2{content.x, baseline}, m_placeholder,
+				  faded(theme().text_faint, t_text_color.a));
+	}
+
+	draw_text(t_draw_list, t_font, Vec2{origin_x, baseline}, shown, t_text_color);
 
 	if (m_focused && m_caret_blink_seconds < caret_blink_period * 0.5f) {
 		t_draw_list.add_rect(Rect{origin_x + caret_offset, highlight_y, caret_width, highlight_height}, t_caret_color);

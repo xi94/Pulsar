@@ -1,7 +1,10 @@
 #pragma once
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <string_view>
+#include <vector>
 
 #include "stb/stb_truetype.h"
 
@@ -78,10 +81,18 @@ class Font {
 	float m_line_gap = 0.0f;
 };
 
+struct InstalledFonts {
+	std::vector<std::string> names;
+	std::vector<std::string> files;
+
+	std::optional<u32> index_of_file(std::string_view t_file) const;
+};
+
+InstalledFonts installed_fonts();
+
 class Fonts {
   public:
-	bool load_defaults(Renderer &t_renderer, float t_dpi_scale);
-	bool load(Renderer &t_renderer, std::string_view t_file_name, float t_body_size, float t_secondary_size,
+	bool load(Renderer &t_renderer, std::string_view t_file, float t_body_size, float t_secondary_size,
 			  float t_dpi_scale);
 
 	const Font &body() const

@@ -32,11 +32,6 @@ constexpr int submenu_arrow_width = 18;
 constexpr int icon_gap = 8;
 constexpr int min_row_width = 170;
 
-constexpr Color color_background{30, 30, 34, 255};
-constexpr Color color_text{220, 220, 224, 255};
-constexpr Color color_text_disabled{140, 140, 148, 255};
-constexpr Color color_separator{60, 60, 66, 255};
-
 int menu_icon_size()
 {
 	return app_icon_pixel_size(AppIconSize::small_icon) * 3 / 2;
@@ -208,15 +203,15 @@ void Tray::rebuild_brushes()
 	DeleteObject(m_background_brush);
 	DeleteObject(m_hover_brush);
 
-	m_background_brush = CreateSolidBrush(to_colorref(color_background));
-	m_hover_brush = CreateSolidBrush(to_colorref(mix(color_background, m_accent, 0.42f)));
+	m_background_brush = CreateSolidBrush(to_colorref(m_colors.background));
+	m_hover_brush = CreateSolidBrush(to_colorref(m_colors.hover));
 }
 
-void Tray::set_accent(Color t_accent)
+void Tray::set_colors(const TrayColors &t_colors)
 {
-	if (t_accent.r == m_accent.r && t_accent.g == m_accent.g && t_accent.b == m_accent.b) return;
+	if (t_colors == m_colors) return;
 
-	m_accent = t_accent;
+	m_colors = t_colors;
 	rebuild_brushes();
 }
 
@@ -368,7 +363,7 @@ void Tray::draw_row(const DRAWITEMSTRUCT &t_draw) const
 
 	if (row.separator) {
 		const RECT line{rect.left + padding_x, middle_y, rect.right - padding_x, middle_y + 1};
-		const HBRUSH brush = CreateSolidBrush(to_colorref(color_separator));
+		const HBRUSH brush = CreateSolidBrush(to_colorref(m_colors.separator));
 		FillRect(dc, &line, brush);
 		DeleteObject(brush);
 		return;
@@ -389,7 +384,7 @@ void Tray::draw_row(const DRAWITEMSTRUCT &t_draw) const
 		}
 	}
 
-	const Color text_color = row.disabled ? color_text_disabled : color_text;
+	const Color text_color = row.disabled ? m_colors.text_disabled : m_colors.text;
 	SetBkMode(dc, TRANSPARENT);
 	SetTextColor(dc, to_colorref(text_color));
 	const HGDIOBJ previous_font = SelectObject(dc, m_menu_font);

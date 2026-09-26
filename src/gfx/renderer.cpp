@@ -26,17 +26,21 @@ struct ViewportConstants {
 
 struct BannerGlowConstants {
 	float time_seconds;
-	BannerGlowParams params;
+	RoundedBoxParams params;
 	float padding[3];
+};
+
+struct ShadowConstants {
+	RoundedBoxParams params;
 };
 
 static_assert(sizeof(ViewportConstants) == 16);
 static_assert(sizeof(BannerGlowConstants) == 32);
-static_assert(sizeof(CircularProgressParams) == 28);
+static_assert(sizeof(ShadowConstants) == 16);
+static_assert(sizeof(CircularProgressParams) == 32);
 
 struct CircularProgressConstants {
 	CircularProgressParams params;
-	float padding;
 };
 
 static_assert(sizeof(CircularProgressConstants) == 32);
@@ -216,6 +220,7 @@ bool Renderer::create_shaders()
 	CompileJob jobs[]{
 		{"vs_main", "vs_5_0"},		  {"ps_solid", "ps_5_0"},		 {"ps_textured", "ps_5_0"},
 		{"ps_banner_glow", "ps_5_0"}, {"ps_color_picker", "ps_5_0"}, {"ps_circular_progress", "ps_5_0"},
+		{"ps_shadow", "ps_5_0"},
 	};
 
 	std::vector<std::thread> compilers;
@@ -236,7 +241,8 @@ bool Renderer::create_shaders()
 	}
 
 	ComPtr<ID3D11PixelShader> *const pixel_shaders[]{
-		&m_solid_shader, &m_textured_shader, &m_banner_glow_shader, &m_color_picker_shader, &m_circular_progress_shader,
+		&m_solid_shader,		&m_textured_shader,			 &m_banner_glow_shader,
+		&m_color_picker_shader, &m_circular_progress_shader, &m_shadow_shader,
 	};
 
 	for (usize i = 0; i < std::size(pixel_shaders); i += 1) {
@@ -263,7 +269,8 @@ bool Renderer::create_constant_buffers()
 {
 	return create_constant_buffer<ViewportConstants>(*m_device.Get(), m_viewport_constants) &&
 		   create_constant_buffer<BannerGlowConstants>(*m_device.Get(), m_banner_glow_constants) &&
-		   create_constant_buffer<CircularProgressConstants>(*m_device.Get(), m_circular_progress_constants);
+		   create_constant_buffer<CircularProgressConstants>(*m_device.Get(), m_circular_progress_constants) &&
+		   create_constant_buffer<ShadowConstants>(*m_device.Get(), m_shadow_constants);
 }
 
 bool Renderer::create_pipeline_states()
@@ -397,7 +404,7 @@ void Renderer::draw_command(const DrawCommand &t_command)
 			break;
 
 		case ShaderKind::banner_glow: {
-			const BannerGlowConstants constants{.time_seconds = m_effect_time_seconds, .params = t_command.glow};
+			const BannerGlowConstants constants{.time_seconds = m_effect_time_seconds, .params = t_command.box};
 			m_context->UpdateSubresource(m_banner_glow_constants.Get(), 0, nullptr, &constants, 0, 0);
 			shader = m_banner_glow_shader.Get();
 			extra_constants = m_banner_glow_constants.Get();
@@ -413,6 +420,14 @@ void Renderer::draw_command(const DrawCommand &t_command)
 			m_context->UpdateSubresource(m_circular_progress_constants.Get(), 0, nullptr, &constants, 0, 0);
 			shader = m_circular_progress_shader.Get();
 			extra_constants = m_circular_progress_constants.Get();
+			break;
+		}
+
+		case ShaderKind::shadow: {
+			const ShadowConstants constants{.params = t_command.box};
+			m_context->UpdateSubresource(m_shadow_constants.Get(), 0, nullptr, &constants, 0, 0);
+			shader = m_shadow_shader.Get();
+			extra_constants = m_shadow_constants.Get();
 			break;
 		}
 	}

@@ -13,6 +13,7 @@
 #include "platform/window.h"
 #include "ui/controls.h"
 #include "ui/text.h"
+#include "ui/theme.h"
 
 namespace {
 constexpr float margin_x = 14.0f;
@@ -38,11 +39,6 @@ constexpr float bar_glow_alpha = 54.0f;
 constexpr float sweep_width = 46.0f;
 constexpr float sweeps_per_second = 0.55f;
 constexpr float sweep_alpha = 120.0f;
-
-constexpr Color color_card{24, 24, 28, 244};
-constexpr Color color_border{52, 52, 60, 255};
-constexpr Color color_text{222, 222, 228, 255};
-constexpr Color color_bar_track{48, 48, 56, 255};
 }
 
 Toasts::Toasts(const Settings &t_settings, const Fonts &t_fonts, const Assets &t_assets, const Window &t_window,
@@ -131,7 +127,9 @@ void Toasts::update(float t_delta_seconds)
 		m_showing = m_remaining_seconds > 0.0f;
 	}
 
-	m_presence = animation::ease_toward(m_presence, m_showing ? 1.0f : 0.0f, presence_ease_rate, t_delta_seconds);
+	const float slide_distance = card_rect().w + margin_x;
+	m_presence = animation::ease_toward(m_presence, m_showing ? 1.0f : 0.0f, presence_ease_rate, t_delta_seconds,
+										animation::settled_pixels / slide_distance);
 	m_elapsed_seconds += t_delta_seconds;
 }
 
@@ -168,8 +166,8 @@ void Toasts::draw(DrawList &t_draw_list)
 	const Rect card = animated_card_rect();
 	const auto alpha = static_cast<u8>(std::clamp(m_presence, 0.0f, 1.0f) * 255.0f);
 
-	t_draw_list.add_bordered_rect(card, rounded(corner_radius), faded(color_card, alpha), faded(color_border, alpha),
-								  1.0f);
+	t_draw_list.add_bordered_rect(card, rounded(corner_radius), faded(with_alpha(theme().popup, 244), alpha),
+								  faded(theme().border, alpha), 1.0f);
 
 	if (m_icon) {
 		const float first_line_center = card.y + padding_y + font.line_height() * 0.5f;
@@ -182,7 +180,7 @@ void Toasts::draw(DrawList &t_draw_list)
 
 	const float text_x = card.x + padding_x + icon_column_width();
 	draw_wrapped_text(t_draw_list, font, Vec2{text_x, card.y + padding_y + font.ascent()},
-					  card.right() - padding_x - text_x, m_message, faded(color_text, alpha), max_lines);
+					  card.right() - padding_x - text_x, m_message, faded(theme().text, alpha), max_lines);
 
 	draw_time_left_bar(t_draw_list, card, alpha);
 }
@@ -195,7 +193,7 @@ void Toasts::draw_time_left_bar(DrawList &t_draw_list, Rect t_card, u8 t_alpha) 
 	const float remaining = m_total_seconds > 0.0f ? m_remaining_seconds / m_total_seconds : 0.0f;
 	const Rect fill{track.x, track.y, track.w * std::clamp(remaining, 0.0f, 1.0f), track.h};
 
-	t_draw_list.add_rounded_rect(track, rounded(bar_height * 0.5f), faded(color_bar_track, t_alpha));
+	t_draw_list.add_rounded_rect(track, rounded(bar_height * 0.5f), faded(theme().control, t_alpha));
 	if (fill.w <= 0.0f) return;
 
 	for (u32 layer = 1; layer <= bar_glow_layers; layer += 1) {

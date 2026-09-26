@@ -17,14 +17,12 @@
 #include "platform/clipboard.h"
 #include "platform/overlay_guard.h"
 #include "ui/text.h"
+#include "ui/theme.h"
 
 namespace {
 constexpr u32 draw_list_vertex_capacity = 1 << 16;
 constexpr u32 draw_list_index_capacity = (1 << 16) * 3 / 2;
 
-constexpr Color color_background{18, 18, 20, 255};
-constexpr Color color_chrome_seam{46, 46, 50, 255};
-constexpr Color color_status_text{158, 158, 166, 255};
 constexpr float status_padding = 14.0f;
 constexpr float status_mark_size = 15.0f;
 constexpr float status_mark_gap = 7.0f;
@@ -117,7 +115,7 @@ App::App()
 	, m_unlock_screen(m_settings, m_master_key, m_fonts, m_assets, m_window, m_commands)
 	, m_app_menu(m_settings, m_fonts, m_assets, m_commands)
 	, m_update_overlay(m_updater, m_settings, m_fonts, m_window)
-	, m_context_menu(m_fonts, m_commands)
+	, m_context_menu(m_settings, m_fonts, m_commands)
 	, m_title_bar(m_window, m_updater, m_fonts, m_assets, m_commands)
 #ifdef PULSAR_PROFILING
 	, m_profiler_overlay(m_fonts)
@@ -205,7 +203,7 @@ bool App::create_graphics()
 		return false;
 	}
 
-	if (!m_fonts.load_defaults(m_renderer, m_window.dpi_scale())) {
+	if (!reload_fonts()) {
 		std::println("Failed to load the UI font.");
 		return false;
 	}
@@ -244,6 +242,7 @@ void App::stack_widgets()
 
 void App::apply_settings(storage::LoadResult t_load_result)
 {
+	apply_theme(m_settings.theme);
 	m_carousel.restore(m_settings.zoom_stop, m_settings.selected_game);
 
 	if (t_load_result == storage::LoadResult::failed) return;
@@ -251,7 +250,6 @@ void App::apply_settings(storage::LoadResult t_load_result)
 	animation::set_enabled(m_settings.animations_enabled);
 	animation::set_speed(m_settings.animation_speed);
 	set_corner_roundness(m_settings.corner_roundness);
-	reload_fonts();
 	m_settings_panel.sync_with_settings();
 
 	const std::string_view last_run_version = m_settings.last_run_version;
@@ -319,7 +317,13 @@ void App::pump_input()
 
 	m_window.pump_messages();
 	m_window.set_close_to_tray(m_settings.close_to_tray && m_tray.is_icon_visible());
-	m_tray.set_accent(m_settings.accent);
+	m_tray.set_colors(TrayColors{
+		.background = theme().popup,
+		.hover = mix(theme().popup, m_settings.accent, 0.42f),
+		.text = theme().text,
+		.text_disabled = theme().text_faint,
+		.separator = theme().separator,
+	});
 
 	handle_tray_event();
 
@@ -558,10 +562,18 @@ void App::redraw_while_resizing()
 	frame();
 }
 
-void App::reload_fonts()
+bool App::reload_fonts()
 {
-	m_fonts.load(m_renderer, m_settings.font_name, m_settings.font_size, m_settings.secondary_font_size,
-				 m_window.dpi_scale());
+	const auto load = [this] {
+		return m_fonts.load(m_renderer, m_settings.font_name, m_settings.font_size, m_settings.secondary_font_size,
+							m_window.dpi_scale());
+	};
+
+	if (load()) return true;
+
+	copy_to(Settings{}.font_name, m_settings.font_name);
+
+	return load();
 }
 
 void App::frame()
@@ -582,6 +594,8 @@ void App::frame()
 	}
 
 	m_carousel.set_bounds(Rect{0.0f, title_bar_height, window.x, window.y - title_bar_height - status_bar_height});
+	set_pixel_scale(m_window.dpi_scale());
+	update_theme(delta_seconds);
 
 	{
 		PULSAR_PROFILE_SCOPE("Widgets.Update");
@@ -607,13 +621,13 @@ void App::draw_status_bar()
 	const Vec2 window = m_window.size();
 	const Rect status_bar{0.0f, window.y - status_bar_height, window.x, status_bar_height};
 
-	m_draw_list.add_rect(Rect{0.0f, title_bar_height, window.x, 1.0f}, color_chrome_seam);
-	m_draw_list.add_rect(Rect{0.0f, status_bar.y - 1.0f, window.x, 1.0f}, color_chrome_seam);
-	m_draw_list.add_rect(status_bar, title_bar_color);
+	m_draw_list.add_rect(Rect{0.0f, title_bar_height, window.x, 1.0f}, theme().chrome_seam);
+	m_draw_list.add_rect(Rect{0.0f, status_bar.y - 1.0f, window.x, 1.0f}, theme().chrome_seam);
+	m_draw_list.add_rect(status_bar, theme().chrome);
 
 	const Rect mark{status_padding, status_bar.y + (status_bar_height - status_mark_size) * 0.5f, status_mark_size,
 					status_mark_size};
-	m_draw_list.add_image(mark, m_assets.get(Asset::icon_app), color_status_text);
+	m_draw_list.add_image(mark, m_assets.get(Asset::icon_app), theme().text_dim);
 
 	char version[48];
 	const int written =
@@ -622,7 +636,7 @@ void App::draw_status_bar()
 
 	draw_text(m_draw_list, font,
 			  Vec2{mark.right() + status_mark_gap, font.centered_baseline(status_bar) - status_baseline_nudge},
-			  std::string_view{version, static_cast<usize>(std::max(written, 0))}, color_status_text);
+			  std::string_view{version, static_cast<usize>(std::max(written, 0))}, theme().text_dim);
 
 	if (m_carousel.is_visible()) {
 		m_carousel.draw_status_bar(m_draw_list);
@@ -642,7 +656,7 @@ void App::render()
 		m_draw_list.finish();
 	}
 
-	m_renderer.render(m_draw_list, color_background);
+	m_renderer.render(m_draw_list, theme().window);
 }
 
 void App::run()

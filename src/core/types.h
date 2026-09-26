@@ -89,6 +89,8 @@ struct Color {
 	u8 g;
 	u8 b;
 	u8 a;
+
+	bool operator==(const Color &) const = default;
 };
 
 struct CornerRadii {

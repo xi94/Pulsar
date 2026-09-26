@@ -5,6 +5,8 @@
 #include <span>
 
 #include "gfx/draw_list.h"
+#include "ui/controls.h"
+#include "ui/theme.h"
 
 namespace {
 constexpr float popup_padding = 12.0f;
@@ -17,8 +19,6 @@ constexpr float handle_radius = 6.0f;
 constexpr float window_margin = 8.0f;
 constexpr float anchor_gap = 8.0f;
 
-constexpr Color color_background{30, 30, 34, 255};
-constexpr Color color_border{70, 70, 76, 255};
 constexpr Color color_marker{255, 255, 255, 255};
 
 constexpr Color hue_stops[]{
@@ -250,7 +250,8 @@ void ColorPicker::draw(DrawList &t_draw_list) const
 	if (!m_open) return;
 
 	const Rect popup = popup_rect();
-	t_draw_list.add_bordered_rect(popup.inset(-1.0f), rounded(popup_radius), color_background, color_border, 1.0f);
+	controls::draw_popup_shadow(t_draw_list, popup.inset(-1.0f), popup_radius, 1.0f);
+	t_draw_list.add_bordered_rect(popup.inset(-1.0f), rounded(popup_radius), theme().popup, theme().border, 1.0f);
 
 	const Color picked = hsv_to_rgb(m_hue, m_saturation, m_value);
 

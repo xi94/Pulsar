@@ -7,7 +7,9 @@
 #include "core/library.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
+#include "ui/controls.h"
 #include "ui/text.h"
+#include "ui/theme.h"
 
 namespace {
 constexpr float popup_width = 220.0f;
@@ -18,13 +20,6 @@ constexpr float anchor_gap = 6.0f;
 constexpr float row_padding_x = 10.0f;
 constexpr float open_ease_rate = 20.0f;
 
-constexpr Color color_background{30, 30, 34, 255};
-constexpr Color color_border{60, 60, 66, 255};
-constexpr Color color_hover{46, 46, 52, 255};
-constexpr Color color_text{220, 220, 224, 255};
-constexpr Color color_text_disabled{130, 130, 136, 255};
-constexpr Color color_check{130, 200, 140, 255};
-constexpr Color color_check_disabled{110, 118, 112, 255};
 constexpr Color color_icon{255, 255, 255, 255};
 constexpr Color color_icon_disabled{150, 150, 150, 255};
 
@@ -36,16 +31,6 @@ float row_height_for(const Fonts &t_fonts)
 float icon_size_for(const Fonts &t_fonts)
 {
 	return t_fonts.secondary().line_height() * 0.95f;
-}
-
-void draw_check(DrawList &t_draw_list, Rect t_row, float t_scale, Color t_color)
-{
-	const float x = t_row.right() - row_padding_x - 8.0f * t_scale;
-	const float y = t_row.center().y;
-
-	t_draw_list.add_line({x - 7.0f * t_scale, y}, {x - 2.0f * t_scale, y + 5.0f * t_scale}, 2.0f, t_color);
-	t_draw_list.add_line({x - 2.0f * t_scale, y + 5.0f * t_scale}, {x + 7.0f * t_scale, y - 6.0f * t_scale}, 2.0f,
-						 t_color);
 }
 
 bool has_bit(u16 t_mask, u32 t_bit)
@@ -137,7 +122,10 @@ void GameSelectPopup::draw(DrawList &t_draw_list, Vec2 t_mouse) const
 	if (!is_open()) return;
 
 	const Rect popup = popup_rect();
-	t_draw_list.add_bordered_rect(popup, rounded(popup_radius), color_background, color_border, 1.0f);
+	controls::draw_popup_shadow(t_draw_list, popup, popup_radius, m_open_amount);
+
+	const Theme &colors = theme();
+	t_draw_list.add_bordered_rect(popup, rounded(popup_radius), colors.popup, colors.border, 1.0f);
 	t_draw_list.push_clip(popup);
 
 	const Font &font = m_fonts.secondary();
@@ -149,7 +137,7 @@ void GameSelectPopup::draw(DrawList &t_draw_list, Vec2 t_mouse) const
 		const bool locked = is_last_checked(index);
 
 		if (!locked && row.contains(t_mouse)) {
-			t_draw_list.add_rounded_rect(row.inset(4.0f, 0.0f), rounded(6.0f), color_hover);
+			t_draw_list.add_rounded_rect(row.inset(4.0f, 0.0f), rounded(6.0f), colors.control);
 		}
 
 		const Rect icon{row.x + row_padding_x, row.y + (row.h - icon_size) * 0.5f, icon_size, icon_size};
@@ -161,10 +149,12 @@ void GameSelectPopup::draw(DrawList &t_draw_list, Vec2 t_mouse) const
 		}
 
 		draw_text(t_draw_list, font, Vec2{icon.right() + 10.0f, font.centered_baseline(row)}, game.title,
-				  locked ? color_text_disabled : color_text);
+				  locked ? colors.text_faint : colors.text);
 
 		if (has_bit(m_mask, index)) {
-			draw_check(t_draw_list, row, icon_size / 20.0f, locked ? color_check_disabled : color_check);
+			const Rect check{row.right() - row_padding_x - icon_size, row.y + (row.h - icon_size) * 0.5f, icon_size,
+							 icon_size};
+			controls::draw_check(t_draw_list, check, locked ? colors.text_faint : colors.success);
 		}
 	}
 

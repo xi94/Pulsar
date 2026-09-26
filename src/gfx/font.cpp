@@ -2,20 +2,24 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <print>
-#include <vector>
 
 #include <Windows.h>
 
 #include "core/file.h"
+#include "core/str.h"
 #include "gfx/renderer.h"
 
 namespace {
 constexpr float coverage_gamma = 0.8f;
 constexpr float setting_to_pixel_scale = 1.5f;
-constexpr float default_body_size = 16.0f;
-constexpr float default_secondary_size = 12.0f;
-constexpr const char *default_font_file = "segoeui.ttf";
+constexpr const wchar_t *registered_fonts_key = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts";
+
+struct FontEntry {
+	std::string name;
+	std::string file;
+};
 
 u32 atlas_size_for(float t_baked_pixel_height)
 {
@@ -41,13 +45,84 @@ std::vector<u8> coverage_to_white_rgba(const std::vector<u8> &t_coverage)
 	return rgba;
 }
 
-std::string system_font_path(std::string_view t_file_name)
+bool equals_ignoring_case(std::string_view t_a, std::string_view t_b)
 {
+	return t_a.size() == t_b.size() && _strnicmp(t_a.data(), t_b.data(), t_a.size()) == 0;
+}
+
+bool is_absolute_path(std::string_view t_file)
+{
+	return t_file.find(':') != std::string_view::npos || t_file.starts_with("\\\\");
+}
+
+std::string font_file_path(std::string_view t_file)
+{
+	if (is_absolute_path(t_file)) return std::string{t_file};
+
 	char windows_directory[MAX_PATH];
 	const UINT length = GetWindowsDirectoryA(windows_directory, MAX_PATH);
 	if (length == 0 || length >= MAX_PATH) return {};
 
-	return std::string{windows_directory, length} + "\\Fonts\\" + std::string{t_file_name};
+	return std::string{windows_directory, length} + "\\Fonts\\" + std::string{t_file};
+}
+
+bool is_outline_font(std::string_view t_file)
+{
+	const usize dot = t_file.rfind('.');
+	if (dot == std::string_view::npos) return false;
+
+	const std::string_view extension = t_file.substr(dot);
+
+	return equals_ignoring_case(extension, ".ttf") || equals_ignoring_case(extension, ".ttc") ||
+		   equals_ignoring_case(extension, ".otf");
+}
+
+std::string_view display_name(std::string_view t_registered_name)
+{
+	const usize suffix = t_registered_name.rfind(" (");
+	if (suffix != std::string_view::npos && t_registered_name.ends_with(')')) {
+		t_registered_name = t_registered_name.substr(0, suffix);
+	}
+
+	return t_registered_name.substr(0, t_registered_name.find(" & "));
+}
+
+void add_registered_fonts(HKEY t_root, std::vector<FontEntry> &t_entries)
+{
+	HKEY key = nullptr;
+	if (RegOpenKeyExW(t_root, registered_fonts_key, 0, KEY_READ, &key) != ERROR_SUCCESS) return;
+
+	DWORD longest_name = 0;
+	DWORD largest_file_bytes = 0;
+	RegQueryInfoKeyW(key, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &longest_name,
+					 &largest_file_bytes, nullptr, nullptr);
+
+	std::vector<wchar_t> name(longest_name + 1);
+	std::vector<wchar_t> file(largest_file_bytes / sizeof(wchar_t) + 1);
+
+	for (DWORD index = 0;; index += 1) {
+		DWORD name_length = static_cast<DWORD>(name.size());
+		DWORD file_bytes = static_cast<DWORD>(file.size() * sizeof(wchar_t));
+		DWORD type = 0;
+
+		const LSTATUS status = RegEnumValueW(key, index, name.data(), &name_length, nullptr, &type,
+											 reinterpret_cast<BYTE *>(file.data()), &file_bytes);
+		if (status == ERROR_NO_MORE_ITEMS) break;
+		if (status != ERROR_SUCCESS || type != REG_SZ) continue;
+
+		std::wstring_view file_view{file.data(), file_bytes / sizeof(wchar_t)};
+		while (!file_view.empty() && file_view.back() == L'\0') {
+			file_view.remove_suffix(1);
+		}
+
+		std::string file_utf8 = to_utf8(file_view);
+		if (!is_outline_font(file_utf8)) continue;
+
+		const std::string name_utf8 = to_utf8(std::wstring_view{name.data(), name_length});
+		t_entries.push_back(FontEntry{std::string{display_name(name_utf8)}, std::move(file_utf8)});
+	}
+
+	RegCloseKey(key);
 }
 }
 
@@ -61,6 +136,13 @@ bool Font::load(Renderer &t_renderer, const char *t_path, float t_pixel_height, 
 	std::vector<u8> font_file;
 	if (!read_whole_file(t_path, font_file)) {
 		std::println("Failed to read font file: {}", t_path);
+		return false;
+	}
+
+	const int font_offset = stbtt_GetFontOffsetForIndex(font_file.data(), 0);
+	stbtt_fontinfo info;
+	if (font_offset < 0 || !stbtt_InitFont(&info, font_file.data(), font_offset)) {
+		std::println("Unsupported font file: {}", t_path);
 		return false;
 	}
 
@@ -83,9 +165,6 @@ bool Font::load(Renderer &t_renderer, const char *t_path, float t_pixel_height, 
 	const std::vector<u8> rgba = coverage_to_white_rgba(coverage);
 	m_atlas = std::make_unique<Texture>(t_renderer, rgba.data(), atlas_size, atlas_size);
 
-	stbtt_fontinfo info;
-	stbtt_InitFont(&info, font_file.data(), 0);
-
 	int ascent = 0;
 	int descent = 0;
 	int line_gap = 0;
@@ -103,16 +182,50 @@ bool Font::load(Renderer &t_renderer, const char *t_path, float t_pixel_height, 
 	return m_atlas->is_valid();
 }
 
-bool Fonts::load_defaults(Renderer &t_renderer, float t_dpi_scale)
+std::optional<u32> InstalledFonts::index_of_file(std::string_view t_file) const
 {
-	return load(t_renderer, default_font_file, default_body_size, default_secondary_size, t_dpi_scale);
+	for (u32 i = 0; i < files.size(); i += 1) {
+		if (equals_ignoring_case(files[i], t_file)) return i;
+	}
+
+	return std::nullopt;
 }
 
-bool Fonts::load(Renderer &t_renderer, std::string_view t_file_name, float t_body_size, float t_secondary_size,
+InstalledFonts installed_fonts()
+{
+	std::vector<FontEntry> entries;
+	entries.reserve(512);
+
+	add_registered_fonts(HKEY_LOCAL_MACHINE, entries);
+	add_registered_fonts(HKEY_CURRENT_USER, entries);
+
+	std::ranges::stable_sort(entries, [](const FontEntry &t_a, const FontEntry &t_b) {
+		return _stricmp(t_a.name.c_str(), t_b.name.c_str()) < 0;
+	});
+
+	const auto duplicates = std::ranges::unique(
+		entries, [](const FontEntry &t_a, const FontEntry &t_b) { return equals_ignoring_case(t_a.name, t_b.name); });
+	entries.erase(duplicates.begin(), duplicates.end());
+
+	InstalledFonts fonts;
+	fonts.names.reserve(entries.size());
+	fonts.files.reserve(entries.size());
+
+	for (FontEntry &entry : entries) {
+		fonts.names.push_back(std::move(entry.name));
+		fonts.files.push_back(std::move(entry.file));
+	}
+
+	return fonts;
+}
+
+bool Fonts::load(Renderer &t_renderer, std::string_view t_file, float t_body_size, float t_secondary_size,
 				 float t_dpi_scale)
 {
-	const std::string path = system_font_path(t_file_name);
-	if (t_file_name.empty() || path.empty()) return false;
+	if (t_file.empty()) return false;
+
+	const std::string path = font_file_path(t_file);
+	if (path.empty()) return false;
 
 	Font body;
 	Font secondary;

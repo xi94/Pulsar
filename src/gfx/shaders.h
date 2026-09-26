@@ -87,6 +87,31 @@ constexpr const char *shader_source = R"(
 		return float4(input.color.rgb * glow, input.color.a * glow);
 	}
 
+	cbuffer ShadowConstants : register(b1) {
+		float shadow_quad_width;
+		float shadow_quad_height;
+		float shadow_corner_radius;
+		float shadow_blur;
+	};
+
+	float approximate_erf(float x)
+	{
+		float magnitude = abs(x);
+		float t = 1.0 + (0.278393 + (0.230389 + 0.078108 * magnitude * magnitude) * magnitude) * magnitude;
+		t *= t;
+		return sign(x) * (1.0 - 1.0 / (t * t));
+	}
+
+	float4 ps_shadow(PixelInput input) : SV_TARGET
+	{
+		float2 quad_size = float2(shadow_quad_width, shadow_quad_height);
+		float2 local = (input.uv - 0.5) * quad_size;
+		float edge_distance = rounded_box_distance(local, quad_size * 0.5 - shadow_blur, shadow_corner_radius);
+		float sigma = max(shadow_blur * 0.5, 0.001);
+		float coverage = 0.5 - 0.5 * approximate_erf(edge_distance / (sigma * 1.41421356));
+		return float4(input.color.rgb, input.color.a * coverage);
+	}
+
 	float3 hsv_to_rgb(float h, float s, float v)
 	{
 		float3 rgb = saturate(abs(fmod(h / 60.0 + float3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0);
@@ -107,14 +132,15 @@ constexpr const char *shader_source = R"(
 		float ring_start_angle;
 		float ring_sweep_angle;
 		float ring_glow_strength;
-		float ring_padding;
+		uint ring_track_rgba;
 	};
 
 	float4 ps_circular_progress(PixelInput input) : SV_TARGET
 	{
 		const float two_pi = 6.28318531;
 		const float feather = 1.25;
-		const float3 track_color = float3(0.16, 0.16, 0.19);
+		const float3 track_color =
+			float3(ring_track_rgba & 0xFF, (ring_track_rgba >> 8) & 0xFF, (ring_track_rgba >> 16) & 0xFF) / 255.0;
 
 		float2 local = (input.uv - 0.5) * float2(ring_quad_width, ring_quad_height);
 		float r = length(local);

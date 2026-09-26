@@ -11,6 +11,7 @@
 #include "platform/window.h"
 #include "ui/controls.h"
 #include "ui/text.h"
+#include "ui/theme.h"
 
 namespace {
 constexpr float card_width = 460.0f;
@@ -28,19 +29,7 @@ constexpr float notes_scrollbar_room = 14.0f;
 constexpr u32 max_note_lines = 256;
 constexpr u32 max_error_lines = 4;
 
-constexpr Color color_card{26, 26, 30, 255};
-constexpr Color color_card_border{54, 54, 62, 255};
-constexpr Color color_card_top_edge{92, 92, 104, 90};
-constexpr Color color_notes{22, 22, 25, 255};
-constexpr Color color_notes_border{44, 44, 52, 255};
-constexpr Color color_text_bright{232, 232, 236, 255};
-constexpr Color color_text_dim{150, 150, 156, 255};
-constexpr Color color_error{220, 90, 80, 255};
-constexpr Color color_track{40, 40, 45, 255};
-constexpr Color color_button{40, 40, 45, 255};
-constexpr Color color_button_hover{56, 56, 62, 255};
-constexpr Color color_scroll_thumb{120, 120, 128, 190};
-constexpr Color color_backdrop{8, 8, 10, 200};
+constexpr u8 card_top_edge_alpha = 90;
 
 bool can_dismiss(UpdateStage t_stage)
 {
@@ -244,10 +233,10 @@ void UpdateOverlay::draw_close_button(DrawList &t_draw_list) const
 	const Rect close = close_button_rect();
 	const bool hovered = close.contains(m_mouse);
 	const Vec2 center = close.center();
-	const Color glyph = hovered ? color_text_bright : color_text_dim;
+	const Color glyph = hovered ? theme().text : theme().text_dim;
 
 	if (hovered) {
-		t_draw_list.add_rounded_rect(close, rounded(close.w * 0.5f), color_button_hover);
+		t_draw_list.add_rounded_rect(close, rounded(close.w * 0.5f), theme().control_hover);
 	}
 
 	t_draw_list.add_line({center.x - 5.0f, center.y - 5.0f}, {center.x + 5.0f, center.y + 5.0f}, 1.5f, glyph);
@@ -258,13 +247,13 @@ void UpdateOverlay::draw_title(DrawList &t_draw_list, float &t_baseline, std::st
 {
 	const Font &body = m_fonts.body();
 
-	draw_text(t_draw_list, body, Vec2{text_column_x(), t_baseline}, t_title, color_text_bright);
+	draw_text(t_draw_list, body, Vec2{text_column_x(), t_baseline}, t_title, theme().text);
 	t_baseline += body.line_height() + 10.0f + m_fonts.secondary().ascent();
 }
 
 void UpdateOverlay::draw_detail(DrawList &t_draw_list, float t_baseline, std::string_view t_text) const
 {
-	draw_text(t_draw_list, m_fonts.secondary(), Vec2{text_column_x(), t_baseline}, t_text, color_text_dim);
+	draw_text(t_draw_list, m_fonts.secondary(), Vec2{text_column_x(), t_baseline}, t_text, theme().text_dim);
 }
 
 void UpdateOverlay::draw_primary_button(DrawList &t_draw_list, std::string_view t_label, bool t_accented) const
@@ -278,8 +267,9 @@ void UpdateOverlay::draw_primary_button(DrawList &t_draw_list, std::string_view 
 		return;
 	}
 
-	t_draw_list.add_rounded_rect(button, rounded(8.0f), button.contains(m_mouse) ? color_button_hover : color_button);
-	draw_text_centered(t_draw_list, m_fonts.body(), button, t_label, color_text_bright);
+	t_draw_list.add_rounded_rect(button, rounded(8.0f),
+								 button.contains(m_mouse) ? theme().control_hover : theme().control);
+	draw_text_centered(t_draw_list, m_fonts.body(), button, t_label, theme().text);
 }
 
 void UpdateOverlay::draw_notes(DrawList &t_draw_list) const
@@ -288,7 +278,7 @@ void UpdateOverlay::draw_notes(DrawList &t_draw_list) const
 	const Font &font = m_fonts.secondary();
 	const float line_height = font.line_height();
 
-	t_draw_list.add_bordered_rect(current.box, rounded(8.0f), color_notes, color_notes_border, 1.0f);
+	t_draw_list.add_bordered_rect(current.box, rounded(8.0f), theme().field, theme().separator, 1.0f);
 
 	std::string_view lines[max_note_lines];
 	const u32 line_count = wrap_text(font, m_updater.manifest().notes, current.box.w - notes_scrollbar_room, lines);
@@ -298,7 +288,7 @@ void UpdateOverlay::draw_notes(DrawList &t_draw_list) const
 	float baseline = current.box.y + notes_padding + font.ascent() - m_notes_scroll.offset();
 	for (const std::string_view line : std::span{lines, line_count}) {
 		if (baseline > current.box.y - line_height && baseline < current.box.bottom() + line_height) {
-			draw_text(t_draw_list, font, Vec2{current.box.x + notes_padding, baseline}, line, color_text_dim);
+			draw_text(t_draw_list, font, Vec2{current.box.x + notes_padding, baseline}, line, theme().text_dim);
 		}
 
 		baseline += line_height;
@@ -306,8 +296,8 @@ void UpdateOverlay::draw_notes(DrawList &t_draw_list) const
 
 	t_draw_list.pop_clip();
 
-	m_notes_scroll.draw_edge_fade(t_draw_list, current.box, current.scroll, color_notes);
-	m_notes_scroll.draw(t_draw_list, current.scroll, color_scroll_thumb, m_mouse);
+	m_notes_scroll.draw_edge_fade(t_draw_list, current.box, current.scroll, theme().field);
+	m_notes_scroll.draw(t_draw_list, current.scroll, m_mouse, 255);
 }
 
 void UpdateOverlay::draw_progress(DrawList &t_draw_list, float t_baseline, UpdateStage t_stage) const
@@ -321,7 +311,7 @@ void UpdateOverlay::draw_progress(DrawList &t_draw_list, float t_baseline, Updat
 	const Rect track{text_column_x(), t_baseline + 8.0f, text_column_width(), progress_height};
 	const Rect fill{track.x, track.y, track.w * std::max(progress, 0.02f), track.h};
 
-	t_draw_list.add_rounded_rect(track, rounded(track.h * 0.5f), color_track);
+	t_draw_list.add_rounded_rect(track, rounded(track.h * 0.5f), theme().control);
 	t_draw_list.add_rounded_rect(Rect{fill.x - progress_glow, fill.y - progress_glow * 0.5f,
 									  fill.w + progress_glow * 2.0f, fill.h + progress_glow},
 								 rounded(track.h * 0.5f + progress_glow), with_alpha(accent, 40));
@@ -360,11 +350,11 @@ void UpdateOverlay::draw(DrawList &t_draw_list)
 	const Font &secondary = m_fonts.secondary();
 	const float edge_inset = scaled_radius(card_radius);
 
-	t_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y}, color_backdrop);
+	t_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y}, theme().scrim);
 	controls::draw_panel_shadow(t_draw_list, card, card_radius, 1.0f);
-	t_draw_list.add_bordered_rect(card, rounded(card_radius), color_card, color_card_border, 1.0f);
+	t_draw_list.add_bordered_rect(card, rounded(card_radius), theme().surface, theme().border, 1.0f);
 	t_draw_list.add_rect(Rect{card.x + edge_inset, card.y + 1.0f, card.w - edge_inset * 2.0f, 1.0f},
-						 color_card_top_edge);
+						 with_alpha(theme().text_faint, card_top_edge_alpha));
 
 	if (can_dismiss(stage)) {
 		draw_close_button(t_draw_list);
@@ -390,7 +380,7 @@ void UpdateOverlay::draw(DrawList &t_draw_list)
 		case UpdateStage::check_failed:
 			draw_title(t_draw_list, baseline, "Couldn't Check for Updates");
 			draw_wrapped_text(t_draw_list, secondary, Vec2{text_column_x(), baseline}, text_column_width(),
-							  m_updater.error_message(), color_error, max_error_lines);
+							  m_updater.error_message(), theme().error, max_error_lines);
 			draw_primary_button(t_draw_list, "Try Again", true);
 			break;
 
@@ -427,7 +417,7 @@ void UpdateOverlay::draw(DrawList &t_draw_list)
 
 			if (stage == UpdateStage::error) {
 				draw_wrapped_text(t_draw_list, secondary, Vec2{text_column_x(), baseline}, text_column_width(),
-								  m_updater.error_message(), color_error, max_error_lines);
+								  m_updater.error_message(), theme().error, max_error_lines);
 			}
 
 			draw_primary_button(t_draw_list, "Try Again", true);

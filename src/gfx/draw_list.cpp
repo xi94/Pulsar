@@ -15,6 +15,7 @@ constexpr u32 rounded_point_count = points_per_corner * 4;
 constexpr float degrees_to_radians = std::numbers::pi_v<float> / 180.0f;
 
 float g_corner_roundness = 1.0f;
+float g_pixel_scale = 1.0f;
 
 u32 pack(Color t_color)
 {
@@ -49,6 +50,11 @@ bool is_square(CornerRadii t_radii)
 		   t_radii.bottom_left <= 0.0f;
 }
 
+bool uses_rounded_box(ShaderKind t_shader)
+{
+	return t_shader == ShaderKind::banner_glow || t_shader == ShaderKind::shadow;
+}
+
 Vec2 uv_at(Rect t_rect, UvRect t_uv, Vec2 t_point)
 {
 	return Vec2{t_uv.u0 + (t_uv.u1 - t_uv.u0) * (t_point.x - t_rect.x) / t_rect.w,
@@ -64,6 +70,16 @@ float scaled_radius(float t_radius)
 void set_corner_roundness(float t_scale)
 {
 	g_corner_roundness = std::max(0.0f, t_scale);
+}
+
+void set_pixel_scale(float t_scale)
+{
+	g_pixel_scale = t_scale;
+}
+
+float snapped_to_pixel(float t_value)
+{
+	return std::round(t_value * g_pixel_scale) / g_pixel_scale;
 }
 
 CornerRadii rounded(float t_radius)
@@ -135,16 +151,16 @@ void DrawList::pop_clip()
 	m_clip_depth -= 1;
 }
 
-void DrawList::target(ShaderKind t_shader, const Texture *t_texture, BannerGlowParams t_glow,
+void DrawList::target(ShaderKind t_shader, const Texture *t_texture, RoundedBoxParams t_box,
 					  CircularProgressParams t_progress)
 {
 	const bool clipped = m_clip_depth > 0;
 	const Rect clip = clipped ? m_clip_stack[m_clip_depth - 1] : Rect{};
 
-	const bool continues_open_command =
-		m_has_open_command && m_open.shader == t_shader && m_open.texture == t_texture && m_open.clipped == clipped &&
-		m_open.clip == clip && (t_shader != ShaderKind::banner_glow || m_open.glow == t_glow) &&
-		(t_shader != ShaderKind::circular_progress || m_open.progress == t_progress);
+	const bool continues_open_command = m_has_open_command && m_open.shader == t_shader &&
+										m_open.texture == t_texture && m_open.clipped == clipped &&
+										m_open.clip == clip && (!uses_rounded_box(t_shader) || m_open.box == t_box) &&
+										(t_shader != ShaderKind::circular_progress || m_open.progress == t_progress);
 	if (continues_open_command) return;
 
 	close_command();
@@ -156,7 +172,7 @@ void DrawList::target(ShaderKind t_shader, const Texture *t_texture, BannerGlowP
 		.clip = clip,
 		.index_offset = m_index_count,
 		.index_count = 0,
-		.glow = t_glow,
+		.box = t_box,
 		.progress = t_progress,
 	};
 	m_has_open_command = true;
@@ -376,19 +392,34 @@ void DrawList::add_banner_glow(Rect t_card, float t_card_radius, float t_glow_si
 	const Rect quad{t_card.x - t_glow_size, t_card.y - t_glow_size, t_card.w + t_glow_size * 2.0f,
 					t_card.h + t_glow_size * 2.0f};
 
-	const BannerGlowParams glow{
+	const RoundedBoxParams glow{
 		.quad_width = quad.w,
 		.quad_height = quad.h,
 		.corner_radius = scaled_radius(t_card_radius),
-		.ring_width = t_glow_size,
+		.edge_width = t_glow_size,
 	};
 
 	target(ShaderKind::banner_glow, nullptr, glow);
 	push_rounded(quad, rounded(t_card_radius + t_glow_size), full_uv, pack(t_color));
 }
 
+void DrawList::add_shadow(Rect t_rect, float t_corner_radius, float t_blur, Color t_color)
+{
+	const Rect quad = t_rect.inset(-t_blur);
+	const RoundedBoxParams shadow{
+		.quad_width = quad.w,
+		.quad_height = quad.h,
+		.corner_radius = std::min(scaled_radius(t_corner_radius), std::min(t_rect.w, t_rect.h) * 0.5f),
+		.edge_width = t_blur,
+	};
+
+	target(ShaderKind::shadow, nullptr, shadow);
+	push_quad(quad, full_uv, pack(t_color));
+}
+
 void DrawList::add_circular_progress(Vec2 t_center, float t_outer_radius, float t_inner_radius, float t_glow_margin,
-									 float t_start_degrees, float t_sweep_degrees, float t_glow_strength, Color t_color)
+									 float t_start_degrees, float t_sweep_degrees, float t_glow_strength, Color t_color,
+									 Color t_track)
 {
 	const float half_size = t_outer_radius + t_glow_margin;
 	const Rect quad{t_center.x - half_size, t_center.y - half_size, half_size * 2.0f, half_size * 2.0f};
@@ -401,6 +432,7 @@ void DrawList::add_circular_progress(Vec2 t_center, float t_outer_radius, float 
 		.start_angle = t_start_degrees * degrees_to_radians,
 		.sweep_angle = t_sweep_degrees * degrees_to_radians,
 		.glow_strength = t_glow_strength,
+		.track = t_track,
 	};
 
 	target(ShaderKind::circular_progress, nullptr, {}, progress);

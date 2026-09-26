@@ -8,8 +8,6 @@ class Assets;
 class Fonts;
 class Updater;
 
-constexpr Color title_bar_color{24, 24, 27, 255};
-
 class TitleBar : public Widget {
   public:
 	TitleBar(Window &t_window, const Updater &t_updater, const Fonts &t_fonts, const Assets &t_assets,

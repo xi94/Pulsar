@@ -8,7 +8,9 @@
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "platform/window.h"
+#include "ui/controls.h"
 #include "ui/text.h"
+#include "ui/theme.h"
 
 namespace {
 constexpr float open_ease_rate = 20.0f;
@@ -27,12 +29,6 @@ constexpr float separator_block = separator_gap * 2.0f + 1.0f;
 constexpr float icon_size = 16.0f;
 constexpr float icon_text_gap = 10.0f;
 constexpr float baseline_nudge = 2.0f;
-
-constexpr Color color_background{30, 30, 34, 255};
-constexpr Color color_border{60, 60, 66, 255};
-constexpr Color color_separator{52, 52, 58, 255};
-constexpr Color color_text{220, 220, 224, 255};
-constexpr Color color_text_disabled{100, 100, 106, 255};
 
 struct MenuItem {
 	CommandType command;
@@ -151,25 +147,26 @@ void AppMenu::draw(DrawList &t_draw_list)
 	const Rect menu = menu_rect(m_open_amount);
 	const Font &font = m_fonts.body();
 
-	t_draw_list.add_bordered_rect(menu, rounded(menu_radius), with_alpha(color_background, alpha),
-								  with_alpha(color_border, alpha), 1.0f);
+	controls::draw_popup_shadow(t_draw_list, menu, menu_radius, m_open_amount);
+	t_draw_list.add_bordered_rect(menu, rounded(menu_radius), faded(theme().popup, alpha), faded(theme().border, alpha),
+								  1.0f);
 
 	for (u32 i = 0; i < item_count; i += 1) {
 		const Rect item = item_rect(menu, i);
 
 		if (menu_items[i].starts_group) {
 			const Rect separator{menu.x + content_x, item.y - separator_gap - 1.0f, menu.w - content_x * 2.0f, 1.0f};
-			t_draw_list.add_rect(separator, with_alpha(color_separator, alpha));
+			t_draw_list.add_rect(separator, faded(theme().separator, alpha));
 		}
 
 		if (m_item_hover[i] > 0.001f) {
-			const Color hover_color = mix(color_background, m_settings.accent, 0.28f);
+			const Color hover_color = mix(theme().popup, m_settings.accent, 0.28f);
 			const auto hover_alpha = static_cast<u8>(alpha * m_item_hover[i]);
 			t_draw_list.add_rounded_rect(item.inset(highlight_inset, 0.0f), rounded(7.0f),
 										 with_alpha(hover_color, hover_alpha));
 		}
 
-		const Color content_color = with_alpha(is_enabled(i) ? color_text : color_text_disabled, alpha);
+		const Color content_color = faded(is_enabled(i) ? theme().text : theme().text_faint, alpha);
 		const Rect icon{item.x + content_x, item.y + (item.h - icon_size) * 0.5f, icon_size, icon_size};
 		const float baseline = font.centered_baseline(item) - baseline_nudge;
 

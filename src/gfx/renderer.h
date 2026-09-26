@@ -107,11 +107,13 @@ class Renderer {
 	ComPtr<ID3D11PixelShader> m_banner_glow_shader;
 	ComPtr<ID3D11PixelShader> m_color_picker_shader;
 	ComPtr<ID3D11PixelShader> m_circular_progress_shader;
+	ComPtr<ID3D11PixelShader> m_shadow_shader;
 	ComPtr<ID3D11InputLayout> m_input_layout;
 
 	ComPtr<ID3D11Buffer> m_viewport_constants;
 	ComPtr<ID3D11Buffer> m_banner_glow_constants;
 	ComPtr<ID3D11Buffer> m_circular_progress_constants;
+	ComPtr<ID3D11Buffer> m_shadow_constants;
 
 	ComPtr<ID3D11BlendState> m_blend_state;
 	ComPtr<ID3D11RasterizerState> m_rasterizer_state;

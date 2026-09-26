@@ -194,6 +194,13 @@ void read_appearance(const json &t_json, Settings &t_settings)
 	}
 
 	copy_to(t_json.value("font_name", std::string{t_settings.font_name}), t_settings.font_name);
+
+	const std::string theme = t_json.value("theme", std::string{});
+	for (u32 i = 0; i < theme_count; i += 1) {
+		if (theme == theme_labels[i].id) {
+			t_settings.theme = static_cast<ThemeKind>(i);
+		}
+	}
 }
 
 storage::LoadResult read_settings(Settings &t_settings)
@@ -370,6 +377,7 @@ bool storage::save_settings(const Settings &t_settings)
 		{"secondary_font_pixel_size", t_settings.secondary_font_size},
 		{"accent_color", json::array({accent.r, accent.g, accent.b, accent.a})},
 		{"font_name", t_settings.font_name},
+		{"theme", theme_labels[static_cast<u32>(t_settings.theme)].id},
 		{"exclude_account_list_from_capture", t_settings.hide_accounts_from_capture},
 		{"close_to_tray", t_settings.close_to_tray},
 		{"block_overlay_injection", t_settings.block_overlay_injection},

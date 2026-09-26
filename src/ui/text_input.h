@@ -31,6 +31,11 @@ class TextInput {
 	void set_value(std::string_view t_value);
 	void set_max_length(u32 t_max_length);
 
+	void set_placeholder(std::string_view t_placeholder)
+	{
+		m_placeholder = t_placeholder;
+	}
+
 	bool is_focused() const
 	{
 		return m_focused;
@@ -89,6 +94,7 @@ class TextInput {
 	char m_text[text_input_capacity]{};
 	u32 m_length = 0;
 	u32 m_max_length = text_input_capacity;
+	std::string_view m_placeholder;
 
 	u32 m_cursor = 0;
 	u32 m_anchor = 0;

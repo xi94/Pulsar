@@ -7,6 +7,7 @@
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "ui/text.h"
+#include "ui/theme.h"
 
 namespace {
 constexpr float show_delay_seconds = 0.35f;
@@ -17,10 +18,6 @@ constexpr float corner_radius = 6.0f;
 constexpr float anchor_gap = 8.0f;
 constexpr float edge_margin = 6.0f;
 constexpr float rise_distance = 4.0f;
-
-constexpr Color color_background{18, 18, 21, 246};
-constexpr Color color_border{72, 72, 80, 255};
-constexpr Color color_text{228, 228, 232, 255};
 }
 
 void Tooltip::request(std::string_view t_text, Rect t_anchor)
@@ -77,8 +74,8 @@ void Tooltip::draw(DrawList &t_draw_list, const Fonts &t_fonts, Rect t_bounds, u
 
 	const auto alpha = static_cast<u8>(t_alpha * m_visible_amount);
 
-	t_draw_list.add_bordered_rect(bubble, rounded(corner_radius), faded(color_background, alpha),
-								  faded(color_border, alpha), 1.0f);
+	t_draw_list.add_bordered_rect(bubble, rounded(corner_radius), faded(theme().popup, alpha),
+								  faded(theme().border, alpha), 1.0f);
 	draw_text(t_draw_list, font, Vec2{bubble.x + padding_x, font.centered_baseline(bubble)}, text,
-			  faded(color_text, alpha));
+			  faded(theme().text, alpha));
 }

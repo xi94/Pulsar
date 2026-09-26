@@ -17,7 +17,7 @@ class Scrollable {
 	static bool is_needed(const ScrollGeometry &t_geometry);
 
 	void update(float t_delta_seconds);
-	void draw(DrawList &t_draw_list, const ScrollGeometry &t_geometry, Color t_thumb, Vec2 t_mouse) const;
+	void draw(DrawList &t_draw_list, const ScrollGeometry &t_geometry, Vec2 t_mouse, u8 t_alpha) const;
 	void draw_edge_fade(DrawList &t_draw_list, Rect t_area, const ScrollGeometry &t_geometry, Color t_edge) const;
 
 	bool on_pointer_down(Vec2 t_point, const ScrollGeometry &t_geometry);
@@ -26,6 +26,7 @@ class Scrollable {
 	void on_scroll(float t_wheel_delta, const ScrollGeometry &t_geometry);
 
 	void scroll_by(float t_pixels, const ScrollGeometry &t_geometry);
+	void jump_to(float t_offset, const ScrollGeometry &t_geometry);
 	void reveal(float t_top, float t_bottom, float t_view_top, float t_view_bottom, const ScrollGeometry &t_geometry);
 
 	bool is_dragging() const
@@ -38,10 +39,7 @@ class Scrollable {
 		return is_needed(t_geometry) && t_geometry.track.contains(t_point);
 	}
 
-	float offset() const
-	{
-		return m_offset;
-	}
+	float offset() const;
 
   private:
 	float m_offset = 0.0f;

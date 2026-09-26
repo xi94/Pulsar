@@ -21,15 +21,16 @@ enum class ShaderKind : u8 {
 	banner_glow,
 	color_picker,
 	circular_progress,
+	shadow,
 };
 
-struct BannerGlowParams {
+struct RoundedBoxParams {
 	float quad_width;
 	float quad_height;
 	float corner_radius;
-	float ring_width;
+	float edge_width;
 
-	bool operator==(const BannerGlowParams &) const = default;
+	bool operator==(const RoundedBoxParams &) const = default;
 };
 
 struct CircularProgressParams {
@@ -40,6 +41,7 @@ struct CircularProgressParams {
 	float start_angle;
 	float sweep_angle;
 	float glow_strength;
+	Color track;
 
 	bool operator==(const CircularProgressParams &) const = default;
 };
@@ -51,7 +53,7 @@ struct DrawCommand {
 	Rect clip;
 	u32 index_offset;
 	u32 index_count;
-	BannerGlowParams glow;
+	RoundedBoxParams box;
 	CircularProgressParams progress;
 };
 
@@ -66,6 +68,9 @@ constexpr UvRect full_uv{0.0f, 0.0f, 1.0f, 1.0f};
 
 float scaled_radius(float t_radius);
 void set_corner_roundness(float t_scale);
+
+void set_pixel_scale(float t_scale);
+float snapped_to_pixel(float t_value);
 
 CornerRadii rounded(float t_radius);
 CornerRadii rounded(float t_top_left, float t_top_right, float t_bottom_right, float t_bottom_left);
@@ -110,14 +115,16 @@ class DrawList {
 
 	void add_color_picker_square(Rect t_rect, float t_hue_degrees);
 	void add_banner_glow(Rect t_card, float t_card_radius, float t_glow_size, Color t_color);
+	void add_shadow(Rect t_rect, float t_corner_radius, float t_blur, Color t_color);
 	void add_circular_progress(Vec2 t_center, float t_outer_radius, float t_inner_radius, float t_glow_margin,
-							   float t_start_degrees, float t_sweep_degrees, float t_glow_strength, Color t_color);
+							   float t_start_degrees, float t_sweep_degrees, float t_glow_strength, Color t_color,
+							   Color t_track);
 
   private:
 	static constexpr u32 max_commands = 256;
 	static constexpr u32 max_clip_depth = 8;
 
-	void target(ShaderKind t_shader, const Texture *t_texture = nullptr, BannerGlowParams t_glow = {},
+	void target(ShaderKind t_shader, const Texture *t_texture = nullptr, RoundedBoxParams t_box = {},
 				CircularProgressParams t_progress = {});
 	void close_command();
 

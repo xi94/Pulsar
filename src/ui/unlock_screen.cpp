@@ -10,6 +10,7 @@
 #include "platform/window.h"
 #include "ui/controls.h"
 #include "ui/text.h"
+#include "ui/theme.h"
 
 namespace {
 constexpr float card_width = 380.0f;
@@ -25,14 +26,6 @@ constexpr float reveal_size = 22.0f;
 constexpr float reveal_margin = 6.0f;
 constexpr float unlock_first_field_y = 74.0f;
 constexpr float setup_first_field_y = 96.0f;
-
-constexpr Color color_backdrop{12, 12, 14, 255};
-constexpr Color color_card{26, 26, 30, 255};
-constexpr Color color_field{24, 24, 27, 255};
-constexpr Color color_field_border{40, 40, 45, 255};
-constexpr Color color_text_bright{232, 232, 236, 255};
-constexpr Color color_text_dim{150, 150, 156, 255};
-constexpr Color color_error{220, 90, 80, 255};
 }
 
 UnlockScreen::UnlockScreen(Settings &t_settings, MasterKey &t_master_key, const Fonts &t_fonts, const Assets &t_assets,
@@ -321,11 +314,11 @@ void UnlockScreen::draw_field(DrawList &t_draw_list, u32 t_field)
 	TextInput &field = m_fields[t_field];
 	const Rect reveal = reveal_rect(t_field);
 
-	controls::draw_field(t_draw_list, field_rect(t_field), field_radius,
-						 field.is_focused() ? accent : color_field_border, color_field, 255);
-	field.draw(t_draw_list, m_fonts.body(), field_text_rect(t_field), color_text_bright, accent);
+	controls::draw_field(t_draw_list, field_rect(t_field), field_radius, field.is_focused() ? accent : theme().control,
+						 theme().field, 255);
+	field.draw(t_draw_list, m_fonts.body(), field_text_rect(t_field), theme().text, accent);
 	controls::draw_eye(t_draw_list, m_assets, reveal, !field.is_masked(),
-					   reveal.contains(m_mouse) ? color_text_bright : color_text_dim);
+					   reveal.contains(m_mouse) ? theme().text : theme().text_dim);
 }
 
 void UnlockScreen::draw_submit_button(DrawList &t_draw_list, std::string_view t_label) const
@@ -345,10 +338,10 @@ void UnlockScreen::draw(DrawList &t_draw_list)
 	const Font &body = m_fonts.body();
 	const Font &secondary = m_fonts.secondary();
 
-	t_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y - status_bar_height}, color_backdrop);
+	t_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y - status_bar_height}, theme().window);
 
 	const Rect card = card_rect();
-	t_draw_list.add_rounded_rect(card, rounded(card_radius), color_card);
+	t_draw_list.add_rounded_rect(card, rounded(card_radius), theme().surface);
 
 	const float text_x = card.x + card_padding;
 	const float title_baseline = card.y + card_padding + body.ascent();
@@ -356,15 +349,15 @@ void UnlockScreen::draw(DrawList &t_draw_list)
 	const float error_baseline = submit_rect().bottom() + gap + secondary.ascent();
 
 	if (m_setup) {
-		draw_text(t_draw_list, body, Vec2{text_x, title_baseline}, "Create a Master Password", color_text_bright);
+		draw_text(t_draw_list, body, Vec2{text_x, title_baseline}, "Create a Master Password", theme().text);
 		draw_text(t_draw_list, secondary, Vec2{text_x, description_baseline},
-				  "This encrypts your saved account passwords. Choose", color_text_dim);
+				  "This encrypts your saved account passwords. Choose", theme().text_dim);
 		draw_text(t_draw_list, secondary, Vec2{text_x, description_baseline + secondary.line_height()},
-				  "something memorable - it can't be recovered if lost.", color_text_dim);
+				  "something memorable - it can't be recovered if lost.", theme().text_dim);
 	} else {
-		draw_text(t_draw_list, body, Vec2{text_x, title_baseline}, "Master Password", color_text_bright);
+		draw_text(t_draw_list, body, Vec2{text_x, title_baseline}, "Master Password", theme().text);
 		draw_text(t_draw_list, secondary, Vec2{text_x, description_baseline}, "Enter your master password to continue.",
-				  color_text_dim);
+				  theme().text_dim);
 	}
 
 	for (u32 i = 0; i < field_count(); i += 1) {
@@ -382,5 +375,5 @@ void UnlockScreen::draw(DrawList &t_draw_list)
 		error = "Something went wrong - try again.";
 	}
 
-	draw_text(t_draw_list, secondary, Vec2{text_x, error_baseline}, error, color_error);
+	draw_text(t_draw_list, secondary, Vec2{text_x, error_baseline}, error, theme().error);
 }

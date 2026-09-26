@@ -4,6 +4,7 @@
 
 #include "core/animation.h"
 #include "gfx/draw_list.h"
+#include "ui/theme.h"
 
 namespace {
 constexpr float ease_rate = 16.0f;
@@ -12,6 +13,7 @@ constexpr float min_thumb_height = 24.0f;
 constexpr float thumb_grab_margin = 4.0f;
 constexpr float edge_fade_height = 28.0f;
 constexpr float edge_fade_overshoot = 4.0f;
+constexpr float thumb_hover_strength = 0.3f;
 
 float max_offset(const ScrollGeometry &t_geometry)
 {
@@ -44,19 +46,30 @@ bool Scrollable::is_needed(const ScrollGeometry &t_geometry)
 	return t_geometry.content_height > t_geometry.visible_height + 0.5f;
 }
 
-void Scrollable::update(float t_delta_seconds)
+float Scrollable::offset() const
 {
-	m_offset = animation::ease_toward(m_offset, m_target, ease_rate, t_delta_seconds);
+	return snapped_to_pixel(m_offset);
 }
 
-void Scrollable::draw(DrawList &t_draw_list, const ScrollGeometry &t_geometry, Color t_thumb, Vec2 t_mouse) const
+void Scrollable::update(float t_delta_seconds)
+{
+	m_offset = animation::ease_toward(m_offset, m_target, ease_rate, t_delta_seconds, animation::settled_pixels);
+}
+
+void Scrollable::draw(DrawList &t_draw_list, const ScrollGeometry &t_geometry, Vec2 t_mouse, u8 t_alpha) const
 {
 	if (!is_needed(t_geometry)) return;
 
+	const Theme &colors = theme();
+	const Rect &track = t_geometry.track;
 	const Rect thumb = thumb_rect(m_offset, t_geometry);
 	const bool hovered = m_dragging || thumb_grab_rect(m_offset, t_geometry).contains(t_mouse);
+	const Color hovered_thumb =
+		with_alpha(mix(colors.scroll_thumb, colors.text, thumb_hover_strength), colors.scroll_thumb.a);
 
-	t_draw_list.add_rounded_rect(thumb, rounded(thumb.w * 0.5f), hovered ? lightened(t_thumb, 40) : t_thumb);
+	t_draw_list.add_rounded_rect(track, rounded(track.w * 0.5f), faded(colors.separator, t_alpha));
+	t_draw_list.add_rounded_rect(thumb, rounded(thumb.w * 0.5f),
+								 faded(hovered ? hovered_thumb : colors.scroll_thumb, t_alpha));
 }
 
 void Scrollable::draw_edge_fade(DrawList &t_draw_list, Rect t_area, const ScrollGeometry &t_geometry,
@@ -119,6 +132,12 @@ void Scrollable::on_scroll(float t_wheel_delta, const ScrollGeometry &t_geometry
 void Scrollable::scroll_by(float t_pixels, const ScrollGeometry &t_geometry)
 {
 	m_target = std::clamp(m_target + t_pixels, 0.0f, max_offset(t_geometry));
+}
+
+void Scrollable::jump_to(float t_offset, const ScrollGeometry &t_geometry)
+{
+	m_target = std::clamp(t_offset, 0.0f, max_offset(t_geometry));
+	m_offset = m_target;
 }
 
 void Scrollable::reveal(float t_top, float t_bottom, float t_view_top, float t_view_bottom,

@@ -7,6 +7,7 @@
 #include "ui/widget.h"
 
 class Fonts;
+struct Settings;
 
 struct ContextMenuItem {
 	std::string_view label;
@@ -16,7 +17,7 @@ struct ContextMenuItem {
 
 class ContextMenu : public Widget {
   public:
-	ContextMenu(const Fonts &t_fonts, CommandQueue &t_commands);
+	ContextMenu(const Settings &t_settings, const Fonts &t_fonts, CommandQueue &t_commands);
 
 	void open(Vec2 t_position, std::span<const ContextMenuItem> t_items, Vec2 t_window_size);
 	void close();
@@ -41,6 +42,7 @@ class ContextMenu : public Widget {
 	Rect item_rect(u32 t_index) const;
 	i32 item_at(Vec2 t_point) const;
 
+	const Settings &m_settings;
 	const Fonts &m_fonts;
 	CommandQueue &m_commands;
 

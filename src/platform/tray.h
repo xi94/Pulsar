@@ -36,6 +36,16 @@ struct TrayAccount {
 	i32 row;
 };
 
+struct TrayColors {
+	Color background;
+	Color hover;
+	Color text;
+	Color text_disabled;
+	Color separator;
+
+	bool operator==(const TrayColors &) const = default;
+};
+
 struct TrayMenu {
 	TrayGame games[tray_max_games];
 	u32 game_count;
@@ -55,7 +65,7 @@ class Tray {
 
 	void on_menu_open(std::function<void(TrayMenu &)> t_fill_menu);
 	void set_game_icon(u32 t_game, std::span<const u8> t_png);
-	void set_accent(Color t_accent);
+	void set_colors(const TrayColors &t_colors);
 
 	bool is_icon_visible() const
 	{
@@ -105,7 +115,13 @@ class Tray {
 	bool m_owns_menu_font = false;
 	HBRUSH m_background_brush = nullptr;
 	HBRUSH m_hover_brush = nullptr;
-	Color m_accent{108, 90, 220, 255};
+	TrayColors m_colors{
+		.background = {32, 32, 36, 255},
+		.hover = {68, 60, 124, 255},
+		.text = {232, 232, 236, 255},
+		.text_disabled = {108, 108, 116, 255},
+		.separator = {50, 50, 56, 255},
+	};
 
 	std::span<const u8> m_game_icon_sources[tray_max_games]{};
 	HBITMAP m_game_icons[tray_max_games]{};

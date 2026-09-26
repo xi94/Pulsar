@@ -14,7 +14,9 @@
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "platform/window.h"
+#include "ui/controls.h"
 #include "ui/text.h"
+#include "ui/theme.h"
 
 namespace {
 constexpr float card_width = 220.0f;
@@ -62,23 +64,10 @@ constexpr float status_icon_gap = 8.0f;
 constexpr float status_padding_right = 14.0f;
 constexpr float baseline_nudge = 2.0f;
 
-constexpr Color color_background{18, 18, 20, 255};
-constexpr Color color_white{255, 255, 255, 255};
-constexpr Color color_scroll_thumb{160, 160, 168, 200};
-constexpr Color color_list_row{32, 32, 36, 220};
-constexpr Color color_list_row_hover{42, 42, 47, 220};
-constexpr Color color_list_text{232, 232, 236, 255};
-constexpr Color color_status_icon{175, 175, 182, 255};
-constexpr Color color_status_text{158, 158, 166, 255};
-constexpr Color color_card_border{90, 90, 96, 160};
-constexpr Color color_card_border_highlighted{255, 255, 255, 235};
-constexpr Color color_switcher_background{26, 26, 30, 255};
-constexpr Color color_switcher_border{58, 58, 64, 255};
-constexpr Color color_switcher_text{190, 190, 196, 255};
-constexpr Color color_switcher_text_active{240, 240, 244, 255};
-constexpr Color color_switcher_track{58, 58, 64, 255};
-constexpr Color color_switcher_tick{118, 118, 126, 190};
-constexpr Color color_switcher_active_row{52, 52, 58, 255};
+constexpr Color color_image{255, 255, 255, 255};
+constexpr u8 card_border_alpha = 160;
+constexpr u8 card_border_highlighted_alpha = 235;
+constexpr u8 switcher_tick_alpha = 190;
 
 constexpr i32 zoom_stop_count = 7;
 constexpr i32 grid_first_stop = 1;
@@ -173,10 +162,10 @@ struct CardLook {
 
 CardLook card_look(bool t_highlighted, bool t_centered)
 {
-	if (!t_highlighted) return CardLook{color_card_border, 2.0f, 0.0f, 0};
-	if (t_centered) return CardLook{color_card_border_highlighted, 2.5f, 18.0f, 255};
+	if (!t_highlighted) return CardLook{with_alpha(theme().border, card_border_alpha), 2.0f, 0.0f, 0};
+	if (t_centered) return CardLook{with_alpha(theme().text, card_border_highlighted_alpha), 2.5f, 18.0f, 255};
 
-	return CardLook{color_card_border_highlighted, 2.0f, 14.0f, 225};
+	return CardLook{with_alpha(theme().text, card_border_highlighted_alpha), 2.0f, 14.0f, 225};
 }
 
 std::string_view mode_name(ViewMode t_mode)
@@ -687,7 +676,8 @@ CursorKind Carousel::cursor() const
 
 void Carousel::update(float t_delta_seconds)
 {
-	m_scroll = animation::ease_toward(m_scroll, m_target_scroll, scroll_ease_rate, t_delta_seconds);
+	m_scroll = animation::ease_toward(m_scroll, m_target_scroll, scroll_ease_rate, t_delta_seconds,
+									  animation::settled_pixels / drag_pixels_per_card);
 	m_mode_transition = animation::ease_toward(m_mode_transition, 0.0f, mode_transition_ease_rate, t_delta_seconds);
 	m_zoom_percent = animation::ease_toward(m_zoom_percent, stop_percent(m_zoom_stop), zoom_ease_rate, t_delta_seconds);
 	m_wrap_scroll.update(t_delta_seconds);
@@ -725,7 +715,7 @@ void Carousel::draw_card(DrawList &t_draw_list, Rect t_rect, const Game &t_game,
 	if (t_game.banner == nullptr) return;
 
 	const Rect art = t_rect.inset(look.border_thickness);
-	t_draw_list.add_image(art, t_game.banner, faded(color_white, t_alpha),
+	t_draw_list.add_image(art, t_game.banner, faded(color_image, t_alpha),
 						  rounded(card_corner_radius - look.border_thickness),
 						  cover_uv(art.w / art.h, t_game.banner->aspect()));
 }
@@ -744,8 +734,8 @@ void Carousel::draw_carousel_mode(DrawList &t_draw_list, u8 t_alpha, float t_y_o
 		draw_card(t_draw_list, card, m_library.game(game), centered || hovered, centered, t_alpha);
 	}
 
-	const Color opaque = faded(color_background, t_alpha);
-	const Color clear = faded(color_background, 0);
+	const Color opaque = faded(theme().window, t_alpha);
+	const Color clear = faded(theme().window, 0);
 
 	t_draw_list.add_gradient(Rect{m_bounds.x, m_bounds.y, edge_fade_width, m_bounds.h}, opaque, clear, opaque, clear);
 	t_draw_list.add_gradient(Rect{m_bounds.right() - edge_fade_width, m_bounds.y, edge_fade_width, m_bounds.h}, clear,
@@ -756,8 +746,8 @@ void Carousel::draw_wrap_scroll(DrawList &t_draw_list, u8 t_alpha) const
 {
 	const ScrollGeometry geometry = wrap_scroll_geometry();
 
-	m_wrap_scroll.draw_edge_fade(t_draw_list, m_bounds, geometry, faded(color_background, t_alpha));
-	m_wrap_scroll.draw(t_draw_list, geometry, faded(color_scroll_thumb, t_alpha), m_mouse);
+	m_wrap_scroll.draw_edge_fade(t_draw_list, m_bounds, geometry, faded(theme().window, t_alpha));
+	m_wrap_scroll.draw(t_draw_list, geometry, m_mouse, t_alpha);
 }
 
 void Carousel::draw_grid_mode(DrawList &t_draw_list, u8 t_alpha, float t_y_offset) const
@@ -786,7 +776,7 @@ void Carousel::draw_list_mode(DrawList &t_draw_list, u8 t_alpha, float t_y_offse
 {
 	const Font &font = m_fonts.body();
 	const float thumb_size = list_thumb_size(m_zoom_percent);
-	const Color image_tint = faded(color_white, t_alpha);
+	const Color image_tint = faded(color_image, t_alpha);
 
 	t_draw_list.push_clip(m_bounds);
 
@@ -800,7 +790,7 @@ void Carousel::draw_list_mode(DrawList &t_draw_list, u8 t_alpha, float t_y_offse
 		const bool highlighted = row.contains(m_mouse) || is_focus_shown(index);
 
 		t_draw_list.add_rounded_rect(row, rounded(list_corner_radius),
-									 faded(highlighted ? color_list_row_hover : color_list_row, t_alpha));
+									 faded(highlighted ? theme().control : theme().popup, t_alpha));
 
 		const Rect thumb{row.x + 12.0f, row.y + (row.h - thumb_size) * 0.5f, thumb_size, thumb_size};
 
@@ -812,7 +802,7 @@ void Carousel::draw_list_mode(DrawList &t_draw_list, u8 t_alpha, float t_y_offse
 		}
 
 		draw_text(t_draw_list, font, Vec2{thumb.right() + 16.0f, font.centered_baseline(row)}, game.title,
-				  faded(color_list_text, t_alpha));
+				  faded(theme().text, t_alpha));
 	}
 
 	t_draw_list.pop_clip();
@@ -845,10 +835,10 @@ void Carousel::draw_status_bar(DrawList &t_draw_list) const
 	const Rect icon{indicator.x, indicator.y + (indicator.h - status_icon_size) * 0.5f, status_icon_size,
 					status_icon_size};
 
-	t_draw_list.add_image(icon, m_assets.get(mode_icon(m_mode)), color_status_icon);
+	t_draw_list.add_image(icon, m_assets.get(mode_icon(m_mode)), theme().text_dim);
 	draw_text(t_draw_list, font,
 			  Vec2{icon.right() + status_icon_gap, font.centered_baseline(indicator) - baseline_nudge},
-			  status_text(m_mode, buffer), color_status_text);
+			  status_text(m_mode, buffer), theme().text_dim);
 }
 
 void Carousel::draw_switcher_rows(DrawList &t_draw_list, Rect t_panel, u8 t_alpha) const
@@ -861,12 +851,12 @@ void Carousel::draw_switcher_rows(DrawList &t_draw_list, Rect t_panel, u8 t_alph
 		const bool active = mode == m_mode;
 
 		if (active) {
-			t_draw_list.add_rounded_rect(row, rounded(6.0f), faded(color_switcher_active_row, t_alpha));
+			t_draw_list.add_rounded_rect(row, rounded(6.0f), faded(theme().row_selected, t_alpha));
 			t_draw_list.add_rounded_rect(Rect{row.x + 2.0f, row.y + 3.0f, 3.0f, row.h - 6.0f}, rounded(1.5f),
 										 faded(m_settings.accent, t_alpha));
 		}
 
-		const Color content = faded(active ? color_switcher_text_active : color_switcher_text, t_alpha);
+		const Color content = faded(active ? theme().text : theme().text_dim, t_alpha);
 		const float icon_center_y = row.center().y + font.ascent() * 0.15f;
 		const Rect icon{row.x + switcher_content_inset, icon_center_y - switcher_icon_size * 0.5f, switcher_icon_size,
 						switcher_icon_size};
@@ -882,12 +872,12 @@ void Carousel::draw_switcher_slider(DrawList &t_draw_list, Rect t_panel, u8 t_al
 	const Font &font = m_fonts.secondary();
 	const Rect track = switcher_track_rect(t_panel);
 
-	t_draw_list.add_rounded_rect(track, rounded(track.w * 0.5f), faded(color_switcher_track, t_alpha));
+	t_draw_list.add_rounded_rect(track, rounded(track.w * 0.5f), faded(theme().track, t_alpha));
 
 	for (i32 stop = 0; stop < zoom_stop_count; stop += 1) {
 		const float tick_y = track.y + track.h * (1.0f - stop_percent(stop) / 100.0f);
 		t_draw_list.add_rect(Rect{track.x - 3.0f, tick_y - 0.75f, track.w + 6.0f, 1.5f},
-							 faded(color_switcher_tick, t_alpha));
+							 faded(with_alpha(theme().text_faint, switcher_tick_alpha), t_alpha));
 	}
 
 	char buffer[8];
@@ -916,18 +906,9 @@ void Carousel::draw_switcher(DrawList &t_draw_list) const
 	Rect panel = switcher_panel_rect();
 	panel.y += (1.0f - m_switcher_shown) * switcher_slide_distance;
 
-	for (i32 layer = 3; layer >= 1; layer -= 1) {
-		const float t = layer / 3.0f;
-		const float drop = 7.0f * t;
-		const auto layer_alpha = static_cast<u8>(30.0f * (1.0f - t * 0.6f) * (alpha / 255.0f));
-		if (layer_alpha == 0) continue;
-
-		const Rect shadow{panel.x - drop * 0.3f, panel.y + drop, panel.w + drop * 0.6f, panel.h + drop};
-		t_draw_list.add_rounded_rect(shadow, rounded(switcher_radius + drop * 0.3f), Color{0, 0, 0, layer_alpha});
-	}
-
-	t_draw_list.add_bordered_rect(panel, rounded(switcher_radius), faded(color_switcher_background, alpha),
-								  faded(color_switcher_border, alpha), 1.0f);
+	controls::draw_popup_shadow(t_draw_list, panel, switcher_radius, m_switcher_shown);
+	t_draw_list.add_bordered_rect(panel, rounded(switcher_radius), faded(theme().popup, alpha),
+								  faded(theme().border, alpha), 1.0f);
 
 	draw_switcher_rows(t_draw_list, panel, alpha);
 	draw_switcher_slider(t_draw_list, panel, alpha);

@@ -128,10 +128,10 @@ void draw_text(DrawList &t_draw_list, const Font &t_font, Vec2 t_baseline, std::
 {
 	if (t_font.atlas() == nullptr) return;
 
-	// Whole pixels: a sub-pixel baseline makes the bilinear-sampled glyph edges shimmer as animations settle.
+	// The atlas is baked at physical resolution, so glyphs only stay crisp on whole physical pixels.
 	const float bake_scale = t_font.bake_scale();
-	float pen_x = std::round(t_baseline.x) * bake_scale;
-	float pen_y = std::round(t_baseline.y) * bake_scale;
+	float pen_x = std::round(t_baseline.x * bake_scale);
+	float pen_y = std::round(t_baseline.y * bake_scale);
 
 	for (const char character : t_text) {
 		if (!has_glyph(character)) continue;

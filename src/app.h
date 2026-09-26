@@ -69,7 +69,7 @@ class App {
 	void relaunch_if_update_installed();
 
 	void redraw_while_resizing();
-	void reload_fonts();
+	bool reload_fonts();
 	void frame();
 	void render();
 	void draw_status_bar();

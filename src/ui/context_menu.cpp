@@ -4,9 +4,12 @@
 
 #include <Windows.h>
 
+#include "core/settings.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
+#include "ui/controls.h"
 #include "ui/text.h"
+#include "ui/theme.h"
 
 namespace {
 constexpr float menu_width = 200.0f;
@@ -15,16 +18,11 @@ constexpr float menu_padding = 6.0f;
 constexpr float menu_radius = 10.0f;
 constexpr float window_margin = 8.0f;
 constexpr float label_inset = 14.0f;
-
-constexpr Color color_background{30, 30, 34, 255};
-constexpr Color color_border{60, 60, 66, 255};
-constexpr Color color_hover{54, 46, 78, 255};
-constexpr Color color_text{220, 220, 224, 255};
-constexpr Color color_text_disabled{110, 110, 116, 255};
 }
 
-ContextMenu::ContextMenu(const Fonts &t_fonts, CommandQueue &t_commands)
-	: m_fonts(t_fonts)
+ContextMenu::ContextMenu(const Settings &t_settings, const Fonts &t_fonts, CommandQueue &t_commands)
+	: m_settings(t_settings)
+	, m_fonts(t_fonts)
 	, m_commands(t_commands)
 {
 }
@@ -107,19 +105,22 @@ void ContextMenu::draw(DrawList &t_draw_list)
 {
 	if (!m_open) return;
 
-	t_draw_list.add_bordered_rect(menu_rect(), rounded(menu_radius), color_background, color_border, 1.0f);
-
+	const Theme &colors = theme();
+	const Color hover = mix(colors.popup, m_settings.accent, 0.28f);
 	const Font &font = m_fonts.body();
+
+	controls::draw_popup_shadow(t_draw_list, menu_rect(), menu_radius, 1.0f);
+	t_draw_list.add_bordered_rect(menu_rect(), rounded(menu_radius), colors.popup, colors.border, 1.0f);
 
 	for (u32 i = 0; i < m_item_count; i += 1) {
 		const Rect row = item_rect(i);
 		const ContextMenuItem &item = m_items[i];
 
 		if (item.enabled && row.contains(m_mouse)) {
-			t_draw_list.add_rounded_rect(row.inset(4.0f, 0.0f), rounded(6.0f), color_hover);
+			t_draw_list.add_rounded_rect(row.inset(4.0f, 0.0f), rounded(6.0f), hover);
 		}
 
 		draw_text(t_draw_list, font, Vec2{row.x + label_inset, font.centered_baseline(row)}, item.label,
-				  item.enabled ? color_text : color_text_disabled);
+				  item.enabled ? colors.text : colors.text_faint);
 	}
 }
