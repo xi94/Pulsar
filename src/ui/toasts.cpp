@@ -53,7 +53,7 @@ Toasts::Toasts(const Settings &t_settings, const Fonts &t_fonts, const Assets &t
 
 void Toasts::notify(const Notification &t_notification)
 {
-	show(t_notification, lifetime_seconds, false);
+	show(t_notification, t_notification.seconds > 0.0f ? t_notification.seconds : lifetime_seconds, false);
 }
 
 void Toasts::notify_countdown(std::string_view t_message, float t_seconds)
@@ -61,17 +61,21 @@ void Toasts::notify_countdown(std::string_view t_message, float t_seconds)
 	show(Notification{.message = t_message}, t_seconds, true);
 }
 
-void Toasts::dismiss_countdown()
+void Toasts::dismiss()
 {
-	if (!m_countdown) return;
-
 	m_showing = false;
 	m_countdown = false;
+	m_on_click.reset();
+}
+
+bool Toasts::is_offering(CommandType t_type) const
+{
+	return m_showing && m_on_click && m_on_click->type == t_type;
 }
 
 void Toasts::show(const Notification &t_notification, float t_seconds, bool t_countdown)
 {
-	if (!m_settings.show_notifications) return;
+	if (!m_settings.show_notifications && !t_notification.always_show) return;
 
 	copy_to(t_notification.message, m_message);
 	m_icon = t_notification.icon;
@@ -107,7 +111,7 @@ Rect Toasts::card_rect() const
 Rect Toasts::animated_card_rect() const
 {
 	Rect card = card_rect();
-	card.y += (1.0f - m_presence) * slide_distance;
+	card.y += snapped_to_pixel((1.0f - m_presence) * slide_distance);
 
 	return card;
 }

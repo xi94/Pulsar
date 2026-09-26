@@ -126,6 +126,7 @@ void DrawList::clear()
 	m_command_count = 0;
 	m_has_open_command = false;
 	m_clip_depth = 0;
+	m_scale = Scale{};
 }
 
 void DrawList::finish()
@@ -140,7 +141,8 @@ void DrawList::push_clip(Rect t_rect)
 {
 	assert(m_clip_depth < max_clip_depth);
 
-	m_clip_stack[m_clip_depth] = m_clip_depth > 0 ? m_clip_stack[m_clip_depth - 1].intersect(t_rect) : t_rect;
+	const Rect clip = scaled(t_rect);
+	m_clip_stack[m_clip_depth] = m_clip_depth > 0 ? m_clip_stack[m_clip_depth - 1].intersect(clip) : clip;
 	m_clip_depth += 1;
 }
 
@@ -149,6 +151,31 @@ void DrawList::pop_clip()
 	assert(m_clip_depth > 0);
 
 	m_clip_depth -= 1;
+}
+
+void DrawList::push_scale(Vec2 t_origin, float t_factor)
+{
+	assert(m_scale.factor == 1.0f);
+
+	m_scale = Scale{t_origin, t_factor};
+}
+
+void DrawList::pop_scale()
+{
+	m_scale = Scale{};
+}
+
+Vec2 DrawList::scaled(Vec2 t_point) const
+{
+	return Vec2{m_scale.origin.x + (t_point.x - m_scale.origin.x) * m_scale.factor,
+				m_scale.origin.y + (t_point.y - m_scale.origin.y) * m_scale.factor};
+}
+
+Rect DrawList::scaled(Rect t_rect) const
+{
+	const Vec2 top_left = scaled(Vec2{t_rect.x, t_rect.y});
+
+	return Rect{top_left.x, top_left.y, t_rect.w * m_scale.factor, t_rect.h * m_scale.factor};
 }
 
 void DrawList::target(ShaderKind t_shader, const Texture *t_texture, RoundedBoxParams t_box,
@@ -197,7 +224,10 @@ void DrawList::push_quad(const Vertex2D (&t_corners)[4])
 	assert(m_index_count + 6 <= m_index_capacity);
 
 	const u32 base = m_vertex_count;
-	std::copy(std::begin(t_corners), std::end(t_corners), m_vertices.get() + base);
+	for (u32 i = 0; i < 4; i += 1) {
+		const Vec2 position = scaled(Vec2{t_corners[i].x, t_corners[i].y});
+		m_vertices[base + i] = Vertex2D{position.x, position.y, t_corners[i].u, t_corners[i].v, t_corners[i].color};
+	}
 	m_vertex_count += 4;
 
 	constexpr u32 quad_indices[6]{0, 1, 2, 0, 2, 3};
@@ -247,7 +277,8 @@ void DrawList::push_rounded(Rect t_rect, CornerRadii t_radii, UvRect t_uv, u32 t
 	const u32 center_vertex = m_vertex_count;
 	const Vec2 center = t_rect.center();
 	const Vec2 center_uv = uv_at(t_rect, t_uv, center);
-	m_vertices[center_vertex] = Vertex2D{center.x, center.y, center_uv.x, center_uv.y, t_color};
+	const Vec2 scaled_center = scaled(center);
+	m_vertices[center_vertex] = Vertex2D{scaled_center.x, scaled_center.y, center_uv.x, center_uv.y, t_color};
 
 	const auto &directions = corner_arc_directions();
 	for (u32 i = 0; i < rounded_point_count; i += 1) {
@@ -256,7 +287,8 @@ void DrawList::push_rounded(Rect t_rect, CornerRadii t_radii, UvRect t_uv, u32 t
 						 corner_centers[corner].y + radius[corner] * directions[i].y};
 		const Vec2 uv = uv_at(t_rect, t_uv, point);
 
-		m_vertices[center_vertex + 1 + i] = Vertex2D{point.x, point.y, uv.x, uv.y, t_color};
+		const Vec2 scaled_point = scaled(point);
+		m_vertices[center_vertex + 1 + i] = Vertex2D{scaled_point.x, scaled_point.y, uv.x, uv.y, t_color};
 	}
 
 	m_vertex_count += rounded_point_count + 1;
@@ -273,6 +305,26 @@ void DrawList::add_rect(Rect t_rect, Color t_color)
 {
 	target(ShaderKind::solid);
 	push_quad(t_rect, full_uv, pack(t_color));
+}
+
+void DrawList::add_triangle(Vec2 t_a, Vec2 t_b, Vec2 t_c, Color t_color)
+{
+	target(ShaderKind::solid);
+
+	assert(m_vertex_count + 3 <= m_vertex_capacity);
+	assert(m_index_count + 3 <= m_index_capacity);
+
+	const u32 base = m_vertex_count;
+	const u32 color = pack(t_color);
+	const Vec2 corners[3]{scaled(t_a), scaled(t_b), scaled(t_c)};
+
+	for (u32 i = 0; i < 3; i += 1) {
+		m_vertices[base + i] = Vertex2D{corners[i].x, corners[i].y, 0.0f, 0.0f, color};
+		m_indices[m_index_count + i] = base + i;
+	}
+
+	m_vertex_count += 3;
+	m_index_count += 3;
 }
 
 void DrawList::add_rect_outline(Rect t_rect, float t_thickness, Color t_color)

@@ -1,11 +1,11 @@
 #pragma once
 
+#include <optional>
 #include <string_view>
 
 #include "core/library.h"
 #include "core/login_attempt.h"
 #include "ui/commands.h"
-#include "ui/confirm_latch.h"
 #include "ui/game_select_popup.h"
 #include "ui/scrollable.h"
 #include "ui/text_input.h"
@@ -32,9 +32,11 @@ class AccountModal : public Widget {
 
 	void open(i32 t_game);
 	void close();
-	void quick_login(i32 t_game, i32 t_row);
+	void quick_login(u32 t_game, AccountRef t_account);
+	void undo_delete();
+	void toggle_favorite(i32 t_row);
+	void forget_secrets();
 
-	bool can_quick_login(i32 t_game, i32 t_row) const;
 	const Account *account_at_row(i32 t_row) const;
 
 	void update(float t_delta_seconds) override;
@@ -86,22 +88,56 @@ class AccountModal : public Widget {
 		Rect button;
 	};
 
+	struct PendingLogin {
+		u32 game;
+		AccountRef account;
+	};
+
+	struct DeletedAccount {
+		Account account;
+		AccountRef position;
+	};
+
+	struct RowRange {
+		u32 first;
+		u32 last;
+	};
+
+	struct RowDrag {
+		std::optional<u32> pressed_row;
+		Vec2 press_point{};
+		bool lifted = false;
+		u32 from_row = 0;
+		u32 target_row = 0;
+		float grab_offset = 0.0f;
+	};
+
 	bool has_game() const;
 	Rect back_badge_rect(const Layout &t_layout) const;
 	void request_tooltip();
+	void request_row_tooltip(const Layout &t_layout);
 	EmptyState empty_state(Rect t_region) const;
 	Vec2 floating_panel_size() const;
 	bool is_docked() const;
 	Rect panel_rect() const;
 	Layout layout() const;
-	AccountRows account_rows(const Layout &t_layout) const;
 
+	VisibleAccounts displayed_accounts() const;
+	AccountRows account_rows(const Layout &t_layout) const;
+	i32 selected_row(const VisibleAccounts &t_accounts) const;
+
+	float content_to_screen(const AccountRows &t_rows, float t_content_y) const;
+	Rect row_rect_at(const Layout &t_layout, const AccountRows &t_rows, float t_content_top) const;
 	Rect row_rect(const Layout &t_layout, const AccountRows &t_rows, u32 t_row) const;
 	i32 row_at(const Layout &t_layout, const AccountRows &t_rows, Vec2 t_point) const;
 	Rect remove_button_rect(Rect t_row) const;
-	Rect confirm_delete_rect(Rect t_row) const;
 	Rect edit_button_rect(Rect t_row) const;
+	Rect favorite_button_rect(Rect t_row) const;
+	bool is_row_button_hit(Rect t_row, Vec2 t_point) const;
 	Rect add_button_rect(Rect t_main) const;
+	Rect search_rect(Rect t_main) const;
+	Rect search_text_rect(Rect t_search) const;
+	Rect search_clear_rect(Rect t_search) const;
 	Rect primary_button_rect(Rect t_footer) const;
 	Rect cancel_button_rect(Rect t_primary) const;
 	Rect delete_button_rect(Rect t_footer) const;
@@ -132,36 +168,55 @@ class AccountModal : public Widget {
 	void reveal_field(i32 t_field);
 
 	void start_adding();
-	void start_editing(u32 t_row);
+	void start_editing(AccountRef t_account);
 	bool can_save() const;
 	void save_edit();
-	void delete_edited_account();
-	void remove_row(u32 t_row);
-	void confirm_row_delete(u32 t_row);
+	void delete_account(AccountRef t_account);
+	void forget_deleted();
+	void toggle_favorite(AccountRef t_account);
+	void follow_insert(AccountRef t_inserted);
+	void follow_removal(AccountRef t_removed);
 
-	void request_login(i32 t_game, i32 t_row);
-	void start_login(i32 t_game, i32 t_row);
-	bool has_queued_login() const
-	{
-		return m_queued_login_game >= 0;
-	}
+	void request_login(u32 t_game, AccountRef t_account);
+	void start_login(PendingLogin t_login);
+	void cancel_login();
+	void record_login_result();
+
+	void refresh_search();
+	void clear_search();
+	void reveal_selected();
+	void select_step(i32 t_step);
+
+	bool is_search_visible() const;
+	RowRange drag_range(const VisibleAccounts &t_accounts, u32 t_row) const;
+	float lifted_top(const AccountRows &t_rows) const;
+	void lift_row(const AccountRows &t_rows, u32 t_row, Vec2 t_point);
+	void drop_row();
+	void cancel_row_drag();
+	void update_row_drag(float t_delta_seconds);
+	void animate_reorder(const VisibleAccounts &t_before);
+	void reset_row_motion();
 
 	bool handle_list_key(u32 t_key);
+	void handle_list_press(const Layout &t_layout, Vec2 t_point);
 	void handle_list_click(const Layout &t_layout, Vec2 t_point);
 	void handle_edit_click(const Layout &t_layout, Vec2 t_point);
 
 	void notify(std::string_view t_message);
-	void notify_delete_armed();
 
 	CursorKind list_cursor(const Layout &t_layout) const;
 	CursorKind edit_cursor(const Layout &t_layout) const;
 
 	void draw_chrome(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
 	void draw_section_title(DrawList &t_draw_list, Rect t_main, std::string_view t_title, u8 t_alpha) const;
+	void draw_search(DrawList &t_draw_list, Rect t_main, u8 t_alpha);
 	void draw_empty_state(DrawList &t_draw_list, Rect t_region, u8 t_alpha) const;
-	void draw_account_list(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
+	void draw_no_matches(DrawList &t_draw_list, Rect t_region, u8 t_alpha) const;
+	void draw_account_list(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha);
 	void draw_account_row(DrawList &t_draw_list, Rect t_main, Rect t_row, const Account &t_account, bool t_selected,
-						  float t_delete_armed, u8 t_alpha) const;
+						  bool t_raised, u8 t_alpha) const;
+	void draw_row_details(DrawList &t_draw_list, Rect t_row, float t_baseline, float t_max_width,
+						  const Account &t_account, u8 t_alpha) const;
 	void draw_login_progress(DrawList &t_draw_list, Rect t_main, u8 t_alpha) const;
 	void draw_edit_form(DrawList &t_draw_list, Rect t_main, u8 t_alpha);
 	void draw_footer(DrawList &t_draw_list, Rect t_footer, u8 t_alpha) const;
@@ -178,20 +233,28 @@ class AccountModal : public Widget {
 	bool m_open = false;
 	float m_open_amount = 0.0f;
 	i32 m_game = -1;
-	i32 m_selected_row = -1;
+	std::optional<AccountRef> m_selected;
 	Mode m_mode = Mode::account_list;
 	Scrollable m_rows_scroll;
 	Scrollable m_form_scroll;
 	Tooltip m_tooltip;
-	ConfirmLatch m_row_delete;
-	ConfirmLatch m_form_delete;
+
+	TextInput m_search;
+	char m_applied_query[text_input_capacity]{};
+
+	RowDrag m_drag;
+	float m_row_offsets[max_visible_accounts]{};
+	std::optional<u32> m_raised_row;
+	float m_lift_amount = 0.0f;
+
+	std::optional<DeletedAccount> m_deleted;
 
 	LoginAttempt m_login;
-	i32 m_queued_login_game = -1;
-	i32 m_queued_login_row = -1;
+	std::optional<PendingLogin> m_queued_login;
+	std::optional<AccountRef> m_login_account;
 	float m_login_seconds = 0.0f;
 
 	TextInput m_fields[field_count];
-	i32 m_edited_row = -1;
+	std::optional<AccountRef> m_edited;
 	GameSelectPopup m_visible_games;
 };

@@ -122,7 +122,7 @@ float list_thumb_size(float t_zoom_percent, float t_view_scale)
 {
 	const float t = zoom_within(t_zoom_percent, list_first_stop, zoom_stop_count - 1);
 
-	return (list_thumb_min_size + (list_thumb_max_size - list_thumb_min_size) * t) * t_view_scale;
+	return snapped_to_pixel((list_thumb_min_size + (list_thumb_max_size - list_thumb_min_size) * t) * t_view_scale);
 }
 
 float list_row_height(float t_zoom_percent, float t_view_scale)
@@ -441,7 +441,7 @@ void Carousel::set_zoom_stop(i32 t_stop)
 			m_wrap_scroll = Scrollable{};
 		}
 
-		m_commands.push(Command{.type = CommandType::save_settings});
+		m_commands.push(Command{.type = CommandType::save_changes});
 	}
 
 	m_switcher_hold_seconds = switcher_hold_seconds;
@@ -911,7 +911,7 @@ void Carousel::draw_switcher(DrawList &t_draw_list) const
 
 	const auto alpha = static_cast<u8>(255.0f * m_switcher_shown);
 	Rect panel = switcher_panel_rect();
-	panel.y += (1.0f - m_switcher_shown) * switcher_slide_distance;
+	panel.y += snapped_to_pixel((1.0f - m_switcher_shown) * switcher_slide_distance);
 
 	controls::draw_popup_shadow(t_draw_list, panel, switcher_radius, m_switcher_shown);
 	t_draw_list.add_bordered_rect(panel, rounded(switcher_radius), faded(theme().popup, alpha),
@@ -926,7 +926,7 @@ void Carousel::draw(DrawList &t_draw_list)
 	PULSAR_PROFILE_SCOPE("Carousel.Draw");
 
 	if (m_mode_transition > 0.001f) {
-		const float slide = m_mode_transition * mode_slide_distance;
+		const float slide = snapped_to_pixel(m_mode_transition * mode_slide_distance);
 
 		draw_mode(t_draw_list, m_previous_mode, static_cast<u8>(255.0f * m_mode_transition), -slide);
 		draw_mode(t_draw_list, m_mode, static_cast<u8>(255.0f * (1.0f - m_mode_transition)), slide);

@@ -35,7 +35,13 @@ class GameSelectPopup {
 	void draw(DrawList &t_draw_list, Vec2 t_mouse) const;
 
   private:
-	Rect popup_rect() const;
+	struct Placement {
+		Rect full;
+		bool below;
+	};
+
+	Placement placement() const;
+	Rect shown_rect() const;
 	Rect row_rect(u32 t_game) const;
 	bool is_last_checked(u32 t_game) const;
 

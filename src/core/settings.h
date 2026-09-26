@@ -63,6 +63,7 @@ struct Settings {
 	bool hide_accounts_from_capture = true;
 	bool block_overlay_injection = true;
 	bool close_to_tray = false;
+	u32 auto_lock_minutes = 0;
 
 	i32 zoom_stop = 0;
 	i32 selected_game = 0;

@@ -22,9 +22,10 @@ void draw_icon(DrawList &t_draw_list, Rect t_rect, const Texture *t_icon, Color 
 void draw_x(DrawList &t_draw_list, Rect t_rect, Color t_color);
 void draw_check(DrawList &t_draw_list, Rect t_rect, Color t_color);
 void draw_checkbox(DrawList &t_draw_list, Rect t_box, bool t_checked, bool t_enabled, Color t_accent);
-void draw_chevron_down(DrawList &t_draw_list, Rect t_rect, Color t_color);
+void draw_chevron(DrawList &t_draw_list, Rect t_rect, bool t_points_up, Color t_color);
 void draw_magnifier(DrawList &t_draw_list, Rect t_rect, Color t_color);
 void draw_eye(DrawList &t_draw_list, const Assets &t_assets, Rect t_rect, bool t_revealed, Color t_color);
+void draw_favorite(DrawList &t_draw_list, const Assets &t_assets, Rect t_rect, bool t_filled, Color t_color);
 
 void draw_lift(DrawList &t_draw_list, Rect t_rect, float t_radius, Color t_glow, u8 t_alpha);
 void draw_circular_hover(DrawList &t_draw_list, Rect t_rect, Color t_glow, Color t_fill, u8 t_alpha);

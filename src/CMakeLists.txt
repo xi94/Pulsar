@@ -33,7 +33,6 @@ add_executable (Pulsar
   "ui/app_menu.cpp"
   "ui/carousel.cpp"
   "ui/color_picker.cpp"
-  "ui/confirm_latch.cpp"
   "ui/context_menu.cpp"
   "ui/controls.cpp"
   "ui/game_select_popup.cpp"
@@ -71,7 +70,7 @@ target_include_directories(Pulsar PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_par
 target_compile_definitions(Pulsar PRIVATE SODIUM_STATIC)
 target_link_libraries(Pulsar PRIVATE "${SODIUM_LIB_DIR}/libsodium.lib")
 
-target_link_libraries(Pulsar PRIVATE shell32 dwmapi UIAutomationCore ole32 oleaut32 dbghelp comctl32 winhttp msimg32 d3d11 dxgi d3dcompiler)
+target_link_libraries(Pulsar PRIVATE shell32 dwmapi UIAutomationCore ole32 oleaut32 dbghelp comctl32 winhttp msimg32 d3d11 dxgi d3dcompiler version)
 
 find_package(Threads REQUIRED)
 target_link_libraries(Pulsar PRIVATE Threads::Threads)

@@ -223,6 +223,7 @@ storage::LoadResult read_settings(Settings &t_settings)
 		t_settings.block_overlay_injection =
 			settings.value("block_overlay_injection", t_settings.block_overlay_injection);
 		t_settings.show_notifications = settings.value("show_notifications", t_settings.show_notifications);
+		t_settings.auto_lock_minutes = settings.value("auto_lock_minutes", t_settings.auto_lock_minutes);
 		t_settings.zoom_stop = settings.value("carousel_zoom_stop", t_settings.zoom_stop);
 		t_settings.selected_game = settings.value("carousel_selected_banner", t_settings.selected_game);
 		copy_to(settings.value("last_run_version", std::string{}), t_settings.last_run_version);
@@ -246,6 +247,9 @@ json game_to_json(const Game &t_game)
 			{"note", account.note},
 			{"password", account.password},
 			{"visible_mask", account.visible_game_mask},
+			{"favorite", account.favorite},
+			{"last_used", account.last_used},
+			{"order", account.order},
 		});
 	}
 
@@ -266,6 +270,9 @@ void read_game_accounts(const json &t_json, Game &t_game)
 		account.assign(entry.value("username", std::string{}), entry.value("note", std::string{}),
 					   entry.value("password", std::string{}));
 		account.visible_game_mask = entry.value("visible_mask", u16{0});
+		account.favorite = entry.value("favorite", false);
+		account.last_used = entry.value("last_used", i64{0});
+		account.order = entry.value("order", u32{0});
 
 		t_game.account_count += 1;
 	}
@@ -279,6 +286,16 @@ Game *find_game(Library &t_library, std::string_view t_title)
 
 	return nullptr;
 }
+
+template <typename Buffer>
+struct WipedOnExit {
+	Buffer &buffer;
+
+	~WipedOnExit()
+	{
+		sodium_memzero(buffer.data(), buffer.size());
+	}
+};
 
 bool decrypt_vault(const json &t_envelope, const MasterKey &t_master_key, std::vector<u8> &t_out_plaintext)
 {
@@ -309,6 +326,8 @@ storage::LoadResult read_accounts(Library &t_library, const MasterKey &t_master_
 
 	try {
 		std::vector<u8> plaintext;
+		const WipedOnExit wipe_plaintext{plaintext};
+
 		if (!decrypt_vault(envelope, t_master_key, plaintext)) return storage::LoadResult::failed;
 
 		const json games = json::parse(plaintext.begin(), plaintext.end(), nullptr, false);
@@ -321,6 +340,8 @@ storage::LoadResult read_accounts(Library &t_library, const MasterKey &t_master_
 				read_game_accounts(entry, *game);
 			}
 		}
+
+		t_library.number_unordered_accounts();
 	} catch (const json::exception &) {
 		return storage::LoadResult::failed;
 	}
@@ -382,6 +403,7 @@ bool storage::save_settings(const Settings &t_settings)
 		{"close_to_tray", t_settings.close_to_tray},
 		{"block_overlay_injection", t_settings.block_overlay_injection},
 		{"show_notifications", t_settings.show_notifications},
+		{"auto_lock_minutes", t_settings.auto_lock_minutes},
 		{"last_run_version", t_settings.last_run_version},
 		{"carousel_zoom_stop", t_settings.zoom_stop},
 		{"carousel_selected_banner", t_settings.selected_game},
@@ -412,7 +434,9 @@ bool storage::save_accounts(const Library &t_library, const MasterKey &t_master_
 		games.push_back(game_to_json(game));
 	}
 
-	const std::string plaintext = games.dump();
+	std::string plaintext = games.dump();
+	const WipedOnExit wipe_plaintext{plaintext};
+
 	const std::span<const u8> plaintext_bytes{reinterpret_cast<const u8 *>(plaintext.data()), plaintext.size()};
 
 	// A fresh nonce makes every encryption differ, so unchanged accounts have to be caught before encrypting.

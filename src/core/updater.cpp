@@ -32,6 +32,7 @@ constexpr int connect_timeout_ms = 10000;
 constexpr int send_timeout_ms = 15000;
 constexpr int receive_timeout_ms = 15000;
 constexpr auto shutdown_join_timeout = std::chrono::milliseconds(3000);
+constexpr usize max_download_bytes = 64ull * 1024 * 1024;
 
 enum class HttpResult : u8 {
 	ok,
@@ -170,6 +171,11 @@ HttpResult read_body(HINTERNET t_request, std::vector<u8> &t_out_body, const Dow
 {
 	DWORD content_length = 0;
 	if (query_number_header(t_request, WINHTTP_QUERY_CONTENT_LENGTH, content_length)) {
+		if (content_length > max_download_bytes) {
+			t_out_error = "the server offered a file far larger than any Pulsar build";
+			return HttpResult::failed;
+		}
+
 		t_out_body.reserve(content_length);
 
 		if (t_progress.total_bytes != nullptr) {
@@ -191,6 +197,11 @@ HttpResult read_body(HINTERNET t_request, std::vector<u8> &t_out_body, const Dow
 		}
 
 		if (available == 0) return HttpResult::ok;
+
+		if (t_out_body.size() + available > max_download_bytes) {
+			t_out_error = "the download grew far larger than any Pulsar build";
+			return HttpResult::failed;
+		}
 
 		const usize previous_size = t_out_body.size();
 		t_out_body.resize(previous_size + available);
@@ -312,6 +323,30 @@ bool verify_download(const std::vector<u8> &t_body, const UpdateManifest &t_mani
 	return true;
 }
 
+bool is_newer_than_running(const std::wstring &t_executable)
+{
+	const DWORD info_size = GetFileVersionInfoSizeW(t_executable.c_str(), nullptr);
+	if (info_size == 0) return false;
+
+	std::vector<u8> info(info_size);
+	if (!GetFileVersionInfoW(t_executable.c_str(), 0, info_size, info.data())) return false;
+
+	VS_FIXEDFILEINFO *fixed = nullptr;
+	UINT fixed_size = 0;
+	if (!VerQueryValueW(info.data(), L"\\", reinterpret_cast<void **>(&fixed), &fixed_size) || fixed == nullptr ||
+		fixed_size < sizeof(VS_FIXEDFILEINFO)) {
+		return false;
+	}
+
+	const SemVer downloaded{HIWORD(fixed->dwFileVersionMS), LOWORD(fixed->dwFileVersionMS),
+							HIWORD(fixed->dwFileVersionLS)};
+
+	SemVer running;
+	parse_version(app_version, running);
+
+	return downloaded > running;
+}
+
 std::wstring executable_path()
 {
 	wchar_t path[MAX_PATH];
@@ -348,6 +383,12 @@ bool replace_running_executable(const std::vector<u8> &t_new_executable, std::st
 	if (!write_bytes(update_path, t_new_executable)) {
 		DeleteFileW(update_path.c_str());
 		t_out_error = "could not write the downloaded update to disk (disk full?)";
+		return false;
+	}
+
+	if (!is_newer_than_running(update_path)) {
+		DeleteFileW(update_path.c_str());
+		t_out_error = "the downloaded build is not newer than this one - refusing to downgrade";
 		return false;
 	}
 

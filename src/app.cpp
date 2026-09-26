@@ -22,6 +22,8 @@
 namespace {
 constexpr u32 draw_list_vertex_capacity = 1 << 16;
 constexpr u32 draw_list_index_capacity = (1 << 16) * 3 / 2;
+constexpr auto save_delay = std::chrono::milliseconds(500);
+constexpr auto clipboard_secret_lifetime = std::chrono::seconds(30);
 
 constexpr float status_padding = 14.0f;
 constexpr float status_mark_size = 15.0f;
@@ -174,6 +176,7 @@ App::StartResult App::start()
 
 	m_start_time = std::chrono::steady_clock::now();
 	m_last_frame_time = m_start_time;
+	m_last_activity = m_start_time;
 
 	log_startup_phase("FirstFrame");
 	frame();
@@ -261,6 +264,7 @@ void App::lock()
 {
 	m_locked = true;
 	m_carousel.set_visible(false);
+	m_tray.set_locked(true);
 }
 
 void App::unlock()
@@ -268,13 +272,47 @@ void App::unlock()
 	m_locked = false;
 	m_carousel.set_visible(true);
 	m_unlock_screen.hide();
+	m_tray.set_locked(false);
+	m_last_activity = Clock::now();
+}
+
+void App::lock_vault()
+{
+	if (m_locked || !m_settings.master_password_enabled) return;
+
+	m_save_due.reset();
+	save_everything();
+	clear_clipboard_secret();
+
+	m_account_modal.forget_secrets();
+	m_settings_panel.close();
+	m_app_menu.close();
+	m_context_menu.close();
+	m_toasts.dismiss();
+
+	m_library.wipe_accounts();
+	m_master_key.lock();
+
+	lock();
+	m_unlock_screen.show_unlock();
+}
+
+void App::lock_if_idle()
+{
+	if (m_locked || m_settings.auto_lock_minutes == 0) return;
+	if (Clock::now() - m_last_activity < std::chrono::minutes(m_settings.auto_lock_minutes)) return;
+
+	lock_vault();
 }
 
 void App::save_settings()
 {
 	m_settings.zoom_stop = m_carousel.zoom_stop();
 	m_settings.selected_game = m_carousel.selected_game();
-	storage::save_settings(m_settings);
+
+	Settings committed = m_settings;
+	m_settings_panel.restore_committed_theme(committed);
+	storage::save_settings(committed);
 }
 
 void App::save_everything()
@@ -283,8 +321,53 @@ void App::save_everything()
 	save_settings();
 }
 
+void App::request_save()
+{
+	m_save_due = Clock::now() + save_delay;
+}
+
+void App::save_if_due()
+{
+	if (!m_save_due || Clock::now() < *m_save_due) return;
+
+	m_save_due.reset();
+	save_everything();
+}
+
+void App::commit_new_vault_key()
+{
+	if (storage::save_accounts(m_library, m_master_key)) {
+		save_settings();
+	} else if (m_replaced_vault_key) {
+		m_master_key.swap(m_replaced_vault_key->key);
+		m_settings.master_key = m_replaced_vault_key->params;
+		m_toasts.notify(Notification{.message = "Your vault could not be saved, so the password was not changed."});
+	}
+
+	m_replaced_vault_key.reset();
+}
+
+void App::copy_password(std::string_view t_password)
+{
+	set_clipboard_secret(t_password);
+	m_clipboard_secret = ClipboardSecret{clipboard_sequence(), Clock::now() + clipboard_secret_lifetime};
+
+	constexpr auto lifetime_seconds = std::chrono::duration<float>(clipboard_secret_lifetime).count();
+	m_toasts.notify_countdown("Password copied - it clears itself in 30 seconds.", lifetime_seconds);
+}
+
+void App::clear_clipboard_secret()
+{
+	if (!m_clipboard_secret) return;
+
+	clear_clipboard_if_unchanged(m_clipboard_secret->sequence);
+	m_clipboard_secret.reset();
+}
+
 void App::fill_tray_menu(TrayMenu &t_menu) const
 {
+	if (m_locked) return;
+
 	for (u32 game = 0; game < m_library.game_count() && t_menu.game_count < tray_max_games; game += 1) {
 		const VisibleAccounts visible = m_library.visible_accounts(game);
 
@@ -335,6 +418,9 @@ void App::pump_input()
 void App::handle_tray_event()
 {
 	const TrayEvent event = m_tray.take_event();
+	if (event.type != TrayEventType::none) {
+		m_last_activity = Clock::now();
+	}
 
 	switch (event.type) {
 		case TrayEventType::exit:
@@ -345,12 +431,16 @@ void App::handle_tray_event()
 			m_window.restore();
 			break;
 
-		case TrayEventType::quick_login:
-			if (m_account_modal.can_quick_login(event.game, event.row)) {
-				m_account_modal.quick_login(event.game, event.row);
+		case TrayEventType::quick_login: {
+			if (m_locked || event.game < 0 || event.row < 0) break;
+
+			const auto game = static_cast<u32>(event.game);
+			if (const auto account = m_library.visible_account(game, static_cast<u32>(event.row))) {
+				m_account_modal.quick_login(game, *account);
 			}
 
 			break;
+		}
 
 		case TrayEventType::none:
 			break;
@@ -359,6 +449,14 @@ void App::handle_tray_event()
 
 void App::handle_input(const InputEvent &t_event)
 {
+	m_last_activity = Clock::now();
+
+	const bool control_down = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+	if (t_event.type == InputEventType::key_down && t_event.key == 'L' && control_down && !m_locked) {
+		lock_vault();
+		return;
+	}
+
 	if (t_event.type == InputEventType::mouse_move) {
 		m_mouse = t_event.position;
 	}
@@ -369,7 +467,7 @@ void App::handle_input(const InputEvent &t_event)
 	const bool is_action = t_event.type == InputEventType::mouse_up || t_event.type == InputEventType::key_down ||
 						   t_event.type == InputEventType::right_click;
 	if (consumed && is_action) {
-		save_everything();
+		request_save();
 	}
 }
 
@@ -427,11 +525,14 @@ void App::process(const Command &t_command)
 			m_account_modal.open(t_command.index);
 			break;
 
-		case CommandType::save_settings:
-			save_settings();
+		case CommandType::save_changes:
+			request_save();
 			break;
 
 		case CommandType::request_new_master_password:
+			m_replaced_vault_key.emplace();
+			m_replaced_vault_key->key.swap(m_master_key);
+			m_replaced_vault_key->params = m_settings.master_key;
 			lock();
 			m_unlock_screen.show_setup();
 			break;
@@ -442,7 +543,7 @@ void App::process(const Command &t_command)
 			break;
 
 		case CommandType::vault_created:
-			save_everything();
+			commit_new_vault_key();
 			unlock();
 			break;
 
@@ -455,10 +556,15 @@ void App::process(const Command &t_command)
 			break;
 
 		case CommandType::copy_username:
+			if (const Account *account = m_account_modal.account_at_row(t_command.index)) {
+				set_clipboard_text(account->username);
+			}
+
+			break;
+
 		case CommandType::copy_password:
 			if (const Account *account = m_account_modal.account_at_row(t_command.index)) {
-				set_clipboard_text(t_command.type == CommandType::copy_username ? account->username
-																				: account->password);
+				copy_password(account->password);
 			}
 
 			break;
@@ -466,12 +572,29 @@ void App::process(const Command &t_command)
 		case CommandType::edit_text:
 			t_command.text_input->apply(t_command.text_edit);
 			break;
+
+		case CommandType::undo_delete:
+			m_account_modal.undo_delete();
+			break;
+
+		case CommandType::toggle_favorite:
+			m_account_modal.toggle_favorite(t_command.index);
+			break;
+
+		case CommandType::lock_vault:
+			lock_vault();
+			break;
 	}
 }
 
 void App::open_account_menu(const Command &t_command)
 {
+	const Account *account = m_account_modal.account_at_row(t_command.index);
+	if (account == nullptr) return;
+
 	const ContextMenuItem items[]{
+		{account->favorite ? "Unpin" : "Pin to Top",
+		 Command{.type = CommandType::toggle_favorite, .index = t_command.index}},
 		{"Copy Username", Command{.type = CommandType::copy_username, .index = t_command.index}},
 		{"Copy Password", Command{.type = CommandType::copy_password, .index = t_command.index}},
 	};
@@ -672,6 +795,11 @@ void App::run()
 		announce_update_stage();
 		process_commands();
 		relaunch_if_update_installed();
+		save_if_due();
+		lock_if_idle();
+		if (m_clipboard_secret && Clock::now() >= m_clipboard_secret->clear_at) {
+			clear_clipboard_secret();
+		}
 
 		m_window.set_excluded_from_capture(m_settings.hide_accounts_from_capture && m_account_modal.is_blocking());
 
@@ -683,4 +811,5 @@ void App::run()
 	}
 
 	save_everything();
+	clear_clipboard_secret();
 }

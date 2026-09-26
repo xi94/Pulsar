@@ -1,12 +1,26 @@
 #include "core/master_key.h"
 
+#include <algorithm>
 #include <cstring>
+#include <utility>
 
 #include <sodium.h>
 
 MasterKey::~MasterKey()
 {
+	lock();
+}
+
+void MasterKey::lock()
+{
 	sodium_memzero(m_data_key, sizeof(m_data_key));
+	m_unlocked = false;
+}
+
+void MasterKey::swap(MasterKey &t_other)
+{
+	std::swap_ranges(std::begin(m_data_key), std::end(m_data_key), std::begin(t_other.m_data_key));
+	std::swap(m_unlocked, t_other.m_unlocked);
 }
 
 bool MasterKey::create(std::string_view t_password, MasterKeyParams &t_out_params)

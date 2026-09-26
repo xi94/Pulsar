@@ -17,6 +17,9 @@ struct Account {
 	char note[32]{};
 	char password[128]{};
 	u16 visible_game_mask = 0;
+	bool favorite = false;
+	i64 last_used = 0;
+	u32 order = 0;
 
 	void assign(std::string_view t_username, std::string_view t_note, std::string_view t_password);
 	u16 visible_games(u32 t_owning_game) const;
@@ -34,6 +37,8 @@ struct Game {
 struct AccountRef {
 	u32 game;
 	u32 index;
+
+	bool operator==(const AccountRef &) const = default;
 };
 
 struct VisibleAccounts {
@@ -51,7 +56,11 @@ class Library {
 	void add_game(std::string_view t_title, const Texture *t_banner, const Texture *t_icon, Color t_accent);
 
 	std::optional<AccountRef> add_account(u32 t_game, const Account &t_account);
+	std::optional<AccountRef> insert_account(AccountRef t_where, const Account &t_account);
 	void remove_account(AccountRef t_ref);
+	void move_visible_account(u32 t_game, u32 t_from_row, u32 t_to_row);
+	void number_unordered_accounts();
+	void wipe_accounts();
 
 	VisibleAccounts visible_accounts(u32 t_game) const;
 	std::optional<AccountRef> visible_account(u32 t_game, u32 t_row) const;
@@ -94,4 +103,5 @@ class Library {
   private:
 	Game m_games[max_games];
 	u32 m_game_count = 0;
+	u32 m_next_order = 1;
 };

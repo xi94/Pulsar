@@ -3,6 +3,8 @@
 #include <string>
 #include <utility>
 
+#include <sodium.h>
+
 #include "core/debug_log.h"
 #include "core/str.h"
 #include "core/thread_util.h"
@@ -225,6 +227,7 @@ void worker_main(std::shared_ptr<LoginWork> t_work)
 {
 	debug_log::write(log_category, "worker started");
 	run_login(*t_work);
+	sodium_memzero(t_work->password, sizeof(t_work->password));
 
 	t_work->worker_finished.store(true, std::memory_order_release);
 

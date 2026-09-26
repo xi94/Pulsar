@@ -13,11 +13,10 @@
 #include "ui/theme.h"
 
 namespace {
-constexpr float popup_width = 220.0f;
 constexpr float popup_padding = 6.0f;
 constexpr float popup_radius = 10.0f;
 constexpr float bounds_margin = 8.0f;
-constexpr float anchor_gap = 6.0f;
+constexpr float anchor_gap = 4.0f;
 constexpr float row_padding_x = 12.0f;
 constexpr float row_inset = 4.0f;
 constexpr float row_radius = 7.0f;
@@ -70,23 +69,30 @@ void GameSelectPopup::update(float t_delta_seconds)
 	m_open_amount = animation::ease_toward(m_open_amount, m_open ? 1.0f : 0.0f, open_ease_rate, t_delta_seconds);
 }
 
-Rect GameSelectPopup::popup_rect() const
+GameSelectPopup::Placement GameSelectPopup::placement() const
 {
 	const u32 row_count = std::max<u32>(1, m_library.game_count());
-	const float full_height = popup_padding * 2.0f + row_height_for(m_fonts) * row_count;
+	const float height = popup_padding * 2.0f + row_height_for(m_fonts) * row_count;
+	const float room_below = m_bounds.bottom() - bounds_margin - (m_anchor.bottom() + anchor_gap);
+	const float room_above = m_anchor.y - anchor_gap - (m_bounds.y + bounds_margin);
+	const bool below = room_below >= height || room_below >= room_above;
+	const float y = below ? m_anchor.bottom() + anchor_gap : m_anchor.y - anchor_gap - height;
 
-	const float min_x = m_bounds.x + bounds_margin;
-	const float max_x = std::max(min_x, m_bounds.right() - bounds_margin - popup_width);
-	const float min_y = m_bounds.y + bounds_margin;
-	const float max_y = std::max(min_y, m_bounds.bottom() - bounds_margin - full_height);
+	return Placement{Rect{m_anchor.x, y, m_anchor.w, height}, below};
+}
 
-	return Rect{std::clamp(m_anchor.right() - popup_width, min_x, max_x),
-				std::clamp(m_anchor.bottom() + anchor_gap, min_y, max_y), popup_width, full_height * m_open_amount};
+Rect GameSelectPopup::shown_rect() const
+{
+	const Placement current = placement();
+	const float height = current.full.h * m_open_amount;
+	const float y = current.below ? current.full.y : current.full.bottom() - height;
+
+	return Rect{current.full.x, y, current.full.w, height};
 }
 
 Rect GameSelectPopup::row_rect(u32 t_game) const
 {
-	const Rect popup = popup_rect();
+	const Rect popup = placement().full;
 	const float height = row_height_for(m_fonts);
 
 	return Rect{popup.x, popup.y + popup_padding + t_game * height, popup.w, height};
@@ -99,7 +105,7 @@ bool GameSelectPopup::is_last_checked(u32 t_game) const
 
 bool GameSelectPopup::on_pointer_down(Vec2 t_point)
 {
-	if (!is_open() || !popup_rect().contains(t_point)) return false;
+	if (!is_open() || !shown_rect().contains(t_point)) return false;
 
 	for (u32 game = 0; game < m_library.game_count(); game += 1) {
 		if (!row_rect(game).contains(t_point)) continue;
@@ -130,7 +136,7 @@ void GameSelectPopup::draw(DrawList &t_draw_list, Vec2 t_mouse) const
 	if (!is_open()) return;
 
 	const Theme &colors = theme();
-	const Rect popup = popup_rect();
+	const Rect popup = shown_rect();
 	const Font &font = m_fonts.secondary();
 	const float icon_size = icon_size_for(m_fonts);
 	const Color hover = mix(colors.popup, m_settings.accent, hover_strength);

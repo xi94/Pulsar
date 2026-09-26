@@ -1,6 +1,8 @@
 #pragma once
 
 #include <chrono>
+#include <optional>
+#include <string_view>
 
 #include "core/library.h"
 #include "core/master_key.h"
@@ -44,15 +46,34 @@ class App {
 	void run();
 
   private:
+	using Clock = std::chrono::steady_clock;
+
+	struct VaultKey {
+		MasterKey key;
+		MasterKeyParams params;
+	};
+
+	struct ClipboardSecret {
+		u32 sequence;
+		Clock::time_point clear_at;
+	};
+
 	bool create_graphics();
 	void add_games();
 	void stack_widgets();
 	void apply_settings(storage::LoadResult t_load_result);
 	void lock();
 	void unlock();
+	void lock_vault();
+	void lock_if_idle();
 
 	void save_settings();
 	void save_everything();
+	void request_save();
+	void save_if_due();
+	void commit_new_vault_key();
+	void copy_password(std::string_view t_password);
+	void clear_clipboard_secret();
 
 	void pump_input();
 	void handle_tray_event();
@@ -113,4 +134,9 @@ class App {
 
 	std::chrono::steady_clock::time_point m_start_time;
 	std::chrono::steady_clock::time_point m_last_frame_time;
+	Clock::time_point m_last_activity;
+
+	std::optional<Clock::time_point> m_save_due;
+	std::optional<VaultKey> m_replaced_vault_key;
+	std::optional<ClipboardSecret> m_clipboard_secret;
 };

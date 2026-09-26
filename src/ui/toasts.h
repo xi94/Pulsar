@@ -16,6 +16,8 @@ struct Notification {
 	std::optional<Asset> icon;
 	bool spin_icon = false;
 	std::optional<Command> on_click;
+	float seconds = 0.0f;
+	bool always_show = false;
 };
 
 class Toasts : public Widget {
@@ -25,7 +27,8 @@ class Toasts : public Widget {
 
 	void notify(const Notification &t_notification);
 	void notify_countdown(std::string_view t_message, float t_seconds);
-	void dismiss_countdown();
+	bool is_offering(CommandType t_type) const;
+	void dismiss();
 
 	void update(float t_delta_seconds) override;
 	void draw(DrawList &t_draw_list) override;

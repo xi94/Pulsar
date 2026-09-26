@@ -7,6 +7,7 @@
 
 #include "core/animation.h"
 #include "core/settings.h"
+#include "core/str.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "ui/controls.h"
@@ -43,24 +44,6 @@ float search_height(const Fonts &t_fonts)
 float row_height(const Fonts &t_fonts)
 {
 	return std::max(30.0f, t_fonts.body().line_height() + 10.0f);
-}
-
-char lowered(char t_character)
-{
-	return t_character >= 'A' && t_character <= 'Z' ? static_cast<char>(t_character - 'A' + 'a') : t_character;
-}
-
-usize find_ignoring_case(std::string_view t_text, std::string_view t_query)
-{
-	if (t_query.size() > t_text.size()) return std::string_view::npos;
-
-	for (usize start = 0; start + t_query.size() <= t_text.size(); start += 1) {
-		const bool matches = std::equal(t_query.begin(), t_query.end(), t_text.begin() + start,
-										[](char t_a, char t_b) { return lowered(t_a) == lowered(t_b); });
-		if (matches) return start;
-	}
-
-	return std::string_view::npos;
 }
 }
 

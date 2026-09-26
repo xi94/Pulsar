@@ -86,6 +86,9 @@ class DrawList {
 	void push_clip(Rect t_rect);
 	void pop_clip();
 
+	void push_scale(Vec2 t_origin, float t_factor);
+	void pop_scale();
+
 	std::span<const DrawCommand> commands() const
 	{
 		return {m_commands, m_command_count};
@@ -102,6 +105,7 @@ class DrawList {
 	}
 
 	void add_rect(Rect t_rect, Color t_color);
+	void add_triangle(Vec2 t_a, Vec2 t_b, Vec2 t_c, Color t_color);
 	void add_rect_outline(Rect t_rect, float t_thickness, Color t_color);
 	void add_gradient(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right);
 	void add_line(Vec2 t_from, Vec2 t_to, float t_thickness, Color t_color);
@@ -128,6 +132,9 @@ class DrawList {
 				CircularProgressParams t_progress = {});
 	void close_command();
 
+	Vec2 scaled(Vec2 t_point) const;
+	Rect scaled(Rect t_rect) const;
+
 	void push_quad(Rect t_rect, UvRect t_uv, u32 t_color);
 	void push_quad(const Vertex2D (&t_corners)[4]);
 	void push_rounded(Rect t_rect, CornerRadii t_radii, UvRect t_uv, u32 t_color);
@@ -146,4 +153,11 @@ class DrawList {
 
 	Rect m_clip_stack[max_clip_depth]{};
 	u32 m_clip_depth = 0;
+
+	struct Scale {
+		Vec2 origin{};
+		float factor = 1.0f;
+	};
+
+	Scale m_scale;
 };

@@ -11,7 +11,7 @@ class AppMenu : public Widget {
   public:
 	AppMenu(const Settings &t_settings, const Fonts &t_fonts, const Assets &t_assets, CommandQueue &t_commands);
 
-	void open(bool t_settings_available);
+	void open(bool t_unlocked);
 	void close();
 
 	bool is_open() const
@@ -42,7 +42,7 @@ class AppMenu : public Widget {
 	CommandQueue &m_commands;
 
 	bool m_open = false;
-	bool m_settings_available = false;
+	bool m_unlocked = false;
 	float m_open_amount = 0.0f;
 	float m_item_hover[max_items]{};
 };

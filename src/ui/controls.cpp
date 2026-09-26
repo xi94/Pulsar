@@ -77,11 +77,11 @@ void controls::draw_check(DrawList &t_draw_list, Rect t_rect, Color t_color)
 	t_draw_list.add_line(bottom, {center.x + 7.0f * scale, center.y - 6.0f * scale}, 2.0f, t_color);
 }
 
-void controls::draw_chevron_down(DrawList &t_draw_list, Rect t_rect, Color t_color)
+void controls::draw_chevron(DrawList &t_draw_list, Rect t_rect, bool t_points_up, Color t_color)
 {
 	const Vec2 center = t_rect.center();
 	const float half_width = t_rect.w * 0.5f;
-	const float half_height = t_rect.h * 0.5f;
+	const float half_height = t_points_up ? -t_rect.h * 0.5f : t_rect.h * 0.5f;
 	const Vec2 tip{center.x, center.y + half_height};
 
 	t_draw_list.add_line({center.x - half_width, center.y - half_height}, tip, 1.5f, t_color);
@@ -115,6 +115,33 @@ void controls::draw_eye(DrawList &t_draw_list, const Assets &t_assets, Rect t_re
 {
 	draw_icon(t_draw_list, t_rect, t_assets.get(t_revealed ? Asset::icon_eye_visible : Asset::icon_eye_hidden),
 			  t_color);
+}
+
+void controls::draw_favorite(DrawList &t_draw_list, const Assets &t_assets, Rect t_rect, bool t_filled, Color t_color)
+{
+	if (t_filled) {
+		constexpr u32 points = 5;
+		constexpr float inner_ratio = 0.5f;
+
+		// Sized to sit under the icon's outline, which is drawn on top and keeps the edge crisp.
+		const float size = std::min(t_rect.w, t_rect.h);
+		const Vec2 center{t_rect.x + t_rect.w * 0.5f, t_rect.y + t_rect.h * 0.53f};
+		const float outer = size * 0.31f;
+		const float inner = outer * inner_ratio;
+
+		const auto corner = [&](u32 t_index) {
+			const float radius = t_index % 2 == 0 ? outer : inner;
+			const float angle = -std::numbers::pi_v<float> * 0.5f + t_index * std::numbers::pi_v<float> / points;
+
+			return Vec2{center.x + radius * std::cos(angle), center.y + radius * std::sin(angle)};
+		};
+
+		for (u32 i = 0; i < points * 2; i += 1) {
+			t_draw_list.add_triangle(center, corner(i), corner(i + 1), t_color);
+		}
+	}
+
+	draw_icon(t_draw_list, t_rect, t_assets.get(Asset::icon_favorite), t_color);
 }
 
 void controls::draw_lift(DrawList &t_draw_list, Rect t_rect, float t_radius, Color t_glow, u8 t_alpha)
@@ -187,7 +214,7 @@ void controls::draw_dropdown(DrawList &t_draw_list, const Font &t_font, Rect t_r
 								  faded(t_open ? t_accent : colors.border, t_alpha), 1.0f);
 	draw_text_truncated(t_draw_list, t_font, Vec2{label_x, t_font.centered_baseline(t_rect)}, t_label,
 						chevron.x - padding - label_x, faded(colors.text, t_alpha));
-	draw_chevron_down(t_draw_list, chevron, faded(t_open ? colors.text : colors.text_dim, t_alpha));
+	draw_chevron(t_draw_list, chevron, t_open, faded(t_open ? colors.text : colors.text_dim, t_alpha));
 }
 
 void controls::draw_checkbox(DrawList &t_draw_list, Rect t_box, bool t_checked, bool t_enabled, Color t_accent)

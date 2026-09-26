@@ -61,7 +61,7 @@ void Tooltip::draw(DrawList &t_draw_list, const Fonts &t_fonts, Rect t_bounds, u
 
 	const float width = text_width(font, text) + padding_x * 2.0f;
 	const float height = font.line_height() + padding_y * 2.0f;
-	const float rise = (1.0f - m_visible_amount) * rise_distance;
+	const float rise = snapped_to_pixel((1.0f - m_visible_amount) * rise_distance);
 
 	float y = m_anchor.y - height - anchor_gap + rise;
 	if (y < t_bounds.y + edge_margin) {

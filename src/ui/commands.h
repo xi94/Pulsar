@@ -13,7 +13,7 @@ enum class CommandType : u8 {
 	open_data_folder,
 	check_for_updates,
 	open_game,
-	save_settings,
+	save_changes,
 	request_new_master_password,
 	vault_unlocked,
 	vault_created,
@@ -22,6 +22,9 @@ enum class CommandType : u8 {
 	copy_username,
 	copy_password,
 	edit_text,
+	undo_delete,
+	toggle_favorite,
+	lock_vault,
 };
 
 struct Command {

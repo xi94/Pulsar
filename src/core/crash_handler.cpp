@@ -17,10 +17,8 @@ namespace {
 constexpr int open_folder_button_id = 1001;
 constexpr int close_button_id = 1002;
 
-constexpr auto crash_dump_type = static_cast<MINIDUMP_TYPE>(MiniDumpWithFullMemory | MiniDumpWithHandleData |
-															MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules);
-
-constexpr auto hang_dump_type =
+// Never MiniDumpWithFullMemory: it would write the vault key and every decrypted password to disk.
+constexpr auto dump_type =
 	static_cast<MINIDUMP_TYPE>(MiniDumpWithThreadInfo | MiniDumpWithHandleData | MiniDumpWithUnloadedModules);
 
 std::atomic<bool> g_handling_crash{false};
@@ -163,7 +161,7 @@ void report_crash(EXCEPTION_POINTERS *t_exception, const wchar_t *t_reason)
 {
 	const std::wstring location = module_relative_address(t_exception->ExceptionRecord->ExceptionAddress);
 	const std::wstring dump_directory = crash_dump_directory();
-	const std::wstring dump_path = write_minidump(t_exception, dump_directory, L"crash", crash_dump_type);
+	const std::wstring dump_path = write_minidump(t_exception, dump_directory, L"crash", dump_type);
 
 	show_crash_dialog(t_reason, location, dump_path, dump_directory);
 }
@@ -237,5 +235,5 @@ void install_crash_handler()
 
 std::wstring write_diagnostic_dump(const wchar_t *t_tag)
 {
-	return write_minidump(nullptr, crash_dump_directory(), t_tag, hang_dump_type);
+	return write_minidump(nullptr, crash_dump_directory(), t_tag, dump_type);
 }

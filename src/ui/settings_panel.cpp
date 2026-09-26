@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstdio>
 #include <numbers>
+#include <optional>
+#include <span>
 
 #include <Windows.h>
 
@@ -51,6 +53,10 @@ constexpr float rail_width = 150.0f;
 constexpr float rail_padding = 10.0f;
 constexpr float tab_label_inset = 14.0f;
 constexpr float tab_indicator_width = 3.0f;
+constexpr float tab_indicator_inset = 8.0f;
+constexpr float tab_slide_rate = 18.0f;
+constexpr float active_tab_tint = 0.18f;
+constexpr float hovered_tab_brightening = 0.5f;
 constexpr float scrollbar_margin = 4.0f;
 
 constexpr float reset_button_size = 28.0f;
@@ -62,6 +68,22 @@ constexpr float slider_bar_height = 6.0f;
 constexpr float slider_thumb_radius = 8.0f;
 constexpr float slider_readout_gap = 8.0f;
 constexpr float slider_readout_width = 48.0f;
+constexpr float slider_tick_size = 3.0f;
+constexpr float auto_lock_readout_width = 64.0f;
+constexpr u32 auto_lock_stops[]{1, 2, 5, 10, 15, 30, 60, 0};
+constexpr u32 auto_lock_stop_count = static_cast<u32>(std::size(auto_lock_stops));
+
+constexpr std::string_view panel_title = "Settings";
+constexpr float search_max_width = 240.0f;
+constexpr float search_min_width = 120.0f;
+constexpr float search_header_gap = 16.0f;
+constexpr float search_inset = 11.0f;
+constexpr float search_icon_size = 13.0f;
+constexpr float search_icon_gap = 7.0f;
+constexpr float search_clear_margin = 8.0f;
+constexpr u32 search_max_length = 48;
+constexpr float caption_top_gap = 12.0f;
+constexpr float caption_bottom_gap = 2.0f;
 constexpr float knob_ring = 1.5f;
 
 constexpr float animation_speed_min = 0.25f;
@@ -120,6 +142,11 @@ float row_height(const Fonts &t_fonts)
 {
 	return label_top_gap + t_fonts.body().line_height() + label_line_gap + t_fonts.secondary().line_height() +
 		   label_bottom_gap;
+}
+
+float caption_height(const Fonts &t_fonts)
+{
+	return caption_top_gap + t_fonts.secondary().line_height() + caption_bottom_gap;
 }
 
 float tab_height(const Fonts &t_fonts)
@@ -199,10 +226,10 @@ Rect slider_track_rect(Rect t_row, const Fonts &t_fonts)
 	return right_aligned_control(t_row, t_fonts, slider_track_width, 22.0f);
 }
 
-Rect slider_control_rect(Rect t_row, const Fonts &t_fonts)
+Rect slider_control_rect(Rect t_row, const Fonts &t_fonts, float t_readout_width = slider_readout_width)
 {
 	const Rect track = slider_track_rect(t_row, t_fonts);
-	const float readout = slider_readout_gap + slider_readout_width;
+	const float readout = slider_readout_gap + t_readout_width;
 
 	return Rect{track.x - readout, track.y, track.w + readout, track.h};
 }
@@ -246,7 +273,7 @@ void draw_toggle(DrawList &t_draw_list, Rect t_toggle, float t_on, Color t_accen
 }
 
 void draw_slider(DrawList &t_draw_list, const Font &t_font, Rect t_track, float t_fraction, std::string_view t_readout,
-				 Color t_accent, u8 t_alpha)
+				 Color t_accent, u8 t_alpha, u32 t_steps = 0)
 {
 	const float center_y = t_track.center().y;
 	const float readout_x = t_track.x - slider_readout_gap - text_width(t_font, t_readout);
@@ -260,6 +287,15 @@ void draw_slider(DrawList &t_draw_list, const Font &t_font, Rect t_track, float 
 	t_draw_list.add_rounded_rect(bar, rounded(slider_bar_height * 0.5f), faded(theme().track, t_alpha));
 	if (filled.w > 0.0f) {
 		t_draw_list.add_rounded_rect(filled, rounded(slider_bar_height * 0.5f), faded(t_accent, t_alpha));
+	}
+
+	for (u32 i = 1; i < t_steps; i += 1) {
+		const float x = bar.x + bar.w * static_cast<float>(i) / static_cast<float>(t_steps);
+		const Color tick = x <= filled.right() ? with_alpha(foreground_on(t_accent), 150) : theme().text_faint;
+
+		t_draw_list.add_rounded_rect(
+			Rect{x - slider_tick_size * 0.5f, center_y - slider_tick_size * 0.5f, slider_tick_size, slider_tick_size},
+			rounded(slider_tick_size * 0.5f), faded(tick, t_alpha));
 	}
 
 	const Rect knob{filled.right() - slider_thumb_radius, center_y - slider_thumb_radius, slider_thumb_radius * 2.0f,
@@ -306,6 +342,55 @@ void draw_reset_button(DrawList &t_draw_list, const Texture *t_icon, Rect t_butt
 								  faded(t_hovered ? theme().text : theme().text_dim, alpha));
 }
 
+u32 auto_lock_stop(u32 t_minutes)
+{
+	if (t_minutes == 0) return auto_lock_stop_count - 1;
+
+	const auto distance = [t_minutes](u32 t_stop) {
+		const u32 stop = auto_lock_stops[t_stop];
+		return t_minutes > stop ? t_minutes - stop : stop - t_minutes;
+	};
+
+	u32 nearest = 0;
+	for (u32 i = 1; i + 1 < auto_lock_stop_count; i += 1) {
+		if (distance(i) < distance(nearest)) {
+			nearest = i;
+		}
+	}
+
+	return nearest;
+}
+
+std::string_view auto_lock_label(u32 t_minutes, char (&t_buffer)[16])
+{
+	if (t_minutes == 0) return "Never";
+	if (t_minutes == 60) return "1 hour";
+
+	const int written = std::snprintf(t_buffer, sizeof(t_buffer), "%u min", t_minutes);
+
+	return std::string_view{t_buffer, static_cast<usize>(std::max(written, 0))};
+}
+
+bool matches_every_word(std::string_view t_query, std::span<const std::string_view> t_fields)
+{
+	usize start = 0;
+
+	while (start < t_query.size()) {
+		const usize end = std::min(t_query.find(' ', start), t_query.size());
+		const std::string_view word = t_query.substr(start, end - start);
+		start = end + 1;
+
+		if (word.empty()) continue;
+
+		const bool found = std::ranges::any_of(t_fields, [word](std::string_view t_field) {
+			return find_ignoring_case(t_field, word) != std::string_view::npos;
+		});
+		if (!found) return false;
+	}
+
+	return true;
+}
+
 void draw_theme_preview(DrawList &t_draw_list, Rect t_preview, ThemeKind t_kind, Color t_backdrop, u8 t_alpha)
 {
 	const Theme &preset = theme_preset(t_kind);
@@ -321,14 +406,36 @@ void draw_theme_preview(DrawList &t_draw_list, Rect t_preview, ThemeKind t_kind,
 }
 }
 
+const SettingsPanel::RowSpec SettingsPanel::row_specs[row_spec_count]{
+	{&Rows::theme, SettingsTab::appearance, "Theme", "Colors of the interface.", "dark light mode palette colour"},
+	{&Rows::font, SettingsTab::appearance, "Font", "Typeface for all text.", "typeface family text"},
+	{&Rows::font_size, SettingsTab::appearance, "Font Size", "Scales the whole interface.", "text scale zoom bigger"},
+	{&Rows::secondary_font_size, SettingsTab::appearance, "Secondary Font Size", "Size of labels and hints.",
+	 "text scale smaller"},
+	{&Rows::accent, SettingsTab::appearance, "Accent Color", "Color of buttons and highlights.", "colour highlight"},
+	{&Rows::corner_roundness, SettingsTab::appearance, "Corner Roundness", "Rounding of corners.", "radius rounded"},
+	{&Rows::notifications, SettingsTab::appearance, "Notifications", "Show short confirmation messages.",
+	 "toast popup alert"},
+	{&Rows::animations, SettingsTab::motion, "Animations", "Animate popups and scrolling.", "motion effects reduce"},
+	{&Rows::animation_speed, SettingsTab::motion, "Animation Speed", "How fast animations play.", "motion fast slow"},
+	{&Rows::hide_from_capture, SettingsTab::privacy, "Hide From Screen Capture", "Hide accounts from screenshots.",
+	 "stream record share obs discord"},
+	{&Rows::block_overlay_injection, SettingsTab::privacy, "Block Overlay Injection",
+	 "Block overlays and keyloggers. Restart to apply.", "security inject dll"},
+	{&Rows::close_to_tray, SettingsTab::privacy, "Close To Tray", "Closing hides the app to the tray.",
+	 "minimize background system tray"},
+	{&Rows::auto_lock, SettingsTab::security, "Auto-Lock", "Lock the vault after being idle.",
+	 "timeout idle inactive away"},
+	{&Rows::master_password, SettingsTab::security, "Master Password", "Encrypts saved passwords.",
+	 "change reset vault encryption"},
+};
+
 const SettingsPanel::Toggle SettingsPanel::toggles[toggle_count]{
-	{&Settings::show_notifications, &Rows::notifications, "Notifications", "Show confirmations in the corner."},
-	{&Settings::animations_enabled, &Rows::animations, "Animations", "Animate popups and scrolling."},
-	{&Settings::hide_accounts_from_capture, &Rows::hide_from_capture, "Hide From Screen Capture",
-	 "Hide accounts from screenshots."},
-	{&Settings::block_overlay_injection, &Rows::block_overlay_injection, "Block Overlay Injection",
-	 "Block overlays and keyloggers. Restart to apply."},
-	{&Settings::close_to_tray, &Rows::close_to_tray, "Close To Tray", "Closing hides the app to the tray."},
+	{&Settings::show_notifications, &Rows::notifications},
+	{&Settings::animations_enabled, &Rows::animations},
+	{&Settings::hide_accounts_from_capture, &Rows::hide_from_capture},
+	{&Settings::block_overlay_injection, &Rows::block_overlay_injection},
+	{&Settings::close_to_tray, &Rows::close_to_tray},
 };
 
 SettingsPanel::SettingsPanel(Settings &t_settings, Fonts &t_fonts, Renderer &t_renderer, const Window &t_window,
@@ -356,6 +463,9 @@ SettingsPanel::SettingsPanel(Settings &t_settings, Fonts &t_fonts, Renderer &t_r
 					   .hover_preview_seconds = theme_hover_preview_seconds,
 				   })
 {
+	m_search.set_max_length(search_max_length);
+	m_search.set_placeholder("Search settings");
+
 	sync_with_settings();
 }
 
@@ -367,6 +477,7 @@ void SettingsPanel::sync_with_settings()
 	m_secondary_font_size_shown = m_settings.secondary_font_size;
 	m_animation_speed_shown = m_settings.animation_speed;
 	m_corner_roundness_shown = m_settings.corner_roundness;
+	m_auto_lock_shown = static_cast<float>(auto_lock_stop(m_settings.auto_lock_minutes));
 	m_accent_shown[0] = m_settings.accent.r;
 	m_accent_shown[1] = m_settings.accent.g;
 	m_accent_shown[2] = m_settings.accent.b;
@@ -376,9 +487,19 @@ void SettingsPanel::sync_with_settings()
 	}
 }
 
+void SettingsPanel::restore_committed_theme(Settings &t_settings) const
+{
+	if (!m_theme_before_preview) return;
+
+	t_settings.theme = m_theme_before_preview->theme;
+	t_settings.accent = m_theme_before_preview->accent;
+}
+
 void SettingsPanel::open()
 {
 	m_open = true;
+	m_search.set_focused(false);
+	clear_search();
 
 	if (m_installed_fonts.names.empty()) {
 		m_installed_fonts = installed_fonts();
@@ -390,6 +511,8 @@ void SettingsPanel::open()
 void SettingsPanel::close()
 {
 	m_open = false;
+	m_search.set_focused(false);
+	m_auto_lock_drag.end();
 	m_font_list.close();
 	m_theme_list.close();
 	m_color_picker.close();
@@ -413,12 +536,10 @@ SettingsPanel::Layout SettingsPanel::layout() const
 		height = width / aspect;
 	}
 
-	const float scale = panel_closed_scale + (1.0f - panel_closed_scale) * m_open_amount;
-
 	Layout result{};
 	result.docked = width < panel_min_size.x * size_scale || height < panel_min_size.y * size_scale;
 	result.panel = result.docked ? m_window.content_rect().inset(0.0f, 1.0f)
-								 : Rect{0.0f, 0.0f, window.x, window.y}.centered(width * scale, height * scale);
+								 : Rect{0.0f, 0.0f, window.x, window.y}.centered(width, height);
 	result.inner = result.panel.inset(panel_border);
 
 	Rect remaining = result.inner;
@@ -438,29 +559,106 @@ SettingsPanel::Rows SettingsPanel::rows(const Layout &t_layout) const
 	Rect cursor{t_layout.rows_region.x, t_layout.rows_region.y + rows_top_padding - m_rows_scroll.offset(),
 				t_layout.rows_region.w, 1.0e6f};
 	const float top = cursor.y;
-	const auto place = [&](SettingsTab t_tab) { return t_tab == m_tab ? cursor.split_top(row) : hidden; };
+	const bool searching = is_searching();
 
 	Rows result{};
-	result.theme = place(SettingsTab::appearance);
-	result.font = place(SettingsTab::appearance);
-	result.font_size = place(SettingsTab::appearance);
-	result.secondary_font_size = place(SettingsTab::appearance);
-	result.accent = place(SettingsTab::appearance);
-	result.corner_roundness = place(SettingsTab::appearance);
-	result.notifications = place(SettingsTab::appearance);
+	std::fill(std::begin(result.captions), std::end(result.captions), hidden);
+	std::optional<SettingsTab> captioned;
 
-	result.animations = place(SettingsTab::motion);
-	result.animation_speed = place(SettingsTab::motion);
+	for (const RowSpec &spec : row_specs) {
+		if (!is_listed(spec)) {
+			result.*spec.row = hidden;
+			continue;
+		}
 
-	result.hide_from_capture = place(SettingsTab::privacy);
-	result.block_overlay_injection = place(SettingsTab::privacy);
-	result.close_to_tray = place(SettingsTab::privacy);
+		if (searching && captioned != spec.tab) {
+			result.captions[static_cast<u32>(spec.tab)] = cursor.split_top(caption_height(m_fonts));
+			captioned = spec.tab;
+		}
 
-	result.master_password = place(SettingsTab::security);
+		result.*spec.row = cursor.split_top(row);
+		result.listed_count += 1;
+	}
 
 	result.content_height = cursor.y - top + rows_top_padding * 2.0f;
 
 	return result;
+}
+
+const SettingsPanel::RowSpec &SettingsPanel::spec_of(Rect Rows::*t_row)
+{
+	for (const RowSpec &spec : row_specs) {
+		if (spec.row == t_row) return spec;
+	}
+
+	return row_specs[0];
+}
+
+bool SettingsPanel::is_searching() const
+{
+	return !m_search.value().empty();
+}
+
+bool SettingsPanel::is_listed(const RowSpec &t_spec) const
+{
+	if (!is_searching()) return t_spec.tab == m_tab;
+
+	const std::string_view fields[]{t_spec.title, t_spec.description, t_spec.keywords,
+									tab_names[static_cast<u32>(t_spec.tab)]};
+
+	return matches_every_word(m_search.value(), fields);
+}
+
+Rect SettingsPanel::search_rect(const Layout &t_layout) const
+{
+	const Rect &header = t_layout.header;
+	const float left =
+		back_button_rect(header).right() + title_gap + text_width(m_fonts.body(), panel_title) + search_header_gap;
+	const float right = header.right() - row_padding_x;
+	const float width = std::min(search_max_width, right - left);
+	if (width < search_min_width) return Rect{};
+
+	const float height = std::max(28.0f, m_fonts.secondary().line_height() + 12.0f);
+
+	return Rect{snapped_to_pixel(left + (right - left - width) * 0.5f), header.center().y - height * 0.5f, width,
+				height};
+}
+
+Rect SettingsPanel::search_text_rect(Rect t_search) const
+{
+	const float left = t_search.x + search_inset + search_icon_size + search_icon_gap;
+	const float right = search_clear_rect(t_search).x - search_icon_gap * 0.5f;
+
+	return Rect{left, t_search.y, std::max(0.0f, right - left), t_search.h};
+}
+
+Rect SettingsPanel::search_clear_rect(Rect t_search) const
+{
+	return Rect{t_search.right() - search_clear_margin - search_icon_size,
+				t_search.center().y - search_icon_size * 0.5f, search_icon_size, search_icon_size};
+}
+
+void SettingsPanel::refresh_search()
+{
+	const std::string_view query = m_search.value();
+	if (query == std::string_view{m_applied_query}) return;
+
+	copy_to(query, m_applied_query);
+	m_rows_scroll = Scrollable{};
+	m_color_picker.close();
+	m_tooltip.reset();
+}
+
+void SettingsPanel::clear_search()
+{
+	m_search.set_value("");
+	refresh_search();
+}
+
+void SettingsPanel::focus_search()
+{
+	m_search.set_focused(true);
+	m_search.apply(TextEdit::select_all);
 }
 
 Rect SettingsPanel::tab_rect(const Layout &t_layout, SettingsTab t_tab) const
@@ -564,6 +762,8 @@ Rect SettingsPanel::reset_row(const Rows &t_rows, ResettableSetting t_setting) c
 			return t_rows.block_overlay_injection;
 		case ResettableSetting::close_to_tray:
 			return t_rows.close_to_tray;
+		case ResettableSetting::auto_lock:
+			return t_rows.auto_lock;
 		case ResettableSetting::count:
 			break;
 	}
@@ -593,6 +793,8 @@ Rect SettingsPanel::reset_control(const Rows &t_rows, ResettableSetting t_settin
 		case ResettableSetting::block_overlay_injection:
 		case ResettableSetting::close_to_tray:
 			return toggle_rect(row, m_fonts);
+		case ResettableSetting::auto_lock:
+			return slider_control_rect(row, m_fonts, auto_lock_readout_width);
 		case ResettableSetting::count:
 			break;
 	}
@@ -635,6 +837,8 @@ bool SettingsPanel::is_default(ResettableSetting t_setting) const
 			return m_settings.block_overlay_injection == defaults.block_overlay_injection;
 		case ResettableSetting::close_to_tray:
 			return m_settings.close_to_tray == defaults.close_to_tray;
+		case ResettableSetting::auto_lock:
+			return m_settings.auto_lock_minutes == defaults.auto_lock_minutes;
 		case ResettableSetting::count:
 			break;
 	}
@@ -690,6 +894,9 @@ void SettingsPanel::reset(ResettableSetting t_setting)
 			break;
 		case ResettableSetting::close_to_tray:
 			m_settings.close_to_tray = defaults.close_to_tray;
+			break;
+		case ResettableSetting::auto_lock:
+			m_settings.auto_lock_minutes = defaults.auto_lock_minutes;
 			break;
 		case ResettableSetting::count:
 			return;
@@ -804,6 +1011,14 @@ void SettingsPanel::apply_corner_roundness(Rect t_track, float t_x)
 	set_corner_roundness(m_settings.corner_roundness);
 }
 
+void SettingsPanel::apply_auto_lock(Rect t_track, float t_x)
+{
+	const float fraction = std::clamp((t_x - t_track.x) / t_track.w, 0.0f, 1.0f);
+	const auto stop = static_cast<u32>(std::lround(fraction * static_cast<float>(auto_lock_stop_count - 1)));
+
+	m_settings.auto_lock_minutes = auto_lock_stops[std::min(stop, auto_lock_stop_count - 1)];
+}
+
 void SettingsPanel::step_font_size(Rect t_stepper, float &t_value, float t_min, float t_max, Vec2 t_point)
 {
 	if (stepper_minus(t_stepper).contains(t_point)) {
@@ -839,12 +1054,20 @@ void SettingsPanel::update(float t_delta_seconds)
 								   ? m_settings.corner_roundness
 								   : ease_value(m_corner_roundness_shown, m_settings.corner_roundness);
 
+	m_auto_lock_shown = ease_value(m_auto_lock_shown, static_cast<float>(auto_lock_stop(m_settings.auto_lock_minutes)));
+
 	set_corner_roundness(m_corner_roundness_shown);
 
 	const u8 accent[3]{m_settings.accent.r, m_settings.accent.g, m_settings.accent.b};
 	for (u32 channel = 0; channel < 3; channel += 1) {
 		m_accent_shown[channel] = ease_value(m_accent_shown[channel], accent[channel]);
 	}
+
+	m_tab_indicator = animation::ease_toward(m_tab_indicator, static_cast<float>(m_tab), tab_slide_rate,
+											 t_delta_seconds, animation::settled_pixels / tab_height(m_fonts));
+
+	m_search.update(t_delta_seconds);
+	refresh_search();
 
 	update_hover_hints(t_delta_seconds);
 
@@ -896,6 +1119,19 @@ bool SettingsPanel::on_pointer_down(Vec2 t_point)
 	}
 
 	const Layout current = layout();
+	const Rect search = search_rect(current);
+	const bool over_clear = is_searching() && search_clear_rect(search).contains(t_point);
+
+	if (search.contains(t_point) && !over_clear) {
+		m_search.set_focused(true);
+		m_search.on_pointer_down(m_fonts.secondary(), search_text_rect(search), t_point.x);
+		return true;
+	}
+
+	if (!over_clear) {
+		m_search.set_focused(false);
+	}
+
 	const Rows current_rows = rows(current);
 
 	if (m_rows_scroll.on_pointer_down(t_point, rows_scroll(current, current_rows))) return true;
@@ -916,6 +1152,13 @@ bool SettingsPanel::on_pointer_down(Vec2 t_point)
 	if (hits(current, current_rows.corner_roundness, roundness_track, t_point)) {
 		m_corner_roundness_drag.begin(t_point);
 		apply_corner_roundness(roundness_track, t_point.x);
+		return true;
+	}
+
+	const Rect auto_lock_track = slider_track_rect(current_rows.auto_lock, m_fonts);
+	if (hits(current, current_rows.auto_lock, auto_lock_track, t_point)) {
+		m_auto_lock_drag.begin(t_point);
+		apply_auto_lock(auto_lock_track, t_point.x);
 	}
 
 	return true;
@@ -950,6 +1193,15 @@ bool SettingsPanel::on_pointer_move(Vec2 t_point)
 		apply_corner_roundness(slider_track_rect(current_rows.corner_roundness, m_fonts), t_point.x);
 	}
 
+	if (m_auto_lock_drag.is_pressed()) {
+		m_auto_lock_drag.update(t_point);
+		apply_auto_lock(slider_track_rect(current_rows.auto_lock, m_fonts), t_point.x);
+	}
+
+	if (m_search.is_selecting()) {
+		m_search.on_pointer_move(m_fonts.secondary(), search_text_rect(search_rect(current)), t_point.x);
+	}
+
 	return true;
 }
 
@@ -974,12 +1226,15 @@ bool SettingsPanel::on_pointer_up(Vec2 t_point)
 	}
 
 	const bool ended_drag = m_rows_scroll.is_dragging() || m_color_picker.is_dragging() ||
-							m_animation_speed_drag.is_pressed() || m_corner_roundness_drag.is_pressed();
+							m_animation_speed_drag.is_pressed() || m_corner_roundness_drag.is_pressed() ||
+							m_auto_lock_drag.is_pressed() || m_search.is_selecting();
 
 	m_rows_scroll.on_pointer_up();
 	m_color_picker.on_pointer_up();
 	m_animation_speed_drag.end();
 	m_corner_roundness_drag.end();
+	m_auto_lock_drag.end();
+	m_search.on_pointer_up();
 
 	if (!ended_drag) {
 		handle_click(t_point);
@@ -996,7 +1251,17 @@ void SettingsPanel::handle_click(Vec2 t_point)
 		return;
 	}
 
+	const Rect search = search_rect(current);
+	if (is_searching() && search_clear_rect(search).contains(t_point)) {
+		clear_search();
+		m_search.set_focused(true);
+		return;
+	}
+
+	if (search.contains(t_point)) return;
+
 	if (const std::optional<SettingsTab> tab = tab_at(current, t_point)) {
+		clear_search();
 		select_tab(*tab);
 		return;
 	}
@@ -1073,8 +1338,16 @@ bool SettingsPanel::on_right_click(Vec2 t_point)
 
 	ListPopup *list = open_list();
 
-	if (TextInput *search = list != nullptr ? list->on_right_click(t_point) : nullptr) {
-		m_commands.push(Command{.type = CommandType::show_text_menu, .position = t_point, .text_input = search});
+	const Rect search = search_rect(layout());
+	if (list == nullptr && search.contains(t_point)) {
+		m_search.set_focused(true);
+		m_search.on_right_click(m_fonts.secondary(), search_text_rect(search), t_point.x);
+		m_commands.push(Command{.type = CommandType::show_text_menu, .position = t_point, .text_input = &m_search});
+		return true;
+	}
+
+	if (TextInput *list_search = list != nullptr ? list->on_right_click(t_point) : nullptr) {
+		m_commands.push(Command{.type = CommandType::show_text_menu, .position = t_point, .text_input = list_search});
 	}
 
 	return true;
@@ -1121,11 +1394,20 @@ bool SettingsPanel::on_key_down(u32 t_key)
 		if (const std::optional<u32> chosen = m_theme_list.on_key_down(t_key)) {
 			choose_theme(static_cast<ThemeKind>(*chosen));
 		}
+	} else if (t_key == VK_ESCAPE && is_searching()) {
+		clear_search();
+	} else if (t_key == VK_ESCAPE && m_search.is_focused()) {
+		m_search.set_focused(false);
 	} else if (t_key == VK_ESCAPE) {
 		close();
 	} else if (t_key == VK_TAB && is_control_down()) {
 		const u32 step = (GetKeyState(VK_SHIFT) & 0x8000) != 0 ? settings_tab_count - 1 : 1;
+		clear_search();
 		select_tab(static_cast<SettingsTab>((static_cast<u32>(m_tab) + step) % settings_tab_count));
+	} else if (t_key == 'F' && is_control_down()) {
+		focus_search();
+	} else if (m_search.is_focused()) {
+		m_search.on_key_down(t_key);
 	}
 
 	return true;
@@ -1137,6 +1419,16 @@ bool SettingsPanel::on_char(u32 t_character)
 
 	if (ListPopup *list = open_list()) {
 		list->on_char(t_character);
+		return true;
+	}
+
+	const bool printable = t_character >= 32 && t_character != 127;
+	if (printable && !m_search.is_focused() && search_rect(layout()).w > 0.0f) {
+		m_search.set_focused(true);
+	}
+
+	if (m_search.is_focused()) {
+		m_search.on_char(t_character);
 	}
 
 	return true;
@@ -1148,8 +1440,10 @@ CursorKind SettingsPanel::cursor() const
 	if (const ListPopup *list = open_list()) return list->cursor(m_mouse);
 
 	const bool dragging = m_rows_scroll.is_dragging() || m_color_picker.is_dragging() ||
-						  m_animation_speed_drag.is_pressed() || m_corner_roundness_drag.is_pressed();
+						  m_animation_speed_drag.is_pressed() || m_corner_roundness_drag.is_pressed() ||
+						  m_auto_lock_drag.is_pressed();
 	if (dragging) return CursorKind::drag;
+	if (m_search.is_selecting()) return CursorKind::ibeam;
 
 	if (m_color_picker.is_open()) {
 		const CursorKind picker = m_color_picker.cursor(m_mouse);
@@ -1158,6 +1452,11 @@ CursorKind SettingsPanel::cursor() const
 
 	const Layout current = layout();
 	if (back_button_rect(current.header).contains(m_mouse)) return CursorKind::hand;
+
+	const Rect search = search_rect(current);
+	if (is_searching() && search_clear_rect(search).contains(m_mouse)) return CursorKind::hand;
+	if (search.contains(m_mouse)) return CursorKind::ibeam;
+
 	if (tab_at(current, m_mouse)) return CursorKind::hand;
 	if (!current.rows_region.contains(m_mouse)) return CursorKind::arrow;
 
@@ -1187,6 +1486,7 @@ CursorKind SettingsPanel::cursor() const
 		{current_rows.secondary_font_size, stepper_plus(secondary_size)},
 		{current_rows.animation_speed, slider_track_rect(current_rows.animation_speed, m_fonts)},
 		{current_rows.corner_roundness, slider_track_rect(current_rows.corner_roundness, m_fonts)},
+		{current_rows.auto_lock, slider_track_rect(current_rows.auto_lock, m_fonts)},
 		{current_rows.accent, swatch_rect(current_rows.accent, m_fonts)},
 		{current_rows.master_password, master_password_button_rect(current_rows.master_password, m_fonts)},
 	};
@@ -1208,13 +1508,10 @@ void SettingsPanel::draw_chrome(DrawList &t_draw_list, const Layout &t_layout, u
 {
 	const Theme &colors = theme();
 	const Font &body = m_fonts.body();
-	const Vec2 window = m_window.size();
 
 	if (t_layout.docked) {
 		t_draw_list.add_rect(t_layout.panel, faded(colors.surface, t_alpha));
 	} else {
-		t_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y},
-							 faded(colors.scrim, static_cast<u8>(255.0f * m_open_amount)));
 		t_draw_list.add_bordered_rect(t_layout.panel, rounded(panel_radius), faded(colors.surface, t_alpha),
 									  faded(colors.border, t_alpha), panel_border);
 	}
@@ -1228,7 +1525,7 @@ void SettingsPanel::draw_chrome(DrawList &t_draw_list, const Layout &t_layout, u
 						m_assets.get(Asset::icon_arrow_back),
 						faded(back_hovered ? colors.text : colors.text_dim, t_alpha));
 
-	draw_text(t_draw_list, body, Vec2{back.right() + title_gap, body.centered_baseline(t_layout.header)}, "Settings",
+	draw_text(t_draw_list, body, Vec2{back.right() + title_gap, body.centered_baseline(t_layout.header)}, panel_title,
 			  faded(colors.text, t_alpha));
 
 	t_draw_list.add_rect(Rect{t_layout.header.x, t_layout.header.bottom(), t_layout.header.w, 1.0f},
@@ -1238,23 +1535,8 @@ void SettingsPanel::draw_chrome(DrawList &t_draw_list, const Layout &t_layout, u
 void SettingsPanel::draw_row_highlight(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows,
 									   u8 t_alpha) const
 {
-	const Rect hoverable[]{
-		t_rows.theme,
-		t_rows.font,
-		t_rows.font_size,
-		t_rows.secondary_font_size,
-		t_rows.accent,
-		t_rows.corner_roundness,
-		t_rows.notifications,
-		t_rows.animations,
-		t_rows.animation_speed,
-		t_rows.hide_from_capture,
-		t_rows.block_overlay_injection,
-		t_rows.close_to_tray,
-		t_rows.master_password,
-	};
-
-	for (const Rect &row : hoverable) {
+	for (const RowSpec &spec : row_specs) {
+		const Rect row = t_rows.*spec.row;
 		if (!is_row_hovered(t_layout, row)) continue;
 
 		t_draw_list.add_rounded_rect(row.inset(highlight_inset_x, 0.0f), rounded(highlight_radius),
@@ -1268,40 +1550,57 @@ void SettingsPanel::draw_rail(DrawList &t_draw_list, const Layout &t_layout, u8 
 	const Theme &colors = theme();
 	const Font &body = m_fonts.body();
 	const bool pointer_live = is_blocking() && !has_popup_open();
+	const bool searching = is_searching();
+	const float height = tab_height(m_fonts);
 
 	t_draw_list.add_rect(Rect{t_layout.rail.right(), t_layout.rail.y, 1.0f, t_layout.rail.h},
 						 faded(colors.separator, t_alpha));
 
+	if (!searching) {
+		const Rect first_tab = tab_rect(t_layout, SettingsTab::appearance);
+		const Rect indicator{first_tab.x,
+							 snapped_to_pixel(first_tab.y + m_tab_indicator * height) + tab_indicator_inset,
+							 tab_indicator_width, height - tab_indicator_inset * 2.0f};
+		t_draw_list.add_rounded_rect(indicator, rounded(tab_indicator_width * 0.5f), faded(m_settings.accent, t_alpha));
+	}
+
 	for (u32 i = 0; i < settings_tab_count; i += 1) {
 		const auto tab = static_cast<SettingsTab>(i);
 		const Rect item = tab_rect(t_layout, tab);
-		const bool active = tab == m_tab;
+		const bool hovered = pointer_live && item.contains(m_mouse);
 
-		if (active) {
-			t_draw_list.add_rounded_rect(item, rounded(highlight_radius), faded(colors.row_selected, t_alpha));
-			t_draw_list.add_rounded_rect(Rect{item.x + 2.0f, item.y + 7.0f, tab_indicator_width, item.h - 14.0f},
-										 rounded(tab_indicator_width * 0.5f), faded(m_settings.accent, t_alpha));
-		} else if (pointer_live && item.contains(m_mouse)) {
-			t_draw_list.add_rounded_rect(item, rounded(highlight_radius), faded(colors.row_hover, t_alpha));
+		Color label = colors.text_dim;
+		if (tab == m_tab && !searching) {
+			label = mix(colors.text, m_settings.accent, active_tab_tint);
+		} else if (hovered) {
+			label = mix(colors.text_dim, colors.text, hovered_tab_brightening);
 		}
 
 		draw_text_truncated(t_draw_list, body, Vec2{item.x + tab_label_inset, body.centered_baseline(item)},
-							tab_names[i], item.w - tab_label_inset * 2.0f,
-							faded(active ? colors.text : colors.text_dim, t_alpha));
+							tab_names[i], item.w - tab_label_inset * 2.0f, faded(label, t_alpha));
 	}
 }
 
-void SettingsPanel::draw_dropdown_row(DrawList &t_draw_list, const Layout &t_layout, Rect t_row, const char *t_title,
-									  const char *t_description, std::string_view t_value, bool t_open,
-									  u8 t_alpha) const
+void SettingsPanel::draw_label(DrawList &t_draw_list, const Rows &t_rows, Rect Rows::*t_row, Rect t_control,
+							   u8 t_alpha) const
 {
-	if (!is_on_screen(t_layout, t_row)) return;
+	const RowSpec &spec = spec_of(t_row);
+	const Rect row = t_rows.*t_row;
 
-	const Rect button = dropdown_rect(t_row, m_fonts);
-	const bool hovered = !has_popup_open() && hits(t_layout, t_row, button, m_mouse);
-
-	draw_row_label(t_draw_list, m_fonts, t_row, t_title, t_description, label_right_edge(button, t_row, m_fonts),
+	draw_row_label(t_draw_list, m_fonts, row, spec.title, spec.description, label_right_edge(t_control, row, m_fonts),
 				   t_alpha);
+}
+
+void SettingsPanel::draw_dropdown_row(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows,
+									  Rect Rows::*t_row, std::string_view t_value, bool t_open, u8 t_alpha) const
+{
+	const Rect row = t_rows.*t_row;
+	if (!is_on_screen(t_layout, row)) return;
+
+	const Rect button = dropdown_rect(row, m_fonts);
+	const bool hovered = !has_popup_open() && hits(t_layout, row, button, m_mouse);
+
+	draw_label(t_draw_list, t_rows, t_row, button, t_alpha);
 	controls::draw_dropdown(t_draw_list, m_fonts.body(), button, t_value, t_open, hovered, m_settings.accent, t_alpha);
 }
 
@@ -1310,23 +1609,19 @@ void SettingsPanel::draw_appearance(DrawList &t_draw_list, const Layout &t_layou
 	const Font &body = m_fonts.body();
 	const Color accent = m_settings.accent;
 
-	draw_dropdown_row(t_draw_list, t_layout, t_rows.theme, "Theme", "Colors of the interface.",
+	draw_dropdown_row(t_draw_list, t_layout, t_rows, &Rows::theme,
 					  theme_labels[static_cast<u32>(m_settings.theme)].name, m_theme_list.is_open(), t_alpha);
-	draw_dropdown_row(t_draw_list, t_layout, t_rows.font, "Font", "Typeface for all text.", m_font_label,
-					  m_font_list.is_open(), t_alpha);
+	draw_dropdown_row(t_draw_list, t_layout, t_rows, &Rows::font, m_font_label, m_font_list.is_open(), t_alpha);
 
 	if (is_on_screen(t_layout, t_rows.font_size)) {
 		const Rect stepper = stepper_rect(t_rows.font_size, m_fonts);
-		draw_row_label(t_draw_list, m_fonts, t_rows.font_size, "Font Size", "Scales the whole interface.",
-					   label_right_edge(stepper, t_rows.font_size, m_fonts), t_alpha);
+		draw_label(t_draw_list, t_rows, &Rows::font_size, stepper, t_alpha);
 		draw_stepper(t_draw_list, body, stepper, m_font_size_shown, t_alpha);
 	}
 
 	if (is_on_screen(t_layout, t_rows.secondary_font_size)) {
 		const Rect stepper = stepper_rect(t_rows.secondary_font_size, m_fonts);
-		draw_row_label(t_draw_list, m_fonts, t_rows.secondary_font_size, "Secondary Font Size",
-					   "Size of labels and hints.", label_right_edge(stepper, t_rows.secondary_font_size, m_fonts),
-					   t_alpha);
+		draw_label(t_draw_list, t_rows, &Rows::secondary_font_size, stepper, t_alpha);
 		draw_stepper(t_draw_list, body, stepper, m_secondary_font_size_shown, t_alpha);
 	}
 
@@ -1336,8 +1631,7 @@ void SettingsPanel::draw_appearance(DrawList &t_draw_list, const Layout &t_layou
 						  static_cast<u8>(std::lround(m_accent_shown[1])),
 						  static_cast<u8>(std::lround(m_accent_shown[2])), accent.a};
 
-		draw_row_label(t_draw_list, m_fonts, t_rows.accent, "Accent Color", "Color of buttons and highlights.",
-					   label_right_edge(swatch, t_rows.accent, m_fonts), t_alpha);
+		draw_label(t_draw_list, t_rows, &Rows::accent, swatch, t_alpha);
 		t_draw_list.add_rounded_rect(swatch, rounded(6.0f), faded(shown, t_alpha));
 	}
 }
@@ -1351,8 +1645,7 @@ void SettingsPanel::draw_sliders(DrawList &t_draw_list, const Layout &t_layout, 
 		const Rect row = t_rows.corner_roundness;
 		const int written = std::snprintf(readout, sizeof(readout), "%.0f%%", m_corner_roundness_shown * 100.0f);
 
-		draw_row_label(t_draw_list, m_fonts, row, "Corner Roundness", "Rounding of corners.",
-					   label_right_edge(slider_control_rect(row, m_fonts), row, m_fonts), t_alpha);
+		draw_label(t_draw_list, t_rows, &Rows::corner_roundness, slider_control_rect(row, m_fonts), t_alpha);
 		draw_slider(t_draw_list, body, slider_track_rect(row, m_fonts),
 					fraction_in(m_corner_roundness_shown, corner_roundness_min, corner_roundness_max),
 					std::string_view{readout, static_cast<usize>(std::max(written, 0))}, m_settings.accent, t_alpha);
@@ -1362,12 +1655,73 @@ void SettingsPanel::draw_sliders(DrawList &t_draw_list, const Layout &t_layout, 
 		const Rect row = t_rows.animation_speed;
 		const int written = std::snprintf(readout, sizeof(readout), "%.2fx", m_animation_speed_shown);
 
-		draw_row_label(t_draw_list, m_fonts, row, "Animation Speed", "How fast animations play.",
-					   label_right_edge(slider_control_rect(row, m_fonts), row, m_fonts), t_alpha);
+		draw_label(t_draw_list, t_rows, &Rows::animation_speed, slider_control_rect(row, m_fonts), t_alpha);
 		draw_slider(t_draw_list, body, slider_track_rect(row, m_fonts),
 					fraction_in(m_animation_speed_shown, animation_speed_min, animation_speed_max),
 					std::string_view{readout, static_cast<usize>(std::max(written, 0))}, m_settings.accent, t_alpha);
 	}
+}
+
+void SettingsPanel::draw_auto_lock(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const
+{
+	const Rect row = t_rows.auto_lock;
+	if (!is_on_screen(t_layout, row)) return;
+
+	const auto last_stop = static_cast<float>(auto_lock_stop_count - 1);
+	const float never_amount = std::clamp(m_auto_lock_shown - (last_stop - 1.0f), 0.0f, 1.0f);
+	char readout[16];
+
+	draw_label(t_draw_list, t_rows, &Rows::auto_lock, slider_control_rect(row, m_fonts, auto_lock_readout_width),
+			   t_alpha);
+	draw_slider(t_draw_list, m_fonts.body(), slider_track_rect(row, m_fonts), m_auto_lock_shown / last_stop,
+				auto_lock_label(m_settings.auto_lock_minutes, readout),
+				mix(m_settings.accent, theme().text_faint, never_amount), t_alpha, auto_lock_stop_count - 1);
+}
+
+void SettingsPanel::draw_search(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha)
+{
+	const Rect search = search_rect(t_layout);
+	if (search.w <= 0.0f) return;
+
+	const Theme &colors = theme();
+	const bool focused = m_search.is_focused();
+	const bool searching = is_searching();
+
+	controls::draw_field(t_draw_list, search, search.h * 0.5f, focused ? colors.text_dim : colors.control,
+						 focused ? colors.row_hover : colors.field, t_alpha);
+
+	const Rect icon{search.x + search_inset, search.center().y - search_icon_size * 0.5f, search_icon_size,
+					search_icon_size};
+	controls::draw_magnifier(t_draw_list, icon,
+							 faded(focused || searching ? colors.text_dim : colors.text_faint, t_alpha));
+	m_search.draw(t_draw_list, m_fonts.secondary(), search_text_rect(search), faded(colors.text, t_alpha),
+				  faded(m_settings.accent, t_alpha));
+
+	if (!searching) return;
+
+	const Rect clear = search_clear_rect(search);
+	controls::draw_x(t_draw_list, clear.inset(1.5f),
+					 faded(clear.contains(m_mouse) ? colors.text : colors.text_faint, t_alpha));
+}
+
+void SettingsPanel::draw_captions(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const
+{
+	const Font &secondary = m_fonts.secondary();
+
+	for (u32 i = 0; i < settings_tab_count; i += 1) {
+		const Rect caption = t_rows.captions[i];
+		if (!is_on_screen(t_layout, caption)) continue;
+
+		draw_text(t_draw_list, secondary,
+				  Vec2{caption.x + row_padding_x, caption.y + caption_top_gap + secondary.ascent()}, tab_names[i],
+				  faded(theme().text_faint, t_alpha));
+	}
+}
+
+void SettingsPanel::draw_no_results(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const
+{
+	draw_text_centered(t_draw_list, m_fonts.secondary(), t_layout.rows_region, "No settings match your search",
+					   faded(theme().text_dim, t_alpha));
 }
 
 void SettingsPanel::draw_toggles(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const
@@ -1378,8 +1732,7 @@ void SettingsPanel::draw_toggles(DrawList &t_draw_list, const Layout &t_layout, 
 		if (!is_on_screen(t_layout, row)) continue;
 
 		const Rect control = toggle_rect(row, m_fonts);
-		draw_row_label(t_draw_list, m_fonts, row, toggle.title, toggle.description,
-					   label_right_edge(control, row, m_fonts), t_alpha);
+		draw_label(t_draw_list, t_rows, toggle.row, control, t_alpha);
 		draw_toggle(t_draw_list, control, m_toggles_shown[i], m_settings.accent, t_alpha);
 	}
 }
@@ -1391,8 +1744,7 @@ void SettingsPanel::draw_master_password(DrawList &t_draw_list, const Layout &t_
 	if (!is_on_screen(t_layout, row)) return;
 
 	const Rect button = master_password_button_rect(row, m_fonts);
-	draw_row_label(t_draw_list, m_fonts, row, "Master Password", "Encrypts saved passwords.",
-				   label_right_edge(button, row, m_fonts), t_alpha);
+	draw_label(t_draw_list, t_rows, &Rows::master_password, button, t_alpha);
 
 	controls::draw_button(t_draw_list, m_fonts.body(), button, "Reset Password", controls::ButtonStyle::neutral,
 						  m_settings.accent, true, !has_popup_open() && hits(t_layout, row, button, m_mouse), t_alpha);
@@ -1424,16 +1776,32 @@ void SettingsPanel::draw(DrawList &t_draw_list)
 	const Rows current_rows = rows(current);
 	const ScrollGeometry scroll = rows_scroll(current, current_rows);
 
+	if (!current.docked) {
+		const Vec2 window = m_window.size();
+		t_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y}, faded(theme().scrim, alpha));
+	}
+
+	const float scale = current.docked ? 1.0f : panel_closed_scale + (1.0f - panel_closed_scale) * m_open_amount;
+	t_draw_list.push_scale(current.panel.center(), scale);
+
 	draw_chrome(t_draw_list, current, alpha);
+	draw_search(t_draw_list, current, alpha);
 	draw_rail(t_draw_list, current, alpha);
 
 	t_draw_list.push_clip(current.rows_region);
 	draw_row_highlight(t_draw_list, current, current_rows, alpha);
+	draw_captions(t_draw_list, current, current_rows, alpha);
 	draw_appearance(t_draw_list, current, current_rows, alpha);
 	draw_sliders(t_draw_list, current, current_rows, alpha);
 	draw_toggles(t_draw_list, current, current_rows, alpha);
+	draw_auto_lock(t_draw_list, current, current_rows, alpha);
 	draw_master_password(t_draw_list, current, current_rows, alpha);
 	draw_reset_buttons(t_draw_list, current, current_rows, alpha);
+
+	if (is_searching() && current_rows.listed_count == 0) {
+		draw_no_results(t_draw_list, current, alpha);
+	}
+
 	t_draw_list.pop_clip();
 
 	m_rows_scroll.draw_edge_fade(t_draw_list, current.rows_region, scroll, faded(theme().surface, alpha));
@@ -1447,4 +1815,6 @@ void SettingsPanel::draw(DrawList &t_draw_list)
 	m_theme_list.draw(t_draw_list, m_mouse);
 
 	m_tooltip.draw(t_draw_list, m_fonts, current.panel, alpha);
+
+	t_draw_list.pop_scale();
 }

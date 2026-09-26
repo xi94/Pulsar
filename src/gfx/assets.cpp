@@ -19,6 +19,7 @@
 #include "embeds/icons/EditIcon.hpp"
 #include "embeds/icons/EyeHiddenIcon.hpp"
 #include "embeds/icons/EyeVisible.hpp"
+#include "embeds/icons/FavoriteIcon.hpp"
 #include "embeds/icons/FolderIcon.hpp"
 #include "embeds/icons/GridIcon.hpp"
 #include "embeds/icons/LeagueIcon.hpp"
@@ -90,6 +91,7 @@ const EncodedAsset encoded_assets[asset_count]{
 	{icon::list_arrow, "ListArrow"},
 	{icon::eye_visible_icon, "EyeVisible"},
 	{icon::eye_hidden_icon, "EyeHiddenIcon"},
+	{icon::favorite_icon, "FavoriteIcon"},
 	{icon::update_icon, "UpdateIcon"},
 	{icon::reset_icon, "ResetIcon"},
 	{icon::app_mark, "AppMark"},

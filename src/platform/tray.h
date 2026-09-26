@@ -51,6 +51,7 @@ struct TrayMenu {
 	u32 game_count;
 	TrayAccount accounts[tray_max_accounts];
 	u32 account_count;
+	bool locked;
 };
 
 class Tray {
@@ -66,6 +67,7 @@ class Tray {
 	void on_menu_open(std::function<void(TrayMenu &)> t_fill_menu);
 	void set_game_icon(u32 t_game, std::span<const u8> t_png);
 	void set_colors(const TrayColors &t_colors);
+	void set_locked(bool t_locked);
 
 	bool is_icon_visible() const
 	{
@@ -93,6 +95,9 @@ class Tray {
 
 	bool add_icon();
 	void remove_icon();
+	void update_icon();
+	HICON shown_icon() const;
+	void fill_tooltip(wchar_t (&t_tooltip)[128]) const;
 	void rebuild_brushes();
 
 	void show_menu();
@@ -107,6 +112,8 @@ class Tray {
 
 	HWND m_window = nullptr;
 	HICON m_icon = nullptr;
+	HICON m_locked_icon = nullptr;
+	bool m_locked = false;
 	bool m_icon_added = false;
 	u32 m_add_attempts = 0;
 	wchar_t m_tooltip[128]{};

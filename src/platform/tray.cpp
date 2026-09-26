@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cwchar>
 #include <utility>
+#include <vector>
 
 #include <shellapi.h>
 
@@ -32,6 +33,8 @@ constexpr int submenu_arrow_width = 18;
 constexpr int icon_gap = 8;
 constexpr int min_row_width = 170;
 
+constexpr float locked_icon_opacity = 0.55f;
+
 int menu_icon_size()
 {
 	return app_icon_pixel_size(AppIconSize::small_icon) * 3 / 2;
@@ -54,6 +57,63 @@ void utf8_to_wide(const char *t_utf8, wchar_t *t_out, int t_capacity)
 	if (MultiByteToWideChar(CP_UTF8, 0, t_utf8, -1, t_out, t_capacity) <= 0) {
 		t_out[0] = L'\0';
 	}
+}
+
+HICON greyscale_icon(HICON t_icon)
+{
+	ICONINFO info{};
+	if (!GetIconInfo(t_icon, &info)) return nullptr;
+
+	HICON result = nullptr;
+	BITMAP source{};
+
+	if (info.hbmColor != nullptr && GetObjectW(info.hbmColor, sizeof(source), &source) != 0) {
+		BITMAPINFO format{};
+		format.bmiHeader.biSize = sizeof(format.bmiHeader);
+		format.bmiHeader.biWidth = source.bmWidth;
+		format.bmiHeader.biHeight = -source.bmHeight;
+		format.bmiHeader.biPlanes = 1;
+		format.bmiHeader.biBitCount = 32;
+		format.bmiHeader.biCompression = BI_RGB;
+
+		std::vector<u8> pixels(static_cast<usize>(source.bmWidth) * source.bmHeight * 4);
+		const HDC screen = GetDC(nullptr);
+		const bool read = GetDIBits(screen, info.hbmColor, 0, static_cast<UINT>(source.bmHeight), pixels.data(),
+									&format, DIB_RGB_COLORS) != 0;
+
+		void *bits = nullptr;
+		const HBITMAP grey = read ? CreateDIBSection(screen, &format, DIB_RGB_COLORS, &bits, nullptr, 0) : nullptr;
+		ReleaseDC(nullptr, screen);
+
+		if (grey != nullptr && bits != nullptr) {
+			for (usize i = 0; i < pixels.size(); i += 4) {
+				const auto luma = static_cast<u8>((pixels[i] * 29 + pixels[i + 1] * 150 + pixels[i + 2] * 77) >> 8);
+				pixels[i] = luma;
+				pixels[i + 1] = luma;
+				pixels[i + 2] = luma;
+				pixels[i + 3] = static_cast<u8>(pixels[i + 3] * locked_icon_opacity);
+			}
+
+			std::copy(pixels.begin(), pixels.end(), static_cast<u8 *>(bits));
+
+			ICONINFO grey_info{.fIcon = TRUE, .hbmMask = info.hbmMask, .hbmColor = grey};
+			result = CreateIconIndirect(&grey_info);
+		}
+
+		if (grey != nullptr) {
+			DeleteObject(grey);
+		}
+	}
+
+	if (info.hbmColor != nullptr) {
+		DeleteObject(info.hbmColor);
+	}
+
+	if (info.hbmMask != nullptr) {
+		DeleteObject(info.hbmMask);
+	}
+
+	return result;
 }
 
 HBITMAP decode_icon_bitmap(std::span<const u8> t_png, int t_size)
@@ -132,6 +192,10 @@ Tray::~Tray()
 		DeleteObject(m_menu_font);
 	}
 
+	if (m_locked_icon != nullptr) {
+		DestroyIcon(m_locked_icon);
+	}
+
 	DeleteObject(m_background_brush);
 	DeleteObject(m_hover_brush);
 
@@ -191,6 +255,49 @@ bool Tray::create(const wchar_t *t_tooltip)
 void Tray::on_menu_open(std::function<void(TrayMenu &)> t_fill_menu)
 {
 	m_fill_menu = std::move(t_fill_menu);
+}
+
+void Tray::set_locked(bool t_locked)
+{
+	if (t_locked == m_locked) return;
+
+	m_locked = t_locked;
+
+	if (m_locked && m_locked_icon == nullptr) {
+		m_locked_icon = greyscale_icon(m_icon);
+	}
+
+	update_icon();
+}
+
+HICON Tray::shown_icon() const
+{
+	return m_locked && m_locked_icon != nullptr ? m_locked_icon : m_icon;
+}
+
+void Tray::fill_tooltip(wchar_t (&t_tooltip)[128]) const
+{
+	wcsncpy_s(t_tooltip, m_tooltip, _TRUNCATE);
+
+	if (m_locked) {
+		wcsncat_s(t_tooltip, L" (locked)", _TRUNCATE);
+	}
+}
+
+void Tray::update_icon()
+{
+	if (!m_icon_added) return;
+
+	NOTIFYICONDATAW icon{
+		.cbSize = sizeof(NOTIFYICONDATAW),
+		.hWnd = m_window,
+		.uID = tray_icon_id,
+		.uFlags = NIF_ICON | NIF_TIP,
+		.hIcon = shown_icon(),
+	};
+	fill_tooltip(icon.szTip);
+
+	Shell_NotifyIconW(NIM_MODIFY, &icon);
 }
 
 TrayEvent Tray::take_event()
@@ -282,7 +389,10 @@ HMENU Tray::build_menu()
 		append_row(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(build_game_submenu(game)), row);
 	}
 
-	if (m_menu.game_count == 0) {
+	if (m_menu.locked) {
+		append_row(menu, MF_DISABLED | MF_GRAYED, placeholder_command,
+				   MenuRow{.label = L"Vault locked", .indented = true, .disabled = true});
+	} else if (m_menu.game_count == 0) {
 		append_row(menu, MF_DISABLED | MF_GRAYED, placeholder_command,
 				   MenuRow{.label = L"No games", .indented = true, .disabled = true});
 	}
@@ -307,7 +417,8 @@ void Tray::show_menu()
 	GetCursorPos(&cursor);
 
 	m_menu = TrayMenu{};
-	if (m_fill_menu) {
+	m_menu.locked = m_locked;
+	if (m_fill_menu && !m_locked) {
 		m_fill_menu(m_menu);
 	}
 
@@ -421,9 +532,9 @@ bool Tray::add_icon()
 		.uID = tray_icon_id,
 		.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP,
 		.uCallbackMessage = tray_callback_message,
-		.hIcon = m_icon,
+		.hIcon = shown_icon(),
 	};
-	wcsncpy_s(icon.szTip, m_tooltip, _TRUNCATE);
+	fill_tooltip(icon.szTip);
 
 	m_add_attempts += 1;
 
@@ -469,7 +580,7 @@ void Tray::handle_command(UINT t_command)
 	}
 
 	const UINT account = t_command - first_quick_login_command;
-	if (t_command < first_quick_login_command || account >= m_menu.account_count) return;
+	if (t_command < first_quick_login_command || account >= m_menu.account_count || m_locked) return;
 
 	m_pending_event = TrayEvent{
 		.type = TrayEventType::quick_login,

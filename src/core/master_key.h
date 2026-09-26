@@ -22,6 +22,8 @@ class MasterKey {
 
 	bool create(std::string_view t_password, MasterKeyParams &t_out_params);
 	bool unlock(std::string_view t_password, const MasterKeyParams &t_params);
+	void lock();
+	void swap(MasterKey &t_other);
 
 	bool is_unlocked() const
 	{

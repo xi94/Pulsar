@@ -35,12 +35,14 @@ struct MenuItem {
 	const char *label;
 	Asset icon;
 	bool starts_group;
+	bool needs_unlock;
 };
 
 constexpr MenuItem menu_items[]{
-	{CommandType::check_for_updates, "Check for Updates", Asset::icon_update, false},
-	{CommandType::open_settings, "Settings", Asset::icon_settings, true},
-	{CommandType::open_data_folder, "Open Data Folder", Asset::icon_folder, false},
+	{CommandType::check_for_updates, "Check for Updates", Asset::icon_update, false, false},
+	{CommandType::open_settings, "Settings", Asset::icon_settings, true, true},
+	{CommandType::open_data_folder, "Open Data Folder", Asset::icon_folder, false, false},
+	{CommandType::lock_vault, "Lock Now", Asset::icon_eye_hidden, true, true},
 };
 
 constexpr u32 item_count = static_cast<u32>(std::size(menu_items));
@@ -59,7 +61,7 @@ float item_offset(u32 t_item)
 Rect menu_rect(float t_open_amount)
 {
 	const float height = menu_padding * 2.0f + item_offset(item_count - 1) + item_height;
-	const float slide = (1.0f - t_open_amount) * -slide_distance;
+	const float slide = snapped_to_pixel((1.0f - t_open_amount) * -slide_distance);
 
 	return Rect{menu_x, title_bar_height + 4.0f + slide, menu_width, height};
 }
@@ -79,9 +81,9 @@ AppMenu::AppMenu(const Settings &t_settings, const Fonts &t_fonts, const Assets 
 	static_assert(item_count <= max_items);
 }
 
-void AppMenu::open(bool t_settings_available)
+void AppMenu::open(bool t_unlocked)
 {
-	m_settings_available = t_settings_available;
+	m_unlocked = t_unlocked;
 	m_open = true;
 }
 
@@ -92,7 +94,7 @@ void AppMenu::close()
 
 bool AppMenu::is_enabled(u32 t_item) const
 {
-	return menu_items[t_item].command != CommandType::open_settings || m_settings_available;
+	return !menu_items[t_item].needs_unlock || m_unlocked;
 }
 
 void AppMenu::update(float t_delta_seconds)

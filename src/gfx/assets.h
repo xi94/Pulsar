@@ -22,6 +22,7 @@ enum class Asset : u8 {
 	icon_list_arrow,
 	icon_eye_visible,
 	icon_eye_hidden,
+	icon_favorite,
 	icon_update,
 	icon_reset,
 	icon_app,
