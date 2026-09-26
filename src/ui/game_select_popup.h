@@ -5,10 +5,11 @@
 class DrawList;
 class Fonts;
 class Library;
+struct Settings;
 
 class GameSelectPopup {
   public:
-	GameSelectPopup(const Library &t_library, const Fonts &t_fonts);
+	GameSelectPopup(const Library &t_library, const Settings &t_settings, const Fonts &t_fonts);
 
 	void open(Rect t_anchor, Rect t_bounds);
 	void close();
@@ -39,6 +40,7 @@ class GameSelectPopup {
 	bool is_last_checked(u32 t_game) const;
 
 	const Library &m_library;
+	const Settings &m_settings;
 	const Fonts &m_fonts;
 
 	bool m_open = false;

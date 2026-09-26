@@ -168,7 +168,7 @@ AccountModal::AccountModal(Library &t_library, const Settings &t_settings, const
 	, m_window(t_window)
 	, m_toasts(t_toasts)
 	, m_commands(t_commands)
-	, m_visible_games(t_library, t_fonts)
+	, m_visible_games(t_library, t_settings, t_fonts)
 {
 	for (u32 i = 0; i < field_count; i += 1) {
 		m_fields[i].set_max_length(field_specs[i].max_length);

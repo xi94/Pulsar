@@ -98,11 +98,11 @@ void upload(ID3D11DeviceContext &t_context, ID3D11Buffer *t_buffer, const void *
 }
 }
 
-Texture::Texture(Renderer &t_renderer, const u8 *t_rgba_pixels, u32 t_width, u32 t_height)
+Texture::Texture(Renderer &t_renderer, std::span<const TextureLevel> t_levels)
 	: m_renderer(t_renderer)
-	, m_slot(t_renderer.create_texture(t_rgba_pixels, t_width, t_height))
-	, m_width(t_width)
-	, m_height(t_height)
+	, m_slot(t_renderer.create_texture(t_levels))
+	, m_width(t_levels.front().width)
+	, m_height(t_levels.front().height)
 {
 }
 
@@ -471,7 +471,7 @@ void Renderer::render(const DrawList &t_draw_list, Color t_clear_color)
 	}
 }
 
-u32 Renderer::create_texture(const u8 *t_rgba_pixels, u32 t_width, u32 t_height)
+u32 Renderer::create_texture(std::span<const TextureLevel> t_levels)
 {
 	u32 slot = invalid_texture_slot;
 	if (m_free_texture_count > 0) {
@@ -484,9 +484,9 @@ u32 Renderer::create_texture(const u8 *t_rgba_pixels, u32 t_width, u32 t_height)
 	}
 
 	const D3D11_TEXTURE2D_DESC desc{
-		.Width = t_width,
-		.Height = t_height,
-		.MipLevels = 1,
+		.Width = t_levels.front().width,
+		.Height = t_levels.front().height,
+		.MipLevels = static_cast<UINT>(t_levels.size()),
 		.ArraySize = 1,
 		.Format = DXGI_FORMAT_R8G8B8A8_UNORM,
 		.SampleDesc = {.Count = 1, .Quality = 0},
@@ -494,10 +494,15 @@ u32 Renderer::create_texture(const u8 *t_rgba_pixels, u32 t_width, u32 t_height)
 		.BindFlags = D3D11_BIND_SHADER_RESOURCE,
 	};
 
-	const D3D11_SUBRESOURCE_DATA pixels{.pSysMem = t_rgba_pixels, .SysMemPitch = t_width * 4};
+	std::vector<D3D11_SUBRESOURCE_DATA> pixels;
+	pixels.reserve(t_levels.size());
+
+	for (const TextureLevel &level : t_levels) {
+		pixels.push_back(D3D11_SUBRESOURCE_DATA{.pSysMem = level.rgba_pixels, .SysMemPitch = level.width * 4});
+	}
 
 	TextureSlot &texture = m_textures[slot];
-	if (FAILED(m_device->CreateTexture2D(&desc, &pixels, &texture.texture)) ||
+	if (FAILED(m_device->CreateTexture2D(&desc, pixels.data(), &texture.texture)) ||
 		FAILED(m_device->CreateShaderResourceView(texture.texture.Get(), nullptr, &texture.view))) {
 		destroy_texture(slot);
 		return invalid_texture_slot;

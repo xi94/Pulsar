@@ -7,7 +7,10 @@ set "app=%build%\src\Pulsar.exe"
 set "signer=%build%\tools\sign_release\sign_release.exe"
 set "release=%root%release"
 
-if "%~1"=="" (
+set "notes=%*"
+if defined notes set "notes=%notes:"=%"
+
+if not defined notes (
 	echo Usage: deploy.bat "What changed in this release"
 	exit /b 1
 )
@@ -37,7 +40,7 @@ echo.
 if not exist "%release%" mkdir "%release%"
 copy /y "%app%" "%release%\Pulsar.exe" >nul || exit /b 1
 
-"%signer%" --exe "%release%\Pulsar.exe" --notes "%~1" --out "%release%\update.json" || exit /b 1
+"%signer%" --exe "%release%\Pulsar.exe" --notes "%notes%" --out "%release%\update.json" || exit /b 1
 
 echo.
 echo Upload both files in %release% to a GitHub release tagged v^<version above^>.

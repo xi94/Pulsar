@@ -21,6 +21,7 @@ struct ButtonColors {
 void draw_icon(DrawList &t_draw_list, Rect t_rect, const Texture *t_icon, Color t_tint);
 void draw_x(DrawList &t_draw_list, Rect t_rect, Color t_color);
 void draw_check(DrawList &t_draw_list, Rect t_rect, Color t_color);
+void draw_checkbox(DrawList &t_draw_list, Rect t_box, bool t_checked, bool t_enabled, Color t_accent);
 void draw_chevron_down(DrawList &t_draw_list, Rect t_rect, Color t_color);
 void draw_magnifier(DrawList &t_draw_list, Rect t_rect, Color t_color);
 void draw_eye(DrawList &t_draw_list, const Assets &t_assets, Rect t_rect, bool t_revealed, Color t_color);

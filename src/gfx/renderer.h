@@ -1,5 +1,7 @@
 #pragma once
 
+#include <span>
+
 #include <d3d11.h>
 #include <wrl/client.h>
 
@@ -10,9 +12,15 @@ class Renderer;
 class Window;
 struct DrawCommand;
 
+struct TextureLevel {
+	const u8 *rgba_pixels;
+	u32 width;
+	u32 height;
+};
+
 class Texture {
   public:
-	Texture(Renderer &t_renderer, const u8 *t_rgba_pixels, u32 t_width, u32 t_height);
+	Texture(Renderer &t_renderer, std::span<const TextureLevel> t_levels);
 	~Texture();
 
 	Texture(const Texture &) = delete;
@@ -66,7 +74,7 @@ class Renderer {
 
 	void render(const DrawList &t_draw_list, Color t_clear_color);
 
-	u32 create_texture(const u8 *t_rgba_pixels, u32 t_width, u32 t_height);
+	u32 create_texture(std::span<const TextureLevel> t_levels);
 	void destroy_texture(u32 t_slot);
 
   private:

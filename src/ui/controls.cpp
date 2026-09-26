@@ -166,3 +166,22 @@ void controls::draw_dropdown(DrawList &t_draw_list, const Font &t_font, Rect t_r
 						chevron.x - padding - label_x, faded(colors.text, t_alpha));
 	draw_chevron_down(t_draw_list, chevron, faded(t_open ? colors.text : colors.text_dim, t_alpha));
 }
+
+void controls::draw_checkbox(DrawList &t_draw_list, Rect t_box, bool t_checked, bool t_enabled, Color t_accent)
+{
+	constexpr float radius = 4.0f;
+	constexpr float border = 1.5f;
+	constexpr float check_inset = 2.0f;
+	constexpr float disabled_strength = 0.55f;
+
+	const Theme &colors = theme();
+
+	if (!t_checked) {
+		t_draw_list.add_bordered_rect(t_box, rounded(radius), colors.field, colors.border, border);
+		return;
+	}
+
+	const Color fill = t_enabled ? t_accent : mix(colors.popup, t_accent, disabled_strength);
+	t_draw_list.add_rounded_rect(t_box, rounded(radius), fill);
+	draw_check(t_draw_list, t_box.inset(check_inset), foreground_on(fill));
+}

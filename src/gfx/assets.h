@@ -59,11 +59,18 @@ class Assets {
 	static std::span<const u8> encoded_bytes(Asset t_asset);
 
   private:
-	struct DecodedImage {
-		u8 *pixels = nullptr;
-		u32 width = 0;
-		u32 height = 0;
+	struct MipLevel {
+		u32 width;
+		u32 height;
+		usize offset;
 	};
+
+	struct DecodedImage {
+		std::vector<u8> pixels;
+		std::vector<MipLevel> levels;
+	};
+
+	static DecodedImage with_mipmaps(const u8 *t_rgba_pixels, u32 t_width, u32 t_height);
 
 	std::unique_ptr<Texture> m_textures[asset_count];
 	std::thread m_decoder;

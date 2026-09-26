@@ -5,6 +5,7 @@
 
 #include "core/animation.h"
 #include "core/library.h"
+#include "core/settings.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "ui/controls.h"
@@ -17,11 +18,17 @@ constexpr float popup_padding = 6.0f;
 constexpr float popup_radius = 10.0f;
 constexpr float bounds_margin = 8.0f;
 constexpr float anchor_gap = 6.0f;
-constexpr float row_padding_x = 10.0f;
+constexpr float row_padding_x = 12.0f;
+constexpr float row_inset = 4.0f;
+constexpr float row_radius = 7.0f;
+constexpr float icon_radius = 5.0f;
+constexpr float icon_gap = 10.0f;
+constexpr float checkbox_size = 16.0f;
+constexpr float hover_strength = 0.22f;
+constexpr u8 unchecked_icon_alpha = 150;
 constexpr float open_ease_rate = 20.0f;
 
 constexpr Color color_icon{255, 255, 255, 255};
-constexpr Color color_icon_disabled{150, 150, 150, 255};
 
 float row_height_for(const Fonts &t_fonts)
 {
@@ -39,8 +46,9 @@ bool has_bit(u16 t_mask, u32 t_bit)
 }
 }
 
-GameSelectPopup::GameSelectPopup(const Library &t_library, const Fonts &t_fonts)
+GameSelectPopup::GameSelectPopup(const Library &t_library, const Settings &t_settings, const Fonts &t_fonts)
 	: m_library(t_library)
+	, m_settings(t_settings)
 	, m_fonts(t_fonts)
 {
 }
@@ -121,41 +129,41 @@ void GameSelectPopup::draw(DrawList &t_draw_list, Vec2 t_mouse) const
 {
 	if (!is_open()) return;
 
-	const Rect popup = popup_rect();
-	controls::draw_popup_shadow(t_draw_list, popup, popup_radius, m_open_amount);
-
 	const Theme &colors = theme();
-	t_draw_list.add_bordered_rect(popup, rounded(popup_radius), colors.popup, colors.border, 1.0f);
-	t_draw_list.push_clip(popup);
-
+	const Rect popup = popup_rect();
 	const Font &font = m_fonts.secondary();
 	const float icon_size = icon_size_for(m_fonts);
+	const Color hover = mix(colors.popup, m_settings.accent, hover_strength);
+
+	controls::draw_popup_shadow(t_draw_list, popup, popup_radius, m_open_amount);
+	t_draw_list.add_bordered_rect(popup, rounded(popup_radius), colors.popup, colors.border, 1.0f);
+	t_draw_list.push_clip(popup);
 
 	for (u32 index = 0; index < m_library.game_count(); index += 1) {
 		const Game &game = m_library.game(index);
 		const Rect row = row_rect(index);
+		const bool checked = has_bit(m_mask, index);
 		const bool locked = is_last_checked(index);
 
 		if (!locked && row.contains(t_mouse)) {
-			t_draw_list.add_rounded_rect(row.inset(4.0f, 0.0f), rounded(6.0f), colors.control);
+			t_draw_list.add_rounded_rect(row.inset(row_inset, 0.0f), rounded(row_radius), hover);
 		}
 
-		const Rect icon{row.x + row_padding_x, row.y + (row.h - icon_size) * 0.5f, icon_size, icon_size};
+		const Rect icon{row.x + row_padding_x, row.center().y - icon_size * 0.5f, icon_size, icon_size};
+		const u8 icon_alpha = checked ? 255 : unchecked_icon_alpha;
 
 		if (game.icon != nullptr) {
-			t_draw_list.add_image(icon, game.icon, locked ? color_icon_disabled : color_icon, rounded(4.0f));
+			t_draw_list.add_image(icon, game.icon, with_alpha(color_icon, icon_alpha), rounded(icon_radius));
 		} else {
-			t_draw_list.add_rounded_rect(icon, rounded(4.0f), locked ? faded(game.accent, 140) : game.accent);
+			t_draw_list.add_rounded_rect(icon, rounded(icon_radius), with_alpha(game.accent, icon_alpha));
 		}
 
-		draw_text(t_draw_list, font, Vec2{icon.right() + 10.0f, font.centered_baseline(row)}, game.title,
-				  locked ? colors.text_faint : colors.text);
+		draw_text(t_draw_list, font, Vec2{icon.right() + icon_gap, font.centered_baseline(row)}, game.title,
+				  checked ? colors.text : colors.text_dim);
 
-		if (has_bit(m_mask, index)) {
-			const Rect check{row.right() - row_padding_x - icon_size, row.y + (row.h - icon_size) * 0.5f, icon_size,
-							 icon_size};
-			controls::draw_check(t_draw_list, check, locked ? colors.text_faint : colors.success);
-		}
+		const Rect box{row.right() - row_padding_x - checkbox_size, row.center().y - checkbox_size * 0.5f,
+					   checkbox_size, checkbox_size};
+		controls::draw_checkbox(t_draw_list, box, checked, !locked, m_settings.accent);
 	}
 
 	t_draw_list.pop_clip();

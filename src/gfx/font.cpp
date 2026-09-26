@@ -163,7 +163,8 @@ bool Font::load(Renderer &t_renderer, const char *t_path, float t_pixel_height, 
 	}
 
 	const std::vector<u8> rgba = coverage_to_white_rgba(coverage);
-	m_atlas = std::make_unique<Texture>(t_renderer, rgba.data(), atlas_size, atlas_size);
+	const TextureLevel atlas_level{rgba.data(), atlas_size, atlas_size};
+	m_atlas = std::make_unique<Texture>(t_renderer, std::span{&atlas_level, 1});
 
 	int ascent = 0;
 	int descent = 0;

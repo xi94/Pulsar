@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstring>
 #include <print>
 
 #include "embeds/banners/2XKO.hpp"
@@ -41,6 +42,38 @@ struct EncodedAsset {
 	std::span<const u8> bytes;
 	const char *name;
 };
+
+void shrink_by_half(const u8 *t_source, u32 t_source_width, u32 t_source_height, u8 *t_target, u32 t_target_width,
+					u32 t_target_height)
+{
+	for (u32 y = 0; y < t_target_height; y += 1) {
+		const u32 rows[2]{std::min(y * 2, t_source_height - 1), std::min(y * 2 + 1, t_source_height - 1)};
+
+		for (u32 x = 0; x < t_target_width; x += 1) {
+			const u32 columns[2]{std::min(x * 2, t_source_width - 1), std::min(x * 2 + 1, t_source_width - 1)};
+
+			u32 alpha_total = 0;
+			u32 color_total[3]{};
+
+			for (const u32 row : rows) {
+				for (const u32 column : columns) {
+					const u8 *texel = t_source + (static_cast<usize>(row) * t_source_width + column) * 4;
+					alpha_total += texel[3];
+
+					for (u32 channel = 0; channel < 3; channel += 1) {
+						color_total[channel] += texel[channel] * texel[3];
+					}
+				}
+			}
+
+			u8 *target = t_target + (static_cast<usize>(y) * t_target_width + x) * 4;
+			for (u32 channel = 0; channel < 3; channel += 1) {
+				target[channel] = alpha_total > 0 ? static_cast<u8>(color_total[channel] / alpha_total) : 0;
+			}
+			target[3] = static_cast<u8>((alpha_total + 2) / 4);
+		}
+	}
+}
 
 const EncodedAsset encoded_assets[asset_count]{
 	{icon::arrow_back_icon, "ArrowBack"},
@@ -85,6 +118,32 @@ std::span<const u8> Assets::encoded_bytes(Asset t_asset)
 	return encoded_assets[static_cast<usize>(t_asset)].bytes;
 }
 
+Assets::DecodedImage Assets::with_mipmaps(const u8 *t_rgba_pixels, u32 t_width, u32 t_height)
+{
+	DecodedImage image;
+	usize total_bytes = 0;
+
+	for (u32 width = t_width, height = t_height;; width = std::max(1u, width / 2), height = std::max(1u, height / 2)) {
+		image.levels.push_back(MipLevel{width, height, total_bytes});
+		total_bytes += static_cast<usize>(width) * height * 4;
+
+		if (width == 1 && height == 1) break;
+	}
+
+	image.pixels.resize(total_bytes);
+	std::memcpy(image.pixels.data(), t_rgba_pixels, static_cast<usize>(t_width) * t_height * 4);
+
+	for (usize i = 1; i < image.levels.size(); i += 1) {
+		const MipLevel &source = image.levels[i - 1];
+		const MipLevel &target = image.levels[i];
+
+		shrink_by_half(image.pixels.data() + source.offset, source.width, source.height,
+					   image.pixels.data() + target.offset, target.width, target.height);
+	}
+
+	return image;
+}
+
 void Assets::begin_decode()
 {
 	m_decoder = std::thread([this]() {
@@ -103,9 +162,11 @@ void Assets::begin_decode()
 
 				if (pixels == nullptr) {
 					std::println("Failed to decode embedded asset '{}': {}", source.name, stbi_failure_reason());
+					continue;
 				}
 
-				m_decoded[index] = DecodedImage{pixels, static_cast<u32>(width), static_cast<u32>(height)};
+				m_decoded[index] = with_mipmaps(pixels, static_cast<u32>(width), static_cast<u32>(height));
+				stbi_image_free(pixels);
 			}
 		};
 
@@ -134,9 +195,15 @@ bool Assets::finish_upload(Renderer &t_renderer)
 	for (usize i = 0; i < asset_count; i += 1) {
 		const DecodedImage &image = m_decoded[i];
 
-		if (image.pixels != nullptr) {
-			m_textures[i] = std::make_unique<Texture>(t_renderer, image.pixels, image.width, image.height);
-			stbi_image_free(image.pixels);
+		if (!image.levels.empty()) {
+			std::vector<TextureLevel> levels;
+			levels.reserve(image.levels.size());
+
+			for (const MipLevel &level : image.levels) {
+				levels.push_back(TextureLevel{image.pixels.data() + level.offset, level.width, level.height});
+			}
+
+			m_textures[i] = std::make_unique<Texture>(t_renderer, levels);
 		}
 
 		all_uploaded = all_uploaded && m_textures[i] != nullptr && m_textures[i]->is_valid();
