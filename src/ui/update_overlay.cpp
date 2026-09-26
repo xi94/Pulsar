@@ -259,17 +259,10 @@ void UpdateOverlay::draw_detail(DrawList &t_draw_list, float t_baseline, std::st
 void UpdateOverlay::draw_primary_button(DrawList &t_draw_list, std::string_view t_label, bool t_accented) const
 {
 	const Rect button = primary_button_rect();
-	const Color accent = m_settings.accent;
+	const controls::ButtonStyle style = t_accented ? controls::ButtonStyle::accent : controls::ButtonStyle::neutral;
 
-	if (t_accented) {
-		t_draw_list.add_bordered_rect(button, rounded(8.0f), accent, outline_on(accent), 1.0f);
-		draw_text_centered(t_draw_list, m_fonts.body(), button, t_label, foreground_on(accent));
-		return;
-	}
-
-	t_draw_list.add_rounded_rect(button, rounded(8.0f),
-								 button.contains(m_mouse) ? theme().control_hover : theme().control);
-	draw_text_centered(t_draw_list, m_fonts.body(), button, t_label, theme().text);
+	controls::draw_button(t_draw_list, m_fonts.body(), button, t_label, style, m_settings.accent, true,
+						  button.contains(m_mouse), 255);
 }
 
 void UpdateOverlay::draw_notes(DrawList &t_draw_list) const

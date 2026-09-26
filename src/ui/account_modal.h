@@ -9,6 +9,7 @@
 #include "ui/game_select_popup.h"
 #include "ui/scrollable.h"
 #include "ui/text_input.h"
+#include "ui/tooltip.h"
 #include "ui/widget.h"
 
 class Assets;
@@ -78,7 +79,17 @@ class AccountModal : public Widget {
 		ScrollGeometry scroll;
 	};
 
+	struct EmptyState {
+		Rect icon;
+		float title_baseline;
+		float hint_baseline;
+		Rect button;
+	};
+
 	bool has_game() const;
+	Rect back_badge_rect(const Layout &t_layout) const;
+	void request_tooltip();
+	EmptyState empty_state(Rect t_region) const;
 	Vec2 floating_panel_size() const;
 	bool is_docked() const;
 	Rect panel_rect() const;
@@ -100,7 +111,9 @@ class AccountModal : public Widget {
 	Rect field_input_rect(Rect t_main, u32 t_field) const;
 	Rect field_text_rect(Rect t_main, u32 t_field) const;
 	Rect reveal_button_rect(Rect t_main) const;
-	Rect visibility_chip_rect(Rect t_main) const;
+	Rect show_in_rect(Rect t_main) const;
+	bool is_show_in_hit(Rect t_main, Vec2 t_point) const;
+	std::string_view visibility_summary(char (&t_buffer)[32]) const;
 
 	TextInput &field(EditField t_field)
 	{
@@ -145,12 +158,12 @@ class AccountModal : public Widget {
 
 	void draw_chrome(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
 	void draw_section_title(DrawList &t_draw_list, Rect t_main, std::string_view t_title, u8 t_alpha) const;
+	void draw_empty_state(DrawList &t_draw_list, Rect t_region, u8 t_alpha) const;
 	void draw_account_list(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
 	void draw_account_row(DrawList &t_draw_list, Rect t_main, Rect t_row, const Account &t_account, bool t_selected,
 						  float t_delete_armed, u8 t_alpha) const;
 	void draw_login_progress(DrawList &t_draw_list, Rect t_main, u8 t_alpha) const;
 	void draw_edit_form(DrawList &t_draw_list, Rect t_main, u8 t_alpha);
-	void draw_visibility_chip(DrawList &t_draw_list, Rect t_main, u8 t_alpha) const;
 	void draw_footer(DrawList &t_draw_list, Rect t_footer, u8 t_alpha) const;
 	void draw_edit_footer(DrawList &t_draw_list, Rect t_footer, u8 t_alpha) const;
 
@@ -169,6 +182,7 @@ class AccountModal : public Widget {
 	Mode m_mode = Mode::account_list;
 	Scrollable m_rows_scroll;
 	Scrollable m_form_scroll;
+	Tooltip m_tooltip;
 	ConfirmLatch m_row_delete;
 	ConfirmLatch m_form_delete;
 

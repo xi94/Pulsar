@@ -638,7 +638,8 @@ void App::draw_status_bar()
 			  Vec2{mark.right() + status_mark_gap, font.centered_baseline(status_bar) - status_baseline_nudge},
 			  std::string_view{version, static_cast<usize>(std::max(written, 0))}, theme().text_dim);
 
-	if (m_carousel.is_visible()) {
+	const bool panel_open = m_account_modal.is_blocking() || m_settings_panel.is_blocking();
+	if (m_carousel.is_visible() && !panel_open) {
 		m_carousel.draw_status_bar(m_draw_list);
 	}
 }

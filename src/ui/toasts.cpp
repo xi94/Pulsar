@@ -16,11 +16,11 @@
 #include "ui/theme.h"
 
 namespace {
-constexpr float margin_x = 14.0f;
-constexpr float margin_y = 12.0f;
-constexpr float padding_x = 11.0f;
-constexpr float padding_y = 8.0f;
-constexpr float corner_radius = 7.0f;
+constexpr float margin_bottom = 12.0f;
+constexpr float padding_x = 16.0f;
+constexpr float padding_y = 9.0f;
+constexpr float max_corner_radius = 22.0f;
+constexpr float slide_distance = 14.0f;
 constexpr float icon_size = 15.0f;
 constexpr float icon_gap = 8.0f;
 constexpr float icon_turn_seconds = 5.0f;
@@ -98,15 +98,16 @@ Rect Toasts::card_rect() const
 	std::string_view lines[max_lines];
 	const u32 line_count = std::max(1u, wrap_text(font, m_message, width - chrome, lines));
 	const float height = padding_y * 2.0f + line_count * font.line_height() + bar_gap + bar_height;
-	const float bottom = static_cast<float>(m_window.height()) - status_bar_height - margin_y;
+	const Vec2 window = m_window.size();
+	const float bottom = window.y - status_bar_height - margin_bottom;
 
-	return Rect{margin_x, bottom - height, width, height};
+	return Rect{(window.x - width) * 0.5f, bottom - height, width, height};
 }
 
 Rect Toasts::animated_card_rect() const
 {
 	Rect card = card_rect();
-	card.x -= (1.0f - m_presence) * (card.w + margin_x);
+	card.y += (1.0f - m_presence) * slide_distance;
 
 	return card;
 }
@@ -127,7 +128,6 @@ void Toasts::update(float t_delta_seconds)
 		m_showing = m_remaining_seconds > 0.0f;
 	}
 
-	const float slide_distance = card_rect().w + margin_x;
 	m_presence = animation::ease_toward(m_presence, m_showing ? 1.0f : 0.0f, presence_ease_rate, t_delta_seconds,
 										animation::settled_pixels / slide_distance);
 	m_elapsed_seconds += t_delta_seconds;
@@ -166,6 +166,8 @@ void Toasts::draw(DrawList &t_draw_list)
 	const Rect card = animated_card_rect();
 	const auto alpha = static_cast<u8>(std::clamp(m_presence, 0.0f, 1.0f) * 255.0f);
 
+	const float corner_radius = std::min(card.h * 0.5f, max_corner_radius);
+	controls::draw_popup_shadow(t_draw_list, card, corner_radius, m_presence);
 	t_draw_list.add_bordered_rect(card, rounded(corner_radius), faded(with_alpha(theme().popup, 244), alpha),
 								  faded(theme().border, alpha), 1.0f);
 

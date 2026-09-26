@@ -26,8 +26,8 @@ constexpr float value_ease_rate = 16.0f;
 constexpr float reset_appear_rate = 20.0f;
 constexpr float reset_spin_rate = 6.0f;
 
-constexpr Vec2 panel_max_size{570.0f, 480.0f};
-constexpr Vec2 panel_min_size{460.0f, 380.0f};
+constexpr Vec2 panel_max_size{720.0f, 480.0f};
+constexpr Vec2 panel_min_size{580.0f, 380.0f};
 constexpr float reference_body_pixel_height = 24.0f;
 constexpr float reference_secondary_pixel_height = 20.0f;
 constexpr float panel_margin = 48.0f;
@@ -36,15 +36,21 @@ constexpr float panel_radius = 16.0f;
 constexpr float panel_border = 1.5f;
 
 constexpr float row_padding_x = 26.0f;
-constexpr float close_size = 26.0f;
+constexpr float back_button_size = 32.0f;
+constexpr float back_button_margin = 12.0f;
+constexpr float back_icon_size = 18.0f;
+constexpr float title_gap = 10.0f;
 constexpr float label_top_gap = 14.0f;
 constexpr float label_line_gap = 6.0f;
 constexpr float label_bottom_gap = 16.0f;
 constexpr float label_control_gap = 16.0f;
 constexpr float highlight_inset_x = 12.0f;
 constexpr float highlight_radius = 8.0f;
-constexpr float heading_top_gap = 22.0f;
-constexpr float heading_bottom_gap = 8.0f;
+constexpr float rows_top_padding = 8.0f;
+constexpr float rail_width = 150.0f;
+constexpr float rail_padding = 10.0f;
+constexpr float tab_label_inset = 14.0f;
+constexpr float tab_indicator_width = 3.0f;
 constexpr float scrollbar_margin = 4.0f;
 
 constexpr float reset_button_size = 28.0f;
@@ -75,6 +81,9 @@ constexpr float theme_dot_overlap = 6.0f;
 constexpr float theme_dot_cutout = 2.0f;
 constexpr float theme_hover_preview_seconds = 1.0f;
 constexpr Vec2 theme_preview_size{theme_dot_size * 2.0f - theme_dot_overlap, theme_dot_size};
+
+constexpr std::string_view tab_names[]{"Appearance", "Motion", "Privacy", "Security"};
+static_assert(std::size(tab_names) == settings_tab_count);
 
 const Settings default_settings{};
 
@@ -107,20 +116,15 @@ float header_height(const Fonts &t_fonts)
 	return t_fonts.body().line_height() + 20.0f;
 }
 
-float footer_height(const Fonts &t_fonts)
-{
-	return std::max(32.0f, t_fonts.secondary().line_height() + 16.0f);
-}
-
 float row_height(const Fonts &t_fonts)
 {
 	return label_top_gap + t_fonts.body().line_height() + label_line_gap + t_fonts.secondary().line_height() +
 		   label_bottom_gap;
 }
 
-float heading_height(const Fonts &t_fonts)
+float tab_height(const Fonts &t_fonts)
 {
-	return heading_top_gap + t_fonts.secondary().line_height() + heading_bottom_gap;
+	return std::max(34.0f, t_fonts.body().line_height() + 12.0f);
 }
 
 float control_height(const Fonts &t_fonts)
@@ -149,10 +153,10 @@ Rect right_aligned_control(Rect t_row, const Fonts &t_fonts, float t_width, floa
 				t_height};
 }
 
-Rect close_button_rect(Rect t_panel, const Fonts &t_fonts)
+Rect back_button_rect(Rect t_header)
 {
-	return Rect{t_panel.right() - 14.0f - close_size, t_panel.y + (header_height(t_fonts) - close_size) * 0.5f,
-				close_size, close_size};
+	return Rect{t_header.x + back_button_margin, t_header.center().y - back_button_size * 0.5f, back_button_size,
+				back_button_size};
 }
 
 Rect dropdown_rect(Rect t_row, const Fonts &t_fonts)
@@ -223,28 +227,6 @@ void draw_row_label(DrawList &t_draw_list, const Fonts &t_fonts, Rect t_row, con
 						faded(theme().text, t_alpha));
 	draw_text_truncated(t_draw_list, t_fonts.secondary(), Vec2{x, description_baseline(t_row, t_fonts)}, t_description,
 						t_right_edge - x, faded(theme().text_dim, t_alpha));
-}
-
-void draw_heading(DrawList &t_draw_list, const Fonts &t_fonts, Rect t_strip, const char *t_title, u8 t_alpha)
-{
-	constexpr float text_gap = 10.0f;
-	constexpr float lead_width = 16.0f;
-
-	const Font &font = t_fonts.secondary();
-	const float baseline = t_strip.bottom() - heading_bottom_gap - (font.line_height() - font.ascent());
-	const float rule_y = baseline - (font.ascent() + font.descent()) * 0.5f;
-	const float lead_x = t_strip.x + row_padding_x;
-	const float text_x = lead_x + lead_width + text_gap;
-	const float rule_x = text_x + text_width(font, t_title) + text_gap;
-	const float rule_right = t_strip.right() - row_padding_x;
-	const Color rule_color = faded(theme().separator, t_alpha);
-
-	t_draw_list.add_rect(Rect{lead_x, rule_y, lead_width, 1.0f}, rule_color);
-	draw_text(t_draw_list, font, Vec2{text_x, baseline}, t_title, faded(theme().text, t_alpha));
-
-	if (rule_right > rule_x) {
-		t_draw_list.add_rect(Rect{rule_x, rule_y, rule_right - rule_x, 1.0f}, rule_color);
-	}
 }
 
 void draw_knob(DrawList &t_draw_list, Rect t_knob, Color t_fill, u8 t_alpha)
@@ -441,8 +423,9 @@ SettingsPanel::Layout SettingsPanel::layout() const
 
 	Rect remaining = result.inner;
 	result.header = remaining.split_top(header_height(m_fonts));
-	result.footer = remaining.split_bottom(footer_height(m_fonts));
-	result.rows_region = remaining;
+	result.rail = Rect{remaining.x, remaining.y, rail_width, remaining.h};
+	result.rows_region =
+		Rect{result.rail.right() + 1.0f, remaining.y, remaining.right() - result.rail.right() - 1.0f, remaining.h};
 
 	return result;
 }
@@ -450,37 +433,63 @@ SettingsPanel::Layout SettingsPanel::layout() const
 SettingsPanel::Rows SettingsPanel::rows(const Layout &t_layout) const
 {
 	const float row = row_height(m_fonts);
-	const float heading = heading_height(m_fonts);
+	const Rect hidden{0.0f, -1.0e6f, 0.0f, 0.0f};
 
-	Rect cursor{t_layout.rows_region.x, t_layout.rows_region.y - m_rows_scroll.offset(), t_layout.rows_region.w,
-				1.0e6f};
+	Rect cursor{t_layout.rows_region.x, t_layout.rows_region.y + rows_top_padding - m_rows_scroll.offset(),
+				t_layout.rows_region.w, 1.0e6f};
 	const float top = cursor.y;
+	const auto place = [&](SettingsTab t_tab) { return t_tab == m_tab ? cursor.split_top(row) : hidden; };
 
 	Rows result{};
-	result.appearance_heading = cursor.split_top(heading - heading_top_gap * 0.5f);
-	result.theme = cursor.split_top(row);
-	result.font = cursor.split_top(row);
-	result.font_size = cursor.split_top(row);
-	result.secondary_font_size = cursor.split_top(row);
-	result.accent = cursor.split_top(row);
-	result.corner_roundness = cursor.split_top(row);
-	result.notifications = cursor.split_top(row);
+	result.theme = place(SettingsTab::appearance);
+	result.font = place(SettingsTab::appearance);
+	result.font_size = place(SettingsTab::appearance);
+	result.secondary_font_size = place(SettingsTab::appearance);
+	result.accent = place(SettingsTab::appearance);
+	result.corner_roundness = place(SettingsTab::appearance);
+	result.notifications = place(SettingsTab::appearance);
 
-	result.motion_heading = cursor.split_top(heading);
-	result.animations = cursor.split_top(row);
-	result.animation_speed = cursor.split_top(row);
+	result.animations = place(SettingsTab::motion);
+	result.animation_speed = place(SettingsTab::motion);
 
-	result.privacy_heading = cursor.split_top(heading);
-	result.hide_from_capture = cursor.split_top(row);
-	result.block_overlay_injection = cursor.split_top(row);
-	result.close_to_tray = cursor.split_top(row);
+	result.hide_from_capture = place(SettingsTab::privacy);
+	result.block_overlay_injection = place(SettingsTab::privacy);
+	result.close_to_tray = place(SettingsTab::privacy);
 
-	result.security_heading = cursor.split_top(heading);
-	result.master_password = cursor.split_top(row);
+	result.master_password = place(SettingsTab::security);
 
-	result.content_height = cursor.y - top;
+	result.content_height = cursor.y - top + rows_top_padding * 2.0f;
 
 	return result;
+}
+
+Rect SettingsPanel::tab_rect(const Layout &t_layout, SettingsTab t_tab) const
+{
+	const float height = tab_height(m_fonts);
+	const Rect &rail = t_layout.rail;
+
+	return Rect{rail.x + rail_padding, rail.y + rail_padding + static_cast<u32>(t_tab) * height,
+				rail.w - rail_padding * 2.0f, height};
+}
+
+std::optional<SettingsTab> SettingsPanel::tab_at(const Layout &t_layout, Vec2 t_point) const
+{
+	for (u32 i = 0; i < settings_tab_count; i += 1) {
+		const auto tab = static_cast<SettingsTab>(i);
+		if (tab_rect(t_layout, tab).contains(t_point)) return tab;
+	}
+
+	return std::nullopt;
+}
+
+void SettingsPanel::select_tab(SettingsTab t_tab)
+{
+	if (t_tab == m_tab) return;
+
+	m_tab = t_tab;
+	m_rows_scroll = Scrollable{};
+	m_color_picker.close();
+	m_tooltip.reset();
 }
 
 ScrollGeometry SettingsPanel::rows_scroll(const Layout &t_layout, const Rows &t_rows) const
@@ -856,6 +865,11 @@ void SettingsPanel::update_hover_hints(float t_delta_seconds)
 	const Rows current_rows = rows(current);
 	const bool pointer_live = is_blocking() && !has_popup_open() && current.rows_region.contains(m_mouse);
 
+	const Rect back = back_button_rect(current.header);
+	if (is_blocking() && !has_popup_open() && back.contains(m_mouse)) {
+		m_tooltip.request("Back", back);
+	}
+
 	for (u32 i = 0; i < resettable_count; i += 1) {
 		const auto setting = static_cast<ResettableSetting>(i);
 		const bool at_default = is_default(setting);
@@ -977,10 +991,13 @@ bool SettingsPanel::on_pointer_up(Vec2 t_point)
 void SettingsPanel::handle_click(Vec2 t_point)
 {
 	const Layout current = layout();
-	const Rect close_button = close_button_rect(current.panel, m_fonts);
-
-	if (close_button.contains(t_point) || !current.panel.contains(t_point)) {
+	if (back_button_rect(current.header).contains(t_point) || !current.panel.contains(t_point)) {
 		close();
+		return;
+	}
+
+	if (const std::optional<SettingsTab> tab = tab_at(current, t_point)) {
+		select_tab(*tab);
 		return;
 	}
 
@@ -1106,6 +1123,9 @@ bool SettingsPanel::on_key_down(u32 t_key)
 		}
 	} else if (t_key == VK_ESCAPE) {
 		close();
+	} else if (t_key == VK_TAB && is_control_down()) {
+		const u32 step = (GetKeyState(VK_SHIFT) & 0x8000) != 0 ? settings_tab_count - 1 : 1;
+		select_tab(static_cast<SettingsTab>((static_cast<u32>(m_tab) + step) % settings_tab_count));
 	}
 
 	return true;
@@ -1137,9 +1157,8 @@ CursorKind SettingsPanel::cursor() const
 	}
 
 	const Layout current = layout();
-	const Rect close_button = close_button_rect(current.panel, m_fonts);
-
-	if (close_button.contains(m_mouse)) return CursorKind::hand;
+	if (back_button_rect(current.header).contains(m_mouse)) return CursorKind::hand;
+	if (tab_at(current, m_mouse)) return CursorKind::hand;
 	if (!current.rows_region.contains(m_mouse)) return CursorKind::arrow;
 
 	const Rows current_rows = rows(current);
@@ -1189,34 +1208,31 @@ void SettingsPanel::draw_chrome(DrawList &t_draw_list, const Layout &t_layout, u
 {
 	const Theme &colors = theme();
 	const Font &body = m_fonts.body();
-	const Font &secondary = m_fonts.secondary();
 	const Vec2 window = m_window.size();
 
-	t_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y},
-						 faded(colors.scrim, static_cast<u8>(255.0f * m_open_amount)));
 	if (t_layout.docked) {
 		t_draw_list.add_rect(t_layout.panel, faded(colors.surface, t_alpha));
 	} else {
+		t_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y},
+							 faded(colors.scrim, static_cast<u8>(255.0f * m_open_amount)));
 		t_draw_list.add_bordered_rect(t_layout.panel, rounded(panel_radius), faded(colors.surface, t_alpha),
 									  faded(colors.border, t_alpha), panel_border);
 	}
 
-	draw_text(t_draw_list, body, Vec2{t_layout.header.x + row_padding_x, body.centered_baseline(t_layout.header)},
-			  "Settings", faded(colors.text, t_alpha));
+	const Rect back = back_button_rect(t_layout.header);
+	const bool back_hovered = back.contains(m_mouse);
 
-	const Rect close_button = close_button_rect(t_layout.panel, m_fonts);
-	controls::draw_x(t_draw_list, close_button,
-					 faded(close_button.contains(m_mouse) ? colors.text : colors.text_dim, t_alpha));
+	t_draw_list.add_rounded_rect(back, rounded(back.w * 0.5f),
+								 faded(back_hovered ? colors.control_hover : colors.control, t_alpha));
+	controls::draw_icon(t_draw_list, back.centered(back_icon_size, back_icon_size),
+						m_assets.get(Asset::icon_arrow_back),
+						faded(back_hovered ? colors.text : colors.text_dim, t_alpha));
 
-	const float rule_width = t_layout.header.w - row_padding_x * 2.0f;
-	t_draw_list.add_rect(Rect{t_layout.header.x + row_padding_x, t_layout.header.bottom(), rule_width, 1.0f},
+	draw_text(t_draw_list, body, Vec2{back.right() + title_gap, body.centered_baseline(t_layout.header)}, "Settings",
+			  faded(colors.text, t_alpha));
+
+	t_draw_list.add_rect(Rect{t_layout.header.x, t_layout.header.bottom(), t_layout.header.w, 1.0f},
 						 faded(colors.separator, t_alpha));
-	t_draw_list.add_rect(Rect{t_layout.footer.x + row_padding_x, t_layout.footer.y, rule_width, 1.0f},
-						 faded(colors.separator, t_alpha));
-
-	draw_text(t_draw_list, secondary,
-			  Vec2{t_layout.footer.x + row_padding_x, secondary.centered_baseline(t_layout.footer)},
-			  "Escape to dismiss", faded(colors.text_dim, t_alpha));
 }
 
 void SettingsPanel::draw_row_highlight(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows,
@@ -1247,22 +1263,31 @@ void SettingsPanel::draw_row_highlight(DrawList &t_draw_list, const Layout &t_la
 	}
 }
 
-void SettingsPanel::draw_headings(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const
+void SettingsPanel::draw_rail(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const
 {
-	const struct {
-		Rect strip;
-		const char *title;
-	} headings[]{
-		{t_rows.appearance_heading, "Appearance"},
-		{t_rows.motion_heading, "Motion"},
-		{t_rows.privacy_heading, "Privacy"},
-		{t_rows.security_heading, "Security"},
-	};
+	const Theme &colors = theme();
+	const Font &body = m_fonts.body();
+	const bool pointer_live = is_blocking() && !has_popup_open();
 
-	for (const auto &heading : headings) {
-		if (is_on_screen(t_layout, heading.strip)) {
-			draw_heading(t_draw_list, m_fonts, heading.strip, heading.title, t_alpha);
+	t_draw_list.add_rect(Rect{t_layout.rail.right(), t_layout.rail.y, 1.0f, t_layout.rail.h},
+						 faded(colors.separator, t_alpha));
+
+	for (u32 i = 0; i < settings_tab_count; i += 1) {
+		const auto tab = static_cast<SettingsTab>(i);
+		const Rect item = tab_rect(t_layout, tab);
+		const bool active = tab == m_tab;
+
+		if (active) {
+			t_draw_list.add_rounded_rect(item, rounded(highlight_radius), faded(colors.row_selected, t_alpha));
+			t_draw_list.add_rounded_rect(Rect{item.x + 2.0f, item.y + 7.0f, tab_indicator_width, item.h - 14.0f},
+										 rounded(tab_indicator_width * 0.5f), faded(m_settings.accent, t_alpha));
+		} else if (pointer_live && item.contains(m_mouse)) {
+			t_draw_list.add_rounded_rect(item, rounded(highlight_radius), faded(colors.row_hover, t_alpha));
 		}
+
+		draw_text_truncated(t_draw_list, body, Vec2{item.x + tab_label_inset, body.centered_baseline(item)},
+							tab_names[i], item.w - tab_label_inset * 2.0f,
+							faded(active ? colors.text : colors.text_dim, t_alpha));
 	}
 }
 
@@ -1369,9 +1394,8 @@ void SettingsPanel::draw_master_password(DrawList &t_draw_list, const Layout &t_
 	draw_row_label(t_draw_list, m_fonts, row, "Master Password", "Encrypts saved passwords.",
 				   label_right_edge(button, row, m_fonts), t_alpha);
 
-	const Color fill = button.contains(m_mouse) ? theme().control_hover : theme().control;
-	t_draw_list.add_rounded_rect(button, rounded(6.0f), faded(fill, t_alpha));
-	draw_text_centered(t_draw_list, m_fonts.body(), button, "Reset Password", faded(theme().text, t_alpha));
+	controls::draw_button(t_draw_list, m_fonts.body(), button, "Reset Password", controls::ButtonStyle::neutral,
+						  m_settings.accent, true, !has_popup_open() && hits(t_layout, row, button, m_mouse), t_alpha);
 }
 
 void SettingsPanel::draw_reset_buttons(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows,
@@ -1401,10 +1425,10 @@ void SettingsPanel::draw(DrawList &t_draw_list)
 	const ScrollGeometry scroll = rows_scroll(current, current_rows);
 
 	draw_chrome(t_draw_list, current, alpha);
+	draw_rail(t_draw_list, current, alpha);
 
 	t_draw_list.push_clip(current.rows_region);
 	draw_row_highlight(t_draw_list, current, current_rows, alpha);
-	draw_headings(t_draw_list, current, current_rows, alpha);
 	draw_appearance(t_draw_list, current, current_rows, alpha);
 	draw_sliders(t_draw_list, current, current_rows, alpha);
 	draw_toggles(t_draw_list, current, current_rows, alpha);

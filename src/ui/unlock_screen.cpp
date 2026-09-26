@@ -26,6 +26,8 @@ constexpr float reveal_size = 22.0f;
 constexpr float reveal_margin = 6.0f;
 constexpr float unlock_first_field_y = 74.0f;
 constexpr float setup_first_field_y = 96.0f;
+constexpr float halo_blur = 90.0f;
+constexpr u8 halo_alpha = 46;
 }
 
 UnlockScreen::UnlockScreen(Settings &t_settings, MasterKey &t_master_key, const Fonts &t_fonts, const Assets &t_assets,
@@ -73,9 +75,11 @@ void UnlockScreen::hide()
 
 Rect UnlockScreen::card_rect() const
 {
-	const Vec2 window = m_window.size();
+	const Rect area = m_window.content_rect();
+	const float card_height = m_setup ? setup_card_height : unlock_card_height;
+	const float top = area.y + (area.h - card_height) * 0.5f;
 
-	return Rect{0.0f, 0.0f, window.x, window.y}.centered(card_width, m_setup ? setup_card_height : unlock_card_height);
+	return Rect{area.center().x - card_width * 0.5f, top, card_width, card_height};
 }
 
 Rect UnlockScreen::field_rect(u32 t_field) const
@@ -323,11 +327,10 @@ void UnlockScreen::draw_field(DrawList &t_draw_list, u32 t_field)
 
 void UnlockScreen::draw_submit_button(DrawList &t_draw_list, std::string_view t_label) const
 {
-	const Color accent = m_settings.accent;
 	const Rect button = submit_rect();
 
-	t_draw_list.add_bordered_rect(button, rounded(8.0f), accent, outline_on(accent), 1.0f);
-	draw_text_centered(t_draw_list, m_fonts.body(), button, t_label, foreground_on(accent));
+	controls::draw_button(t_draw_list, m_fonts.body(), button, t_label, controls::ButtonStyle::accent,
+						  m_settings.accent, true, button.contains(m_mouse), 255);
 }
 
 void UnlockScreen::draw(DrawList &t_draw_list)
@@ -337,27 +340,30 @@ void UnlockScreen::draw(DrawList &t_draw_list)
 	const Vec2 window = m_window.size();
 	const Font &body = m_fonts.body();
 	const Font &secondary = m_fonts.secondary();
+	const Color accent = m_settings.accent;
+	const Rect card = card_rect();
+
+	const auto draw_centered = [&](const Font &t_font, float t_baseline, std::string_view t_text, Color t_color) {
+		draw_text(t_draw_list, t_font, Vec2{card.center().x - text_width(t_font, t_text) * 0.5f, t_baseline}, t_text,
+				  t_color);
+	};
 
 	t_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y - status_bar_height}, theme().window);
+	t_draw_list.add_shadow(card, card_radius, halo_blur, with_alpha(accent, halo_alpha));
+	t_draw_list.add_bordered_rect(card, rounded(card_radius), theme().surface, theme().border, 1.0f);
 
-	const Rect card = card_rect();
-	t_draw_list.add_rounded_rect(card, rounded(card_radius), theme().surface);
-
-	const float text_x = card.x + card_padding;
 	const float title_baseline = card.y + card_padding + body.ascent();
 	const float description_baseline = card.y + card_padding + body.line_height() + 4.0f + secondary.ascent();
 	const float error_baseline = submit_rect().bottom() + gap + secondary.ascent();
 
 	if (m_setup) {
-		draw_text(t_draw_list, body, Vec2{text_x, title_baseline}, "Create a Master Password", theme().text);
-		draw_text(t_draw_list, secondary, Vec2{text_x, description_baseline},
-				  "This encrypts your saved account passwords. Choose", theme().text_dim);
-		draw_text(t_draw_list, secondary, Vec2{text_x, description_baseline + secondary.line_height()},
-				  "something memorable - it can't be recovered if lost.", theme().text_dim);
+		draw_centered(body, title_baseline, "Create a Master Password", theme().text);
+		draw_centered(secondary, description_baseline, "It encrypts your saved account passwords.", theme().text_dim);
+		draw_centered(secondary, description_baseline + secondary.line_height(),
+					  "Pick something memorable - it can't be recovered.", theme().text_dim);
 	} else {
-		draw_text(t_draw_list, body, Vec2{text_x, title_baseline}, "Master Password", theme().text);
-		draw_text(t_draw_list, secondary, Vec2{text_x, description_baseline}, "Enter your master password to continue.",
-				  theme().text_dim);
+		draw_centered(body, title_baseline, "Welcome back", theme().text);
+		draw_centered(secondary, description_baseline, "Enter your master password to continue.", theme().text_dim);
 	}
 
 	for (u32 i = 0; i < field_count(); i += 1) {
@@ -375,5 +381,5 @@ void UnlockScreen::draw(DrawList &t_draw_list)
 		error = "Something went wrong - try again.";
 	}
 
-	draw_text(t_draw_list, secondary, Vec2{text_x, error_baseline}, error, theme().error);
+	draw_centered(secondary, error_baseline, error, theme().error);
 }

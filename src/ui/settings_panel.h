@@ -14,6 +14,16 @@ class Assets;
 class Renderer;
 class Window;
 
+enum class SettingsTab : u8 {
+	appearance,
+	motion,
+	privacy,
+	security,
+	count,
+};
+
+constexpr u32 settings_tab_count = static_cast<u32>(SettingsTab::count);
+
 enum class ResettableSetting : u8 {
 	theme,
 	font,
@@ -64,13 +74,12 @@ class SettingsPanel : public Widget {
 		Rect panel;
 		Rect inner;
 		Rect header;
-		Rect footer;
+		Rect rail;
 		Rect rows_region;
 		bool docked;
 	};
 
 	struct Rows {
-		Rect appearance_heading;
 		Rect theme;
 		Rect font;
 		Rect font_size;
@@ -78,14 +87,11 @@ class SettingsPanel : public Widget {
 		Rect accent;
 		Rect corner_roundness;
 		Rect notifications;
-		Rect motion_heading;
 		Rect animations;
 		Rect animation_speed;
-		Rect privacy_heading;
 		Rect hide_from_capture;
 		Rect block_overlay_injection;
 		Rect close_to_tray;
-		Rect security_heading;
 		Rect master_password;
 		float content_height;
 	};
@@ -115,6 +121,9 @@ class SettingsPanel : public Widget {
 	ListPopup *open_list();
 	const ListPopup *open_list() const;
 	bool has_popup_open() const;
+	Rect tab_rect(const Layout &t_layout, SettingsTab t_tab) const;
+	std::optional<SettingsTab> tab_at(const Layout &t_layout, Vec2 t_point) const;
+	void select_tab(SettingsTab t_tab);
 	bool is_row_hovered(const Layout &t_layout, Rect t_row) const;
 
 	Rect reset_row(const Rows &t_rows, ResettableSetting t_setting) const;
@@ -142,7 +151,7 @@ class SettingsPanel : public Widget {
 
 	void draw_chrome(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
 	void draw_row_highlight(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_headings(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
+	void draw_rail(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
 	void draw_dropdown_row(DrawList &t_draw_list, const Layout &t_layout, Rect t_row, const char *t_title,
 						   const char *t_description, std::string_view t_value, bool t_open, u8 t_alpha) const;
 	void draw_appearance(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
@@ -159,6 +168,7 @@ class SettingsPanel : public Widget {
 	CommandQueue &m_commands;
 
 	bool m_open = false;
+	SettingsTab m_tab = SettingsTab::appearance;
 	float m_open_amount = 0.0f;
 
 	InstalledFonts m_installed_fonts;

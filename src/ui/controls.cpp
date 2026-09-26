@@ -13,6 +13,43 @@
 namespace {
 constexpr float button_radius = 8.0f;
 constexpr float field_border = 1.5f;
+constexpr float danger_fill_strength = 0.22f;
+constexpr float danger_hover_strength = 0.38f;
+constexpr float danger_label_softening = 0.25f;
+
+struct ButtonLook {
+	Color fill;
+	Color hover_fill;
+	Color label;
+};
+
+ButtonLook button_look(controls::ButtonStyle t_style, Color t_accent)
+{
+	const Theme &colors = theme();
+
+	switch (t_style) {
+		case controls::ButtonStyle::neutral:
+			return ButtonLook{colors.control, colors.control_hover, colors.text};
+
+		case controls::ButtonStyle::accent:
+			return ButtonLook{t_accent, lightened(t_accent, 20), foreground_on(t_accent)};
+
+		case controls::ButtonStyle::danger:
+			return ButtonLook{mix(colors.control, colors.error, danger_fill_strength),
+							  mix(colors.control, colors.error, danger_hover_strength),
+							  mix(colors.error, colors.text, danger_label_softening)};
+
+		case controls::ButtonStyle::danger_confirm:
+			return ButtonLook{colors.error, lightened(colors.error, 15), foreground_on(colors.error)};
+	}
+
+	return ButtonLook{};
+}
+
+ButtonLook disabled_button_look()
+{
+	return ButtonLook{theme().control, theme().control, theme().text_faint};
+}
 }
 
 void controls::draw_icon(DrawList &t_draw_list, Rect t_rect, const Texture *t_icon, Color t_tint)
@@ -120,32 +157,18 @@ void controls::draw_field(DrawList &t_draw_list, Rect t_rect, float t_radius, Co
 								  field_border);
 }
 
-void controls::draw_accent_button(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label,
-								  Color t_accent, bool t_enabled, bool t_hovered, Color t_disabled_fill,
-								  Color t_disabled_label, u8 t_alpha)
-{
-	const Color fill = !t_enabled ? t_disabled_fill : (t_hovered ? lightened(t_accent, 20) : t_accent);
-
-	if (t_hovered) {
-		draw_lift(t_draw_list, t_rect, button_radius, t_accent, t_alpha);
-	}
-
-	t_draw_list.add_bordered_rect(t_rect, rounded(button_radius), faded(fill, t_alpha),
-								  faded(outline_on(fill), t_alpha), 1.0f);
-	draw_text_centered(t_draw_list, t_font, t_rect, t_label,
-					   faded(t_enabled ? foreground_on(fill) : t_disabled_label, t_alpha));
-}
-
 void controls::draw_button(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label,
-						   const ButtonColors &t_colors, bool t_hovered, u8 t_alpha)
+						   ButtonStyle t_style, Color t_accent, bool t_enabled, bool t_hovered, u8 t_alpha)
 {
-	if (t_hovered) {
-		draw_lift(t_draw_list, t_rect, button_radius, t_colors.lift, t_alpha);
+	const ButtonLook look = t_enabled ? button_look(t_style, t_accent) : disabled_button_look();
+	const bool lifted = t_enabled && t_hovered;
+
+	if (lifted) {
+		draw_lift(t_draw_list, t_rect, button_radius, look.fill, t_alpha);
 	}
 
-	t_draw_list.add_rounded_rect(t_rect, rounded(button_radius),
-								 faded(t_hovered ? t_colors.hover_fill : t_colors.fill, t_alpha));
-	draw_text_centered(t_draw_list, t_font, t_rect, t_label, faded(t_colors.label, t_alpha));
+	t_draw_list.add_rounded_rect(t_rect, rounded(button_radius), faded(lifted ? look.hover_fill : look.fill, t_alpha));
+	draw_text_centered(t_draw_list, t_font, t_rect, t_label, faded(look.label, t_alpha));
 }
 
 void controls::draw_dropdown(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label,

@@ -11,11 +11,11 @@ class Texture;
 
 namespace controls {
 
-struct ButtonColors {
-	Color fill;
-	Color hover_fill;
-	Color label;
-	Color lift;
+enum class ButtonStyle : u8 {
+	neutral,
+	accent,
+	danger,
+	danger_confirm,
 };
 
 void draw_icon(DrawList &t_draw_list, Rect t_rect, const Texture *t_icon, Color t_tint);
@@ -32,12 +32,9 @@ void draw_panel_shadow(DrawList &t_draw_list, Rect t_panel, float t_radius, floa
 void draw_popup_shadow(DrawList &t_draw_list, Rect t_popup, float t_radius, float t_amount);
 void draw_field(DrawList &t_draw_list, Rect t_rect, float t_radius, Color t_border, Color t_fill, u8 t_alpha);
 
-void draw_accent_button(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label,
-						Color t_accent, bool t_enabled, bool t_hovered, Color t_disabled_fill, Color t_disabled_label,
-						u8 t_alpha);
 void draw_dropdown(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label, bool t_open,
 				   bool t_hovered, Color t_accent, u8 t_alpha);
-void draw_button(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label,
-				 const ButtonColors &t_colors, bool t_hovered, u8 t_alpha);
+void draw_button(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label, ButtonStyle t_style,
+				 Color t_accent, bool t_enabled, bool t_hovered, u8 t_alpha);
 
 }

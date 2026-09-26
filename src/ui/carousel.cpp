@@ -208,15 +208,6 @@ Asset mode_icon(ViewMode t_mode)
 	return Asset::icon_carousel;
 }
 
-std::string_view status_text(ViewMode t_mode, char (&t_buffer)[48])
-{
-	const std::string_view name = mode_name(t_mode);
-	const int written = std::snprintf(t_buffer, sizeof(t_buffer), "%.*s  -  Ctrl+Scroll to zoom",
-									  static_cast<int>(name.size()), name.data());
-
-	return std::string_view{t_buffer, static_cast<usize>(std::max(written, 0))};
-}
-
 float track_column_width(const Font &t_font)
 {
 	return std::max(switcher_track_column_min, text_width(t_font, "100%") + switcher_indicator_padding * 2.0f + 6.0f);
@@ -377,9 +368,7 @@ i32 Carousel::game_at(Vec2 t_point) const
 
 Rect Carousel::status_indicator_rect() const
 {
-	char buffer[48];
-	const float width =
-		status_icon_size + status_icon_gap + text_width(m_fonts.secondary(), status_text(m_mode, buffer));
+	const float width = status_icon_size + status_icon_gap + text_width(m_fonts.secondary(), mode_name(m_mode));
 
 	return Rect{m_bounds.right() - status_padding_right - width, m_bounds.bottom(), width, status_bar_height};
 }
@@ -848,7 +837,6 @@ void Carousel::draw_status_bar(DrawList &t_draw_list) const
 {
 	if (game_count() == 0) return;
 
-	char buffer[48];
 	const Font &font = m_fonts.secondary();
 	const Rect indicator = status_indicator_rect();
 	const Rect icon{indicator.x, indicator.y + (indicator.h - status_icon_size) * 0.5f, status_icon_size,
@@ -857,7 +845,7 @@ void Carousel::draw_status_bar(DrawList &t_draw_list) const
 	t_draw_list.add_image(icon, m_assets.get(mode_icon(m_mode)), theme().text_dim);
 	draw_text(t_draw_list, font,
 			  Vec2{icon.right() + status_icon_gap, font.centered_baseline(indicator) - baseline_nudge},
-			  status_text(m_mode, buffer), theme().text_dim);
+			  mode_name(m_mode), theme().text_dim);
 }
 
 void Carousel::draw_switcher_rows(DrawList &t_draw_list, Rect t_panel, u8 t_alpha) const
