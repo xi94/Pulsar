@@ -119,6 +119,7 @@ App::App()
 	, m_update_overlay(m_updater, m_settings, m_fonts, m_window)
 	, m_context_menu(m_settings, m_fonts, m_commands)
 	, m_title_bar(m_window, m_updater, m_fonts, m_assets, m_commands)
+	, m_truncation_hint(m_fonts)
 #ifdef PULSAR_PROFILING
 	, m_profiler_overlay(m_fonts)
 #endif
@@ -459,6 +460,10 @@ void App::handle_input(const InputEvent &t_event)
 
 	if (t_event.type == InputEventType::mouse_move) {
 		m_mouse = t_event.position;
+	} else if (t_event.type == InputEventType::mouse_down) {
+		m_pointer_down = true;
+	} else if (t_event.type == InputEventType::mouse_up) {
+		m_pointer_down = false;
 	}
 
 	const bool consumed = m_widgets.dispatch(t_event);
@@ -725,6 +730,8 @@ void App::frame()
 		m_widgets.update(m_mouse, delta_seconds);
 	}
 
+	m_truncation_hint.update(delta_seconds, m_pointer_down);
+
 	if (!m_window.is_mouse_over_resize_border()) {
 		m_window.set_cursor(m_widgets.cursor());
 	}
@@ -772,11 +779,14 @@ void App::render()
 	PULSAR_PROFILE_SCOPE("Render");
 
 	m_draw_list.clear();
+	begin_truncation_probe(m_draw_list, m_mouse);
 	draw_status_bar();
 
 	{
 		PULSAR_PROFILE_SCOPE("Render.BuildGeometry");
 		m_widgets.draw(m_draw_list);
+		m_truncation_hint.capture(m_draw_list);
+		m_truncation_hint.draw(m_draw_list, m_window.content_rect());
 		m_draw_list.finish();
 	}
 

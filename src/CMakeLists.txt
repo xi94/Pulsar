@@ -46,6 +46,7 @@ add_executable (Pulsar
   "ui/title_bar.cpp"
   "ui/toasts.cpp"
   "ui/tooltip.cpp"
+  "ui/truncation_hint.cpp"
   "ui/unlock_screen.cpp"
   "ui/update_overlay.cpp"
   "ui/widget.cpp"

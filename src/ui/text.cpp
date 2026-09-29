@@ -2,12 +2,24 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 
 namespace {
 constexpr std::string_view ellipsis = "...";
+
+struct TruncationProbe {
+	Vec2 point{-1.0f, -1.0f};
+	bool found = false;
+	Rect bounds{};
+	u32 cover_count = 0;
+	char text[512]{};
+	usize length = 0;
+};
+
+TruncationProbe g_truncation_probe;
 
 bool has_glyph(char t_character)
 {
@@ -171,8 +183,35 @@ void draw_text_truncated(DrawList &t_draw_list, const Font &t_font, Vec2 t_basel
 	}
 
 	const std::string_view head = t_text.substr(0, kept);
+	const float head_width = text_width(t_font, head);
 	draw_text(t_draw_list, t_font, t_baseline, head, t_color);
-	draw_text(t_draw_list, t_font, Vec2{t_baseline.x + text_width(t_font, head), t_baseline.y}, ellipsis, t_color);
+	draw_text(t_draw_list, t_font, Vec2{t_baseline.x + head_width, t_baseline.y}, ellipsis, t_color);
+
+	TruncationProbe &probe = g_truncation_probe;
+	const Rect shown{t_baseline.x, t_baseline.y - t_font.ascent(), head_width + ellipsis_width, t_font.line_height()};
+	const Rect visible = t_draw_list.visible_rect(shown);
+	if (!visible.contains(probe.point)) return;
+
+	probe.found = true;
+	probe.bounds = visible;
+	probe.cover_count = t_draw_list.probe_cover_count();
+	probe.length = std::min(t_text.size(), sizeof(probe.text));
+	std::memcpy(probe.text, t_text.data(), probe.length);
+}
+
+void begin_truncation_probe(DrawList &t_draw_list, Vec2 t_point)
+{
+	t_draw_list.set_probe(t_point);
+	g_truncation_probe.point = t_point;
+	g_truncation_probe.found = false;
+}
+
+std::optional<TruncatedText> hovered_truncated_text(const DrawList &t_draw_list)
+{
+	const TruncationProbe &probe = g_truncation_probe;
+	if (!probe.found || probe.cover_count != t_draw_list.probe_cover_count()) return std::nullopt;
+
+	return TruncatedText{probe.bounds, std::string_view{probe.text, probe.length}};
 }
 
 u32 wrap_text(const Font &t_font, std::string_view t_text, float t_max_width, std::span<std::string_view> t_out_lines)

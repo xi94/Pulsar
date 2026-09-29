@@ -104,6 +104,14 @@ class DrawList {
 	void push_clip(Rect t_rect);
 	void pop_clip();
 
+	void set_probe(Vec2 t_point);
+	Rect visible_rect(Rect t_rect) const;
+
+	u32 probe_cover_count() const
+	{
+		return m_probe_cover_count;
+	}
+
 	void push_scale(Vec2 t_origin, float t_factor);
 	void pop_scale();
 
@@ -144,6 +152,8 @@ class DrawList {
 	void add_outline_countdown(Rect t_path, float t_corner_radius, float t_remaining, float t_thickness, Color t_color);
 
   private:
+	void note_cover(Rect t_rect, Color t_color);
+
 	static constexpr u32 max_commands = 256;
 	static constexpr u32 max_clip_depth = 8;
 
@@ -172,6 +182,9 @@ class DrawList {
 
 	Rect m_clip_stack[max_clip_depth]{};
 	u32 m_clip_depth = 0;
+
+	Vec2 m_probe{-1.0f, -1.0f};
+	u32 m_probe_cover_count = 0;
 
 	struct Scale {
 		Vec2 origin{};

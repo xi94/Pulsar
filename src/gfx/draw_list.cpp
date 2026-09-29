@@ -191,6 +191,28 @@ void DrawList::push_clip(Rect t_rect)
 	m_clip_depth += 1;
 }
 
+void DrawList::set_probe(Vec2 t_point)
+{
+	m_probe = t_point;
+	m_probe_cover_count = 0;
+}
+
+Rect DrawList::visible_rect(Rect t_rect) const
+{
+	const Rect screen = scaled(t_rect);
+
+	return m_clip_depth > 0 ? screen.intersect(m_clip_stack[m_clip_depth - 1]) : screen;
+}
+
+void DrawList::note_cover(Rect t_rect, Color t_color)
+{
+	constexpr u8 covering_alpha = 96;
+
+	if (t_color.a >= covering_alpha && visible_rect(t_rect).contains(m_probe)) {
+		m_probe_cover_count += 1;
+	}
+}
+
 void DrawList::pop_clip()
 {
 	assert(m_clip_depth > 0);
@@ -350,6 +372,7 @@ void DrawList::push_rounded(Rect t_rect, CornerRadii t_radii, UvRect t_uv, u32 t
 
 void DrawList::add_rect(Rect t_rect, Color t_color)
 {
+	note_cover(t_rect, t_color);
 	target(ShaderKind::solid);
 	push_quad(t_rect, full_uv, pack(t_color));
 }
@@ -424,6 +447,7 @@ void DrawList::add_line(Vec2 t_from, Vec2 t_to, float t_thickness, Color t_color
 
 void DrawList::add_rounded_rect(Rect t_rect, CornerRadii t_radii, Color t_color)
 {
+	note_cover(t_rect, t_color);
 	target(ShaderKind::solid);
 	push_rounded(t_rect, t_radii, full_uv, pack(t_color));
 }

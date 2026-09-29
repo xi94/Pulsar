@@ -25,6 +25,7 @@
 #include "ui/settings_panel.h"
 #include "ui/title_bar.h"
 #include "ui/toasts.h"
+#include "ui/truncation_hint.h"
 #include "ui/unlock_screen.h"
 #include "ui/update_overlay.h"
 #include "ui/widget.h"
@@ -118,6 +119,7 @@ class App {
 	UpdateOverlay m_update_overlay;
 	ContextMenu m_context_menu;
 	TitleBar m_title_bar;
+	TruncationHint m_truncation_hint;
 #ifdef PULSAR_PROFILING
 	ProfilerOverlay m_profiler_overlay;
 #endif
@@ -129,6 +131,7 @@ class App {
 	bool m_in_frame = false;
 	UpdateStage m_announced_update_stage = UpdateStage::idle;
 	Vec2 m_mouse{-1.0f, -1.0f};
+	bool m_pointer_down = false;
 	u32 m_swap_chain_width = 0;
 	u32 m_swap_chain_height = 0;
 
