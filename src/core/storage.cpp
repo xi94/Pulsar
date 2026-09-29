@@ -203,6 +203,21 @@ void read_appearance(const json &t_json, Settings &t_settings)
 	}
 }
 
+void read_game_order(const json &t_json, Settings &t_settings)
+{
+	const auto order = t_json.find("carousel_order");
+	if (order == t_json.end() || !order->is_array()) return;
+
+	t_settings.game_order_count = 0;
+
+	for (const json &title : *order) {
+		if (!title.is_string() || t_settings.game_order_count == max_game_order) continue;
+
+		copy_to(title.get<std::string>(), t_settings.game_order[t_settings.game_order_count]);
+		t_settings.game_order_count += 1;
+	}
+}
+
 storage::LoadResult read_settings(Settings &t_settings)
 {
 	const std::string path = storage_path(settings_file_name);
@@ -227,7 +242,10 @@ storage::LoadResult read_settings(Settings &t_settings)
 		t_settings.zoom_stop = settings.value("carousel_zoom_stop", t_settings.zoom_stop);
 		t_settings.selected_game = settings.value("carousel_selected_banner", t_settings.selected_game);
 		copy_to(settings.value("last_run_version", std::string{}), t_settings.last_run_version);
+		copy_to(settings.value("release_notes_version", std::string{}), t_settings.release_notes_version);
+		copy_to(settings.value("release_notes", std::string{}), t_settings.release_notes);
 
+		read_game_order(settings, t_settings);
 		read_appearance(settings, t_settings);
 		read_master_password(settings, t_settings);
 	} catch (const json::exception &) {
@@ -245,6 +263,7 @@ json game_to_json(const Game &t_game)
 		accounts.push_back(json{
 			{"username", account.username},
 			{"note", account.note},
+			{"region", account.region},
 			{"password", account.password},
 			{"visible_mask", account.visible_game_mask},
 			{"favorite", account.favorite},
@@ -269,6 +288,7 @@ void read_game_accounts(const json &t_json, Game &t_game)
 		Account &account = t_game.accounts[t_game.account_count];
 		account.assign(entry.value("username", std::string{}), entry.value("note", std::string{}),
 					   entry.value("password", std::string{}));
+		copy_to(entry.value("region", std::string{}), account.region);
 		account.visible_game_mask = entry.value("visible_mask", u16{0});
 		account.favorite = entry.value("favorite", false);
 		account.last_used = entry.value("last_used", i64{0});
@@ -386,6 +406,11 @@ bool storage::save_settings(const Settings &t_settings)
 	const std::string path = storage_path(settings_file_name);
 	if (path.empty()) return false;
 
+	json game_order = json::array();
+	for (u32 i = 0; i < t_settings.game_order_count; i += 1) {
+		game_order.push_back(t_settings.game_order[i]);
+	}
+
 	const Color accent = t_settings.accent;
 	const json settings{
 		{"format_version", format_version},
@@ -405,8 +430,11 @@ bool storage::save_settings(const Settings &t_settings)
 		{"show_notifications", t_settings.show_notifications},
 		{"auto_lock_minutes", t_settings.auto_lock_minutes},
 		{"last_run_version", t_settings.last_run_version},
+		{"release_notes_version", t_settings.release_notes_version},
+		{"release_notes", t_settings.release_notes},
 		{"carousel_zoom_stop", t_settings.zoom_stop},
 		{"carousel_selected_banner", t_settings.selected_game},
+		{"carousel_order", game_order},
 		{"master_password", master_password_to_json(t_settings)},
 	};
 

@@ -7,6 +7,7 @@
 #include "core/login_attempt.h"
 #include "ui/commands.h"
 #include "ui/game_select_popup.h"
+#include "ui/list_popup.h"
 #include "ui/scrollable.h"
 #include "ui/text_input.h"
 #include "ui/tooltip.h"
@@ -31,6 +32,18 @@ class AccountModal : public Widget {
 				 const Window &t_window, Toasts &t_toasts, CommandQueue &t_commands);
 
 	void open(i32 t_game);
+
+	void set_art_source(ArtSource t_source)
+	{
+		m_art_source = t_source;
+	}
+
+	bool has_art_source() const
+	{
+		return m_art_source.has_value();
+	}
+
+	i32 detached_game() const;
 	void close();
 	void quick_login(u32 t_game, AccountRef t_account);
 	void undo_delete();
@@ -88,8 +101,9 @@ class AccountModal : public Widget {
 		Rect button;
 	};
 
-	static constexpr u32 form_row_count = field_count + 1;
-	static constexpr u32 show_in_row = field_count;
+	static constexpr u32 form_row_count = field_count + 2;
+	static constexpr u32 region_row = field_count;
+	static constexpr u32 show_in_row = field_count + 1;
 
 	struct FormLayout {
 		Rect region;
@@ -158,6 +172,12 @@ class AccountModal : public Widget {
 	Rect reveal_button_rect(Rect t_main) const;
 	Rect show_in_rect(Rect t_main) const;
 	bool is_show_in_hit(Rect t_main, Vec2 t_point) const;
+	Rect region_rect(Rect t_main) const;
+	bool is_region_hit(Rect t_main, Vec2 t_point) const;
+	void open_region_list();
+	void choose_region(u32 t_index);
+	float morph_travel() const;
+	float morph_seconds() const;
 	std::string_view visibility_summary(char (&t_buffer)[32]) const;
 
 	TextInput &field(EditField t_field)
@@ -219,7 +239,9 @@ class AccountModal : public Widget {
 	CursorKind list_cursor(const Layout &t_layout) const;
 	CursorKind edit_cursor(const Layout &t_layout) const;
 
-	void draw_chrome(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
+	void draw_chrome(DrawList &t_draw_list, const Layout &t_layout, bool t_with_art, u8 t_alpha) const;
+	void draw_back_badge(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
+	void draw_morphing_art(DrawList &t_draw_list, const Layout &t_layout, float t_scale) const;
 	void draw_section_title(DrawList &t_draw_list, Rect t_main, std::string_view t_title, u8 t_alpha) const;
 	void draw_search(DrawList &t_draw_list, Rect t_main, u8 t_alpha);
 	void draw_empty_state(DrawList &t_draw_list, Rect t_region, u8 t_alpha) const;
@@ -244,6 +266,8 @@ class AccountModal : public Widget {
 
 	bool m_open = false;
 	float m_open_amount = 0.0f;
+	std::optional<ArtSource> m_art_source;
+	float m_morph_progress = 0.0f;
 	i32 m_game = -1;
 	std::optional<AccountRef> m_selected;
 	Mode m_mode = Mode::account_list;
@@ -272,4 +296,6 @@ class AccountModal : public Widget {
 	std::optional<AccountRef> m_edited;
 	bool m_show_required = false;
 	GameSelectPopup m_visible_games;
+	char m_region[8]{};
+	ListPopup m_region_list;
 };

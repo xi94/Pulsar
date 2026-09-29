@@ -156,4 +156,5 @@ enum class CursorKind : u8 {
 	hand,
 	ibeam,
 	drag,
+	move,
 };

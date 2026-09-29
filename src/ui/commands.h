@@ -27,6 +27,12 @@ enum class CommandType : u8 {
 	lock_vault,
 };
 
+struct ArtSource {
+	Rect rect;
+	float radius;
+	bool is_icon;
+};
+
 struct Command {
 	CommandType type;
 	i32 index = -1;

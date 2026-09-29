@@ -247,6 +247,7 @@ void App::stack_widgets()
 void App::apply_settings(storage::LoadResult t_load_result)
 {
 	apply_theme(m_settings.theme);
+	apply_game_order();
 	m_carousel.restore(m_settings.zoom_stop, m_settings.selected_game);
 
 	if (t_load_result == storage::LoadResult::failed) return;
@@ -306,10 +307,34 @@ void App::lock_if_idle()
 	lock_vault();
 }
 
+void App::apply_game_order()
+{
+	u8 order[max_games]{};
+	u32 count = 0;
+
+	for (u32 i = 0; i < m_settings.game_order_count; i += 1) {
+		for (u32 game = 0; game < m_library.game_count(); game += 1) {
+			if (m_library.game(game).title == m_settings.game_order[i]) {
+				order[count] = static_cast<u8>(game);
+				count += 1;
+				break;
+			}
+		}
+	}
+
+	m_carousel.set_order({order, count});
+}
+
 void App::save_settings()
 {
 	m_settings.zoom_stop = m_carousel.zoom_stop();
 	m_settings.selected_game = m_carousel.selected_game();
+
+	m_settings.game_order_count = 0;
+	for (const u8 game : m_carousel.order()) {
+		copy_to(m_library.game(game).title, m_settings.game_order[m_settings.game_order_count]);
+		m_settings.game_order_count += 1;
+	}
 
 	Settings committed = m_settings;
 	m_settings_panel.restore_committed_theme(committed);
@@ -369,7 +394,9 @@ void App::fill_tray_menu(TrayMenu &t_menu) const
 {
 	if (m_locked) return;
 
-	for (u32 game = 0; game < m_library.game_count() && t_menu.game_count < tray_max_games; game += 1) {
+	for (const u8 game : m_carousel.order()) {
+		if (t_menu.game_count == tray_max_games) break;
+
 		const VisibleAccounts visible = m_library.visible_accounts(game);
 
 		TrayGame &entry = t_menu.games[t_menu.game_count];
@@ -528,6 +555,7 @@ void App::process(const Command &t_command)
 
 		case CommandType::open_game:
 			m_account_modal.open(t_command.index);
+			m_account_modal.set_art_source(m_carousel.art_source(static_cast<u32>(t_command.index)));
 			break;
 
 		case CommandType::save_changes:
@@ -649,7 +677,18 @@ void App::announce_update_stage()
 
 void App::announce_first_run_after_update()
 {
-	if (!std::exchange(m_just_updated, false)) return;
+	if (m_locked || !std::exchange(m_just_updated, false)) return;
+
+	const std::string_view notes_version = m_settings.release_notes_version;
+	const std::string_view notes = m_settings.release_notes;
+
+	if (notes_version == app_version && !notes.empty()) {
+		m_update_overlay.show_release_notes(notes_version, notes);
+		m_settings.release_notes_version[0] = '\0';
+		m_settings.release_notes[0] = '\0';
+		request_save();
+		return;
+	}
 
 	char message[96];
 	std::snprintf(message, sizeof(message), "Updated to %s", app_version);
@@ -668,6 +707,8 @@ void App::relaunch_if_update_installed()
 {
 	if (!m_updater.consume_ready_to_relaunch()) return;
 
+	copy_to(m_updater.manifest().version, m_settings.release_notes_version);
+	copy_to(m_updater.manifest().notes, m_settings.release_notes);
 	save_everything();
 
 	// The replacement build would otherwise find this process's mutex and exit as a duplicate.
@@ -731,6 +772,13 @@ void App::frame()
 	}
 
 	m_truncation_hint.update(delta_seconds, m_pointer_down);
+
+	const i32 detached_game = m_account_modal.detached_game();
+	if (detached_game >= 0) {
+		m_account_modal.set_art_source(m_carousel.art_source(static_cast<u32>(detached_game)));
+	}
+
+	m_carousel.set_detached_game(detached_game);
 
 	if (!m_window.is_mouse_over_resize_border()) {
 		m_window.set_cursor(m_widgets.cursor());

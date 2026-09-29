@@ -68,6 +68,7 @@ class App {
 	void lock_vault();
 	void lock_if_idle();
 
+	void apply_game_order();
 	void save_settings();
 	void save_everything();
 	void request_save();

@@ -5,6 +5,9 @@
 #include "core/master_key.h"
 #include "core/types.h"
 
+constexpr u32 max_game_order = 16;
+constexpr u32 max_game_title = 48;
+
 enum class ThemeKind : u8 {
 	dark,
 	light,
@@ -67,8 +70,12 @@ struct Settings {
 
 	i32 zoom_stop = 0;
 	i32 selected_game = 0;
+	char game_order[max_game_order][max_game_title]{};
+	u32 game_order_count = 0;
 
 	char last_run_version[32]{};
+	char release_notes_version[32]{};
+	char release_notes[1024]{};
 
 	bool master_password_enabled = false;
 	MasterKeyParams master_key;

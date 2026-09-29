@@ -6,6 +6,7 @@
 
 #include "core/app_identity.h"
 #include "core/settings.h"
+#include "core/str.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "platform/window.h"
@@ -82,6 +83,26 @@ void UpdateOverlay::open()
 void UpdateOverlay::close()
 {
 	m_open = false;
+	m_showing_release = false;
+}
+
+void UpdateOverlay::show_release_notes(std::string_view t_version, std::string_view t_notes)
+{
+	copy_to(t_version, m_release_version);
+	copy_to(t_notes, m_release_notes);
+	m_showing_release = true;
+	m_notes_scroll = Scrollable{};
+	m_open = true;
+}
+
+std::string_view UpdateOverlay::shown_notes() const
+{
+	return m_showing_release ? std::string_view{m_release_notes} : std::string_view{m_updater.manifest().notes};
+}
+
+bool UpdateOverlay::has_notes() const
+{
+	return m_showing_release || m_updater.stage() == UpdateStage::available;
 }
 
 void UpdateOverlay::update(float t_delta_seconds)
@@ -133,7 +154,7 @@ UpdateOverlay::Notes UpdateOverlay::notes() const
 	const Rect box{card.x + card_padding, top, card.w - card_padding * 2.0f, primary_button_rect().y - gap - top};
 
 	std::string_view lines[max_note_lines];
-	const u32 line_count = wrap_text(secondary, m_updater.manifest().notes, box.w - notes_scrollbar_room, lines);
+	const u32 line_count = wrap_text(secondary, shown_notes(), box.w - notes_scrollbar_room, lines);
 	const Rect track{box.right() - scrollbar_width, box.y, scrollbar_width, box.h};
 
 	return Notes{box, ScrollGeometry{track, line_count * secondary.line_height(), box.h}};
@@ -143,7 +164,7 @@ bool UpdateOverlay::on_pointer_down(Vec2 t_point)
 {
 	if (!m_open) return false;
 
-	if (m_updater.stage() == UpdateStage::available) {
+	if (has_notes()) {
 		m_notes_scroll.on_pointer_down(t_point, notes().scroll);
 	}
 
@@ -172,8 +193,16 @@ bool UpdateOverlay::on_pointer_up(Vec2 t_point)
 
 	const UpdateStage stage = m_updater.stage();
 
-	if (can_dismiss(stage) && close_button_rect().contains(t_point)) {
+	if ((m_showing_release || can_dismiss(stage)) && close_button_rect().contains(t_point)) {
 		close();
+		return true;
+	}
+
+	if (m_showing_release) {
+		if (primary_button_rect().contains(t_point)) {
+			close();
+		}
+
 		return true;
 	}
 
@@ -206,7 +235,7 @@ bool UpdateOverlay::on_scroll(Vec2 t_point, float t_wheel_delta)
 {
 	if (!m_open) return false;
 
-	if (m_updater.stage() == UpdateStage::available) {
+	if (has_notes()) {
 		const Notes current = notes();
 
 		if (current.box.contains(t_point)) {
@@ -222,8 +251,9 @@ CursorKind UpdateOverlay::cursor() const
 	if (!m_open) return CursorKind::arrow;
 
 	const UpdateStage stage = m_updater.stage();
-	const bool over_close = can_dismiss(stage) && close_button_rect().contains(m_mouse);
-	const bool over_primary = has_primary_action(stage) && primary_button_rect().contains(m_mouse);
+	const bool over_close = (m_showing_release || can_dismiss(stage)) && close_button_rect().contains(m_mouse);
+	const bool over_primary =
+		(m_showing_release || has_primary_action(stage)) && primary_button_rect().contains(m_mouse);
 
 	return over_close || over_primary ? CursorKind::hand : CursorKind::arrow;
 }
@@ -274,7 +304,7 @@ void UpdateOverlay::draw_notes(DrawList &t_draw_list) const
 	t_draw_list.add_bordered_rect(current.box, rounded(8.0f), theme().field, theme().separator, 1.0f);
 
 	std::string_view lines[max_note_lines];
-	const u32 line_count = wrap_text(font, m_updater.manifest().notes, current.box.w - notes_scrollbar_room, lines);
+	const u32 line_count = wrap_text(font, shown_notes(), current.box.w - notes_scrollbar_room, lines);
 
 	t_draw_list.push_clip(current.box);
 
@@ -349,12 +379,21 @@ void UpdateOverlay::draw(DrawList &t_draw_list)
 	t_draw_list.add_rect(Rect{card.x + edge_inset, card.y + 1.0f, card.w - edge_inset * 2.0f, 1.0f},
 						 with_alpha(theme().text_faint, card_top_edge_alpha));
 
-	if (can_dismiss(stage)) {
+	if (m_showing_release || can_dismiss(stage)) {
 		draw_close_button(t_draw_list);
 	}
 
 	float baseline = card.y + card_padding + m_fonts.body().ascent();
 	char line[96];
+
+	if (m_showing_release) {
+		std::snprintf(line, sizeof(line), "What's New in %s", m_release_version);
+		draw_title(t_draw_list, baseline, line);
+		draw_detail(t_draw_list, baseline, "Pulsar was updated. Here's what changed.");
+		draw_notes(t_draw_list);
+		draw_primary_button(t_draw_list, "Got It", true);
+		return;
+	}
 
 	switch (stage) {
 		case UpdateStage::idle:

@@ -16,6 +16,7 @@ struct Account {
 	char username[64]{};
 	char note[32]{};
 	char password[128]{};
+	char region[8]{};
 	u16 visible_game_mask = 0;
 	bool favorite = false;
 	i64 last_used = 0;

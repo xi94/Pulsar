@@ -16,6 +16,7 @@ class UpdateOverlay : public Widget {
 
 	void open();
 	void close();
+	void show_release_notes(std::string_view t_version, std::string_view t_notes);
 
 	bool is_open() const
 	{
@@ -47,6 +48,8 @@ class UpdateOverlay : public Widget {
 	Rect close_button_rect() const;
 	Rect primary_button_rect() const;
 	Notes notes() const;
+	std::string_view shown_notes() const;
+	bool has_notes() const;
 	float text_column_x() const;
 	float text_column_width() const;
 
@@ -64,4 +67,8 @@ class UpdateOverlay : public Widget {
 
 	bool m_open = false;
 	Scrollable m_notes_scroll;
+
+	bool m_showing_release = false;
+	char m_release_version[32]{};
+	char m_release_notes[1024]{};
 };

@@ -55,6 +55,8 @@ HCURSOR system_cursor(CursorKind t_cursor)
 			return LoadCursorW(nullptr, IDC_HAND);
 		case CursorKind::ibeam:
 			return LoadCursorW(nullptr, IDC_IBEAM);
+		case CursorKind::move:
+			return LoadCursorW(nullptr, IDC_SIZEALL);
 		case CursorKind::arrow:
 		case CursorKind::drag:
 			break;
@@ -140,6 +142,9 @@ bool Window::create(const wchar_t *t_title, u32 t_width, u32 t_height)
 
 	const MARGINS keep_dwm_shadow{.cxLeftWidth = 0, .cxRightWidth = 0, .cyTopHeight = 1, .cyBottomHeight = 0};
 	DwmExtendFrameIntoClientArea(m_window, &keep_dwm_shadow);
+
+	const DWM_WINDOW_CORNER_PREFERENCE corners = DWMWCP_ROUND;
+	DwmSetWindowAttribute(m_window, DWMWA_WINDOW_CORNER_PREFERENCE, &corners, sizeof(corners));
 
 	return true;
 }
