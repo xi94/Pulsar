@@ -49,18 +49,16 @@ constexpr u32 theme_count = static_cast<u32>(std::size(theme_labels));
 
 enum class BackgroundStyle : u8 {
 	none,
-	soft_light,
-	grain,
+	soft_grain,
 	dots,
 	grid,
 	crosses,
-	hexagons,
 	lines,
 };
 
 constexpr OptionLabel background_labels[]{
-	{"none", "None"}, {"soft_light", "Soft Light"}, {"grain", "Grain"},		  {"dots", "Dots"},
-	{"grid", "Grid"}, {"crosses", "Crosses"},		{"hexagons", "Hexagons"}, {"lines", "Lines"},
+	{"none", "None"}, {"soft_grain", "Soft Grain"}, {"dots", "Dots"},
+	{"grid", "Grid"}, {"crosses", "Crosses"},		{"lines", "Lines"},
 };
 
 constexpr u32 background_count = static_cast<u32>(std::size(background_labels));
@@ -72,7 +70,7 @@ struct Settings {
 	bool animations_enabled = true;
 	float animation_speed = 1.0f;
 	float corner_roundness = 1.0f;
-	BackgroundStyle background_style = BackgroundStyle::soft_light;
+	BackgroundStyle background_style = BackgroundStyle::soft_grain;
 	float background_intensity = 0.5f;
 
 	float font_size = 14.0f;

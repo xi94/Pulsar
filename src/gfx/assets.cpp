@@ -22,6 +22,7 @@
 #include "embeds/icons/FavoriteIcon.hpp"
 #include "embeds/icons/FolderIcon.hpp"
 #include "embeds/icons/GridIcon.hpp"
+#include "embeds/icons/IconsIcon.hpp"
 #include "embeds/icons/LeagueIcon.hpp"
 #include "embeds/icons/ListArrow.hpp"
 #include "embeds/icons/ListIcon.hpp"
@@ -90,6 +91,7 @@ const EncodedAsset encoded_assets[asset_count]{
 	{icon::list_icon, "ListIcon"},
 	{icon::carousel_icon, "CarouselIcon"},
 	{icon::shelf_icon, "ShelfIcon"},
+	{icon::icons_icon, "IconsIcon"},
 	{icon::list_arrow, "ListArrow"},
 	{icon::eye_visible_icon, "EyeVisible"},
 	{icon::eye_hidden_icon, "EyeHiddenIcon"},

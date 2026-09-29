@@ -83,7 +83,6 @@ constexpr float icon_tile_padding_bottom = 10.0f;
 constexpr float icon_tile_gap = 6.0f;
 constexpr float icon_tile_radius = 8.0f;
 constexpr float icon_label_gap = 8.0f;
-constexpr float icon_detail_gap = 2.0f;
 constexpr float icon_label_inset = 6.0f;
 
 constexpr float switcher_hold_seconds = 0.7f;
@@ -127,7 +126,7 @@ struct SwitcherRow {
 };
 
 constexpr SwitcherRow switcher_rows[]{
-	{"Icons", Asset::icon_grid, icons_first_stop, zoom_stop_count - 1},
+	{"Icons", Asset::icon_icons, icons_first_stop, zoom_stop_count - 1},
 	{"List", Asset::icon_list, list_first_stop, list_last_stop},
 	{"Grid", Asset::icon_grid, grid_first_stop, grid_last_stop},
 	{"Shelf", Asset::icon_shelf, shelf_stop, shelf_stop},
@@ -498,10 +497,8 @@ Rect Carousel::list_slot(u32 t_slot) const
 Vec2 Carousel::icon_tile_size() const
 {
 	const float art = icon_art_size(m_zoom_percent, view_scale());
-	const float labels = m_fonts.body().line_height() + icon_detail_gap + m_fonts.secondary().line_height();
-
 	return Vec2{art + icon_tile_padding_x * 2.0f,
-				icon_tile_padding_top + art + icon_label_gap + labels + icon_tile_padding_bottom};
+				icon_tile_padding_top + art + icon_label_gap + m_fonts.body().line_height() + icon_tile_padding_bottom};
 }
 
 u32 Carousel::icon_columns() const
@@ -1431,7 +1428,6 @@ void Carousel::draw_icon_tile_frame(DrawList &t_draw_list, Rect t_tile, u32 t_ga
 									u8 t_alpha) const
 {
 	const Font &title_font = m_fonts.body();
-	const Font &detail_font = m_fonts.secondary();
 	const Game &game = m_library.game(t_game);
 	const Rect art = icon_tile_art(t_tile);
 	const float label_width = t_tile.w - icon_label_inset * 2.0f;
@@ -1448,16 +1444,6 @@ void Carousel::draw_icon_tile_frame(DrawList &t_draw_list, Rect t_tile, u32 t_ga
 	const float title_baseline = art.bottom() + icon_label_gap + title_font.ascent();
 	draw_centered_label(t_draw_list, title_font, t_tile.center().x, title_baseline, game.title, label_width,
 						faded(theme().text, t_alpha));
-
-	char detail[24];
-	const int written = game.account_count == 0 ? std::snprintf(detail, sizeof(detail), "No accounts")
-												: std::snprintf(detail, sizeof(detail), "%u account%s",
-																game.account_count, game.account_count == 1 ? "" : "s");
-	const float detail_baseline = title_baseline + title_font.descent() + icon_detail_gap + detail_font.ascent();
-
-	draw_centered_label(t_draw_list, detail_font, t_tile.center().x, detail_baseline,
-						std::string_view{detail, static_cast<usize>(std::max(written, 0))}, label_width,
-						faded(theme().text_dim, t_alpha));
 }
 
 void Carousel::draw_icon_tile(DrawList &t_draw_list, Rect t_tile, u32 t_game, bool t_highlighted, u8 t_alpha) const
