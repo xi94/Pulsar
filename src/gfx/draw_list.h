@@ -23,6 +23,7 @@ enum class ShaderKind : u8 {
 	circular_progress,
 	shadow,
 	outline_countdown,
+	backdrop,
 };
 
 struct RoundedBoxParams {
@@ -134,6 +135,7 @@ class DrawList {
 	void add_triangle(Vec2 t_a, Vec2 t_b, Vec2 t_c, Color t_color);
 	void add_rect_outline(Rect t_rect, float t_thickness, Color t_color);
 	void add_gradient(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right);
+	void add_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right);
 	void add_line(Vec2 t_from, Vec2 t_to, float t_thickness, Color t_color);
 
 	void add_rounded_rect(Rect t_rect, CornerRadii t_radii, Color t_color);

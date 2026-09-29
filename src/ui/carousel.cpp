@@ -1253,13 +1253,13 @@ void Carousel::draw_carousel_edges(DrawList &t_draw_list, u8 t_alpha) const
 
 	if (left > 0.0f) {
 		const Color opaque = faded(theme().window, static_cast<u8>(fade * left));
-		t_draw_list.add_gradient(Rect{m_bounds.x, m_bounds.y, edge_fade_width, m_bounds.h}, opaque, clear, opaque,
+		t_draw_list.add_backdrop(Rect{m_bounds.x, m_bounds.y, edge_fade_width, m_bounds.h}, opaque, clear, opaque,
 								 clear);
 	}
 
 	if (right > 0.0f) {
 		const Color opaque = faded(theme().window, static_cast<u8>(fade * right));
-		t_draw_list.add_gradient(Rect{m_bounds.right() - edge_fade_width, m_bounds.y, edge_fade_width, m_bounds.h},
+		t_draw_list.add_backdrop(Rect{m_bounds.right() - edge_fade_width, m_bounds.y, edge_fade_width, m_bounds.h},
 								 clear, opaque, clear, opaque);
 	}
 }
@@ -1268,7 +1268,7 @@ void Carousel::draw_wrap_scroll(DrawList &t_draw_list, u8 t_alpha) const
 {
 	const ScrollGeometry geometry = wrap_scroll_geometry();
 
-	m_wrap_scroll.draw_edge_fade(t_draw_list, m_bounds, geometry, faded(theme().window, t_alpha));
+	m_wrap_scroll.draw_edge_fade(t_draw_list, m_bounds, geometry, faded(theme().window, t_alpha), true);
 	m_wrap_scroll.draw(t_draw_list, geometry, m_mouse, t_alpha);
 }
 

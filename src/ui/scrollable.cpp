@@ -72,25 +72,32 @@ void Scrollable::draw(DrawList &t_draw_list, const ScrollGeometry &t_geometry, V
 								 faded(hovered ? hovered_thumb : colors.scroll_thumb, t_alpha));
 }
 
-void Scrollable::draw_edge_fade(DrawList &t_draw_list, Rect t_area, const ScrollGeometry &t_geometry,
-								Color t_edge) const
+void Scrollable::draw_edge_fade(DrawList &t_draw_list, Rect t_area, const ScrollGeometry &t_geometry, Color t_edge,
+								bool t_over_backdrop) const
 {
 	if (!is_needed(t_geometry)) return;
 
 	const float fade_height = std::min(edge_fade_height, t_area.h * 0.5f);
 	const Color clear = faded(t_edge, 0);
 
+	const auto fill = [&](Rect t_rect, Color t_top, Color t_bottom) {
+		if (t_over_backdrop) {
+			t_draw_list.add_backdrop(t_rect, t_top, t_top, t_bottom, t_bottom);
+		} else {
+			t_draw_list.add_gradient(t_rect, t_top, t_top, t_bottom, t_bottom);
+		}
+	};
+
 	t_draw_list.push_clip(t_area);
 
 	if (m_offset > 0.5f) {
-		t_draw_list.add_rect(Rect{t_area.x, t_area.y - edge_fade_overshoot, t_area.w, edge_fade_overshoot}, t_edge);
-		t_draw_list.add_gradient(Rect{t_area.x, t_area.y, t_area.w, fade_height}, t_edge, t_edge, clear, clear);
+		fill(Rect{t_area.x, t_area.y - edge_fade_overshoot, t_area.w, edge_fade_overshoot}, t_edge, t_edge);
+		fill(Rect{t_area.x, t_area.y, t_area.w, fade_height}, t_edge, clear);
 	}
 
 	if (m_offset < max_offset(t_geometry) - 0.5f) {
-		t_draw_list.add_gradient(Rect{t_area.x, t_area.bottom() - fade_height, t_area.w, fade_height}, clear, clear,
-								 t_edge, t_edge);
-		t_draw_list.add_rect(Rect{t_area.x, t_area.bottom(), t_area.w, edge_fade_overshoot}, t_edge);
+		fill(Rect{t_area.x, t_area.bottom() - fade_height, t_area.w, fade_height}, clear, t_edge);
+		fill(Rect{t_area.x, t_area.bottom(), t_area.w, edge_fade_overshoot}, t_edge, t_edge);
 	}
 
 	t_draw_list.pop_clip();

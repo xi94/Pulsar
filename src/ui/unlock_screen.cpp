@@ -348,7 +348,9 @@ void UnlockScreen::draw(DrawList &t_draw_list)
 				  t_color);
 	};
 
-	t_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y - status_bar_height}, theme().window);
+	const Color backdrop = theme().window;
+	t_draw_list.add_backdrop(Rect{0.0f, 0.0f, window.x, window.y - status_bar_height}, backdrop, backdrop, backdrop,
+							 backdrop);
 	t_draw_list.add_shadow(card, card_radius, halo_blur, with_alpha(accent, halo_alpha));
 	t_draw_list.add_bordered_rect(card, rounded(card_radius), theme().surface, theme().border, 1.0f);
 

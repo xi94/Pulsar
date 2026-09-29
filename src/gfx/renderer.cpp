@@ -51,6 +51,15 @@ struct OutlineCountdownConstants {
 
 static_assert(sizeof(OutlineCountdownConstants) == 48);
 
+struct BackdropConstants {
+	float target_width;
+	float target_height;
+	float intensity;
+	float padding;
+};
+
+static_assert(sizeof(BackdropConstants) == 16);
+
 bool compile_shader(const char *t_entry_point, const char *t_target, Microsoft::WRL::ComPtr<ID3DBlob> &t_out_blob)
 {
 	UINT flags = 0;
@@ -228,6 +237,7 @@ bool Renderer::create_shaders()
 		{"ps_textured", "ps_5_0"},	   {"ps_banner_glow", "ps_5_0"},
 		{"ps_color_picker", "ps_5_0"}, {"ps_circular_progress", "ps_5_0"},
 		{"ps_shadow", "ps_5_0"},	   {"ps_outline_countdown", "ps_5_0"},
+		{"ps_backdrop", "ps_5_0"},
 	};
 
 	std::vector<std::thread> compilers;
@@ -255,6 +265,7 @@ bool Renderer::create_shaders()
 		&m_circular_progress_shader,
 		&m_shadow_shader,
 		&m_outline_countdown_shader,
+		&m_backdrop_shader,
 	};
 
 	for (usize i = 0; i < std::size(pixel_shaders); i += 1) {
@@ -283,7 +294,8 @@ bool Renderer::create_constant_buffers()
 		   create_constant_buffer<BannerGlowConstants>(*m_device.Get(), m_banner_glow_constants) &&
 		   create_constant_buffer<CircularProgressConstants>(*m_device.Get(), m_circular_progress_constants) &&
 		   create_constant_buffer<ShadowConstants>(*m_device.Get(), m_shadow_constants) &&
-		   create_constant_buffer<OutlineCountdownConstants>(*m_device.Get(), m_outline_countdown_constants);
+		   create_constant_buffer<OutlineCountdownConstants>(*m_device.Get(), m_outline_countdown_constants) &&
+		   create_constant_buffer<BackdropConstants>(*m_device.Get(), m_backdrop_constants);
 }
 
 bool Renderer::create_pipeline_states()
@@ -449,6 +461,16 @@ void Renderer::draw_command(const DrawCommand &t_command)
 			m_context->UpdateSubresource(m_outline_countdown_constants.Get(), 0, nullptr, &constants, 0, 0);
 			shader = m_outline_countdown_shader.Get();
 			extra_constants = m_outline_countdown_constants.Get();
+			break;
+		}
+
+		case ShaderKind::backdrop: {
+			const BackdropConstants constants{.target_width = static_cast<float>(m_physical_width),
+											  .target_height = static_cast<float>(m_physical_height),
+											  .intensity = m_backdrop_intensity};
+			m_context->UpdateSubresource(m_backdrop_constants.Get(), 0, nullptr, &constants, 0, 0);
+			shader = m_backdrop_shader.Get();
+			extra_constants = m_backdrop_constants.Get();
 			break;
 		}
 	}

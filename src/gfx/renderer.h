@@ -72,6 +72,11 @@ class Renderer {
 		m_effect_time_seconds = t_seconds;
 	}
 
+	void set_backdrop_intensity(float t_intensity)
+	{
+		m_backdrop_intensity = t_intensity;
+	}
+
 	void render(const DrawList &t_draw_list, Color t_clear_color);
 
 	u32 create_texture(std::span<const TextureLevel> t_levels);
@@ -117,6 +122,7 @@ class Renderer {
 	ComPtr<ID3D11PixelShader> m_circular_progress_shader;
 	ComPtr<ID3D11PixelShader> m_shadow_shader;
 	ComPtr<ID3D11PixelShader> m_outline_countdown_shader;
+	ComPtr<ID3D11PixelShader> m_backdrop_shader;
 	ComPtr<ID3D11InputLayout> m_input_layout;
 
 	ComPtr<ID3D11Buffer> m_viewport_constants;
@@ -124,6 +130,7 @@ class Renderer {
 	ComPtr<ID3D11Buffer> m_circular_progress_constants;
 	ComPtr<ID3D11Buffer> m_shadow_constants;
 	ComPtr<ID3D11Buffer> m_outline_countdown_constants;
+	ComPtr<ID3D11Buffer> m_backdrop_constants;
 
 	ComPtr<ID3D11BlendState> m_blend_state;
 	ComPtr<ID3D11RasterizerState> m_rasterizer_state;
@@ -144,4 +151,5 @@ class Renderer {
 	float m_logical_width = 0.0f;
 	float m_logical_height = 0.0f;
 	float m_effect_time_seconds = 0.0f;
+	float m_backdrop_intensity = 0.0f;
 };

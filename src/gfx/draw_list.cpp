@@ -421,6 +421,23 @@ void DrawList::add_gradient(Rect t_rect, Color t_top_left, Color t_top_right, Co
 	push_quad(corners);
 }
 
+void DrawList::add_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right)
+{
+	target(ShaderKind::backdrop);
+
+	const Vertex2D corners[4]{
+		{t_rect.x, t_rect.y, 0.0f, 0.0f, pack(t_top_left)},
+		{t_rect.right(), t_rect.y, 0.0f, 0.0f, pack(t_top_right)},
+		{t_rect.right(), t_rect.bottom(), 0.0f, 0.0f, pack(t_bottom_right)},
+		{t_rect.x, t_rect.bottom(), 0.0f, 0.0f, pack(t_bottom_left)},
+	};
+
+	push_quad(corners);
+
+	const u8 weakest = std::min({t_top_left.a, t_top_right.a, t_bottom_left.a, t_bottom_right.a});
+	note_cover(t_rect, with_alpha(t_top_left, weakest));
+}
+
 void DrawList::add_line(Vec2 t_from, Vec2 t_to, float t_thickness, Color t_color)
 {
 	const float dx = t_to.x - t_from.x;

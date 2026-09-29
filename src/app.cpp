@@ -23,6 +23,7 @@ namespace {
 constexpr u32 draw_list_vertex_capacity = 1 << 16;
 constexpr u32 draw_list_index_capacity = (1 << 16) * 3 / 2;
 constexpr auto save_delay = std::chrono::milliseconds(500);
+constexpr float backdrop_intensity = 0.5f;
 constexpr auto clipboard_secret_lifetime = std::chrono::seconds(30);
 
 constexpr float status_padding = 14.0f;
@@ -199,6 +200,7 @@ bool App::create_graphics()
 		return false;
 	}
 
+	m_renderer.set_backdrop_intensity(backdrop_intensity);
 	m_swap_chain_width = m_window.physical_width();
 	m_swap_chain_height = m_window.physical_height();
 
@@ -827,6 +829,11 @@ void App::render()
 	PULSAR_PROFILE_SCOPE("Render");
 
 	m_draw_list.clear();
+
+	const Vec2 window = m_window.size();
+	const Color backdrop = theme().window;
+	m_draw_list.add_backdrop(Rect{0.0f, 0.0f, window.x, window.y}, backdrop, backdrop, backdrop, backdrop);
+
 	begin_truncation_probe(m_draw_list, m_mouse);
 	draw_status_bar();
 

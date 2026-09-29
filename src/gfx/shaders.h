@@ -290,4 +290,37 @@ constexpr const char *shader_source = R"(
 
 		return float4(saturate(rgb), alpha * input.color.a);
 	}
+
+	cbuffer BackdropConstants : register(b1) {
+		float2 backdrop_target_size;
+		float backdrop_intensity;
+		float backdrop_padding;
+	};
+
+	float backdrop_noise(float2 pixel)
+	{
+		float3 p = frac(pixel.xyx * 0.1031);
+		p += dot(p, p.yzx + 33.33);
+		return frac((p.x + p.y) * p.z);
+	}
+
+	float4 ps_backdrop(PixelInput input) : SV_TARGET
+	{
+		float2 pixel = input.position.xy;
+		float2 size = backdrop_target_size;
+
+		float light_distance = length(pixel - float2(size.x * 0.5, -size.y * 0.2));
+		float light = saturate(1.0 - light_distance / (size.y * 1.3));
+
+		float vignette_start = size.y * 0.3;
+		float vignette_span = max(size.x * 0.75 - vignette_start, 1.0);
+		float vignette = saturate((length(pixel - size * 0.5) - vignette_start) / vignette_span);
+
+		float3 rgb = input.color.rgb;
+		rgb = lerp(rgb, 1.0, light * 0.07 * backdrop_intensity);
+		rgb *= 1.0 - vignette * 0.25 * backdrop_intensity;
+		rgb += (backdrop_noise(pixel) - 0.5) * (8.0 / 255.0) * backdrop_intensity;
+
+		return float4(saturate(rgb), input.color.a);
+	}
 )";
