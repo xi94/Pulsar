@@ -45,10 +45,7 @@ constexpr float close_badge_size = 40.0f;
 constexpr float close_badge_margin = 12.0f;
 constexpr float close_badge_icon_size = 18.0f;
 constexpr float icon_crossfade_share = 0.35f;
-constexpr float morph_reference_seconds = 0.17f;
-constexpr float morph_reference_travel = 400.0f;
-constexpr float morph_min_seconds = 0.12f;
-constexpr float morph_max_seconds = 0.26f;
+constexpr float morph_seconds = 0.22f;
 constexpr float panel_reveal_progress = 0.6f;
 constexpr float morph_return_open_amount = 0.35f;
 
@@ -694,22 +691,6 @@ void AccountModal::choose_region(u32 t_index)
 	if (t_index < region_count) {
 		copy_to(region_options[t_index].code, m_region);
 	}
-}
-
-float AccountModal::morph_travel() const
-{
-	const Rect target = layout().art_column;
-	const Rect source = m_art_source->rect;
-
-	return std::max({std::fabs(target.x - source.x), std::fabs(target.y - source.y),
-					 std::fabs(target.right() - source.right()), std::fabs(target.bottom() - source.bottom()), 1.0f});
-}
-
-float AccountModal::morph_seconds() const
-{
-	const float seconds = morph_reference_seconds * std::sqrt(morph_travel() / morph_reference_travel);
-
-	return std::clamp(seconds, morph_min_seconds, morph_max_seconds);
 }
 
 bool AccountModal::is_show_in_hit(Rect t_main, Vec2 t_point) const
@@ -1389,7 +1370,7 @@ void AccountModal::update(float t_delta_seconds)
 	if (!morphing) {
 		m_morph_progress = morph_target;
 	} else if (m_open || m_open_amount <= morph_return_open_amount) {
-		m_morph_progress = animation::step_toward(m_morph_progress, morph_target, morph_seconds(), t_delta_seconds);
+		m_morph_progress = animation::step_toward(m_morph_progress, morph_target, morph_seconds, t_delta_seconds);
 	}
 
 	const bool panel_shown = m_open && (!morphing || m_morph_progress >= panel_reveal_progress);

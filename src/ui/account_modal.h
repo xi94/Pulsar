@@ -176,8 +176,6 @@ class AccountModal : public Widget {
 	bool is_region_hit(Rect t_main, Vec2 t_point) const;
 	void open_region_list();
 	void choose_region(u32 t_index);
-	float morph_travel() const;
-	float morph_seconds() const;
 	std::string_view visibility_summary(char (&t_buffer)[32]) const;
 
 	TextInput &field(EditField t_field)
