@@ -14,9 +14,11 @@
 #include "core/app_identity.h"
 
 namespace {
+constexpr usize max_notes_length = 1023;
+
 constexpr const char *usage =
-	"sign_release --exe <Pulsar.exe> [--notes <text>] [--version <X.Y.Z>] [--url <download-url>] "
-	"[--out <update.json>] [--min-upgrade-version <X.Y.Z>] [--key-hex <128 hex chars>]";
+	"sign_release --exe <Pulsar.exe> [--notes <text> | --notes-file <path>] [--version <X.Y.Z>] "
+	"[--url <download-url>] [--out <update.json>] [--min-upgrade-version <X.Y.Z>] [--key-hex <128 hex chars>]";
 
 [[noreturn]] void fail(const char *t_message)
 {
@@ -81,6 +83,29 @@ bool read_whole_file(const std::string &t_path, std::vector<u8> &t_out_bytes)
 	t_out_bytes.resize(static_cast<usize>(size));
 
 	return static_cast<bool>(file.read(reinterpret_cast<char *>(t_out_bytes.data()), size));
+}
+
+std::string read_notes_file(const std::string &t_path)
+{
+	std::vector<u8> bytes;
+	if (!read_whole_file(t_path, bytes)) fail("could not read --notes-file");
+
+	std::string notes(bytes.begin(), bytes.end());
+	if (notes.starts_with("\xEF\xBB\xBF")) {
+		notes.erase(0, 3);
+	}
+
+	return notes;
+}
+
+std::string trimmed_notes(const std::string &t_notes)
+{
+	constexpr const char *blank = " \t\r\n";
+
+	const usize first = t_notes.find_first_not_of(blank);
+	if (first == std::string::npos) return {};
+
+	return t_notes.substr(first, t_notes.find_last_not_of(blank) - first + 1);
 }
 
 std::string exe_version(const std::string &t_exe_path)
@@ -154,6 +179,8 @@ int main(int t_argc, char **t_argv)
 			url = value;
 		} else if (option == "--notes") {
 			notes = value;
+		} else if (option == "--notes-file") {
+			notes = read_notes_file(value);
 		} else if (option == "--min-upgrade-version") {
 			min_upgrade_version = value;
 		} else if (option == "--out") {
@@ -166,6 +193,15 @@ int main(int t_argc, char **t_argv)
 	}
 
 	if (exe_path.empty()) fail("--exe is required");
+
+	notes = trimmed_notes(notes);
+	std::erase(notes, '\r');
+
+	if (notes.size() > max_notes_length) {
+		std::fprintf(stderr, "sign_release: notes are %zu bytes but Pulsar shows at most %zu - shorten them\n",
+					 notes.size(), max_notes_length);
+		return 1;
+	}
 
 	if (version.empty()) {
 		version = exe_version(exe_path);

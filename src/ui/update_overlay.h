@@ -48,6 +48,8 @@ class UpdateOverlay : public Widget {
 	Rect close_button_rect() const;
 	Rect primary_button_rect() const;
 	Notes notes() const;
+	float notes_chrome_height() const;
+	float notes_content_height() const;
 	std::string_view shown_notes() const;
 	bool has_notes() const;
 	float text_column_x() const;

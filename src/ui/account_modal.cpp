@@ -45,11 +45,11 @@ constexpr float close_badge_size = 40.0f;
 constexpr float close_badge_margin = 12.0f;
 constexpr float close_badge_icon_size = 18.0f;
 constexpr float icon_crossfade_share = 0.35f;
-constexpr float morph_reference_seconds = 0.22f;
+constexpr float morph_reference_seconds = 0.17f;
 constexpr float morph_reference_travel = 400.0f;
-constexpr float morph_min_seconds = 0.16f;
-constexpr float morph_max_seconds = 0.34f;
-constexpr float panel_reveal_progress = 0.65f;
+constexpr float morph_min_seconds = 0.12f;
+constexpr float morph_max_seconds = 0.26f;
+constexpr float panel_reveal_progress = 0.6f;
 constexpr float morph_return_open_amount = 0.35f;
 
 constexpr std::string_view accounts_title = "Accounts";

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <optional>
 #include <span>
 
 #include "core/app_identity.h"
@@ -25,9 +26,25 @@ constexpr float progress_height = 10.0f;
 constexpr float progress_glow = 3.0f;
 constexpr float close_size = 28.0f;
 constexpr float close_margin = 14.0f;
-constexpr float notes_padding = 12.0f;
+constexpr float card_margin = 24.0f;
+constexpr float notes_padding = 14.0f;
 constexpr float notes_scrollbar_room = 14.0f;
+constexpr float notes_max_height = 320.0f;
+constexpr float notes_text_width = card_width - card_padding * 2.0f - notes_padding - notes_scrollbar_room;
 constexpr u32 max_note_lines = 256;
+constexpr u32 max_paragraph_lines = 32;
+
+constexpr usize note_heading_max_length = 40;
+constexpr float note_heading_gap_above = 14.0f;
+constexpr float note_heading_gap_below = 6.0f;
+constexpr float note_heading_rule_gap = 10.0f;
+constexpr float note_heading_accent_mix = 0.45f;
+constexpr float note_item_gap = 5.0f;
+constexpr float note_paragraph_gap = 8.0f;
+constexpr float note_bullet_indent = 16.0f;
+constexpr float note_bullet_size = 4.0f;
+constexpr float note_bullet_offset = 3.0f;
+constexpr float note_x_height_share = 0.36f;
 constexpr u32 max_error_lines = 4;
 
 constexpr u8 card_top_edge_alpha = 90;
@@ -51,6 +68,122 @@ bool has_primary_action(UpdateStage t_stage)
 		default:
 			return false;
 	}
+}
+
+enum class NoteKind : u8 {
+	heading,
+	bullet,
+	continuation,
+	text,
+};
+
+struct NoteLine {
+	std::string_view text;
+	NoteKind kind;
+	float baseline;
+};
+
+std::string_view trimmed(std::string_view t_text)
+{
+	constexpr std::string_view blank = " \t\r";
+
+	const usize first = t_text.find_first_not_of(blank);
+	if (first == std::string_view::npos) return {};
+
+	return t_text.substr(first, t_text.find_last_not_of(blank) - first + 1);
+}
+
+std::optional<std::string_view> bullet_text(std::string_view t_line)
+{
+	constexpr std::string_view markers[]{"- ", "* ", "\xE2\x80\xA2 "};
+
+	for (const std::string_view marker : markers) {
+		if (t_line.starts_with(marker)) return trimmed(t_line.substr(marker.size()));
+	}
+
+	return std::nullopt;
+}
+
+std::string_view next_content_line(std::string_view t_notes, usize t_start)
+{
+	while (t_start < t_notes.size()) {
+		const usize end = std::min(t_notes.find('\n', t_start), t_notes.size());
+		const std::string_view line = trimmed(t_notes.substr(t_start, end - t_start));
+		if (!line.empty()) return line;
+
+		t_start = end + 1;
+	}
+
+	return {};
+}
+
+bool is_heading(std::string_view t_line, std::string_view t_next)
+{
+	if (t_line.starts_with('#')) return true;
+	if (t_line.size() > note_heading_max_length || bullet_text(t_line) || t_line.ends_with('.')) return false;
+
+	return bullet_text(t_next).has_value();
+}
+
+std::string_view heading_text(std::string_view t_line)
+{
+	return trimmed(t_line.substr(std::min(t_line.find_first_not_of('#'), t_line.size())));
+}
+
+u32 layout_notes(const Font &t_font, std::string_view t_notes, std::span<NoteLine> t_out, float &t_out_height)
+{
+	u32 count = 0;
+	float y = 0.0f;
+	float blank_gap = 0.0f;
+
+	const auto push = [&](std::string_view t_text, NoteKind t_kind) {
+		if (count == t_out.size()) return;
+
+		t_out[count] = NoteLine{t_text, t_kind, y + t_font.ascent()};
+		count += 1;
+		y += t_font.line_height();
+	};
+
+	const auto push_wrapped = [&](std::string_view t_text, NoteKind t_first, NoteKind t_rest, float t_width) {
+		std::string_view wrapped[max_paragraph_lines];
+		const u32 wrapped_count = wrap_text(t_font, t_text, t_width, wrapped);
+
+		for (u32 i = 0; i < wrapped_count; i += 1) {
+			push(wrapped[i], i == 0 ? t_first : t_rest);
+		}
+	};
+
+	usize start = 0;
+	while (start <= t_notes.size()) {
+		const usize end = std::min(t_notes.find('\n', start), t_notes.size());
+		const std::string_view line = trimmed(t_notes.substr(start, end - start));
+		start = end + 1;
+
+		if (line.empty()) {
+			blank_gap = count > 0 ? note_paragraph_gap : 0.0f;
+			continue;
+		}
+
+		if (is_heading(line, next_content_line(t_notes, start))) {
+			y += count > 0 ? note_heading_gap_above : 0.0f;
+			push(heading_text(line), NoteKind::heading);
+			y += note_heading_gap_below;
+		} else if (const std::optional<std::string_view> bullet = bullet_text(line)) {
+			y += blank_gap;
+			push_wrapped(*bullet, NoteKind::bullet, NoteKind::continuation, notes_text_width - note_bullet_indent);
+			y += note_item_gap;
+		} else {
+			y += blank_gap;
+			push_wrapped(line, NoteKind::text, NoteKind::text, notes_text_width);
+			y += note_item_gap;
+		}
+
+		blank_gap = 0.0f;
+	}
+
+	t_out_height = count > 0 ? t_out[count - 1].baseline + t_font.descent() : 0.0f;
+
+	return count;
 }
 
 std::string_view format_size(double t_bytes, const char *t_suffix, char (&t_buffer)[32])
@@ -113,8 +246,31 @@ void UpdateOverlay::update(float t_delta_seconds)
 Rect UpdateOverlay::card_rect() const
 {
 	const Vec2 window = m_window.size();
+	const Rect client{0.0f, 0.0f, window.x, window.y};
+	if (!has_notes()) return client.centered(card_width, card_height);
 
-	return Rect{0.0f, 0.0f, window.x, window.y}.centered(card_width, card_height);
+	const float wanted = notes_chrome_height() + std::min(notes_content_height(), notes_max_height);
+	const float height = std::max(card_height, std::min(wanted, window.y - card_margin * 2.0f));
+
+	return client.centered(card_width, height);
+}
+
+float UpdateOverlay::notes_chrome_height() const
+{
+	const Font &body = m_fonts.body();
+	const Font &secondary = m_fonts.secondary();
+
+	return card_padding * 2.0f + body.ascent() + body.line_height() + 10.0f + secondary.ascent() + secondary.descent() +
+		   gap * 2.0f + button_height;
+}
+
+float UpdateOverlay::notes_content_height() const
+{
+	NoteLine lines[max_note_lines];
+	float height = 0.0f;
+	layout_notes(m_fonts.secondary(), shown_notes(), lines, height);
+
+	return height + notes_padding * 2.0f;
 }
 
 Rect UpdateOverlay::close_button_rect() const
@@ -152,12 +308,9 @@ UpdateOverlay::Notes UpdateOverlay::notes() const
 		card.y + card_padding + body.ascent() + body.line_height() + 10.0f + secondary.ascent();
 	const float top = subtitle_baseline + secondary.descent() + gap;
 	const Rect box{card.x + card_padding, top, card.w - card_padding * 2.0f, primary_button_rect().y - gap - top};
-
-	std::string_view lines[max_note_lines];
-	const u32 line_count = wrap_text(secondary, shown_notes(), box.w - notes_scrollbar_room, lines);
 	const Rect track{box.right() - scrollbar_width, box.y, scrollbar_width, box.h};
 
-	return Notes{box, ScrollGeometry{track, line_count * secondary.line_height(), box.h}};
+	return Notes{box, ScrollGeometry{track, notes_content_height(), box.h}};
 }
 
 bool UpdateOverlay::on_pointer_down(Vec2 t_point)
@@ -299,27 +452,60 @@ void UpdateOverlay::draw_notes(DrawList &t_draw_list) const
 {
 	const Notes current = notes();
 	const Font &font = m_fonts.secondary();
+	const Theme &colors = theme();
+	const Color heading = mix(colors.text, m_settings.accent, note_heading_accent_mix);
 	const float line_height = font.line_height();
+	const float left = current.box.x + notes_padding;
+	const float right = left + notes_text_width;
+	const float mark_offset = font.ascent() * note_x_height_share;
 
-	t_draw_list.add_bordered_rect(current.box, rounded(8.0f), theme().field, theme().separator, 1.0f);
+	t_draw_list.add_bordered_rect(current.box, rounded(8.0f), colors.field, colors.separator, 1.0f);
 
-	std::string_view lines[max_note_lines];
-	const u32 line_count = wrap_text(font, shown_notes(), current.box.w - notes_scrollbar_room, lines);
+	NoteLine lines[max_note_lines];
+	float height = 0.0f;
+	const u32 line_count = layout_notes(font, shown_notes(), lines, height);
+	const float top = current.box.y + notes_padding - m_notes_scroll.offset();
 
 	t_draw_list.push_clip(current.box);
 
-	float baseline = current.box.y + notes_padding + font.ascent() - m_notes_scroll.offset();
-	for (const std::string_view line : std::span{lines, line_count}) {
-		if (baseline > current.box.y - line_height && baseline < current.box.bottom() + line_height) {
-			draw_text(t_draw_list, font, Vec2{current.box.x + notes_padding, baseline}, line, theme().text_dim);
-		}
+	for (const NoteLine &line : std::span{lines, line_count}) {
+		const float baseline = top + line.baseline;
+		if (baseline < current.box.y - line_height || baseline > current.box.bottom() + line_height) continue;
 
-		baseline += line_height;
+		switch (line.kind) {
+			case NoteKind::heading: {
+				draw_text(t_draw_list, font, Vec2{left, baseline}, line.text, heading);
+
+				const float rule_x = left + text_width(font, line.text) + note_heading_rule_gap;
+				if (rule_x < right) {
+					t_draw_list.add_rect(Rect{rule_x, snapped_to_pixel(baseline - mark_offset), right - rule_x, 1.0f},
+										 colors.separator);
+				}
+
+				break;
+			}
+
+			case NoteKind::bullet: {
+				const Rect dot{left + note_bullet_offset, baseline - mark_offset - note_bullet_size * 0.5f,
+							   note_bullet_size, note_bullet_size};
+				t_draw_list.add_rounded_rect(dot, rounded(note_bullet_size * 0.5f), heading);
+				draw_text(t_draw_list, font, Vec2{left + note_bullet_indent, baseline}, line.text, colors.text);
+				break;
+			}
+
+			case NoteKind::continuation:
+				draw_text(t_draw_list, font, Vec2{left + note_bullet_indent, baseline}, line.text, colors.text);
+				break;
+
+			case NoteKind::text:
+				draw_text(t_draw_list, font, Vec2{left, baseline}, line.text, colors.text_dim);
+				break;
+		}
 	}
 
 	t_draw_list.pop_clip();
 
-	m_notes_scroll.draw_edge_fade(t_draw_list, current.box, current.scroll, theme().field);
+	m_notes_scroll.draw_edge_fade(t_draw_list, current.box, current.scroll, colors.field);
 	m_notes_scroll.draw(t_draw_list, current.scroll, m_mouse, 255);
 }
 
