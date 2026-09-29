@@ -17,6 +17,7 @@ enum class ViewMode : u8 {
 	carousel,
 	grid,
 	list,
+	icons,
 };
 
 class Carousel : public Widget {
@@ -99,6 +100,11 @@ class Carousel : public Widget {
 	Rect overview_slot(u32 t_slot) const;
 	Rect grid_slot(u32 t_slot) const;
 	Rect list_slot(u32 t_slot) const;
+	Vec2 icon_tile_size() const;
+	u32 icon_columns() const;
+	Rect icon_slot(u32 t_slot) const;
+	Rect icon_tile_art(Rect t_tile) const;
+	u32 wrap_columns() const;
 	Rect slot_rect(ViewMode t_mode, u32 t_slot) const;
 	Rect shown_card(ViewMode t_mode, u32 t_game) const;
 	Rect dragged_rect() const;
@@ -145,6 +151,11 @@ class Carousel : public Widget {
 				   u8 t_alpha) const;
 	void draw_list_row_frame(DrawList &t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const;
 	void draw_list_row(DrawList &t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const;
+	void draw_icon_tile_frame(DrawList &t_draw_list, Rect t_tile, u32 t_game, bool t_highlighted, u8 t_alpha) const;
+	void draw_icon_tile(DrawList &t_draw_list, Rect t_tile, u32 t_game, bool t_highlighted, u8 t_alpha) const;
+	void draw_frame(DrawList &t_draw_list, ViewMode t_mode, Rect t_frame, u32 t_game, bool t_highlighted,
+					u8 t_alpha) const;
+	void draw_icons_mode(DrawList &t_draw_list) const;
 	void draw_mode(DrawList &t_draw_list, ViewMode t_mode) const;
 	void draw_mode_morph(DrawList &t_draw_list) const;
 	void draw_carousel_mode(DrawList &t_draw_list) const;
@@ -177,7 +188,7 @@ class Carousel : public Widget {
 	ViewMode m_previous_mode = ViewMode::carousel;
 	float m_mode_transition = 0.0f;
 	Rect m_morph_from_art[max_games]{};
-	Rect m_morph_from_row[max_games]{};
+	Rect m_morph_from_frame[max_games]{};
 	Vec2 m_last_centers[max_games]{};
 	u32 m_grid_columns = 0;
 	float m_shelf = 0.0f;

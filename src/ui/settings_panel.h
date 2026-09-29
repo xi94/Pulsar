@@ -32,6 +32,8 @@ enum class ResettableSetting : u8 {
 	secondary_font_size,
 	accent,
 	corner_roundness,
+	background,
+	background_intensity,
 	animations,
 	animation_speed,
 	notifications,
@@ -50,7 +52,7 @@ class SettingsPanel : public Widget {
 	void open();
 	void close();
 	void sync_with_settings();
-	void restore_committed_theme(Settings &t_settings) const;
+	void restore_committed_previews(Settings &t_settings) const;
 
 	void update(float t_delta_seconds) override;
 	void draw(DrawList &t_draw_list) override;
@@ -89,6 +91,8 @@ class SettingsPanel : public Widget {
 		Rect secondary_font_size;
 		Rect accent;
 		Rect corner_roundness;
+		Rect background;
+		Rect background_intensity;
 		Rect notifications;
 		Rect animations;
 		Rect animation_speed;
@@ -122,7 +126,7 @@ class SettingsPanel : public Widget {
 		Rect Rows::*row;
 	};
 
-	static constexpr u32 row_spec_count = 14;
+	static constexpr u32 row_spec_count = 16;
 	static const RowSpec row_specs[row_spec_count];
 
 	static constexpr u32 toggle_count = 5;
@@ -169,6 +173,10 @@ class SettingsPanel : public Widget {
 	void update_theme_preview();
 	void apply_animation_speed(Rect t_track, float t_x);
 	void apply_corner_roundness(Rect t_track, float t_x);
+	void open_background_list();
+	void choose_background(u32 t_index);
+	void update_background_preview();
+	void apply_background_intensity(Rect t_track, float t_x);
 	void apply_auto_lock(Rect t_track, float t_x);
 	void pull_picked_color();
 	void step_font_size(Rect t_stepper, float &t_value, float t_min, float t_max, Vec2 t_point);
@@ -209,13 +217,16 @@ class SettingsPanel : public Widget {
 	std::string m_font_label;
 	ListPopup m_font_list;
 	ListPopup m_theme_list;
+	ListPopup m_background_list;
 	std::optional<ThemeChoice> m_theme_before_preview;
+	std::optional<BackgroundStyle> m_background_before_preview;
 	float m_theme_wheel = 0.0f;
 	ColorPicker m_color_picker;
 	Scrollable m_rows_scroll;
 	Tooltip m_tooltip;
 	Draggable m_animation_speed_drag;
 	Draggable m_corner_roundness_drag;
+	Draggable m_background_intensity_drag;
 	Draggable m_auto_lock_drag;
 
 	TextInput m_search;
@@ -227,6 +238,7 @@ class SettingsPanel : public Widget {
 	float m_secondary_font_size_shown = 0.0f;
 	float m_animation_speed_shown = 0.0f;
 	float m_corner_roundness_shown = 0.0f;
+	float m_background_intensity_shown = 0.0f;
 	float m_auto_lock_shown = 0.0f;
 	float m_accent_shown[3]{};
 

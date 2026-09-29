@@ -201,6 +201,16 @@ void read_appearance(const json &t_json, Settings &t_settings)
 			t_settings.theme = static_cast<ThemeKind>(i);
 		}
 	}
+
+	const std::string background = t_json.value("background", std::string{});
+	for (u32 i = 0; i < background_count; i += 1) {
+		if (background == background_labels[i].id) {
+			t_settings.background_style = static_cast<BackgroundStyle>(i);
+		}
+	}
+
+	t_settings.background_intensity =
+		std::clamp(t_json.value("background_intensity", t_settings.background_intensity), 0.0f, 1.0f);
 }
 
 void read_game_order(const json &t_json, Settings &t_settings)
@@ -422,6 +432,8 @@ bool storage::save_settings(const Settings &t_settings)
 		{"animations_enabled", t_settings.animations_enabled},
 		{"animation_speed", t_settings.animation_speed},
 		{"corner_roundness", t_settings.corner_roundness},
+		{"background", background_labels[static_cast<u32>(t_settings.background_style)].id},
+		{"background_intensity", t_settings.background_intensity},
 		{"font_pixel_size", t_settings.font_size},
 		{"secondary_font_pixel_size", t_settings.secondary_font_size},
 		{"accent_color", json::array({accent.r, accent.g, accent.b, accent.a})},

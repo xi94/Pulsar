@@ -55,10 +55,12 @@ struct BackdropConstants {
 	float target_width;
 	float target_height;
 	float intensity;
-	float padding;
+	float style;
+	float pixel_scale;
+	float padding[3];
 };
 
-static_assert(sizeof(BackdropConstants) == 16);
+static_assert(sizeof(BackdropConstants) == 32);
 
 bool compile_shader(const char *t_entry_point, const char *t_target, Microsoft::WRL::ComPtr<ID3DBlob> &t_out_blob)
 {
@@ -465,9 +467,13 @@ void Renderer::draw_command(const DrawCommand &t_command)
 		}
 
 		case ShaderKind::backdrop: {
+			const float pixel_scale =
+				m_logical_width > 0.0f ? static_cast<float>(m_physical_width) / m_logical_width : 1.0f;
 			const BackdropConstants constants{.target_width = static_cast<float>(m_physical_width),
 											  .target_height = static_cast<float>(m_physical_height),
-											  .intensity = m_backdrop_intensity};
+											  .intensity = m_backdrop_intensity,
+											  .style = static_cast<float>(m_backdrop_style),
+											  .pixel_scale = pixel_scale};
 			m_context->UpdateSubresource(m_backdrop_constants.Get(), 0, nullptr, &constants, 0, 0);
 			shader = m_backdrop_shader.Get();
 			extra_constants = m_backdrop_constants.Get();

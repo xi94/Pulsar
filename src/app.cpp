@@ -23,7 +23,6 @@ namespace {
 constexpr u32 draw_list_vertex_capacity = 1 << 16;
 constexpr u32 draw_list_index_capacity = (1 << 16) * 3 / 2;
 constexpr auto save_delay = std::chrono::milliseconds(500);
-constexpr float backdrop_intensity = 0.5f;
 constexpr auto clipboard_secret_lifetime = std::chrono::seconds(30);
 
 constexpr float status_padding = 14.0f;
@@ -200,7 +199,6 @@ bool App::create_graphics()
 		return false;
 	}
 
-	m_renderer.set_backdrop_intensity(backdrop_intensity);
 	m_swap_chain_width = m_window.physical_width();
 	m_swap_chain_height = m_window.physical_height();
 
@@ -339,7 +337,7 @@ void App::save_settings()
 	}
 
 	Settings committed = m_settings;
-	m_settings_panel.restore_committed_theme(committed);
+	m_settings_panel.restore_committed_previews(committed);
 	storage::save_settings(committed);
 }
 
@@ -845,6 +843,7 @@ void App::render()
 		m_draw_list.finish();
 	}
 
+	m_renderer.set_backdrop(static_cast<u32>(m_settings.background_style), m_settings.background_intensity);
 	m_renderer.render(m_draw_list, theme().window);
 }
 

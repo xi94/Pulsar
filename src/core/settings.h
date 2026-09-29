@@ -24,12 +24,12 @@ enum class ThemeKind : u8 {
 	rose_pine,
 };
 
-struct ThemeLabel {
+struct OptionLabel {
 	std::string_view id;
 	std::string_view name;
 };
 
-constexpr ThemeLabel theme_labels[]{
+constexpr OptionLabel theme_labels[]{
 	{"dark", "Dark"},
 	{"light", "Light"},
 	{"forest", "Forest"},
@@ -47,6 +47,24 @@ constexpr ThemeLabel theme_labels[]{
 
 constexpr u32 theme_count = static_cast<u32>(std::size(theme_labels));
 
+enum class BackgroundStyle : u8 {
+	none,
+	soft_light,
+	grain,
+	dots,
+	grid,
+	crosses,
+	hexagons,
+	lines,
+};
+
+constexpr OptionLabel background_labels[]{
+	{"none", "None"}, {"soft_light", "Soft Light"}, {"grain", "Grain"},		  {"dots", "Dots"},
+	{"grid", "Grid"}, {"crosses", "Crosses"},		{"hexagons", "Hexagons"}, {"lines", "Lines"},
+};
+
+constexpr u32 background_count = static_cast<u32>(std::size(background_labels));
+
 struct Settings {
 	u32 window_width = 1042;
 	u32 window_height = 675;
@@ -54,6 +72,8 @@ struct Settings {
 	bool animations_enabled = true;
 	float animation_speed = 1.0f;
 	float corner_roundness = 1.0f;
+	BackgroundStyle background_style = BackgroundStyle::soft_light;
+	float background_intensity = 0.5f;
 
 	float font_size = 14.0f;
 	float secondary_font_size = 12.0f;

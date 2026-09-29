@@ -72,8 +72,9 @@ class Renderer {
 		m_effect_time_seconds = t_seconds;
 	}
 
-	void set_backdrop_intensity(float t_intensity)
+	void set_backdrop(u32 t_style, float t_intensity)
 	{
+		m_backdrop_style = t_style;
 		m_backdrop_intensity = t_intensity;
 	}
 
@@ -151,5 +152,6 @@ class Renderer {
 	float m_logical_width = 0.0f;
 	float m_logical_height = 0.0f;
 	float m_effect_time_seconds = 0.0f;
+	u32 m_backdrop_style = 0;
 	float m_backdrop_intensity = 0.0f;
 };
