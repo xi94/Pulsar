@@ -30,6 +30,7 @@
 #include "embeds/icons/ResetIcon.hpp"
 #include "embeds/icons/RuneterraIcon.hpp"
 #include "embeds/icons/Settings.hpp"
+#include "embeds/icons/ShelfIcon.hpp"
 #include "embeds/icons/TFTIcon.hpp"
 #include "embeds/icons/UpdateIcon.hpp"
 #include "embeds/icons/ValorantIcon.hpp"
@@ -88,6 +89,7 @@ const EncodedAsset encoded_assets[asset_count]{
 	{icon::grid_icon, "GridIcon"},
 	{icon::list_icon, "ListIcon"},
 	{icon::carousel_icon, "CarouselIcon"},
+	{icon::shelf_icon, "ShelfIcon"},
 	{icon::list_arrow, "ListArrow"},
 	{icon::eye_visible_icon, "EyeVisible"},
 	{icon::eye_hidden_icon, "EyeHiddenIcon"},

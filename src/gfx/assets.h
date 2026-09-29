@@ -19,6 +19,7 @@ enum class Asset : u8 {
 	icon_grid,
 	icon_list,
 	icon_carousel,
+	icon_shelf,
 	icon_list_arrow,
 	icon_eye_visible,
 	icon_eye_hidden,

@@ -31,6 +31,10 @@ struct ArtSource {
 	Rect rect;
 	float radius;
 	bool is_icon;
+	float border = 0.0f;
+	Color border_color{};
+	float glow = 0.0f;
+	Color glow_color{};
 };
 
 struct Command {

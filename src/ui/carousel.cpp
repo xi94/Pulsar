@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <numbers>
 #include <utility>
 
 #include <Windows.h>
@@ -25,10 +26,11 @@ constexpr float card_spacing = 36.0f;
 constexpr float card_corner_radius = 14.0f;
 constexpr float drag_pixels_per_card = card_width + card_spacing;
 constexpr float scroll_ease_rate = 12.0f;
-constexpr float mode_transition_ease_rate = 16.0f;
-constexpr float mode_slide_distance = 18.0f;
+constexpr float mode_morph_seconds = 0.34f;
 constexpr float zoom_ease_rate = 9.0f;
 constexpr float edge_fade_width = 64.0f;
+constexpr float carousel_edge_padding = 40.0f;
+constexpr float shelf_ease_rate = 12.0f;
 
 constexpr float overview_padding = 28.0f;
 constexpr float overview_hint_room = 48.0f;
@@ -97,18 +99,39 @@ constexpr u8 card_border_alpha = 160;
 constexpr u8 card_border_highlighted_alpha = 235;
 constexpr u8 switcher_tick_alpha = 190;
 
-constexpr i32 zoom_stop_count = 7;
-constexpr i32 grid_first_stop = 1;
-constexpr i32 grid_last_stop = 3;
-constexpr i32 list_first_stop = 4;
+constexpr i32 zoom_stop_count = 8;
+constexpr i32 shelf_stop = 1;
+constexpr i32 grid_first_stop = 2;
+constexpr i32 grid_last_stop = 4;
+constexpr i32 list_first_stop = 5;
 
-constexpr ViewMode switcher_row_modes[]{ViewMode::list, ViewMode::grid, ViewMode::carousel};
-constexpr i32 switcher_row_stops[]{list_first_stop, grid_first_stop, 0};
-constexpr u32 switcher_row_count = static_cast<u32>(std::size(switcher_row_modes));
+struct SwitcherRow {
+	std::string_view name;
+	Asset icon;
+	i32 first_stop;
+	i32 last_stop;
+};
+
+constexpr SwitcherRow switcher_rows[]{
+	{"List", Asset::icon_list, list_first_stop, zoom_stop_count - 1},
+	{"Grid", Asset::icon_grid, grid_first_stop, grid_last_stop},
+	{"Shelf", Asset::icon_shelf, shelf_stop, shelf_stop},
+	{"Carousel", Asset::icon_carousel, 0, 0},
+};
+constexpr u32 switcher_row_count = static_cast<u32>(std::size(switcher_rows));
+
+const SwitcherRow &row_at_stop(i32 t_stop)
+{
+	for (const SwitcherRow &row : switcher_rows) {
+		if (t_stop >= row.first_stop && t_stop <= row.last_stop) return row;
+	}
+
+	return switcher_rows[switcher_row_count - 1];
+}
 
 ViewMode mode_at_stop(i32 t_stop)
 {
-	if (t_stop <= 0) return ViewMode::carousel;
+	if (t_stop <= shelf_stop) return ViewMode::carousel;
 	if (t_stop <= grid_last_stop) return ViewMode::grid;
 
 	return ViewMode::list;
@@ -204,32 +227,42 @@ CardLook card_look(bool t_highlighted, bool t_centered)
 	return CardLook{with_alpha(theme().text, card_border_highlighted_alpha), 2.0f, 14.0f, 225};
 }
 
-std::string_view mode_name(ViewMode t_mode)
+CardLook blended_look(const CardLook &t_from, const CardLook &t_to, float t_amount)
 {
-	switch (t_mode) {
-		case ViewMode::carousel:
-			return "Carousel";
-		case ViewMode::grid:
-			return "Grid";
-		case ViewMode::list:
-			return "List";
-	}
+	const Color from = t_from.border_thickness > 0.0f ? t_from.border : with_alpha(t_to.border, 0);
+	const Color to = t_to.border_thickness > 0.0f ? t_to.border : with_alpha(t_from.border, 0);
+	const auto blend = [t_amount](float t_start, float t_end) { return t_start + (t_end - t_start) * t_amount; };
 
-	return "";
+	return CardLook{with_alpha(mix(from, to, t_amount), static_cast<u8>(blend(from.a, to.a))),
+					blend(t_from.border_thickness, t_to.border_thickness), blend(t_from.glow_size, t_to.glow_size),
+					static_cast<u8>(blend(t_from.glow_alpha, t_to.glow_alpha))};
 }
 
-Asset mode_icon(ViewMode t_mode)
+void draw_framed_art(DrawList &t_draw_list, Rect t_rect, const Game &t_game, const CardLook &t_look, float t_radius,
+					 float t_icon_share, u8 t_alpha)
 {
-	switch (t_mode) {
-		case ViewMode::grid:
-			return Asset::icon_grid;
-		case ViewMode::list:
-			return Asset::icon_list;
-		case ViewMode::carousel:
-			break;
+	if (t_look.glow_size > 0.0f && t_look.glow_alpha > 0) {
+		t_draw_list.add_banner_glow(t_rect, t_radius, t_look.glow_size,
+									faded(faded(t_game.accent, t_look.glow_alpha), t_alpha));
 	}
 
-	return Asset::icon_carousel;
+	if (t_look.border_thickness > 0.0f) {
+		t_draw_list.add_rounded_rect(t_rect, rounded(t_radius), faded(t_look.border, t_alpha));
+	}
+
+	const Rect art = t_rect.inset(t_look.border_thickness);
+	const CornerRadii radii = rounded(std::max(0.0f, t_radius - t_look.border_thickness));
+	const float icon_share = t_game.icon != nullptr ? t_icon_share : 0.0f;
+
+	if (t_game.banner != nullptr && icon_share < 1.0f) {
+		t_draw_list.add_image(art, t_game.banner, faded(color_image, static_cast<u8>(t_alpha * (1.0f - icon_share))),
+							  radii, cover_uv(art.w / art.h, t_game.banner->aspect()));
+	}
+
+	if (icon_share > 0.0f) {
+		t_draw_list.add_image(art, t_game.icon, faded(color_image, static_cast<u8>(t_alpha * icon_share)), radii,
+							  cover_uv(art.w / art.h, t_game.icon->aspect()));
+	}
 }
 
 float track_column_width(const Font &t_font)
@@ -286,6 +319,7 @@ void Carousel::restore(i32 t_zoom_stop, i32 t_selected_game)
 	m_zoom_percent = stop_percent(m_zoom_stop);
 	m_mode = mode_at_stop(m_zoom_stop);
 	m_previous_mode = m_mode;
+	m_shelf = m_zoom_stop == shelf_stop ? 1.0f : 0.0f;
 	m_mode_transition = 0.0f;
 
 	const i32 game = std::clamp(t_selected_game, 0, std::max(0, static_cast<i32>(game_count()) - 1));
@@ -336,7 +370,7 @@ float Carousel::view_scale() const
 	return view_scale_for(m_bounds);
 }
 
-Rect Carousel::carousel_slot(float t_offset) const
+Rect Carousel::centered_carousel_slot(float t_offset) const
 {
 	const float view = view_scale();
 	const float scale = card_scale(std::fabs(t_offset)) * view;
@@ -345,6 +379,30 @@ Rect Carousel::carousel_slot(float t_offset) const
 	const float center_x = m_bounds.center().x + center_offset_of_slot(t_offset) * view;
 
 	return Rect{center_x - width * 0.5f, m_bounds.y + (m_bounds.h - height) * 0.5f, width, height};
+}
+
+float Carousel::carousel_camera_shift() const
+{
+	if (game_count() == 0) return 0.0f;
+
+	const Rect first = centered_carousel_slot(-m_scroll);
+	const Rect last = centered_carousel_slot(static_cast<float>(game_count() - 1) - m_scroll);
+	const float padding = carousel_edge_padding * view_scale();
+	const float left_limit = m_bounds.x + padding;
+	const float right_limit = m_bounds.right() - padding;
+
+	if (last.right() - first.x <= right_limit - left_limit) {
+		return m_bounds.center().x - (first.x + last.right()) * 0.5f;
+	}
+
+	return std::clamp(0.0f, right_limit - last.right(), left_limit - first.x);
+}
+
+Rect Carousel::carousel_slot(float t_offset) const
+{
+	const Rect centered = centered_carousel_slot(t_offset);
+
+	return m_shelf > 0.0f ? translated(centered, Vec2{carousel_camera_shift() * m_shelf, 0.0f}) : centered;
 }
 
 Rect Carousel::overview_slot(u32 t_slot) const
@@ -451,24 +509,57 @@ Rect Carousel::grown_grid_card(Rect t_card, u32 t_game) const
 	return t_card.inset(t_card.w * (1.0f - growth) * 0.5f, t_card.h * (1.0f - growth) * 0.5f);
 }
 
-ArtSource Carousel::art_source(u32 t_game) const
+Rect Carousel::art_rect(ViewMode t_mode, u32 t_game) const
 {
-	const Rect card = shown_card(m_mode, t_game);
-	const float scale = lift_scale(t_game);
+	const Rect card = shown_card(t_mode, t_game);
 
-	switch (m_mode) {
+	switch (t_mode) {
 		case ViewMode::grid:
-			return ArtSource{scaled_from_center(grown_grid_card(card, t_game), scale), card_corner_radius, false};
-
+			return grown_grid_card(card, t_game);
 		case ViewMode::list:
-			return ArtSource{list_thumb(scaled_from_center(card, scale)), list_corner_radius,
-							 m_library.game(t_game).icon != nullptr};
-
+			return list_thumb(card);
 		case ViewMode::carousel:
 			break;
 	}
 
-	return ArtSource{scaled_from_center(card, scale), card_corner_radius, false};
+	return card;
+}
+
+Rect Carousel::morph_art(u32 t_game) const
+{
+	const Rect current = art_rect(m_mode, t_game);
+
+	return m_mode_transition > 0.0f ? lerp_rect(m_morph_from_art[t_game], current, mode_morph()) : current;
+}
+
+float Carousel::mode_morph() const
+{
+	return 0.5f - 0.5f * std::cos((1.0f - m_mode_transition) * std::numbers::pi_v<float>);
+}
+
+ArtSource Carousel::art_source(u32 t_game) const
+{
+	const Rect card = shown_card(m_mode, t_game);
+	const float scale = lift_scale(t_game);
+	const Game &game = m_library.game(t_game);
+
+	if (m_mode == ViewMode::list) {
+		return ArtSource{.rect = list_thumb(scaled_from_center(card, scale)),
+						 .radius = list_corner_radius,
+						 .is_icon = game.icon != nullptr};
+	}
+
+	const CardState state = card_state(m_mode, t_game, card);
+	const CardLook look = card_look(state.highlighted, state.centered);
+	const Rect art = m_mode == ViewMode::grid ? grown_grid_card(card, t_game) : card;
+
+	return ArtSource{.rect = scaled_from_center(art, scale),
+					 .radius = card_corner_radius,
+					 .is_icon = false,
+					 .border = look.border_thickness,
+					 .border_color = look.border,
+					 .glow = look.glow_size,
+					 .glow_color = faded(game.accent, look.glow_alpha)};
 }
 
 float Carousel::wrap_content_height() const
@@ -519,7 +610,8 @@ i32 Carousel::game_at(Vec2 t_point) const
 
 Rect Carousel::status_indicator_rect() const
 {
-	const float width = status_icon_size + status_icon_gap + text_width(m_fonts.secondary(), mode_name(m_mode));
+	const float width =
+		status_icon_size + status_icon_gap + text_width(m_fonts.secondary(), row_at_stop(m_zoom_stop).name);
 
 	return Rect{m_bounds.right() - status_padding_right - width, m_bounds.bottom(), width, status_bar_height};
 }
@@ -586,6 +678,7 @@ void Carousel::set_zoom_stop(i32 t_stop)
 
 		const ViewMode mode = mode_at_stop(t_stop);
 		if (mode != m_mode) {
+			capture_mode_morph();
 			m_previous_mode = m_mode;
 			m_mode = mode;
 			m_mode_transition = 1.0f;
@@ -811,6 +904,30 @@ void Carousel::update_reorder(float t_delta_seconds)
 	}
 }
 
+void Carousel::capture_mode_morph()
+{
+	for (u32 game = 0; game < game_count(); game += 1) {
+		m_morph_from_art[game] = morph_art(game);
+		m_morph_from_row[game] = shown_card(ViewMode::list, game);
+	}
+}
+
+void Carousel::smooth_grid_reflow()
+{
+	const u32 columns = m_mode == ViewMode::grid ? grid_columns(m_bounds.w, m_zoom_percent, view_scale()) : 0;
+
+	if (columns != 0 && m_grid_columns != 0 && columns != m_grid_columns) {
+		for (u32 game = 0; game < game_count(); game += 1) {
+			if (m_reorder.active && static_cast<i32>(game) == m_reorder.game) continue;
+
+			const Vec2 slot = grid_slot(m_slot_of[game]).center();
+			m_card_offset[game] = Vec2{m_last_centers[game].x - slot.x, m_last_centers[game].y - slot.y};
+		}
+	}
+
+	m_grid_columns = columns;
+}
+
 bool Carousel::switcher_pointer_down(Vec2 t_point)
 {
 	const Rect panel = switcher_panel_rect();
@@ -820,7 +937,7 @@ bool Carousel::switcher_pointer_down(Vec2 t_point)
 
 	for (u32 row = 0; row < switcher_row_count; row += 1) {
 		if (switcher_row_rect(panel, row).contains(t_point)) {
-			set_zoom_stop(switcher_row_stops[row]);
+			set_zoom_stop(switcher_rows[row].first_stop);
 			return true;
 		}
 	}
@@ -1064,9 +1181,12 @@ void Carousel::update(float t_delta_seconds)
 {
 	m_scroll = animation::ease_toward(m_scroll, m_target_scroll, scroll_ease_rate, t_delta_seconds,
 									  animation::settled_pixels / (drag_pixels_per_card * view_scale()));
-	m_mode_transition = animation::ease_toward(m_mode_transition, 0.0f, mode_transition_ease_rate, t_delta_seconds);
+	m_mode_transition = animation::step_toward(m_mode_transition, 0.0f, mode_morph_seconds, t_delta_seconds);
 	m_zoom_percent = animation::ease_toward(m_zoom_percent, stop_percent(m_zoom_stop), zoom_ease_rate, t_delta_seconds);
+	m_shelf =
+		animation::ease_toward(m_shelf, m_zoom_stop == shelf_stop ? 1.0f : 0.0f, shelf_ease_rate, t_delta_seconds);
 	m_wrap_scroll.update(t_delta_seconds);
+	smooth_grid_reflow();
 
 	const i32 hovered_grid_card = m_mode == ViewMode::grid && !m_reorder.active ? game_at(m_mouse) : -1;
 
@@ -1086,53 +1206,62 @@ void Carousel::update(float t_delta_seconds)
 	m_switcher_shown = animation::ease_toward(m_switcher_shown, switcher_target, switcher_ease_rate, t_delta_seconds);
 
 	update_reorder(t_delta_seconds);
+
+	for (u32 game = 0; game < game_count(); game += 1) {
+		m_last_centers[game] = shown_card(m_mode, game).center();
+	}
 }
 
 void Carousel::draw_card(DrawList &t_draw_list, Rect t_rect, const Game &t_game, bool t_highlighted, bool t_centered,
 						 u8 t_alpha) const
 {
-	const CardLook look = card_look(t_highlighted, t_centered);
-
-	if (look.glow_size > 0.0f) {
-		t_draw_list.add_banner_glow(t_rect, card_corner_radius, look.glow_size,
-									faded(faded(t_game.accent, look.glow_alpha), t_alpha));
-	}
-
-	t_draw_list.add_rounded_rect(t_rect, rounded(card_corner_radius), faded(look.border, t_alpha));
-
-	if (t_game.banner == nullptr) return;
-
-	const Rect art = t_rect.inset(look.border_thickness);
-	t_draw_list.add_image(art, t_game.banner, faded(color_image, t_alpha),
-						  rounded(card_corner_radius - look.border_thickness),
-						  cover_uv(art.w / art.h, t_game.banner->aspect()));
+	draw_framed_art(t_draw_list, t_rect, t_game, card_look(t_highlighted, t_centered), card_corner_radius, 0.0f,
+					t_alpha);
 }
 
-void Carousel::draw_carousel_mode(DrawList &t_draw_list, u8 t_alpha, float t_y_offset) const
+void Carousel::draw_carousel_mode(DrawList &t_draw_list) const
 {
 	for (u32 game = 0; game < game_count(); game += 1) {
 		if (static_cast<i32>(game) == m_detached_game || is_raised(ViewMode::carousel, game)) continue;
 
-		Rect card = shown_card(ViewMode::carousel, game);
-		card.y += t_y_offset;
-
+		const Rect card = shown_card(ViewMode::carousel, game);
 		if (card.right() < m_bounds.x || card.x > m_bounds.right()) continue;
 
 		const CardState state = card_state(ViewMode::carousel, game, card);
-		draw_card(t_draw_list, card, m_library.game(game), state.highlighted, state.centered, t_alpha);
+		draw_card(t_draw_list, card, m_library.game(game), state.highlighted, state.centered, 255);
 	}
 
 	if (!m_reorder.lifted) {
-		draw_raised(t_draw_list, ViewMode::carousel, t_alpha, t_y_offset);
+		draw_raised(t_draw_list, ViewMode::carousel);
 	}
 
-	const auto edge_alpha = static_cast<u8>(t_alpha * (1.0f - m_overview));
-	const Color opaque = faded(theme().window, edge_alpha);
+	draw_carousel_edges(t_draw_list, 255);
+}
+
+void Carousel::draw_carousel_edges(DrawList &t_draw_list, u8 t_alpha) const
+{
+	if (game_count() == 0) return;
+
+	const Rect first = carousel_slot(-m_scroll);
+	const Rect last = carousel_slot(static_cast<float>(game_count() - 1) - m_scroll);
+	const float fade = t_alpha * (1.0f - m_overview);
+	const float left_overflow = std::clamp((m_bounds.x - first.x) / edge_fade_width, 0.0f, 1.0f);
+	const float right_overflow = std::clamp((last.right() - m_bounds.right()) / edge_fade_width, 0.0f, 1.0f);
+	const float left = 1.0f + (left_overflow - 1.0f) * m_shelf;
+	const float right = 1.0f + (right_overflow - 1.0f) * m_shelf;
 	const Color clear = faded(theme().window, 0);
 
-	t_draw_list.add_gradient(Rect{m_bounds.x, m_bounds.y, edge_fade_width, m_bounds.h}, opaque, clear, opaque, clear);
-	t_draw_list.add_gradient(Rect{m_bounds.right() - edge_fade_width, m_bounds.y, edge_fade_width, m_bounds.h}, clear,
-							 opaque, clear, opaque);
+	if (left > 0.0f) {
+		const Color opaque = faded(theme().window, static_cast<u8>(fade * left));
+		t_draw_list.add_gradient(Rect{m_bounds.x, m_bounds.y, edge_fade_width, m_bounds.h}, opaque, clear, opaque,
+								 clear);
+	}
+
+	if (right > 0.0f) {
+		const Color opaque = faded(theme().window, static_cast<u8>(fade * right));
+		t_draw_list.add_gradient(Rect{m_bounds.right() - edge_fade_width, m_bounds.y, edge_fade_width, m_bounds.h},
+								 clear, opaque, clear, opaque);
+	}
 }
 
 void Carousel::draw_wrap_scroll(DrawList &t_draw_list, u8 t_alpha) const
@@ -1143,79 +1272,74 @@ void Carousel::draw_wrap_scroll(DrawList &t_draw_list, u8 t_alpha) const
 	m_wrap_scroll.draw(t_draw_list, geometry, m_mouse, t_alpha);
 }
 
-void Carousel::draw_grid_mode(DrawList &t_draw_list, u8 t_alpha, float t_y_offset) const
+void Carousel::draw_grid_mode(DrawList &t_draw_list) const
 {
 	t_draw_list.push_clip(m_bounds);
 
 	for (u32 game = 0; game < game_count(); game += 1) {
 		if (static_cast<i32>(game) == m_detached_game || is_raised(ViewMode::grid, game)) continue;
 
-		Rect card = shown_card(ViewMode::grid, game);
-		card.y += t_y_offset;
-
+		const Rect card = shown_card(ViewMode::grid, game);
 		if (!card.overlaps_vertically(m_bounds)) continue;
 
 		const CardState state = card_state(ViewMode::grid, game, card);
-		draw_card(t_draw_list, grown_grid_card(card, game), m_library.game(game), state.highlighted, false, t_alpha);
+		draw_card(t_draw_list, grown_grid_card(card, game), m_library.game(game), state.highlighted, false, 255);
 	}
 
 	if (!m_reorder.lifted) {
-		draw_raised(t_draw_list, ViewMode::grid, t_alpha, t_y_offset);
+		draw_raised(t_draw_list, ViewMode::grid);
 	}
 
 	t_draw_list.pop_clip();
 
-	draw_wrap_scroll(t_draw_list, t_alpha);
+	draw_wrap_scroll(t_draw_list, 255);
+}
+
+void Carousel::draw_list_row_frame(DrawList &t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const
+{
+	const Font &font = m_fonts.body();
+	const Rect thumb = list_thumb(t_row);
+
+	t_draw_list.add_rounded_rect(t_row, rounded(list_corner_radius),
+								 faded(t_highlighted ? theme().control : theme().popup, t_alpha));
+	draw_text_truncated(t_draw_list, font, Vec2{thumb.right() + 16.0f, font.centered_baseline(t_row)},
+						m_library.game(t_game).title, t_row.right() - 16.0f - (thumb.right() + 16.0f),
+						faded(theme().text, t_alpha));
 }
 
 void Carousel::draw_list_row(DrawList &t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const
 {
-	const Font &font = m_fonts.body();
-	const Game &game = m_library.game(t_game);
-	const Color image_tint = faded(color_image, t_alpha);
+	draw_list_row_frame(t_draw_list, t_row, t_game, t_highlighted, t_alpha);
 
-	t_draw_list.add_rounded_rect(t_row, rounded(list_corner_radius),
-								 faded(t_highlighted ? theme().control : theme().popup, t_alpha));
+	if (static_cast<i32>(t_game) == m_detached_game) return;
 
-	const Rect thumb = list_thumb(t_row);
-	const bool detached = static_cast<i32>(t_game) == m_detached_game;
-
-	if (!detached && game.icon != nullptr) {
-		t_draw_list.add_image(thumb, game.icon, image_tint, rounded(list_corner_radius));
-	} else if (!detached && game.banner != nullptr) {
-		t_draw_list.add_image(thumb, game.banner, image_tint, rounded(list_corner_radius),
-							  cover_uv(1.0f, game.banner->aspect()));
-	}
-
-	draw_text_truncated(t_draw_list, font, Vec2{thumb.right() + 16.0f, font.centered_baseline(t_row)}, game.title,
-						t_row.right() - 16.0f - (thumb.right() + 16.0f), faded(theme().text, t_alpha));
+	draw_framed_art(t_draw_list, list_thumb(t_row), m_library.game(t_game), CardLook{}, list_corner_radius, 1.0f,
+					t_alpha);
 }
 
-void Carousel::draw_list_mode(DrawList &t_draw_list, u8 t_alpha, float t_y_offset) const
+void Carousel::draw_list_mode(DrawList &t_draw_list) const
 {
 	t_draw_list.push_clip(m_bounds);
 
 	for (u32 game = 0; game < game_count(); game += 1) {
 		if (is_raised(ViewMode::list, game)) continue;
 
-		Rect row = shown_card(ViewMode::list, game);
-		row.y += t_y_offset;
-
+		const Rect row = shown_card(ViewMode::list, game);
 		if (!row.overlaps_vertically(m_bounds)) continue;
 
-		draw_list_row(t_draw_list, row, game, card_state(ViewMode::list, game, row).highlighted, t_alpha);
+		draw_list_row(t_draw_list, row, game, card_state(ViewMode::list, game, row).highlighted, 255);
 	}
 
 	if (!m_reorder.lifted) {
-		draw_raised(t_draw_list, ViewMode::list, t_alpha, t_y_offset);
+		draw_raised(t_draw_list, ViewMode::list);
 	}
 
 	t_draw_list.pop_clip();
 
-	draw_wrap_scroll(t_draw_list, t_alpha);
+	draw_wrap_scroll(t_draw_list, 255);
 }
 
-void Carousel::draw_raised(DrawList &t_draw_list, ViewMode t_mode, u8 t_alpha, float t_y_offset) const
+void Carousel::draw_raised(DrawList &t_draw_list, ViewMode t_mode) const
 {
 	if (m_reorder.game < 0 || t_mode != m_mode) return;
 
@@ -1227,12 +1351,10 @@ void Carousel::draw_raised(DrawList &t_draw_list, ViewMode t_mode, u8 t_alpha, f
 
 	if (m_reorder.active) {
 		t_draw_list.add_rounded_rect(slot_rect(t_mode, m_slot_of[game]), rounded(radius),
-									 faded(with_alpha(m_settings.accent, placeholder_alpha), t_alpha));
+									 with_alpha(m_settings.accent, placeholder_alpha));
 	}
 
 	Rect card = shown_card(t_mode, game);
-	card.y += t_y_offset;
-
 	const CardState state = card_state(t_mode, game, card);
 
 	if (t_mode == ViewMode::grid) {
@@ -1241,12 +1363,12 @@ void Carousel::draw_raised(DrawList &t_draw_list, ViewMode t_mode, u8 t_alpha, f
 
 	const Rect lifted = scaled_from_center(card, lift_scale(game));
 
-	controls::draw_panel_shadow(t_draw_list, lifted, radius, m_lift * (t_alpha / 255.0f));
+	controls::draw_panel_shadow(t_draw_list, lifted, radius, m_lift);
 
 	if (list) {
-		draw_list_row(t_draw_list, lifted, game, state.highlighted, t_alpha);
+		draw_list_row(t_draw_list, lifted, game, state.highlighted, 255);
 	} else {
-		draw_card(t_draw_list, lifted, m_library.game(game), state.highlighted, state.centered, t_alpha);
+		draw_card(t_draw_list, lifted, m_library.game(game), state.highlighted, state.centered, 255);
 	}
 }
 
@@ -1282,18 +1404,74 @@ void Carousel::draw_reorder_hint(DrawList &t_draw_list) const
 	draw_text(t_draw_list, font, Vec2{x, baseline}, cancel, faded(theme().text_dim, alpha));
 }
 
-void Carousel::draw_mode(DrawList &t_draw_list, ViewMode t_mode, u8 t_alpha, float t_y_offset) const
+void Carousel::draw_mode(DrawList &t_draw_list, ViewMode t_mode) const
 {
 	switch (t_mode) {
 		case ViewMode::carousel:
-			draw_carousel_mode(t_draw_list, t_alpha, t_y_offset);
+			draw_carousel_mode(t_draw_list);
 			break;
 		case ViewMode::grid:
-			draw_grid_mode(t_draw_list, t_alpha, t_y_offset);
+			draw_grid_mode(t_draw_list);
 			break;
 		case ViewMode::list:
-			draw_list_mode(t_draw_list, t_alpha, t_y_offset);
+			draw_list_mode(t_draw_list);
 			break;
+	}
+}
+
+void Carousel::draw_mode_morph(DrawList &t_draw_list) const
+{
+	const float amount = mode_morph();
+	const auto incoming = static_cast<u8>(255.0f * amount);
+	const auto outgoing = static_cast<u8>(255.0f * (1.0f - amount));
+	const bool from_list = m_previous_mode == ViewMode::list;
+	const bool to_list = m_mode == ViewMode::list;
+	const float cardness_from = from_list ? 0.0f : 1.0f;
+	const float cardness = cardness_from + ((to_list ? 0.0f : 1.0f) - cardness_from) * amount;
+	const float radius = list_corner_radius + (card_corner_radius - list_corner_radius) * cardness;
+
+	const auto look_in = [this](ViewMode t_mode, u32 t_game, Rect t_card) {
+		if (t_mode == ViewMode::list) return CardLook{};
+
+		const CardState state = card_state(t_mode, t_game, t_card);
+		return card_look(state.highlighted, state.centered);
+	};
+
+	t_draw_list.push_clip(m_bounds);
+
+	for (u32 game = 0; game < game_count(); game += 1) {
+		if (from_list) {
+			draw_list_row_frame(t_draw_list, m_morph_from_row[game], game, false, outgoing);
+		}
+
+		if (to_list) {
+			const Rect row = shown_card(ViewMode::list, game);
+			draw_list_row_frame(t_draw_list, row, game, card_state(ViewMode::list, game, row).highlighted, incoming);
+		}
+	}
+
+	for (u32 game = 0; game < game_count(); game += 1) {
+		if (static_cast<i32>(game) == m_detached_game) continue;
+
+		const Rect from = m_morph_from_art[game];
+		const Rect to = art_rect(m_mode, game);
+		const CardLook look =
+			blended_look(look_in(m_previous_mode, game, from), look_in(m_mode, game, shown_card(m_mode, game)), amount);
+
+		draw_framed_art(t_draw_list, lerp_rect(from, to, amount), m_library.game(game), look, radius, 1.0f - cardness,
+						255);
+	}
+
+	t_draw_list.pop_clip();
+
+	if (m_previous_mode == ViewMode::carousel) {
+		draw_carousel_edges(t_draw_list, outgoing);
+	}
+
+	if (m_mode == ViewMode::carousel) {
+		draw_carousel_edges(t_draw_list, incoming);
+	} else {
+		draw_wrap_scroll(t_draw_list, incoming);
 	}
 }
 
@@ -1306,10 +1484,12 @@ void Carousel::draw_status_bar(DrawList &t_draw_list) const
 	const Rect icon{indicator.x, indicator.y + (indicator.h - status_icon_size) * 0.5f, status_icon_size,
 					status_icon_size};
 
-	t_draw_list.add_image(icon, m_assets.get(mode_icon(m_mode)), theme().text_dim);
+	const SwitcherRow &current = row_at_stop(m_zoom_stop);
+
+	t_draw_list.add_image(icon, m_assets.get(current.icon), theme().text_dim);
 	draw_text(t_draw_list, font,
-			  Vec2{icon.right() + status_icon_gap, font.centered_baseline(indicator) - baseline_nudge},
-			  mode_name(m_mode), theme().text_dim);
+			  Vec2{icon.right() + status_icon_gap, font.centered_baseline(indicator) - baseline_nudge}, current.name,
+			  theme().text_dim);
 }
 
 void Carousel::draw_switcher_rows(DrawList &t_draw_list, Rect t_panel, u8 t_alpha) const
@@ -1317,9 +1497,9 @@ void Carousel::draw_switcher_rows(DrawList &t_draw_list, Rect t_panel, u8 t_alph
 	const Font &font = m_fonts.body();
 
 	for (u32 index = 0; index < switcher_row_count; index += 1) {
-		const ViewMode mode = switcher_row_modes[index];
+		const SwitcherRow &entry = switcher_rows[index];
 		const Rect row = switcher_row_rect(t_panel, index);
-		const bool active = mode == m_mode;
+		const bool active = m_zoom_stop >= entry.first_stop && m_zoom_stop <= entry.last_stop;
 
 		if (active) {
 			t_draw_list.add_rounded_rect(row, rounded(6.0f), faded(theme().row_selected, t_alpha));
@@ -1332,9 +1512,9 @@ void Carousel::draw_switcher_rows(DrawList &t_draw_list, Rect t_panel, u8 t_alph
 		const Rect icon{row.x + switcher_content_inset, icon_center_y - switcher_icon_size * 0.5f, switcher_icon_size,
 						switcher_icon_size};
 
-		t_draw_list.add_image(icon, m_assets.get(mode_icon(mode)), content);
-		draw_text(t_draw_list, font, Vec2{icon.right() + switcher_icon_gap, font.centered_baseline(row)},
-				  mode_name(mode), content);
+		t_draw_list.add_image(icon, m_assets.get(entry.icon), content);
+		draw_text(t_draw_list, font, Vec2{icon.right() + switcher_icon_gap, font.centered_baseline(row)}, entry.name,
+				  content);
 	}
 }
 
@@ -1389,17 +1569,14 @@ void Carousel::draw(DrawList &t_draw_list)
 {
 	PULSAR_PROFILE_SCOPE("Carousel.Draw");
 
-	if (m_mode_transition > 0.001f) {
-		const float slide = snapped_to_pixel(m_mode_transition * mode_slide_distance);
-
-		draw_mode(t_draw_list, m_previous_mode, static_cast<u8>(255.0f * m_mode_transition), -slide);
-		draw_mode(t_draw_list, m_mode, static_cast<u8>(255.0f * (1.0f - m_mode_transition)), slide);
+	if (m_mode_transition > 0.0f) {
+		draw_mode_morph(t_draw_list);
 	} else {
-		draw_mode(t_draw_list, m_mode, 255, 0.0f);
+		draw_mode(t_draw_list, m_mode);
 	}
 
 	if (m_reorder.lifted) {
-		draw_raised(t_draw_list, m_mode, 255, 0.0f);
+		draw_raised(t_draw_list, m_mode);
 	}
 
 	draw_reorder_hint(t_draw_list);

@@ -86,7 +86,7 @@ class Renderer {
 		ComPtr<ID3D11ShaderResourceView> view;
 	};
 
-	static constexpr u32 max_textures = 32;
+	static constexpr u32 max_textures = 64;
 	static constexpr u32 initial_vertex_capacity = 1024;
 	static constexpr u32 initial_index_capacity = 1536;
 	static constexpr UINT msaa_sample_count = 4;

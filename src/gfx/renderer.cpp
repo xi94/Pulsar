@@ -500,6 +500,8 @@ u32 Renderer::create_texture(std::span<const TextureLevel> t_levels)
 		slot = m_free_texture_slots[m_free_texture_count];
 	} else {
 		assert(m_texture_high_water < max_textures);
+		if (m_texture_high_water >= max_textures) return invalid_texture_slot;
+
 		slot = m_texture_high_water;
 		m_texture_high_water += 1;
 	}

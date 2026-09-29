@@ -239,7 +239,10 @@ storage::LoadResult read_settings(Settings &t_settings)
 			settings.value("block_overlay_injection", t_settings.block_overlay_injection);
 		t_settings.show_notifications = settings.value("show_notifications", t_settings.show_notifications);
 		t_settings.auto_lock_minutes = settings.value("auto_lock_minutes", t_settings.auto_lock_minutes);
-		t_settings.zoom_stop = settings.value("carousel_zoom_stop", t_settings.zoom_stop);
+		// Every stop after the carousel moved up by one when the shelf stop was added.
+		const i32 legacy_zoom_stop = settings.value("carousel_zoom_stop", t_settings.zoom_stop);
+		t_settings.zoom_stop =
+			settings.value("view_zoom_stop", legacy_zoom_stop > 0 ? legacy_zoom_stop + 1 : legacy_zoom_stop);
 		t_settings.selected_game = settings.value("carousel_selected_banner", t_settings.selected_game);
 		copy_to(settings.value("last_run_version", std::string{}), t_settings.last_run_version);
 		copy_to(settings.value("release_notes_version", std::string{}), t_settings.release_notes_version);
@@ -432,7 +435,7 @@ bool storage::save_settings(const Settings &t_settings)
 		{"last_run_version", t_settings.last_run_version},
 		{"release_notes_version", t_settings.release_notes_version},
 		{"release_notes", t_settings.release_notes},
-		{"carousel_zoom_stop", t_settings.zoom_stop},
+		{"view_zoom_stop", t_settings.zoom_stop},
 		{"carousel_selected_banner", t_settings.selected_game},
 		{"carousel_order", game_order},
 		{"master_password", master_password_to_json(t_settings)},

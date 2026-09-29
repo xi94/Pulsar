@@ -2048,16 +2048,33 @@ void AccountModal::draw_morphing_art(DrawList &t_draw_list, const Layout &t_layo
 		controls::draw_panel_shadow(t_draw_list, art, std::max(leading_corner, other_corners), flight);
 	}
 
+	const float frame = 1.0f - amount;
+	const auto frame_alpha = static_cast<u8>(255.0f * frame);
+
+	if (source.glow > 0.0f && frame_alpha > 0) {
+		t_draw_list.add_banner_glow(art, other_corners, source.glow, faded(source.glow_color, frame_alpha));
+	}
+
+	if (source.border > 0.0f && frame_alpha > 0) {
+		t_draw_list.add_rounded_rect(art, radii, faded(source.border_color, frame_alpha));
+	}
+
+	const float inset = source.border * frame;
+	const Rect image = art.inset(inset);
+	const CornerRadii image_radii =
+		rounded(std::max(0.0f, leading_corner - inset), std::max(0.0f, other_corners - inset),
+				std::max(0.0f, other_corners - inset), std::max(0.0f, other_corners - inset));
+
 	if (game.banner != nullptr) {
-		t_draw_list.add_image(art, game.banner, faded(color_on_art, static_cast<u8>(255.0f * banner_share)), radii,
-							  cover_uv(art.w / art.h, game.banner->aspect()));
+		t_draw_list.add_image(image, game.banner, faded(color_on_art, static_cast<u8>(255.0f * banner_share)),
+							  image_radii, cover_uv(image.w / image.h, game.banner->aspect()));
 	} else {
-		t_draw_list.add_rounded_rect(art, radii, faded(game.accent, static_cast<u8>(255.0f * banner_share)));
+		t_draw_list.add_rounded_rect(image, image_radii, faded(game.accent, static_cast<u8>(255.0f * banner_share)));
 	}
 
 	if (source.is_icon && game.icon != nullptr && banner_share < 1.0f) {
-		t_draw_list.add_image(art, game.icon, faded(color_on_art, static_cast<u8>(255.0f * (1.0f - banner_share))),
-							  radii, cover_uv(art.w / art.h, game.icon->aspect()));
+		t_draw_list.add_image(image, game.icon, faded(color_on_art, static_cast<u8>(255.0f * (1.0f - banner_share))),
+							  image_radii, cover_uv(image.w / image.h, game.icon->aspect()));
 	}
 }
 
@@ -2602,7 +2619,8 @@ void AccountModal::draw(DrawList &t_draw_list)
 	}
 
 	const Layout current = layout();
-	const float scale = is_docked() ? 1.0f : panel_closed_scale + (1.0f - panel_closed_scale) * m_open_amount;
+	const float scale =
+		is_docked() || m_art_source ? 1.0f : panel_closed_scale + (1.0f - panel_closed_scale) * m_open_amount;
 	const bool morphing = m_art_source && m_morph_progress != 1.0f;
 
 	t_draw_list.push_scale(current.panel.center(), scale);

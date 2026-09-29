@@ -93,6 +93,8 @@ class Carousel : public Widget {
 	ScrollGeometry wrap_scroll_geometry() const;
 
 	float view_scale() const;
+	Rect centered_carousel_slot(float t_offset) const;
+	float carousel_camera_shift() const;
 	Rect carousel_slot(float t_offset) const;
 	Rect overview_slot(u32 t_slot) const;
 	Rect grid_slot(u32 t_slot) const;
@@ -102,6 +104,9 @@ class Carousel : public Widget {
 	Rect dragged_rect() const;
 	Rect list_thumb(Rect t_row) const;
 	Rect grown_grid_card(Rect t_card, u32 t_game) const;
+	Rect art_rect(ViewMode t_mode, u32 t_game) const;
+	Rect morph_art(u32 t_game) const;
+	float mode_morph() const;
 	float lift_scale(u32 t_game) const;
 	bool is_raised(ViewMode t_mode, u32 t_game) const;
 	CardState card_state(ViewMode t_mode, u32 t_game, Rect t_card) const;
@@ -129,6 +134,8 @@ class Carousel : public Widget {
 	void restore_centers(const Vec2 (&t_centers)[max_games]);
 	void retarget_reorder();
 	void update_reorder(float t_delta_seconds);
+	void capture_mode_morph();
+	void smooth_grid_reflow();
 
 	bool switcher_pointer_down(Vec2 t_point);
 	bool switcher_pointer_move(Vec2 t_point);
@@ -136,13 +143,16 @@ class Carousel : public Widget {
 
 	void draw_card(DrawList &t_draw_list, Rect t_rect, const Game &t_game, bool t_highlighted, bool t_centered,
 				   u8 t_alpha) const;
+	void draw_list_row_frame(DrawList &t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const;
 	void draw_list_row(DrawList &t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const;
-	void draw_mode(DrawList &t_draw_list, ViewMode t_mode, u8 t_alpha, float t_y_offset) const;
-	void draw_carousel_mode(DrawList &t_draw_list, u8 t_alpha, float t_y_offset) const;
-	void draw_grid_mode(DrawList &t_draw_list, u8 t_alpha, float t_y_offset) const;
-	void draw_list_mode(DrawList &t_draw_list, u8 t_alpha, float t_y_offset) const;
+	void draw_mode(DrawList &t_draw_list, ViewMode t_mode) const;
+	void draw_mode_morph(DrawList &t_draw_list) const;
+	void draw_carousel_mode(DrawList &t_draw_list) const;
+	void draw_carousel_edges(DrawList &t_draw_list, u8 t_alpha) const;
+	void draw_grid_mode(DrawList &t_draw_list) const;
+	void draw_list_mode(DrawList &t_draw_list) const;
 	void draw_wrap_scroll(DrawList &t_draw_list, u8 t_alpha) const;
-	void draw_raised(DrawList &t_draw_list, ViewMode t_mode, u8 t_alpha, float t_y_offset) const;
+	void draw_raised(DrawList &t_draw_list, ViewMode t_mode) const;
 	void draw_reorder_hint(DrawList &t_draw_list) const;
 	void draw_switcher(DrawList &t_draw_list) const;
 	void draw_switcher_rows(DrawList &t_draw_list, Rect t_panel, u8 t_alpha) const;
@@ -166,6 +176,11 @@ class Carousel : public Widget {
 	ViewMode m_mode = ViewMode::carousel;
 	ViewMode m_previous_mode = ViewMode::carousel;
 	float m_mode_transition = 0.0f;
+	Rect m_morph_from_art[max_games]{};
+	Rect m_morph_from_row[max_games]{};
+	Vec2 m_last_centers[max_games]{};
+	u32 m_grid_columns = 0;
+	float m_shelf = 0.0f;
 	Scrollable m_wrap_scroll;
 
 	float m_switcher_hold_seconds = 0.0f;
