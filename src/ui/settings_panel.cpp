@@ -418,7 +418,7 @@ const SettingsPanel::RowSpec SettingsPanel::row_specs[row_spec_count]{
 	 "toast popup alert"},
 	{&Rows::animations, SettingsTab::motion, "Animations", "Animate popups and scrolling.", "motion effects reduce"},
 	{&Rows::animation_speed, SettingsTab::motion, "Animation Speed", "How fast animations play.", "motion fast slow"},
-	{&Rows::hide_from_capture, SettingsTab::privacy, "Hide From Screen Capture", "Hide accounts from screenshots.",
+	{&Rows::hide_from_capture, SettingsTab::privacy, "Hide From Screen Capture", "Hide accounts from screenshares, recordings and screenshots.",
 	 "stream record share obs discord"},
 	{&Rows::block_overlay_injection, SettingsTab::privacy, "Block Overlay Injection",
 	 "Block overlays and keyloggers. Restart to apply.", "security inject dll"},
