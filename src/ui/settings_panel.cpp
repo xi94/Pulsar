@@ -70,14 +70,12 @@ constexpr float reset_icon_size = 18.0f;
 
 constexpr float slider_bar_height = 4.0f;
 constexpr float slider_rest_bar_height = 2.0f;
-constexpr float slider_thumb_radius = 7.0f;
+constexpr float slider_text_clearance = 7.0f;
+constexpr float slider_thumb_radius = 6.0f;
 constexpr float slider_thumb_ring = 2.0f;
 constexpr float slider_tick_size = 3.0f;
 constexpr float slider_hover_rate = 14.0f;
-constexpr float slider_bubble_gap = 3.0f;
-constexpr float slider_bubble_padding = 6.0f;
-constexpr float slider_bubble_radius = 6.0f;
-constexpr float slider_bubble_overhang = 12.0f;
+constexpr float slider_caption_gap = 8.0f;
 constexpr float inline_slider_gap = 28.0f;
 constexpr u32 auto_lock_stops[]{1, 2, 5, 10, 15, 30, 60, 0};
 constexpr u32 auto_lock_stop_count = static_cast<u32>(std::size(auto_lock_stops));
@@ -307,16 +305,9 @@ Rect inline_slider_rect(Rect t_row, Rect t_control, float t_left, const Fonts &t
 				std::max(0.0f, label_right_edge(t_control, t_row, t_fonts) - t_left), height};
 }
 
-Rect slider_track(Rect t_slider)
-{
-	return t_slider.inset(slider_thumb_radius, 0.0f);
-}
-
 float slider_fraction_at(Rect t_slider, float t_x)
 {
-	const Rect track = slider_track(t_slider);
-
-	return track.w > 0.0f ? std::clamp((t_x - track.x) / track.w, 0.0f, 1.0f) : 0.0f;
+	return t_slider.w > 0.0f ? std::clamp((t_x - t_slider.x) / t_slider.w, 0.0f, 1.0f) : 0.0f;
 }
 
 Rect circle_at(Vec2 t_center, float t_radius)
@@ -377,25 +368,24 @@ void draw_slider(DrawList &t_draw_list, const Font &t_font, Rect t_slider, const
 {
 	const Theme &colors = theme();
 	const float hover = t_look.hover;
-	const auto resting_alpha = static_cast<u8>(t_alpha * (1.0f - hover));
+	const float thickness = slider_rest_bar_height + (slider_bar_height - slider_rest_bar_height) * hover;
+	const Rect bar{t_slider.x, t_slider.bottom() - thickness, t_slider.w, thickness};
+	const Rect filled{bar.x, bar.y, bar.w * std::clamp(t_look.fraction, 0.0f, 1.0f), bar.h};
+	const Vec2 thumb{filled.right(), bar.center().y};
+
+	const float baseline =
+		t_font.centered_baseline(Rect{t_slider.x, t_slider.y, t_slider.w, t_slider.h - slider_text_clearance});
+	const float readout_width = text_width(t_font, t_look.readout);
+	const float riding_x =
+		std::clamp(thumb.x - readout_width * 0.5f, t_slider.x, std::max(t_slider.x, t_slider.right() - readout_width));
+	const float caption_right = t_slider.x + text_width(t_font, t_look.caption) + slider_caption_gap;
+	const float crowding = std::clamp((caption_right - riding_x) / slider_caption_gap, 0.0f, 1.0f);
 	const auto hover_alpha = static_cast<u8>(t_alpha * hover);
 
-	if (resting_alpha > 0) {
-		const Rect text_band{t_slider.x, t_slider.y, t_slider.w, t_slider.h - slider_thumb_radius};
-		const float baseline = t_font.centered_baseline(text_band);
-
-		draw_text(t_draw_list, t_font, Vec2{t_slider.x, baseline}, t_look.caption,
-				  faded(colors.text_faint, resting_alpha));
-		draw_text(t_draw_list, t_font, Vec2{t_slider.right() - text_width(t_font, t_look.readout), baseline},
-				  t_look.readout, faded(colors.text, resting_alpha));
-	}
-
-	const float inset = slider_thumb_radius * hover;
-	const float thickness = slider_rest_bar_height + (slider_bar_height - slider_rest_bar_height) * hover;
-	const float resting_y = t_slider.bottom() - slider_rest_bar_height * 0.5f;
-	const float center_y = resting_y + (t_slider.bottom() - slider_thumb_radius - resting_y) * hover;
-	const Rect bar{t_slider.x + inset, center_y - thickness * 0.5f, t_slider.w - inset * 2.0f, thickness};
-	const Rect filled{bar.x, bar.y, bar.w * std::clamp(t_look.fraction, 0.0f, 1.0f), bar.h};
+	draw_text(t_draw_list, t_font, Vec2{t_slider.x, baseline}, t_look.caption,
+			  faded(colors.text_faint, static_cast<u8>(t_alpha * (1.0f - hover * crowding))));
+	draw_text(t_draw_list, t_font, Vec2{t_slider.right() - readout_width, baseline}, t_look.readout,
+			  faded(colors.text, static_cast<u8>(t_alpha * (1.0f - hover))));
 
 	t_draw_list.add_rounded_rect(bar, rounded(thickness * 0.5f),
 								 faded(mix(colors.popup, colors.track, 0.55f + 0.45f * hover), t_alpha));
@@ -409,28 +399,18 @@ void draw_slider(DrawList &t_draw_list, const Font &t_font, Rect t_slider, const
 		const float x = bar.x + bar.w * static_cast<float>(i) / static_cast<float>(t_look.steps);
 		const Color tick = x <= filled.right() ? with_alpha(foreground_on(t_look.accent), 150) : colors.text_faint;
 
-		t_draw_list.add_rounded_rect(circle_at(Vec2{x, center_y}, slider_tick_size * 0.5f),
+		t_draw_list.add_rounded_rect(circle_at(Vec2{x, thumb.y}, slider_tick_size * 0.5f),
 									 rounded(slider_tick_size * 0.5f), faded(tick, hover_alpha));
 	}
 
-	const Vec2 thumb{filled.right(), center_y};
 	const float radius = slider_thumb_radius * (0.5f + 0.5f * hover);
 	const float inner_radius = std::max(0.0f, radius - slider_thumb_ring);
 
 	t_draw_list.add_rounded_rect(circle_at(thumb, radius), rounded(radius), faded(t_look.accent, hover_alpha));
 	t_draw_list.add_rounded_rect(circle_at(thumb, inner_radius), rounded(inner_radius),
 								 faded(Color{255, 255, 255, 255}, hover_alpha));
-
-	const float bubble_width = text_width(t_font, t_look.readout) + slider_bubble_padding * 2.0f;
-	const float bubble_height = t_font.line_height() + 2.0f;
-	const float bubble_x = std::clamp(thumb.x - bubble_width * 0.5f, t_slider.x - slider_bubble_overhang,
-									  t_slider.right() + slider_bubble_overhang - bubble_width);
-	const Rect bubble{snapped_to_pixel(bubble_x),
-					  snapped_to_pixel(center_y - slider_thumb_radius - slider_bubble_gap - bubble_height),
-					  bubble_width, bubble_height};
-
-	t_draw_list.add_rounded_rect(bubble, rounded(slider_bubble_radius), faded(t_look.accent, hover_alpha));
-	draw_text_centered(t_draw_list, t_font, bubble, t_look.readout, faded(foreground_on(t_look.accent), hover_alpha));
+	draw_text(t_draw_list, t_font, Vec2{snapped_to_pixel(riding_x), baseline}, t_look.readout,
+			  faded(colors.text, hover_alpha));
 }
 
 void draw_select(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label, bool t_open,
