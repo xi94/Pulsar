@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <thread>
 #include <utility>
@@ -23,12 +24,18 @@ inline void join_or_abandon(std::thread &t_thread, std::chrono::milliseconds t_t
 }
 
 template <typename Work>
-bool run_or_abandon(Work t_work, std::chrono::milliseconds t_timeout)
+bool run_unless_cancelled(Work t_work, const std::atomic<bool> &t_cancel)
 {
 	std::thread worker(std::move(t_work));
 
-	const bool finished = wait_for_thread(worker, t_timeout);
-	join_or_abandon(worker, std::chrono::milliseconds{0});
+	while (!wait_for_thread(worker, std::chrono::milliseconds{50})) {
+		if (t_cancel.load(std::memory_order_relaxed)) {
+			worker.detach();
+			return false;
+		}
+	}
 
-	return finished;
+	worker.join();
+
+	return true;
 }

@@ -39,12 +39,11 @@ constexpr const wchar_t *game_process_names[]{
 	L"League of Legends.exe",
 };
 
-constexpr auto process_exit_timeout = std::chrono::milliseconds(3000);
-constexpr auto activation_timeout = std::chrono::milliseconds(3000);
 constexpr auto window_element_lifetime = std::chrono::milliseconds(2000);
 constexpr auto poll_interval = std::chrono::milliseconds(100);
 constexpr u32 responsiveness_probe_ms = 750;
 constexpr u32 focus_settle_ms = 500;
+constexpr u32 form_gone_polls = 5;
 
 bool is_cancelled(const std::atomic<bool> &t_cancel)
 {
@@ -96,23 +95,15 @@ void log_window_identity(const char *t_what, HWND t_window)
 					 process_id, thread_id, title);
 }
 
-void wait_for_processes_to_exit(const std::vector<HANDLE> &t_processes)
+void wait_for_processes_to_exit(const std::vector<HANDLE> &t_processes, const std::atomic<bool> &t_cancel)
 {
-	const auto deadline = std::chrono::steady_clock::now() + process_exit_timeout;
-	bool timed_out = false;
-
 	for (usize offset = 0; offset < t_processes.size(); offset += MAXIMUM_WAIT_OBJECTS) {
 		const auto count = static_cast<DWORD>(std::min<usize>(MAXIMUM_WAIT_OBJECTS, t_processes.size() - offset));
-		const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
-			std::max(deadline - std::chrono::steady_clock::now(), std::chrono::steady_clock::duration::zero()));
 
-		timed_out = WaitForMultipleObjects(count, t_processes.data() + offset, TRUE,
-										   static_cast<DWORD>(remaining.count())) == WAIT_TIMEOUT ||
-					timed_out;
-	}
-
-	if (timed_out) {
-		debug_log::write(log_category, "TIMED OUT waiting for killed processes to exit - launching anyway");
+		while (WaitForMultipleObjects(count, t_processes.data() + offset, TRUE,
+									  static_cast<DWORD>(poll_interval.count())) == WAIT_TIMEOUT) {
+			if (is_cancelled(t_cancel)) return;
+		}
 	}
 }
 
@@ -213,16 +204,16 @@ void activate_window(HWND t_window, bool t_take_focus)
 	}
 }
 
-bool activate_window_or_abandon(HWND t_window, bool t_take_focus)
+bool activate_window_unless_cancelled(HWND t_window, bool t_take_focus, const std::atomic<bool> &t_cancel)
 {
 	debug_log::write(log_category, "activation pass starting (hwnd=0x%p, focus=%s)", t_window,
 					 t_take_focus ? "yes" : "no");
 
 	const bool completed =
-		run_or_abandon([t_window, t_take_focus]() { activate_window(t_window, t_take_focus); }, activation_timeout);
+		run_unless_cancelled([t_window, t_take_focus]() { activate_window(t_window, t_take_focus); }, t_cancel);
 
 	debug_log::write(log_category, "activation pass %s",
-					 completed ? "completed" : "ABANDONED - a thread is stuck in the client's window procedure");
+					 completed ? "completed" : "ABANDONED - cancelled while stuck in the client's window procedure");
 
 	return completed;
 }
@@ -274,14 +265,14 @@ bool RiotClient::is_game_in_progress()
 	return in_progress;
 }
 
-void RiotClient::kill_all_client_processes()
+void RiotClient::kill_all_client_processes(const std::atomic<bool> &t_cancel)
 {
 	debug_log::write(log_category, "killing every known Riot Client process");
 
 	const std::vector<HANDLE> terminated = terminate_processes(client_process_names);
 
 	const debug_log::Scope scope(log_category, "wait for %zu killed client process(es) to exit", terminated.size());
-	wait_for_processes_to_exit(terminated);
+	wait_for_processes_to_exit(terminated, t_cancel);
 
 	for (const HANDLE process : terminated) {
 		CloseHandle(process);
@@ -380,14 +371,11 @@ UiElement RiotClient::current_window_element(const UiAutomation &t_automation) c
 	return element;
 }
 
-HWND RiotClient::wait_for_responsive_window(u32 t_timeout_ms, const std::atomic<bool> &t_cancel) const
+HWND RiotClient::wait_for_responsive_window(const std::atomic<bool> &t_cancel) const
 {
-	const bool wait_forever = t_timeout_ms == wait_forever_ms;
 	const auto started = std::chrono::steady_clock::now();
-	const auto deadline = deadline_after(wait_forever ? 0 : t_timeout_ms);
 
-	debug_log::write(log_category, "waiting for a responsive client window (%s)",
-					 wait_forever ? "no deadline - until cancelled" : "bounded");
+	debug_log::write(log_category, "waiting for a responsive client window (until cancelled)");
 
 	u32 polls = 0;
 	u32 next_progress_report = 20;
@@ -409,9 +397,8 @@ HWND RiotClient::wait_for_responsive_window(u32 t_timeout_ms, const std::atomic<
 							 waited.count(), window == nullptr ? "no window yet" : "window is not pumping messages");
 		}
 
-		if (is_cancelled(t_cancel) || (!wait_forever && is_past(deadline))) {
-			debug_log::write(log_category, "gave up waiting for a responsive client window (%s)",
-							 is_cancelled(t_cancel) ? "cancelled" : "timed out");
+		if (is_cancelled(t_cancel)) {
+			debug_log::write(log_category, "stopped waiting for a responsive client window (cancelled)");
 			return nullptr;
 		}
 
@@ -419,35 +406,33 @@ HWND RiotClient::wait_for_responsive_window(u32 t_timeout_ms, const std::atomic<
 	}
 }
 
-bool RiotClient::wait_for_window(u32 t_timeout_ms, const std::atomic<bool> &t_cancel) const
+void RiotClient::wait_for_window(const std::atomic<bool> &t_cancel) const
 {
-	return wait_for_responsive_window(t_timeout_ms, t_cancel) != nullptr;
+	wait_for_responsive_window(t_cancel);
 }
 
-bool RiotClient::bring_to_foreground(u32 t_timeout_ms, const std::atomic<bool> &t_cancel) const
+bool RiotClient::bring_to_foreground(const std::atomic<bool> &t_cancel) const
 {
-	const HWND window = wait_for_responsive_window(t_timeout_ms, t_cancel);
+	const HWND window = wait_for_responsive_window(t_cancel);
 
-	return window != nullptr && activate_window_or_abandon(window, false);
+	return window != nullptr && activate_window_unless_cancelled(window, false, t_cancel);
 }
 
-bool RiotClient::take_keyboard_focus(u32 t_timeout_ms, const std::atomic<bool> &t_cancel) const
+bool RiotClient::take_keyboard_focus(const std::atomic<bool> &t_cancel) const
 {
-	const HWND window = wait_for_responsive_window(t_timeout_ms, t_cancel);
+	const HWND window = wait_for_responsive_window(t_cancel);
 
-	return window != nullptr && activate_window_or_abandon(window, true);
+	return window != nullptr && activate_window_unless_cancelled(window, true, t_cancel);
 }
 
 bool RiotClient::submit_login(const UiAutomation &t_automation, std::string_view t_username,
-							  std::string_view t_password, u32 t_timeout_ms, const std::atomic<bool> &t_cancel) const
+							  std::string_view t_password, const std::atomic<bool> &t_cancel) const
 {
-	const auto deadline = deadline_after(t_timeout_ms);
-
 	UiElement username_field;
 	UiElement password_field;
 	u32 polls = 0;
 
-	debug_log::write(log_category, "looking for the login form (up to %ums)", t_timeout_ms);
+	debug_log::write(log_category, "looking for the login form (until cancelled)");
 
 	for (;;) {
 		const UiElement window = current_window_element(t_automation);
@@ -463,11 +448,11 @@ bool RiotClient::submit_login(const UiAutomation &t_automation, std::string_view
 
 		polls += 1;
 
-		if (is_cancelled(t_cancel) || t_automation.has_wedged() || is_past(deadline)) {
+		if (is_cancelled(t_cancel)) {
 			debug_log::write(log_category,
-							 "login form NOT found after %u poll(s) (%s; window %s, username %s, password %s)", polls,
-							 is_cancelled(t_cancel) ? "cancelled" : "timed out", window.is_valid() ? "yes" : "no",
-							 username_field.is_valid() ? "yes" : "no", password_field.is_valid() ? "yes" : "no");
+							 "login form NOT found after %u poll(s) (cancelled; window %s, username %s, password %s)",
+							 polls, window.is_valid() ? "yes" : "no", username_field.is_valid() ? "yes" : "no",
+							 password_field.is_valid() ? "yes" : "no");
 			return false;
 		}
 
@@ -487,45 +472,46 @@ bool RiotClient::submit_login(const UiAutomation &t_automation, std::string_view
 	return true;
 }
 
-bool RiotClient::wait_for_login_error(const UiAutomation &t_automation, std::wstring &t_out_message, u32 t_timeout_ms,
-									  const std::atomic<bool> &t_cancel, const std::wstring *t_error_to_ignore) const
+bool RiotClient::wait_for_login_result(const UiAutomation &t_automation, std::wstring &t_out_error,
+									   const std::atomic<bool> &t_cancel, const std::wstring *t_error_to_ignore) const
 {
-	const auto deadline = deadline_after(t_timeout_ms);
 	bool saw_no_tooltip = t_error_to_ignore == nullptr;
+	u32 polls_without_form = 0;
 
-	for (;;) {
+	while (!is_cancelled(t_cancel)) {
 		const UiElement window = current_window_element(t_automation);
-		const bool tooltip_shown =
-			window.is_valid() && t_automation.find_descendant(window, login_error_tooltip_name).is_valid();
 
-		if (tooltip_shown) {
-			std::wstring message = login_error_reason(t_automation, window);
+		if (window.is_valid()) {
+			if (t_automation.find_descendant(window, login_error_tooltip_name).is_valid()) {
+				std::wstring message = login_error_reason(t_automation, window);
 
-			if (saw_no_tooltip || message != *t_error_to_ignore) {
-				debug_log::write(log_category, "login error shown: \"%ls\"", message.c_str());
-				t_out_message = std::move(message);
-				return true;
+				if (saw_no_tooltip || message != *t_error_to_ignore) {
+					debug_log::write(log_category, "login error shown: \"%ls\"", message.c_str());
+					t_out_error = std::move(message);
+					return true;
+				}
+
+				debug_log::write(log_category, "ignoring the previous attempt's error tooltip, still on screen");
+			} else {
+				saw_no_tooltip = true;
 			}
 
-			debug_log::write(log_category, "ignoring the previous attempt's error tooltip, still on screen");
-		} else {
-			saw_no_tooltip = true;
-		}
+			const bool form_shown =
+				t_automation.find_descendant(window, password_field_name, UIA_EditControlTypeId).is_valid();
+			polls_without_form = form_shown ? 0 : polls_without_form + 1;
 
-		if (t_automation.has_wedged()) {
-			debug_log::write(log_category,
-							 "abandoning the login-result wait - UI Automation has given up on the client");
-			return false;
-		}
-
-		if (is_cancelled(t_cancel) || is_past(deadline)) {
-			debug_log::write(log_category, "no login error appeared (%s) - treating the attempt as successful",
-							 is_cancelled(t_cancel) ? "cancelled" : "waited the full timeout");
-			return false;
+			if (polls_without_form >= form_gone_polls) {
+				debug_log::write(log_category, "the login form is gone - the client signed in");
+				return false;
+			}
 		}
 
 		std::this_thread::sleep_for(poll_interval);
 	}
+
+	debug_log::write(log_category, "stopped waiting for the login result (cancelled)");
+
+	return false;
 }
 
 bool RiotClient::click_play_when_ready(const UiAutomation &t_automation, u32 t_timeout_ms,

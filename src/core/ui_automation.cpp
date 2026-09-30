@@ -16,8 +16,6 @@ using Microsoft::WRL::ComPtr;
 
 namespace {
 constexpr const char *log_category = "uia";
-constexpr auto lookup_timeout = std::chrono::milliseconds(5000);
-constexpr u32 max_abandoned_lookups = 2;
 constexpr LONG min_real_window_width = 50;
 
 struct LookupResult {
@@ -118,27 +116,25 @@ BOOL CALLBACK find_top_level_window_proc(HWND t_window, LPARAM t_search)
 }
 
 template <typename Lookup>
-ComPtr<IUIAutomationElement> run_bounded_lookup(const char *t_label, Lookup t_lookup, bool &t_out_abandoned)
+ComPtr<IUIAutomationElement> run_lookup(const char *t_label, Lookup t_lookup, const std::atomic<bool> &t_cancel)
 {
 	auto result = std::make_shared<LookupResult>();
-
-	std::thread worker([result, t_lookup]() {
-		const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-		t_lookup(result->element);
-
-		if (com_result == S_OK || com_result == S_FALSE) {
-			CoUninitialize();
-		}
-	});
-
 	const debug_log::Scope scope(log_category, "%s", t_label);
 
-	t_out_abandoned = !wait_for_thread(worker, lookup_timeout);
-	join_or_abandon(worker, std::chrono::milliseconds{0});
+	// A busy client can block a provider call for as long as it likes, so only a cancel may walk away from one.
+	const bool finished = run_unless_cancelled(
+		[result, t_lookup]() {
+			const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+			t_lookup(result->element);
 
-	if (t_out_abandoned) {
-		debug_log::write(log_category, "ABANDONED %s after %lldms - the provider never answered", t_label,
-						 lookup_timeout.count());
+			if (com_result == S_OK || com_result == S_FALSE) {
+				CoUninitialize();
+			}
+		},
+		t_cancel);
+
+	if (!finished) {
+		debug_log::write(log_category, "ABANDONED %s - cancelled while the provider was still answering", t_label);
 		return nullptr;
 	}
 
@@ -222,6 +218,11 @@ bool UiElement::has_keyboard_focus() const
 	return is_valid() && SUCCEEDED(m_element->get_CurrentHasKeyboardFocus(&focused)) && focused;
 }
 
+UiAutomation::UiAutomation(const std::atomic<bool> &t_cancel)
+	: m_cancel(t_cancel)
+{
+}
+
 UiAutomation::~UiAutomation()
 {
 	shutdown();
@@ -292,20 +293,17 @@ HWND UiAutomation::find_window_by_title(const wchar_t *t_title)
 
 UiElement UiAutomation::element_from_window(HWND t_window) const
 {
-	if (m_automation == nullptr || t_window == nullptr || m_wedged) return {};
+	if (m_automation == nullptr || t_window == nullptr || is_cancelled()) return {};
 
 	char label[64];
 	_snprintf_s(label, _TRUNCATE, "ElementFromHandle(hwnd=0x%p)", t_window);
 
-	bool abandoned = false;
-	auto found = run_bounded_lookup(
+	return UiElement{run_lookup(
 		label,
 		[automation = m_automation, t_window](ComPtr<IUIAutomationElement> &t_out) {
 			automation->ElementFromHandle(t_window, &t_out);
 		},
-		abandoned);
-
-	return finish_bounded_lookup(std::move(found), abandoned);
+		m_cancel)};
 }
 
 UiElement UiAutomation::find_descendant(const UiElement &t_root, const wchar_t *t_name) const
@@ -385,37 +383,23 @@ void UiAutomation::press_key(WORD t_virtual_key) const
 					 inserted != 2 ? " - SendInput was blocked (elevation/UIPI?)" : "");
 }
 
+bool UiAutomation::is_cancelled() const
+{
+	return m_cancel.load(std::memory_order_relaxed);
+}
+
 bool UiAutomation::can_search(const UiElement &t_root) const
 {
-	return m_automation != nullptr && t_root.is_valid() && !m_wedged;
+	return m_automation != nullptr && t_root.is_valid() && !is_cancelled();
 }
 
 UiElement UiAutomation::find_first(const UiElement &t_root, ComPtr<IUIAutomationCondition> t_condition,
 								   const char *t_label) const
 {
-	bool abandoned = false;
-	auto found = run_bounded_lookup(
+	return UiElement{run_lookup(
 		t_label,
 		[root = t_root.com(), t_condition](ComPtr<IUIAutomationElement> &t_out) {
 			root->FindFirst(TreeScope_Descendants, t_condition.Get(), &t_out);
 		},
-		abandoned);
-
-	return finish_bounded_lookup(std::move(found), abandoned);
-}
-
-UiElement UiAutomation::finish_bounded_lookup(ComPtr<IUIAutomationElement> t_found, bool t_abandoned) const
-{
-	if (!t_abandoned) return t_found != nullptr ? UiElement{std::move(t_found)} : UiElement{};
-
-	m_abandoned_call_count += 1;
-
-	if (m_abandoned_call_count >= max_abandoned_lookups && !m_wedged) {
-		m_wedged = true;
-		debug_log::write(log_category,
-						 "GIVING UP on this target - %u lookup(s) abandoned; every later one now fails immediately",
-						 m_abandoned_call_count);
-	}
-
-	return {};
+		m_cancel)};
 }

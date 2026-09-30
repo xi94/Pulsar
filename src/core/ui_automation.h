@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include <UIAutomation.h>
 #include <Windows.h>
 #include <wrl/client.h>
@@ -30,7 +32,7 @@ class UiElement {
 
 class UiAutomation {
   public:
-	UiAutomation() = default;
+	explicit UiAutomation(const std::atomic<bool> &t_cancel);
 	~UiAutomation();
 
 	UiAutomation(const UiAutomation &) = delete;
@@ -40,11 +42,6 @@ class UiAutomation {
 
 	bool init();
 	void shutdown();
-
-	bool has_wedged() const
-	{
-		return m_wedged;
-	}
 
 	static HWND find_top_level_window(u32 t_process_id);
 	static HWND find_window_by_title(const wchar_t *t_title);
@@ -57,15 +54,13 @@ class UiAutomation {
 	void press_key(WORD t_virtual_key) const;
 
   private:
+	bool is_cancelled() const;
 	bool can_search(const UiElement &t_root) const;
 
 	UiElement find_first(const UiElement &t_root, Microsoft::WRL::ComPtr<IUIAutomationCondition> t_condition,
 						 const char *t_label) const;
-	UiElement finish_bounded_lookup(Microsoft::WRL::ComPtr<IUIAutomationElement> t_found, bool t_abandoned) const;
 
+	const std::atomic<bool> &m_cancel;
 	Microsoft::WRL::ComPtr<IUIAutomation> m_automation;
 	bool m_com_initialized = false;
-
-	mutable u32 m_abandoned_call_count = 0;
-	mutable bool m_wedged = false;
 };

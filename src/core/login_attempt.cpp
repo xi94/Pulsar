@@ -13,11 +13,7 @@
 namespace {
 constexpr const char *log_category = "login";
 
-constexpr u32 login_form_timeout_ms = 10000;
-constexpr u32 login_result_timeout_ms = 6000;
-constexpr u32 foreground_timeout_ms = 5000;
-constexpr u32 focus_timeout_ms = 5000;
-constexpr u32 play_button_timeout_ms = 8000;
+constexpr u32 play_button_timeout_ms = 12000;
 constexpr auto cancel_grace_period = std::chrono::milliseconds(5000);
 constexpr auto shutdown_join_timeout = std::chrono::milliseconds(3000);
 constexpr auto finished_join_timeout = std::chrono::milliseconds(50);
@@ -28,16 +24,8 @@ constexpr const char *server_error_message =
 constexpr const char *game_in_progress_message = "A game is already running - close it before switching accounts.";
 constexpr const char *no_riot_client_message = "Couldn't find the Riot Client - is it installed?";
 constexpr const char *launch_failed_message = "Couldn't launch the Riot Client.";
-constexpr const char *window_timeout_message = "The Riot Client didn't respond in time.";
-constexpr const char *form_timeout_message = "Couldn't find the Riot Client's login form.";
 constexpr const char *unresponsive_client_message = "The Riot Client stopped responding - try again.";
 constexpr const char *automation_failed_message = "Couldn't start Windows UI Automation - try again.";
-
-enum class SubmitResult : u8 {
-	form_not_found,
-	error_shown,
-	no_error_shown,
-};
 
 const char *stage_name(LoginStage t_stage)
 {
@@ -85,32 +73,19 @@ bool stop_if_cancelled(LoginWork &t_work)
 	return true;
 }
 
-void fail_unless_cancelled(LoginWork &t_work, const char *t_message)
-{
-	if (!stop_if_cancelled(t_work)) {
-		fail(t_work, t_message);
-	}
-}
-
 bool is_invalid_credentials(const std::wstring &t_error)
 {
 	return t_error.find(L"credentials") != std::wstring::npos;
 }
 
-SubmitResult submit_and_wait_for_result(LoginWork &t_work, const UiAutomation &t_automation, std::wstring &t_out_error,
-										const std::wstring *t_error_to_ignore = nullptr)
+bool submit_and_wait_for_error(LoginWork &t_work, const UiAutomation &t_automation, std::wstring &t_out_error,
+							   const std::wstring *t_error_to_ignore = nullptr)
 {
 	t_out_error.clear();
 
-	if (!t_work.riot_client.submit_login(t_automation, t_work.username, t_work.password, login_form_timeout_ms,
-										 t_work.cancel_requested)) {
-		return SubmitResult::form_not_found;
-	}
-
-	const bool error_shown = t_work.riot_client.wait_for_login_error(t_automation, t_out_error, login_result_timeout_ms,
-																	 t_work.cancel_requested, t_error_to_ignore);
-
-	return error_shown ? SubmitResult::error_shown : SubmitResult::no_error_shown;
+	return t_work.riot_client.submit_login(t_automation, t_work.username, t_work.password, t_work.cancel_requested) &&
+		   t_work.riot_client.wait_for_login_result(t_automation, t_out_error, t_work.cancel_requested,
+													t_error_to_ignore);
 }
 
 bool start_fresh_client(LoginWork &t_work)
@@ -122,7 +97,9 @@ bool start_fresh_client(LoginWork &t_work)
 
 	if (stop_if_cancelled(t_work)) return false;
 
-	RiotClient::kill_all_client_processes();
+	RiotClient::kill_all_client_processes(t_work.cancel_requested);
+
+	if (stop_if_cancelled(t_work)) return false;
 
 	if (!t_work.riot_client.resolve_executable_path()) {
 		fail(t_work, no_riot_client_message);
@@ -134,10 +111,7 @@ bool start_fresh_client(LoginWork &t_work)
 		return false;
 	}
 
-	if (!t_work.riot_client.wait_for_window(RiotClient::wait_forever_ms, t_work.cancel_requested)) {
-		fail_unless_cancelled(t_work, window_timeout_message);
-		return false;
-	}
+	t_work.riot_client.wait_for_window(t_work.cancel_requested);
 
 	return !stop_if_cancelled(t_work);
 }
@@ -146,15 +120,10 @@ bool focus_client(LoginWork &t_work)
 {
 	set_stage(t_work, LoginStage::connecting);
 
-	t_work.riot_client.bring_to_foreground(foreground_timeout_ms, t_work.cancel_requested);
-	t_work.riot_client.take_keyboard_focus(focus_timeout_ms, t_work.cancel_requested);
+	t_work.riot_client.bring_to_foreground(t_work.cancel_requested);
+	t_work.riot_client.take_keyboard_focus(t_work.cancel_requested);
 
 	return !stop_if_cancelled(t_work);
-}
-
-const char *form_failure_message(const UiAutomation &t_automation)
-{
-	return t_automation.has_wedged() ? unresponsive_client_message : form_timeout_message;
 }
 
 bool authenticate(LoginWork &t_work, const UiAutomation &t_automation)
@@ -162,41 +131,27 @@ bool authenticate(LoginWork &t_work, const UiAutomation &t_automation)
 	set_stage(t_work, LoginStage::authenticating);
 
 	std::wstring error;
-	SubmitResult result = submit_and_wait_for_result(t_work, t_automation, error);
+	bool error_shown = submit_and_wait_for_error(t_work, t_automation, error);
 
-	if (result == SubmitResult::form_not_found) {
-		fail_unless_cancelled(t_work, form_failure_message(t_automation));
-		return false;
-	}
+	if (stop_if_cancelled(t_work)) return false;
 
-	const bool transient_error = result == SubmitResult::error_shown && !is_invalid_credentials(error);
-	if (transient_error) {
+	if (error_shown && !is_invalid_credentials(error)) {
 		if (!focus_client(t_work)) return false;
 
 		set_stage(t_work, LoginStage::authenticating);
 
 		const std::wstring previous_error = error;
-		result = submit_and_wait_for_result(t_work, t_automation, error, &previous_error);
+		error_shown = submit_and_wait_for_error(t_work, t_automation, error, &previous_error);
 
-		if (result == SubmitResult::form_not_found) {
-			fail_unless_cancelled(t_work, form_failure_message(t_automation));
-			return false;
-		}
+		if (stop_if_cancelled(t_work)) return false;
 	}
 
-	if (result == SubmitResult::error_shown) {
+	if (error_shown) {
 		fail(t_work, is_invalid_credentials(error) ? invalid_credentials_message : server_error_message);
 		return false;
 	}
 
-	// A wedged client shows no error either, so silence only means success while automation is still answering.
-	if (t_automation.has_wedged()) {
-		debug_log::write(log_category, "UI Automation gave up on the client - refusing to infer success from silence");
-		fail(t_work, unresponsive_client_message);
-		return false;
-	}
-
-	return !stop_if_cancelled(t_work);
+	return true;
 }
 
 void run_login(LoginWork &t_work)
@@ -206,7 +161,7 @@ void run_login(LoginWork &t_work)
 
 	if (!start_fresh_client(t_work) || !focus_client(t_work)) return;
 
-	UiAutomation automation;
+	UiAutomation automation{t_work.cancel_requested};
 	if (!automation.init()) {
 		debug_log::write(log_category, "UiAutomation::init failed - see the uia lines just above for the HRESULT");
 		fail(t_work, automation_failed_message);
