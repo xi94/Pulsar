@@ -35,11 +35,7 @@ enum class ResettableSetting : u8 {
 	background,
 	background_light,
 	background_grain,
-	background_intensity,
-	background_light_intensity,
-	background_grain_intensity,
 	animations,
-	animation_speed,
 	notifications,
 	hide_from_capture,
 	block_overlay_injection,
@@ -80,6 +76,18 @@ class SettingsPanel : public Widget {
 	static constexpr u32 resettable_count = static_cast<u32>(ResettableSetting::count);
 	static constexpr u32 group_count = 7;
 
+	enum class SliderKind : u8 {
+		corner_roundness,
+		pattern_strength,
+		light_strength,
+		grain_strength,
+		animation_speed,
+		auto_lock,
+		count,
+	};
+
+	static constexpr u32 slider_count = static_cast<u32>(SliderKind::count);
+
 	struct Layout {
 		Rect panel;
 		Rect inner;
@@ -99,12 +107,8 @@ class SettingsPanel : public Widget {
 		Rect background;
 		Rect background_light;
 		Rect background_grain;
-		Rect background_light_intensity;
-		Rect background_grain_intensity;
-		Rect background_intensity;
 		Rect notifications;
 		Rect animations;
-		Rect animation_speed;
 		Rect hide_from_capture;
 		Rect block_overlay_injection;
 		Rect close_to_tray;
@@ -127,7 +131,6 @@ class SettingsPanel : public Widget {
 		Rect Rows::*row;
 		SettingsTab tab;
 		u32 group;
-		Rect Rows::*parent;
 		const char *title;
 		const char *description;
 		const char *keywords;
@@ -143,7 +146,7 @@ class SettingsPanel : public Widget {
 		Rect Rows::*row;
 	};
 
-	static constexpr u32 row_spec_count = 20;
+	static constexpr u32 row_spec_count = 16;
 	static const RowSpec row_specs[row_spec_count];
 	static const GroupSpec group_specs[group_count];
 
@@ -156,7 +159,7 @@ class SettingsPanel : public Widget {
 	static constexpr u32 percent_slider_count = 3;
 	static const PercentSlider percent_sliders[percent_slider_count];
 
-	static constexpr u32 toggle_count = 7;
+	static constexpr u32 toggle_count = 6;
 	static const Toggle toggles[toggle_count];
 
 	Layout layout() const;
@@ -176,8 +179,25 @@ class SettingsPanel : public Widget {
 	bool is_searching() const;
 	bool matches_search(const RowSpec &t_spec) const;
 	bool is_listed(const RowSpec &t_spec) const;
-	float reveal_of(const RowSpec &t_spec) const;
 	float row_extent(const RowSpec &t_spec) const;
+
+	float inline_slider_left(Rect t_row) const;
+	Rect slider_line(const Rows &t_rows, SliderKind t_slider) const;
+	Rect slider_rect(const Rows &t_rows, SliderKind t_slider) const;
+	Rect slider_hit_rect(const Rows &t_rows, SliderKind t_slider) const;
+	float slider_visibility(SliderKind t_slider) const;
+	float slider_fraction(SliderKind t_slider) const;
+	std::string_view slider_readout(SliderKind t_slider, char (&t_buffer)[16]) const;
+	std::optional<SliderKind> slider_at(const Layout &t_layout, const Rows &t_rows, Vec2 t_point) const;
+	void apply_slider(SliderKind t_slider, float t_fraction);
+
+	Vec2 pattern_tile_size() const;
+	Rect pattern_popup_rect(const Rows &t_rows) const;
+	Rect pattern_tile(Rect t_popup, u32 t_index) const;
+	std::optional<u32> pattern_at(Rect t_popup, Vec2 t_point) const;
+
+	Rect close_choice_rect(Rect t_row) const;
+	Rect close_segment(Rect t_choice, u32 t_index) const;
 	Rect search_rect(const Layout &t_layout) const;
 	Rect search_text_rect(Rect t_search) const;
 	Rect search_clear_rect(Rect t_search) const;
@@ -201,13 +221,7 @@ class SettingsPanel : public Widget {
 	void choose_theme(ThemeKind t_theme);
 	void cycle_theme(i32 t_step);
 	void update_theme_preview();
-	void apply_animation_speed(Rect t_track, float t_x);
-	void apply_corner_roundness(Rect t_track, float t_x);
-	void open_background_list();
 	void choose_background(u32 t_index);
-	void update_background_preview();
-	void apply_percent(u32 t_slider, Rect t_track, float t_x);
-	void apply_auto_lock(Rect t_track, float t_x);
 	void pull_picked_color();
 	void step_font_size(Rect t_stepper, float &t_value, float t_min, float t_max, Vec2 t_point);
 	void handle_click(Vec2 t_point);
@@ -224,9 +238,11 @@ class SettingsPanel : public Widget {
 	void draw_captions(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
 	void draw_no_results(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
 	void draw_appearance(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
+	void draw_pattern_row(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
+	void draw_pattern_popup(DrawList &t_draw_list, const Rows &t_rows, u8 t_alpha) const;
+	void draw_close_choice(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
 	void draw_toggles(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
 	void draw_sliders(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_auto_lock(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
 	void draw_master_password(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
 	void draw_reset_buttons(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
 
@@ -247,22 +263,22 @@ class SettingsPanel : public Widget {
 	std::string m_font_label;
 	ListPopup m_font_list;
 	ListPopup m_theme_list;
-	ListPopup m_background_list;
 	std::optional<ThemeChoice> m_theme_before_preview;
-	std::optional<BackgroundStyle> m_background_before_preview;
 	float m_theme_wheel = 0.0f;
 	ColorPicker m_color_picker;
 	Scrollable m_rows_scroll;
 	Tooltip m_tooltip;
-	Draggable m_animation_speed_drag;
-	Draggable m_corner_roundness_drag;
-	Draggable m_percent_drags[percent_slider_count];
-	Draggable m_auto_lock_drag;
+	Draggable m_slider_drags[slider_count];
 
 	TextInput m_search;
 	char m_applied_query[text_input_capacity]{};
 
-	float m_toggles_shown[toggle_count]{1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+	float m_toggles_shown[toggle_count]{1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+	float m_slider_hover[slider_count]{};
+	float m_pattern_ring[background_count]{};
+	bool m_pattern_open = false;
+	float m_pattern_open_amount = 0.0f;
+	float m_close_choice_shown = 0.0f;
 
 	float m_font_size_shown = 0.0f;
 	float m_secondary_font_size_shown = 0.0f;

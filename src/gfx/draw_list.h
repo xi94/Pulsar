@@ -129,6 +129,7 @@ class DrawList {
 	void add_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right);
 	void add_plain_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left,
 							Color t_bottom_right);
+	void add_pattern_swatch(Rect t_rect, CornerRadii t_radii, Color t_color, u32 t_style);
 	void add_line(Vec2 t_from, Vec2 t_to, float t_thickness, Color t_color);
 
 	void add_rounded_rect(Rect t_rect, CornerRadii t_radii, Color t_color);

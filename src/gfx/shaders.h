@@ -228,6 +228,9 @@ constexpr const char *shader_source = R"(
 	};
 
 	static const float backdrop_pattern_strength[9] = {0.0, 0.2, 0.035, 0.05, 0.09, 0.08, 0.5, 0.045, 0.04};
+	static const float backdrop_swatch_strength[9] = {0.0, 0.55, 0.2, 0.2, 0.55, 0.35, 1.1, 0.12, 0.15};
+	static const float backdrop_swatch_scale[9] = {1.0, 0.5, 0.4, 0.7, 0.5, 0.35, 0.4, 1.0, 0.6};
+	static const float backdrop_swatch_code = 8192.0;
 
 	float backdrop_noise(float2 pixel)
 	{
@@ -274,10 +277,10 @@ constexpr const char *shader_source = R"(
 		return max((int)round(t_logical * scale), 2);
 	}
 
-	float backdrop_pattern(float2 pixel, float2 size, float scale, int style)
+	float backdrop_pattern(float2 pixel, float2 origin, float scale, int style)
 	{
 		int stroke = max((int)round(scale), 1);
-		int2 p = int2(floor(pixel)) - int2(floor(size * 0.5));
+		int2 p = int2(floor(pixel)) - int2(origin);
 
 		int dot_spacing = backdrop_spacing(24.0, scale);
 		float dots = backdrop_wrap(p.x, dot_spacing) < stroke && backdrop_wrap(p.y, dot_spacing) < stroke ? 1.0 : 0.0;
@@ -304,14 +307,27 @@ constexpr const char *shader_source = R"(
 		int star_spacing = backdrop_spacing(14.0, scale);
 		int2 star_cell = int2(backdrop_floor_div(p.x, star_spacing), backdrop_floor_div(p.y, star_spacing));
 		float2 cell = float2(star_cell);
-		int2 star = star_cell * star_spacing + int2(float2(backdrop_hash(cell + float2(9.0, 0.0)),
-														  backdrop_hash(cell + float2(0.0, 9.0))) * star_spacing);
-		int2 star_offset = abs(p - star);
-		float star_brightness = 0.2 + 0.8 * pow(backdrop_hash(cell + float2(5.0, 3.0)), 2.0);
-		bool has_glint = backdrop_hash(cell + float2(11.0, 13.0)) < 0.08;
-		bool on_glint = min(star_offset.x, star_offset.y) == 0 && max(star_offset.x, star_offset.y) <= 2 * stroke;
-		float star_shape = star_offset.x == 0 && star_offset.y == 0 ? 1.0 : (has_glint && on_glint ? 0.5 : 0.0);
-		float starfield = backdrop_hash(cell) < 0.11 ? star_shape * star_brightness : 0.0;
+		float2 star_jitter = float2(backdrop_hash(cell + float2(9.0, 0.0)), backdrop_hash(cell + float2(0.0, 9.0)));
+		int2 star = star_cell * star_spacing + 1 + int2(star_jitter * max(star_spacing - 3, 1));
+		float star_seed = backdrop_hash(cell + float2(5.0, 3.0));
+		float star_distance = length(float2(p - star));
+		float star_sigma = max(0.5 * scale, 0.35);
+		float star_shape = star_seed > 0.9 ? exp(-star_distance * star_distance / (2.0 * star_sigma * star_sigma))
+										   : (star_distance < 0.5 ? 1.0 : 0.0);
+		float star_cluster = backdrop_value_noise(cell / 7.0 + float2(3.1, 7.7));
+		bool has_star = backdrop_hash(cell) < 0.07 + 0.12 * star_cluster * star_cluster;
+		float stars = has_star ? star_shape * (0.3 + 0.7 * star_seed * star_seed) : 0.0;
+
+		int dust_spacing = backdrop_spacing(9.0, scale);
+		int2 dust_cell = int2(backdrop_floor_div(p.x, dust_spacing), backdrop_floor_div(p.y, dust_spacing));
+		float2 dust_key = float2(dust_cell) + float2(101.0, 57.0);
+		int2 dust = dust_cell * dust_spacing +
+					int2(float2(backdrop_hash(dust_key + float2(9.0, 0.0)), backdrop_hash(dust_key + float2(0.0, 9.0))) *
+						 dust_spacing);
+		float dust_level = all(p == dust) && backdrop_hash(dust_key) < 0.2
+							   ? 0.12 + 0.12 * backdrop_hash(dust_key + float2(5.0, 3.0))
+							   : 0.0;
+		float starfield = max(stars, dust_level);
 
 		float scanlines = backdrop_wrap(p.y, backdrop_spacing(3.0, scale)) < stroke ? 1.0 : 0.0;
 
@@ -335,19 +351,24 @@ constexpr const char *shader_source = R"(
 
 	float4 backdrop_color(PixelInput input, bool with_pattern)
 	{
-		int style = clamp((int)(backdrop_style + 0.5), 0, 8);
+		bool swatch = input.uv.x > backdrop_swatch_code * 0.5;
+		int swatch_style = (int)(input.uv.x / backdrop_swatch_code) - 1;
+		int style = clamp(swatch ? swatch_style : (int)(backdrop_style + 0.5), 0, 8);
 		float2 pixel = input.position.xy;
 		float2 size = backdrop_target_size;
-		float k = backdrop_intensity;
+		float2 origin = swatch ? round(float2(input.uv.x - (swatch_style + 1) * backdrop_swatch_code, input.uv.y))
+							   : floor(size * 0.5);
+		float strength = swatch ? backdrop_swatch_strength[style] : backdrop_pattern_strength[style] * backdrop_intensity;
 
 		float light = saturate(1.0 - (pixel.y + size.y * 0.2) / (size.y * 1.3));
-		float pattern = with_pattern ? backdrop_pattern(pixel, size, max(backdrop_pixel_scale, 0.5), style) : 0.0;
+		float scale = max(backdrop_pixel_scale, 0.5) * (swatch ? backdrop_swatch_scale[style] : 1.0);
+		float pattern = with_pattern ? backdrop_pattern(pixel, origin, scale, style) : 0.0;
 		float3 ink = dot(input.color.rgb, float3(0.299, 0.587, 0.114)) > 0.5 ? 0.0 : 1.0;
 
 		float3 rgb = input.color.rgb;
-		rgb = lerp(rgb, 1.0, light * 0.07 * backdrop_light);
-		rgb = lerp(rgb, ink, pattern * backdrop_pattern_strength[style] * k);
-		rgb += (backdrop_noise(pixel) - 0.5) * (10.5 / 255.0) * backdrop_grain;
+		rgb = lerp(rgb, 1.0, light * 0.07 * (swatch ? 0.0 : backdrop_light));
+		rgb = lerp(rgb, ink, pattern * strength);
+		rgb += (backdrop_noise(pixel) - 0.5) * (10.5 / 255.0) * (swatch ? 0.0 : backdrop_grain);
 
 		return float4(saturate(rgb), input.color.a);
 	}

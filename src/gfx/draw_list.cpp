@@ -431,6 +431,19 @@ void DrawList::add_plain_backdrop(Rect t_rect, Color t_top_left, Color t_top_rig
 	push_backdrop(ShaderKind::backdrop_plain, t_rect, t_top_left, t_top_right, t_bottom_left, t_bottom_right);
 }
 
+void DrawList::add_pattern_swatch(Rect t_rect, CornerRadii t_radii, Color t_color, u32 t_style)
+{
+	constexpr float swatch_code = 8192.0f;
+
+	const Vec2 center = scaled(t_rect.center());
+	const float u = static_cast<float>(t_style + 1) * swatch_code + std::round(center.x * g_pixel_scale);
+	const float v = std::round(center.y * g_pixel_scale);
+
+	note_cover(t_rect, t_color);
+	target(ShaderKind::backdrop);
+	push_rounded(t_rect, t_radii, UvRect{u, v, u, v}, pack(t_color));
+}
+
 void DrawList::push_backdrop(ShaderKind t_shader, Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left,
 							 Color t_bottom_right)
 {

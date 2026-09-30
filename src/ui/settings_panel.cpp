@@ -49,7 +49,6 @@ constexpr float highlight_inset_y = 3.0f;
 constexpr float row_inset_x = 16.0f;
 constexpr float two_line_padding_y = 10.0f;
 constexpr float single_row_padding_y = 6.0f;
-constexpr float nested_row_padding_y = 4.0f;
 constexpr float card_margin_x = 18.0f;
 constexpr float card_radius = 10.0f;
 constexpr float group_gap = 6.0f;
@@ -69,13 +68,17 @@ constexpr float reset_button_size = 28.0f;
 constexpr float reset_button_gap = 10.0f;
 constexpr float reset_icon_size = 18.0f;
 
-constexpr float slider_track_height = 22.0f;
 constexpr float slider_bar_height = 4.0f;
+constexpr float slider_rest_bar_height = 2.0f;
 constexpr float slider_thumb_radius = 7.0f;
-constexpr float slider_readout_gap = 10.0f;
-constexpr float slider_readout_width = 34.0f;
+constexpr float slider_thumb_ring = 2.0f;
 constexpr float slider_tick_size = 3.0f;
-constexpr float auto_lock_readout_width = 52.0f;
+constexpr float slider_hover_rate = 14.0f;
+constexpr float slider_bubble_gap = 3.0f;
+constexpr float slider_bubble_padding = 6.0f;
+constexpr float slider_bubble_radius = 6.0f;
+constexpr float slider_bubble_overhang = 12.0f;
+constexpr float inline_slider_gap = 28.0f;
 constexpr u32 auto_lock_stops[]{1, 2, 5, 10, 15, 30, 60, 0};
 constexpr u32 auto_lock_stop_count = static_cast<u32>(std::size(auto_lock_stops));
 
@@ -96,7 +99,6 @@ constexpr float animation_speed_min = 0.25f;
 constexpr float animation_speed_max = 3.0f;
 constexpr float corner_roundness_min = 0.0f;
 constexpr float corner_roundness_max = 1.5f;
-constexpr float background_hover_preview_seconds = 0.35f;
 constexpr float font_size_min = 10.0f;
 constexpr float font_size_max = 24.0f;
 constexpr float secondary_font_size_min = 8.0f;
@@ -106,9 +108,34 @@ constexpr float control_column_width = 170.0f;
 constexpr float control_radius = 8.0f;
 constexpr float stepper_width = 96.0f;
 constexpr float swatch_size = 22.0f;
-constexpr float swatch_ring_gap = 3.0f;
-constexpr float divider_strength = 0.55f;
+constexpr float swatch_ring_gap = 2.0f;
+constexpr float swatch_ring = 1.5f;
 constexpr float font_list_width = 290.0f;
+
+constexpr u32 pattern_columns = 3;
+constexpr float pattern_select_padding = 10.0f;
+constexpr float pattern_select_chevron_room = 31.0f;
+constexpr float pattern_popup_padding = 14.0f;
+constexpr float pattern_popup_radius = 12.0f;
+constexpr float pattern_popup_gap = 6.0f;
+constexpr float pattern_popup_margin = 8.0f;
+constexpr float pattern_popup_rate = 22.0f;
+constexpr float pattern_popup_rise = 6.0f;
+constexpr float tile_min_width = 96.0f;
+constexpr float tile_label_margin = 12.0f;
+constexpr float tile_gap = 10.0f;
+constexpr float tile_row_gap = 12.0f;
+constexpr float tile_aspect = 0.56f;
+constexpr float tile_radius = 8.0f;
+constexpr float tile_label_gap = 6.0f;
+constexpr float tile_ring_gap = 2.0f;
+constexpr float tile_ring = 2.0f;
+constexpr float tile_ring_rate = 16.0f;
+
+constexpr std::string_view close_choice_labels[]{"Minimize To Tray", "Quit"};
+constexpr float segment_padding_x = 12.0f;
+constexpr float segment_inset = 2.0f;
+constexpr float segment_slide_rate = 18.0f;
 constexpr float theme_list_width = 250.0f;
 
 constexpr float theme_dot_size = 16.0f;
@@ -126,15 +153,6 @@ constexpr auto theme_names = [] {
 	std::array<std::string_view, theme_count> names{};
 	for (u32 i = 0; i < theme_count; i += 1) {
 		names[i] = theme_labels[i].name;
-	}
-
-	return names;
-}();
-
-constexpr auto background_names = [] {
-	std::array<std::string_view, background_count> names{};
-	for (u32 i = 0; i < background_count; i += 1) {
-		names[i] = background_labels[i].name;
 	}
 
 	return names;
@@ -190,11 +208,6 @@ float single_row_height(const Fonts &t_fonts)
 	return std::max(control_height(t_fonts), t_fonts.body().line_height()) + single_row_padding_y * 2.0f;
 }
 
-float nested_row_height(const Fonts &t_fonts)
-{
-	return std::max(slider_track_height, t_fonts.secondary().line_height()) + nested_row_padding_y * 2.0f;
-}
-
 float title_baseline(Rect t_row, const Fonts &t_fonts)
 {
 	return t_row.center().y - label_block_height(t_fonts) * 0.5f + t_fonts.body().ascent();
@@ -226,6 +239,18 @@ Rect back_button_rect(Rect t_header)
 Rect dropdown_rect(Rect t_row, const Fonts &t_fonts)
 {
 	return right_aligned_control(t_row, t_fonts, control_column_width, control_height(t_fonts));
+}
+
+Rect pattern_select_rect(Rect t_row, const Fonts &t_fonts)
+{
+	float widest = 0.0f;
+	for (const OptionLabel &label : background_labels) {
+		widest = std::max(widest, text_width(t_fonts.body(), label.name));
+	}
+
+	return right_aligned_control(t_row, t_fonts,
+								 std::ceil(widest + pattern_select_padding + pattern_select_chevron_room),
+								 control_height(t_fonts));
 }
 
 Rect stepper_rect(Rect t_row, const Fonts &t_fonts)
@@ -260,14 +285,7 @@ Rect master_password_button_rect(Rect t_row, const Fonts &t_fonts)
 
 Rect slider_control_rect(Rect t_row, const Fonts &t_fonts)
 {
-	return right_aligned_control(t_row, t_fonts, control_column_width, slider_track_height);
-}
-
-Rect slider_track_rect(Rect t_row, const Fonts &t_fonts, float t_readout_width = slider_readout_width)
-{
-	const Rect control = slider_control_rect(t_row, t_fonts);
-
-	return Rect{control.x, control.y, control.w - t_readout_width - slider_readout_gap, control.h};
+	return right_aligned_control(t_row, t_fonts, control_column_width, control_height(t_fonts));
 }
 
 Rect reset_button_rect(Rect t_control, Rect t_row, const Fonts &t_fonts)
@@ -279,6 +297,31 @@ Rect reset_button_rect(Rect t_control, Rect t_row, const Fonts &t_fonts)
 float label_right_edge(Rect t_control, Rect t_row, const Fonts &t_fonts)
 {
 	return reset_button_rect(t_control, t_row, t_fonts).x - label_control_gap;
+}
+
+Rect inline_slider_rect(Rect t_row, Rect t_control, float t_left, const Fonts &t_fonts)
+{
+	const float height = control_height(t_fonts);
+
+	return Rect{t_left, t_row.center().y - height * 0.5f,
+				std::max(0.0f, label_right_edge(t_control, t_row, t_fonts) - t_left), height};
+}
+
+Rect slider_track(Rect t_slider)
+{
+	return t_slider.inset(slider_thumb_radius, 0.0f);
+}
+
+float slider_fraction_at(Rect t_slider, float t_x)
+{
+	const Rect track = slider_track(t_slider);
+
+	return track.w > 0.0f ? std::clamp((t_x - track.x) / track.w, 0.0f, 1.0f) : 0.0f;
+}
+
+Rect circle_at(Vec2 t_center, float t_radius)
+{
+	return Rect{t_center.x - t_radius, t_center.y - t_radius, t_radius * 2.0f, t_radius * 2.0f};
 }
 
 void draw_row_label(DrawList &t_draw_list, const Fonts &t_fonts, Rect t_row, const char *t_title,
@@ -315,36 +358,79 @@ void draw_toggle(DrawList &t_draw_list, Rect t_toggle, float t_on, Color t_accen
 	draw_knob(t_draw_list, knob, foreground_on(track), t_alpha);
 }
 
-void draw_slider(DrawList &t_draw_list, const Font &t_font, Rect t_control, float t_readout_width, float t_fraction,
-				 std::string_view t_readout, Color t_accent, u8 t_alpha, u32 t_steps = 0)
+void draw_inset_control(DrawList &t_draw_list, Rect t_rect, Color t_border, u8 t_alpha)
 {
-	const Rect track{t_control.x, t_control.y, t_control.w - t_readout_width - slider_readout_gap, t_control.h};
-	const float center_y = track.center().y;
+	t_draw_list.add_bordered_rect(t_rect, rounded(control_radius), faded(theme().field, t_alpha),
+								  faded(t_border, t_alpha), 1.0f);
+}
 
-	draw_text(t_draw_list, t_font,
-			  Vec2{t_control.right() - text_width(t_font, t_readout), t_font.centered_baseline(t_control)}, t_readout,
-			  faded(theme().text_dim, t_alpha));
+struct SliderLook {
+	std::string_view readout;
+	std::string_view caption;
+	float fraction;
+	float hover;
+	Color accent;
+	u32 steps;
+};
 
-	const Rect bar{track.x, center_y - slider_bar_height * 0.5f, track.w, slider_bar_height};
-	const Rect filled{bar.x, bar.y, bar.w * std::clamp(t_fraction, 0.0f, 1.0f), bar.h};
+void draw_slider(DrawList &t_draw_list, const Font &t_font, Rect t_slider, const SliderLook &t_look, u8 t_alpha)
+{
+	const Theme &colors = theme();
+	const float hover = t_look.hover;
+	const auto resting_alpha = static_cast<u8>(t_alpha * (1.0f - hover));
+	const auto hover_alpha = static_cast<u8>(t_alpha * hover);
 
-	t_draw_list.add_rounded_rect(bar, rounded(slider_bar_height * 0.5f), faded(theme().track, t_alpha));
+	if (resting_alpha > 0) {
+		const Rect text_band{t_slider.x, t_slider.y, t_slider.w, t_slider.h - slider_thumb_radius};
+		const float baseline = t_font.centered_baseline(text_band);
+
+		draw_text(t_draw_list, t_font, Vec2{t_slider.x, baseline}, t_look.caption,
+				  faded(colors.text_faint, resting_alpha));
+		draw_text(t_draw_list, t_font, Vec2{t_slider.right() - text_width(t_font, t_look.readout), baseline},
+				  t_look.readout, faded(colors.text, resting_alpha));
+	}
+
+	const float inset = slider_thumb_radius * hover;
+	const float thickness = slider_rest_bar_height + (slider_bar_height - slider_rest_bar_height) * hover;
+	const float resting_y = t_slider.bottom() - slider_rest_bar_height * 0.5f;
+	const float center_y = resting_y + (t_slider.bottom() - slider_thumb_radius - resting_y) * hover;
+	const Rect bar{t_slider.x + inset, center_y - thickness * 0.5f, t_slider.w - inset * 2.0f, thickness};
+	const Rect filled{bar.x, bar.y, bar.w * std::clamp(t_look.fraction, 0.0f, 1.0f), bar.h};
+
+	t_draw_list.add_rounded_rect(bar, rounded(thickness * 0.5f),
+								 faded(mix(colors.popup, colors.track, 0.55f + 0.45f * hover), t_alpha));
 	if (filled.w > 0.0f) {
-		t_draw_list.add_rounded_rect(filled, rounded(slider_bar_height * 0.5f), faded(t_accent, t_alpha));
+		t_draw_list.add_rounded_rect(filled, rounded(thickness * 0.5f), faded(t_look.accent, t_alpha));
 	}
 
-	for (u32 i = 1; i < t_steps; i += 1) {
-		const float x = bar.x + bar.w * static_cast<float>(i) / static_cast<float>(t_steps);
-		const Color tick = x <= filled.right() ? with_alpha(foreground_on(t_accent), 150) : theme().text_faint;
+	if (hover_alpha == 0) return;
 
-		t_draw_list.add_rounded_rect(
-			Rect{x - slider_tick_size * 0.5f, center_y - slider_tick_size * 0.5f, slider_tick_size, slider_tick_size},
-			rounded(slider_tick_size * 0.5f), faded(tick, t_alpha));
+	for (u32 i = 1; i < t_look.steps; i += 1) {
+		const float x = bar.x + bar.w * static_cast<float>(i) / static_cast<float>(t_look.steps);
+		const Color tick = x <= filled.right() ? with_alpha(foreground_on(t_look.accent), 150) : colors.text_faint;
+
+		t_draw_list.add_rounded_rect(circle_at(Vec2{x, center_y}, slider_tick_size * 0.5f),
+									 rounded(slider_tick_size * 0.5f), faded(tick, hover_alpha));
 	}
 
-	const Rect knob{filled.right() - slider_thumb_radius, center_y - slider_thumb_radius, slider_thumb_radius * 2.0f,
-					slider_thumb_radius * 2.0f};
-	draw_knob(t_draw_list, knob, foreground_on(t_accent), t_alpha);
+	const Vec2 thumb{filled.right(), center_y};
+	const float radius = slider_thumb_radius * (0.5f + 0.5f * hover);
+	const float inner_radius = std::max(0.0f, radius - slider_thumb_ring);
+
+	t_draw_list.add_rounded_rect(circle_at(thumb, radius), rounded(radius), faded(t_look.accent, hover_alpha));
+	t_draw_list.add_rounded_rect(circle_at(thumb, inner_radius), rounded(inner_radius),
+								 faded(Color{255, 255, 255, 255}, hover_alpha));
+
+	const float bubble_width = text_width(t_font, t_look.readout) + slider_bubble_padding * 2.0f;
+	const float bubble_height = t_font.line_height() + 2.0f;
+	const float bubble_x = std::clamp(thumb.x - bubble_width * 0.5f, t_slider.x - slider_bubble_overhang,
+									  t_slider.right() + slider_bubble_overhang - bubble_width);
+	const Rect bubble{snapped_to_pixel(bubble_x),
+					  snapped_to_pixel(center_y - slider_thumb_radius - slider_bubble_gap - bubble_height),
+					  bubble_width, bubble_height};
+
+	t_draw_list.add_rounded_rect(bubble, rounded(slider_bubble_radius), faded(t_look.accent, hover_alpha));
+	draw_text_centered(t_draw_list, t_font, bubble, t_look.readout, faded(foreground_on(t_look.accent), hover_alpha));
 }
 
 void draw_select(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label, bool t_open,
@@ -354,19 +440,15 @@ void draw_select(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::st
 	constexpr Vec2 chevron_size{9.0f, 5.0f};
 
 	const Theme &colors = theme();
-	const Color fill = faded(t_open || t_hovered ? colors.control : colors.popup, t_alpha);
 	const Rect chevron{t_rect.right() - padding - chevron_size.x, t_rect.center().y - chevron_size.y * 0.5f,
 					   chevron_size.x, chevron_size.y};
 
-	if (t_open) {
-		t_draw_list.add_bordered_rect(t_rect, rounded(control_radius), fill, faded(t_accent, t_alpha), 1.0f);
-	} else {
-		t_draw_list.add_rounded_rect(t_rect, rounded(control_radius), fill);
-	}
-
+	draw_inset_control(t_draw_list, t_rect, t_open ? t_accent : (t_hovered ? colors.border : colors.separator),
+					   t_alpha);
 	draw_text_truncated(t_draw_list, t_font, Vec2{t_rect.x + padding, t_font.centered_baseline(t_rect)}, t_label,
 						chevron.x - padding - (t_rect.x + padding), faded(colors.text, t_alpha));
-	controls::draw_chevron(t_draw_list, chevron, t_open, faded(t_open ? colors.text : colors.text_dim, t_alpha));
+	controls::draw_chevron(t_draw_list, chevron, t_open,
+						   faded(t_open || t_hovered ? colors.text_dim : colors.text_faint, t_alpha));
 }
 
 void draw_stepper(DrawList &t_draw_list, const Font &t_font, Rect t_stepper, float t_value, u8 t_alpha)
@@ -379,7 +461,7 @@ void draw_stepper(DrawList &t_draw_list, const Font &t_font, Rect t_stepper, flo
 	const Vec2 plus = stepper_plus(t_stepper).center();
 	const Color glyph = faded(colors.text_dim, t_alpha);
 
-	t_draw_list.add_rounded_rect(t_stepper, rounded(control_radius), faded(colors.popup, t_alpha));
+	draw_inset_control(t_draw_list, t_stepper, colors.separator, t_alpha);
 	t_draw_list.add_line({minus.x - glyph_half, minus.y}, {minus.x + glyph_half, minus.y}, glyph_thickness, glyph);
 	t_draw_list.add_line({plus.x - glyph_half, plus.y}, {plus.x + glyph_half, plus.y}, glyph_thickness, glyph);
 	t_draw_list.add_line({plus.x, plus.y - glyph_half}, {plus.x, plus.y + glyph_half}, glyph_thickness, glyph);
@@ -478,47 +560,41 @@ const SettingsPanel::GroupSpec SettingsPanel::group_specs[group_count]{
 };
 
 const SettingsPanel::RowSpec SettingsPanel::row_specs[row_spec_count]{
-	{&Rows::theme, SettingsTab::appearance, 0, nullptr, "Theme", "", "dark light mode palette colour colors interface"},
-	{&Rows::accent, SettingsTab::appearance, 0, nullptr, "Accent Color", "", "colour highlight buttons"},
-	{&Rows::corner_roundness, SettingsTab::appearance, 0, nullptr, "Corner Roundness", "", "radius rounded corners"},
-	{&Rows::background, SettingsTab::appearance, 1, nullptr, "Pattern", "",
-	 "background backdrop texture dots grid lines polka topography starfield stars scanlines crosshatch wallpaper"},
-	{&Rows::background_intensity, SettingsTab::appearance, 1, &Rows::background, "Pattern Strength", "",
-	 "background backdrop pattern intensity opacity subtle"},
-	{&Rows::background_light, SettingsTab::appearance, 1, nullptr, "Soft Light", "",
-	 "background backdrop glow gradient top light depth"},
-	{&Rows::background_light_intensity, SettingsTab::appearance, 1, &Rows::background_light, "Light Strength", "",
-	 "background backdrop glow intensity"},
-	{&Rows::background_grain, SettingsTab::appearance, 1, nullptr, "Grain", "",
-	 "background backdrop noise film texture"},
-	{&Rows::background_grain_intensity, SettingsTab::appearance, 1, &Rows::background_grain, "Grain Strength", "",
-	 "background backdrop noise intensity"},
-	{&Rows::font, SettingsTab::appearance, 2, nullptr, "Font", "", "typeface family text"},
-	{&Rows::font_size, SettingsTab::appearance, 2, nullptr, "Font Size", "", "text scale zoom bigger interface"},
-	{&Rows::secondary_font_size, SettingsTab::appearance, 2, nullptr, "Small Text Size", "",
+	{&Rows::theme, SettingsTab::appearance, 0, "Theme", "", "dark light mode palette colour colors interface"},
+	{&Rows::accent, SettingsTab::appearance, 0, "Accent Color", "", "colour highlight buttons"},
+	{&Rows::corner_roundness, SettingsTab::appearance, 0, "Corner Roundness", "", "radius rounded corners"},
+	{&Rows::background, SettingsTab::appearance, 1, "Pattern", "",
+	 "background backdrop texture dots grid lines polka topography starfield stars scanlines crosshatch wallpaper "
+	 "strength intensity opacity subtle"},
+	{&Rows::background_light, SettingsTab::appearance, 1, "Soft Light", "",
+	 "background backdrop glow gradient top light depth strength intensity"},
+	{&Rows::background_grain, SettingsTab::appearance, 1, "Grain", "",
+	 "background backdrop noise film texture strength intensity"},
+	{&Rows::font, SettingsTab::appearance, 2, "Font", "", "typeface family text"},
+	{&Rows::font_size, SettingsTab::appearance, 2, "Font Size", "", "text scale zoom bigger interface"},
+	{&Rows::secondary_font_size, SettingsTab::appearance, 2, "Small Text Size", "",
 	 "secondary font labels hints scale smaller"},
-	{&Rows::animations, SettingsTab::behavior, 3, nullptr, "Animations", "", "motion effects reduce animate popups"},
-	{&Rows::animation_speed, SettingsTab::behavior, 3, &Rows::animations, "Speed", "", "animation motion fast slow"},
-	{&Rows::notifications, SettingsTab::behavior, 4, nullptr, "Notifications", "",
-	 "toast popup alert confirmation messages"},
-	{&Rows::close_to_tray, SettingsTab::behavior, 4, nullptr, "Close To Tray", "Closing hides the app to the tray.",
-	 "minimize background system tray"},
-	{&Rows::hide_from_capture, SettingsTab::privacy, 5, nullptr, "Hide From Screen Capture",
+	{&Rows::animations, SettingsTab::behavior, 3, "Animations", "",
+	 "motion effects reduce animate popups speed fast slow"},
+	{&Rows::notifications, SettingsTab::behavior, 4, "Notifications", "", "toast popup alert confirmation messages"},
+	{&Rows::close_to_tray, SettingsTab::behavior, 4, "When Closing", "",
+	 "close to tray minimize quit exit background system tray hide"},
+	{&Rows::hide_from_capture, SettingsTab::privacy, 5, "Hide From Screen Capture",
 	 "Hide accounts from screenshares, recordings and screenshots.", "stream record share obs discord"},
-	{&Rows::block_overlay_injection, SettingsTab::privacy, 5, nullptr, "Block Overlay Injection",
+	{&Rows::block_overlay_injection, SettingsTab::privacy, 5, "Block Overlay Injection",
 	 "Block overlays and keyloggers. Restart to apply.", "security inject dll"},
-	{&Rows::auto_lock, SettingsTab::security, 6, nullptr, "Auto-Lock", "Lock the vault after being idle.",
+	{&Rows::auto_lock, SettingsTab::security, 6, "Auto-Lock", "Lock the vault after being idle.",
 	 "timeout idle inactive away"},
-	{&Rows::master_password, SettingsTab::security, 6, nullptr, "Master Password", "Encrypts saved passwords.",
+	{&Rows::master_password, SettingsTab::security, 6, "Master Password", "Encrypts saved passwords.",
 	 "change reset vault encryption"},
 };
 
 const SettingsPanel::PercentSlider SettingsPanel::percent_sliders[percent_slider_count]{
-	{&Rows::background_intensity, &Settings::background_intensity,
+	{&Rows::background, &Settings::background_intensity,
 	 [](const Settings &t_settings) { return t_settings.background_style != BackgroundStyle::none; }},
-	{&Rows::background_light_intensity, &Settings::background_light_intensity,
+	{&Rows::background_light, &Settings::background_light_intensity,
 	 [](const Settings &t_settings) { return t_settings.background_light; }},
-	{&Rows::background_grain_intensity, &Settings::background_grain_intensity,
+	{&Rows::background_grain, &Settings::background_grain_intensity,
 	 [](const Settings &t_settings) { return t_settings.background_grain; }},
 };
 
@@ -527,7 +603,6 @@ const SettingsPanel::Toggle SettingsPanel::toggles[toggle_count]{
 	{&Settings::animations_enabled, &Rows::animations},
 	{&Settings::hide_accounts_from_capture, &Rows::hide_from_capture},
 	{&Settings::block_overlay_injection, &Rows::block_overlay_injection},
-	{&Settings::close_to_tray, &Rows::close_to_tray},
 	{&Settings::background_light, &Rows::background_light},
 	{&Settings::background_grain, &Rows::background_grain},
 };
@@ -559,11 +634,6 @@ SettingsPanel::SettingsPanel(Settings &t_settings, Fonts &t_fonts, Renderer &t_r
 						   },
 					   .hover_preview_seconds = theme_hover_preview_seconds,
 				   })
-	, m_background_list(t_fonts, t_settings,
-						ListPopupOptions{
-							.empty_message = "No backgrounds",
-							.hover_preview_seconds = background_hover_preview_seconds,
-						})
 	, m_color_picker(t_fonts)
 {
 	m_search.set_max_length(search_max_length);
@@ -594,6 +664,12 @@ void SettingsPanel::sync_with_settings()
 	for (u32 i = 0; i < toggle_count; i += 1) {
 		m_toggles_shown[i] = m_settings.*toggles[i].value ? 1.0f : 0.0f;
 	}
+
+	for (u32 i = 0; i < background_count; i += 1) {
+		m_pattern_ring[i] = i == static_cast<u32>(m_settings.background_style) ? 1.0f : 0.0f;
+	}
+
+	m_close_choice_shown = m_settings.close_to_tray ? 0.0f : 1.0f;
 }
 
 void SettingsPanel::restore_committed_previews(Settings &t_settings) const
@@ -601,10 +677,6 @@ void SettingsPanel::restore_committed_previews(Settings &t_settings) const
 	if (m_theme_before_preview) {
 		t_settings.theme = m_theme_before_preview->theme;
 		t_settings.accent = m_theme_before_preview->accent;
-	}
-
-	if (m_background_before_preview) {
-		t_settings.background_style = *m_background_before_preview;
 	}
 }
 
@@ -625,14 +697,13 @@ void SettingsPanel::close()
 {
 	m_open = false;
 	m_search.set_focused(false);
-	m_auto_lock_drag.end();
-	for (Draggable &drag : m_percent_drags) {
+	for (Draggable &drag : m_slider_drags) {
 		drag.end();
 	}
 	m_font_list.close();
 	m_theme_list.close();
-	m_background_list.close();
 	m_color_picker.close();
+	m_pattern_open = false;
 	m_tooltip.reset();
 }
 
@@ -744,33 +815,252 @@ bool SettingsPanel::matches_search(const RowSpec &t_spec) const
 
 bool SettingsPanel::is_listed(const RowSpec &t_spec) const
 {
-	if (t_spec.parent != nullptr) return is_listed(spec_of(t_spec.parent));
-	if (!is_searching()) return t_spec.tab == m_tab;
-	if (matches_search(t_spec)) return true;
-
-	return std::ranges::any_of(
-		row_specs, [&](const RowSpec &t_child) { return t_child.parent == t_spec.row && matches_search(t_child); });
-}
-
-float SettingsPanel::reveal_of(const RowSpec &t_spec) const
-{
-	for (u32 i = 0; i < percent_slider_count; i += 1) {
-		if (t_spec.row == percent_sliders[i].row) return m_percent_reveal[i];
-	}
-
-	if (t_spec.row == &Rows::animation_speed) return m_animation_speed_reveal;
-
-	return 1.0f;
+	return is_searching() ? matches_search(t_spec) : t_spec.tab == m_tab;
 }
 
 float SettingsPanel::row_extent(const RowSpec &t_spec) const
 {
-	const float reveal = reveal_of(t_spec);
+	return *t_spec.description == '\0' ? single_row_height(m_fonts) : row_height(m_fonts);
+}
 
-	if (t_spec.parent != nullptr) return nested_row_height(m_fonts) * reveal;
-	if (*t_spec.description == '\0') return single_row_height(m_fonts) * reveal;
+float SettingsPanel::inline_slider_left(Rect t_row) const
+{
+	float widest = 0.0f;
 
-	return row_height(m_fonts) * reveal;
+	for (Rect Rows::*row : {&Rows::background, &Rows::background_light, &Rows::background_grain, &Rows::animations}) {
+		widest = std::max(widest, text_width(m_fonts.body(), spec_of(row).title));
+	}
+
+	return snapped_to_pixel(t_row.x + row_inset_x + widest + inline_slider_gap);
+}
+
+Rect SettingsPanel::slider_line(const Rows &t_rows, SliderKind t_slider) const
+{
+	switch (t_slider) {
+		case SliderKind::corner_roundness:
+			return t_rows.corner_roundness;
+		case SliderKind::pattern_strength:
+			return t_rows.background;
+		case SliderKind::light_strength:
+			return t_rows.background_light;
+		case SliderKind::grain_strength:
+			return t_rows.background_grain;
+		case SliderKind::animation_speed:
+			return t_rows.animations;
+		case SliderKind::auto_lock:
+			return t_rows.auto_lock;
+		case SliderKind::count:
+			break;
+	}
+
+	return Rect{};
+}
+
+Rect SettingsPanel::slider_rect(const Rows &t_rows, SliderKind t_slider) const
+{
+	const Rect line = slider_line(t_rows, t_slider);
+
+	switch (t_slider) {
+		case SliderKind::corner_roundness:
+		case SliderKind::auto_lock:
+			return slider_control_rect(line, m_fonts);
+		case SliderKind::pattern_strength:
+			return inline_slider_rect(line, pattern_select_rect(line, m_fonts), inline_slider_left(line), m_fonts);
+		case SliderKind::light_strength:
+		case SliderKind::grain_strength:
+		case SliderKind::animation_speed:
+			return inline_slider_rect(line, toggle_rect(line, m_fonts), inline_slider_left(line), m_fonts);
+		case SliderKind::count:
+			break;
+	}
+
+	return Rect{};
+}
+
+Rect SettingsPanel::slider_hit_rect(const Rows &t_rows, SliderKind t_slider) const
+{
+	const Rect line = slider_line(t_rows, t_slider);
+	const Rect slider = slider_rect(t_rows, t_slider);
+
+	return Rect{slider.x, line.y, slider.w, line.h};
+}
+
+float SettingsPanel::slider_visibility(SliderKind t_slider) const
+{
+	switch (t_slider) {
+		case SliderKind::pattern_strength:
+		case SliderKind::light_strength:
+		case SliderKind::grain_strength:
+			return m_percent_reveal[static_cast<u32>(t_slider) - static_cast<u32>(SliderKind::pattern_strength)];
+		case SliderKind::animation_speed:
+			return m_animation_speed_reveal;
+		case SliderKind::corner_roundness:
+		case SliderKind::auto_lock:
+		case SliderKind::count:
+			break;
+	}
+
+	return 1.0f;
+}
+
+float SettingsPanel::slider_fraction(SliderKind t_slider) const
+{
+	switch (t_slider) {
+		case SliderKind::corner_roundness:
+			return fraction_in(m_corner_roundness_shown, corner_roundness_min, corner_roundness_max);
+		case SliderKind::pattern_strength:
+		case SliderKind::light_strength:
+		case SliderKind::grain_strength:
+			return m_percent_shown[static_cast<u32>(t_slider) - static_cast<u32>(SliderKind::pattern_strength)];
+		case SliderKind::animation_speed:
+			return fraction_in(m_animation_speed_shown, animation_speed_min, animation_speed_max);
+		case SliderKind::auto_lock:
+			return m_auto_lock_shown / static_cast<float>(auto_lock_stop_count - 1);
+		case SliderKind::count:
+			break;
+	}
+
+	return 0.0f;
+}
+
+std::string_view SettingsPanel::slider_readout(SliderKind t_slider, char (&t_buffer)[16]) const
+{
+	int written = 0;
+
+	switch (t_slider) {
+		case SliderKind::corner_roundness:
+			written = std::snprintf(t_buffer, sizeof(t_buffer), "%.0f%%", m_corner_roundness_shown * 100.0f);
+			break;
+		case SliderKind::pattern_strength:
+		case SliderKind::light_strength:
+		case SliderKind::grain_strength:
+			written = std::snprintf(t_buffer, sizeof(t_buffer), "%.0f%%", slider_fraction(t_slider) * 100.0f);
+			break;
+		case SliderKind::animation_speed:
+			written = std::snprintf(t_buffer, sizeof(t_buffer), "%.2fx", m_animation_speed_shown);
+			break;
+		case SliderKind::auto_lock:
+			return auto_lock_label(m_settings.auto_lock_minutes, t_buffer);
+		case SliderKind::count:
+			break;
+	}
+
+	return std::string_view{t_buffer, static_cast<usize>(std::max(written, 0))};
+}
+
+std::optional<SettingsPanel::SliderKind> SettingsPanel::slider_at(const Layout &t_layout, const Rows &t_rows,
+																  Vec2 t_point) const
+{
+	for (u32 i = 0; i < slider_count; i += 1) {
+		const auto slider = static_cast<SliderKind>(i);
+
+		if (slider_visibility(slider) > 0.5f &&
+			hits(t_layout, slider_line(t_rows, slider), slider_hit_rect(t_rows, slider), t_point)) {
+			return slider;
+		}
+	}
+
+	return std::nullopt;
+}
+
+void SettingsPanel::apply_slider(SliderKind t_slider, float t_fraction)
+{
+	switch (t_slider) {
+		case SliderKind::corner_roundness:
+			m_settings.corner_roundness = value_at(t_fraction, corner_roundness_min, corner_roundness_max);
+			set_corner_roundness(m_settings.corner_roundness);
+			break;
+		case SliderKind::pattern_strength:
+		case SliderKind::light_strength:
+		case SliderKind::grain_strength: {
+			const u32 index = static_cast<u32>(t_slider) - static_cast<u32>(SliderKind::pattern_strength);
+			m_settings.*percent_sliders[index].value = value_at(t_fraction, 0.0f, 1.0f);
+			break;
+		}
+		case SliderKind::animation_speed:
+			m_settings.animation_speed = value_at(t_fraction, animation_speed_min, animation_speed_max);
+			animation::set_speed(m_settings.animation_speed);
+			break;
+		case SliderKind::auto_lock: {
+			const auto stop = static_cast<u32>(std::lround(t_fraction * static_cast<float>(auto_lock_stop_count - 1)));
+			m_settings.auto_lock_minutes = auto_lock_stops[std::min(stop, auto_lock_stop_count - 1)];
+			break;
+		}
+		case SliderKind::count:
+			break;
+	}
+}
+
+Vec2 SettingsPanel::pattern_tile_size() const
+{
+	const Font &secondary = m_fonts.secondary();
+	float width = tile_min_width;
+
+	for (const OptionLabel &label : background_labels) {
+		width = std::max(width, std::ceil(text_width(secondary, label.name) + tile_label_margin));
+	}
+
+	return Vec2{width, std::round(width * tile_aspect) + tile_label_gap + secondary.line_height()};
+}
+
+Rect SettingsPanel::pattern_popup_rect(const Rows &t_rows) const
+{
+	const Vec2 tile = pattern_tile_size();
+	const u32 lines = (background_count + pattern_columns - 1) / pattern_columns;
+	const float width = pattern_popup_padding * 2.0f + static_cast<float>(pattern_columns) * tile.x +
+						static_cast<float>(pattern_columns - 1) * tile_gap;
+	const float height = pattern_popup_padding * 2.0f + static_cast<float>(lines) * tile.y +
+						 static_cast<float>(lines - 1) * tile_row_gap;
+	const Rect anchor = pattern_select_rect(t_rows.background, m_fonts);
+	const Rect bounds = m_window.content_rect().inset(pattern_popup_margin);
+
+	float y = anchor.bottom() + pattern_popup_gap;
+	if (y + height > bounds.bottom()) {
+		y = anchor.y - pattern_popup_gap - height;
+	}
+
+	const float x = std::clamp(anchor.right() - width, bounds.x, std::max(bounds.x, bounds.right() - width));
+	y = std::clamp(y, bounds.y, std::max(bounds.y, bounds.bottom() - height));
+
+	return Rect{snapped_to_pixel(x), snapped_to_pixel(y), width, height};
+}
+
+Rect SettingsPanel::pattern_tile(Rect t_popup, u32 t_index) const
+{
+	const Vec2 tile = pattern_tile_size();
+	const auto column = static_cast<float>(t_index % pattern_columns);
+	const auto line = static_cast<float>(t_index / pattern_columns);
+
+	return Rect{t_popup.x + pattern_popup_padding + column * (tile.x + tile_gap),
+				t_popup.y + pattern_popup_padding + line * (tile.y + tile_row_gap), tile.x, tile.y};
+}
+
+std::optional<u32> SettingsPanel::pattern_at(Rect t_popup, Vec2 t_point) const
+{
+	for (u32 i = 0; i < background_count; i += 1) {
+		if (pattern_tile(t_popup, i).contains(t_point)) return i;
+	}
+
+	return std::nullopt;
+}
+
+Rect SettingsPanel::close_choice_rect(Rect t_row) const
+{
+	float width = segment_inset * 2.0f;
+	for (const std::string_view label : close_choice_labels) {
+		width += text_width(m_fonts.body(), label) + segment_padding_x * 2.0f;
+	}
+
+	return right_aligned_control(t_row, m_fonts, width, control_height(m_fonts));
+}
+
+Rect SettingsPanel::close_segment(Rect t_choice, u32 t_index) const
+{
+	const float first_width = text_width(m_fonts.body(), close_choice_labels[0]) + segment_padding_x * 2.0f;
+	const Rect inner = t_choice.inset(segment_inset);
+
+	return t_index == 0 ? Rect{inner.x, inner.y, first_width, inner.h}
+						: Rect{inner.x + first_width, inner.y, inner.w - first_width, inner.h};
 }
 
 Rect SettingsPanel::search_rect(const Layout &t_layout) const
@@ -810,6 +1100,7 @@ void SettingsPanel::refresh_search()
 	copy_to(query, m_applied_query);
 	m_rows_scroll = Scrollable{};
 	m_color_picker.close();
+	m_pattern_open = false;
 	m_tooltip.reset();
 }
 
@@ -851,6 +1142,7 @@ void SettingsPanel::select_tab(SettingsTab t_tab)
 	m_tab = t_tab;
 	m_rows_scroll = Scrollable{};
 	m_color_picker.close();
+	m_pattern_open = false;
 	m_tooltip.reset();
 }
 
@@ -876,7 +1168,6 @@ ListPopup *SettingsPanel::open_list()
 {
 	if (m_font_list.is_open()) return &m_font_list;
 	if (m_theme_list.is_open()) return &m_theme_list;
-	if (m_background_list.is_open()) return &m_background_list;
 
 	return nullptr;
 }
@@ -885,14 +1176,13 @@ const ListPopup *SettingsPanel::open_list() const
 {
 	if (m_font_list.is_open()) return &m_font_list;
 	if (m_theme_list.is_open()) return &m_theme_list;
-	if (m_background_list.is_open()) return &m_background_list;
 
 	return nullptr;
 }
 
 bool SettingsPanel::has_popup_open() const
 {
-	return m_color_picker.is_open() || open_list() != nullptr;
+	return m_color_picker.is_open() || m_pattern_open || open_list() != nullptr;
 }
 
 bool SettingsPanel::is_row_hovered(const Layout &t_layout, Rect t_row) const
@@ -922,16 +1212,8 @@ Rect SettingsPanel::reset_row(const Rows &t_rows, ResettableSetting t_setting) c
 			return t_rows.background_light;
 		case ResettableSetting::background_grain:
 			return t_rows.background_grain;
-		case ResettableSetting::background_intensity:
-			return t_rows.background_intensity;
-		case ResettableSetting::background_light_intensity:
-			return t_rows.background_light_intensity;
-		case ResettableSetting::background_grain_intensity:
-			return t_rows.background_grain_intensity;
 		case ResettableSetting::animations:
 			return t_rows.animations;
-		case ResettableSetting::animation_speed:
-			return t_rows.animation_speed;
 		case ResettableSetting::notifications:
 			return t_rows.notifications;
 		case ResettableSetting::hide_from_capture:
@@ -956,24 +1238,22 @@ Rect SettingsPanel::reset_control(const Rows &t_rows, ResettableSetting t_settin
 	switch (t_setting) {
 		case ResettableSetting::theme:
 		case ResettableSetting::font:
-		case ResettableSetting::background:
 			return dropdown_rect(row, m_fonts);
+		case ResettableSetting::background:
+			return pattern_select_rect(row, m_fonts);
 		case ResettableSetting::font_size:
 		case ResettableSetting::secondary_font_size:
 			return stepper_rect(row, m_fonts);
 		case ResettableSetting::accent:
-			return swatch_rect(row, m_fonts);
+			return swatch_rect(row, m_fonts).inset(-(swatch_ring_gap + swatch_ring));
 		case ResettableSetting::corner_roundness:
-		case ResettableSetting::background_intensity:
-		case ResettableSetting::background_light_intensity:
-		case ResettableSetting::background_grain_intensity:
-		case ResettableSetting::animation_speed:
 			return slider_control_rect(row, m_fonts);
+		case ResettableSetting::close_to_tray:
+			return close_choice_rect(row);
 		case ResettableSetting::animations:
 		case ResettableSetting::notifications:
 		case ResettableSetting::hide_from_capture:
 		case ResettableSetting::block_overlay_injection:
-		case ResettableSetting::close_to_tray:
 		case ResettableSetting::background_light:
 		case ResettableSetting::background_grain:
 			return toggle_rect(row, m_fonts);
@@ -1010,21 +1290,17 @@ bool SettingsPanel::is_default(ResettableSetting t_setting) const
 		case ResettableSetting::corner_roundness:
 			return same(m_settings.corner_roundness, defaults.corner_roundness);
 		case ResettableSetting::background:
-			return m_settings.background_style == defaults.background_style;
+			return m_settings.background_style == defaults.background_style &&
+				   same(m_settings.background_intensity, defaults.background_intensity);
 		case ResettableSetting::background_light:
-			return m_settings.background_light == defaults.background_light;
+			return m_settings.background_light == defaults.background_light &&
+				   same(m_settings.background_light_intensity, defaults.background_light_intensity);
 		case ResettableSetting::background_grain:
-			return m_settings.background_grain == defaults.background_grain;
-		case ResettableSetting::background_intensity:
-			return same(m_settings.background_intensity, defaults.background_intensity);
-		case ResettableSetting::background_light_intensity:
-			return same(m_settings.background_light_intensity, defaults.background_light_intensity);
-		case ResettableSetting::background_grain_intensity:
-			return same(m_settings.background_grain_intensity, defaults.background_grain_intensity);
+			return m_settings.background_grain == defaults.background_grain &&
+				   same(m_settings.background_grain_intensity, defaults.background_grain_intensity);
 		case ResettableSetting::animations:
-			return m_settings.animations_enabled == defaults.animations_enabled;
-		case ResettableSetting::animation_speed:
-			return same(m_settings.animation_speed, defaults.animation_speed);
+			return m_settings.animations_enabled == defaults.animations_enabled &&
+				   same(m_settings.animation_speed, defaults.animation_speed);
 		case ResettableSetting::notifications:
 			return m_settings.show_notifications == defaults.show_notifications;
 		case ResettableSetting::hide_from_capture:
@@ -1072,30 +1348,21 @@ void SettingsPanel::reset(ResettableSetting t_setting)
 			m_settings.corner_roundness = defaults.corner_roundness;
 			break;
 		case ResettableSetting::background:
-			m_background_before_preview.reset();
 			m_settings.background_style = defaults.background_style;
-			break;
-		case ResettableSetting::background_intensity:
 			m_settings.background_intensity = defaults.background_intensity;
-			break;
-		case ResettableSetting::background_light_intensity:
-			m_settings.background_light_intensity = defaults.background_light_intensity;
-			break;
-		case ResettableSetting::background_grain_intensity:
-			m_settings.background_grain_intensity = defaults.background_grain_intensity;
 			break;
 		case ResettableSetting::background_light:
 			m_settings.background_light = defaults.background_light;
+			m_settings.background_light_intensity = defaults.background_light_intensity;
 			break;
 		case ResettableSetting::background_grain:
 			m_settings.background_grain = defaults.background_grain;
+			m_settings.background_grain_intensity = defaults.background_grain_intensity;
 			break;
 		case ResettableSetting::animations:
 			m_settings.animations_enabled = defaults.animations_enabled;
-			animation::set_enabled(m_settings.animations_enabled);
-			break;
-		case ResettableSetting::animation_speed:
 			m_settings.animation_speed = defaults.animation_speed;
+			animation::set_enabled(m_settings.animations_enabled);
 			animation::set_speed(m_settings.animation_speed);
 			break;
 		case ResettableSetting::notifications:
@@ -1214,57 +1481,10 @@ void SettingsPanel::update_theme_preview()
 	}
 }
 
-void SettingsPanel::apply_animation_speed(Rect t_track, float t_x)
-{
-	m_settings.animation_speed = value_at((t_x - t_track.x) / t_track.w, animation_speed_min, animation_speed_max);
-	animation::set_speed(m_settings.animation_speed);
-}
-
-void SettingsPanel::apply_corner_roundness(Rect t_track, float t_x)
-{
-	m_settings.corner_roundness = value_at((t_x - t_track.x) / t_track.w, corner_roundness_min, corner_roundness_max);
-	set_corner_roundness(m_settings.corner_roundness);
-}
-
-void SettingsPanel::open_background_list()
-{
-	m_color_picker.close();
-	m_background_before_preview = m_settings.background_style;
-	m_background_list.open(background_names, static_cast<u32>(m_settings.background_style));
-}
-
 void SettingsPanel::choose_background(u32 t_index)
 {
-	m_background_before_preview.reset();
+	m_pattern_open = false;
 	m_settings.background_style = static_cast<BackgroundStyle>(t_index);
-}
-
-void SettingsPanel::update_background_preview()
-{
-	if (!m_background_before_preview) return;
-
-	BackgroundStyle shown = *m_background_before_preview;
-
-	if (!m_background_list.is_open()) {
-		m_background_before_preview.reset();
-	} else if (const std::optional<u32> previewed = m_background_list.previewed_item()) {
-		shown = static_cast<BackgroundStyle>(*previewed);
-	}
-
-	m_settings.background_style = shown;
-}
-
-void SettingsPanel::apply_percent(u32 t_slider, Rect t_track, float t_x)
-{
-	m_settings.*percent_sliders[t_slider].value = value_at((t_x - t_track.x) / t_track.w, 0.0f, 1.0f);
-}
-
-void SettingsPanel::apply_auto_lock(Rect t_track, float t_x)
-{
-	const float fraction = std::clamp((t_x - t_track.x) / t_track.w, 0.0f, 1.0f);
-	const auto stop = static_cast<u32>(std::lround(fraction * static_cast<float>(auto_lock_stop_count - 1)));
-
-	m_settings.auto_lock_minutes = auto_lock_stops[std::min(stop, auto_lock_stop_count - 1)];
 }
 
 void SettingsPanel::pull_picked_color()
@@ -1302,17 +1522,22 @@ void SettingsPanel::update(float t_delta_seconds)
 
 	m_font_size_shown = ease_value(m_font_size_shown, m_settings.font_size);
 	m_secondary_font_size_shown = ease_value(m_secondary_font_size_shown, m_settings.secondary_font_size);
-	m_animation_speed_shown = m_animation_speed_drag.is_pressed()
+	const auto dragging = [this](SliderKind t_slider) {
+		return m_slider_drags[static_cast<u32>(t_slider)].is_pressed();
+	};
+
+	m_animation_speed_shown = dragging(SliderKind::animation_speed)
 								  ? m_settings.animation_speed
 								  : ease_value(m_animation_speed_shown, m_settings.animation_speed);
-	m_corner_roundness_shown = m_corner_roundness_drag.is_pressed()
+	m_corner_roundness_shown = dragging(SliderKind::corner_roundness)
 								   ? m_settings.corner_roundness
 								   : ease_value(m_corner_roundness_shown, m_settings.corner_roundness);
 	for (u32 i = 0; i < percent_slider_count; i += 1) {
 		const PercentSlider &slider = percent_sliders[i];
+		const auto kind = static_cast<SliderKind>(static_cast<u32>(SliderKind::pattern_strength) + i);
 
-		m_percent_shown[i] = m_percent_drags[i].is_pressed() ? m_settings.*slider.value
-															 : ease_value(m_percent_shown[i], m_settings.*slider.value);
+		m_percent_shown[i] =
+			dragging(kind) ? m_settings.*slider.value : ease_value(m_percent_shown[i], m_settings.*slider.value);
 		m_percent_reveal[i] = animation::ease_toward(m_percent_reveal[i], slider.shown(m_settings) ? 1.0f : 0.0f,
 													 reveal_ease_rate, t_delta_seconds);
 	}
@@ -1321,6 +1546,16 @@ void SettingsPanel::update(float t_delta_seconds)
 		m_animation_speed_reveal, m_settings.animations_enabled ? 1.0f : 0.0f, reveal_ease_rate, t_delta_seconds);
 
 	m_auto_lock_shown = ease_value(m_auto_lock_shown, static_cast<float>(auto_lock_stop(m_settings.auto_lock_minutes)));
+
+	for (u32 i = 0; i < background_count; i += 1) {
+		const float target = i == static_cast<u32>(m_settings.background_style) ? 1.0f : 0.0f;
+		m_pattern_ring[i] = animation::ease_toward(m_pattern_ring[i], target, tile_ring_rate, t_delta_seconds);
+	}
+
+	m_close_choice_shown = animation::ease_toward(m_close_choice_shown, m_settings.close_to_tray ? 0.0f : 1.0f,
+												  segment_slide_rate, t_delta_seconds);
+	m_pattern_open_amount = animation::ease_toward(m_pattern_open_amount, m_pattern_open ? 1.0f : 0.0f,
+												   pattern_popup_rate, t_delta_seconds);
 
 	set_corner_roundness(m_corner_roundness_shown);
 
@@ -1345,9 +1580,7 @@ void SettingsPanel::update(float t_delta_seconds)
 
 	m_font_list.update(t_delta_seconds, dropdown_rect(current_rows.font, m_fonts), popup_bounds);
 	m_theme_list.update(t_delta_seconds, dropdown_rect(current_rows.theme, m_fonts), popup_bounds);
-	m_background_list.update(t_delta_seconds, dropdown_rect(current_rows.background, m_fonts), popup_bounds);
 	update_theme_preview();
-	update_background_preview();
 
 	m_rows_scroll.update(t_delta_seconds);
 	m_tooltip.update(t_delta_seconds);
@@ -1366,6 +1599,16 @@ void SettingsPanel::update_hover_hints(float t_delta_seconds)
 
 	if (const std::optional<ColorPickerHint> hint = m_color_picker.hint(m_mouse)) {
 		m_tooltip.request(hint->text, hint->anchor);
+	}
+
+	for (u32 i = 0; i < slider_count; i += 1) {
+		const auto slider = static_cast<SliderKind>(i);
+		const bool engaged = m_slider_drags[i].is_pressed() || (pointer_live && slider_visibility(slider) > 0.5f &&
+																hits(current, slider_line(current_rows, slider),
+																	 slider_hit_rect(current_rows, slider), m_mouse));
+
+		m_slider_hover[i] =
+			animation::ease_toward(m_slider_hover[i], engaged ? 1.0f : 0.0f, slider_hover_rate, t_delta_seconds);
 	}
 
 	for (u32 i = 0; i < resettable_count; i += 1) {
@@ -1395,6 +1638,8 @@ bool SettingsPanel::on_pointer_down(Vec2 t_point)
 		return true;
 	}
 
+	if (m_pattern_open) return true;
+
 	const Layout current = layout();
 	const Rect search = search_rect(current);
 	const bool over_clear = is_searching() && search_clear_rect(search).contains(t_point);
@@ -1419,35 +1664,9 @@ bool SettingsPanel::on_pointer_down(Vec2 t_point)
 		return true;
 	}
 
-	const Rect speed_track = slider_track_rect(current_rows.animation_speed, m_fonts);
-	if (hits(current, current_rows.animation_speed, speed_track, t_point)) {
-		m_animation_speed_drag.begin(t_point);
-		apply_animation_speed(speed_track, t_point.x);
-		return true;
-	}
-
-	const Rect roundness_track = slider_track_rect(current_rows.corner_roundness, m_fonts);
-	if (hits(current, current_rows.corner_roundness, roundness_track, t_point)) {
-		m_corner_roundness_drag.begin(t_point);
-		apply_corner_roundness(roundness_track, t_point.x);
-		return true;
-	}
-
-	for (u32 i = 0; i < percent_slider_count; i += 1) {
-		const Rect row = current_rows.*percent_sliders[i].row;
-		const Rect track = slider_track_rect(row, m_fonts);
-
-		if (hits(current, row, track, t_point)) {
-			m_percent_drags[i].begin(t_point);
-			apply_percent(i, track, t_point.x);
-			return true;
-		}
-	}
-
-	const Rect auto_lock_track = slider_track_rect(current_rows.auto_lock, m_fonts, auto_lock_readout_width);
-	if (hits(current, current_rows.auto_lock, auto_lock_track, t_point)) {
-		m_auto_lock_drag.begin(t_point);
-		apply_auto_lock(auto_lock_track, t_point.x);
+	if (const std::optional<SliderKind> slider = slider_at(current, current_rows, t_point)) {
+		m_slider_drags[static_cast<u32>(*slider)].begin(t_point);
+		apply_slider(*slider, slider_fraction_at(slider_rect(current_rows, *slider), t_point.x));
 	}
 
 	return true;
@@ -1470,26 +1689,12 @@ bool SettingsPanel::on_pointer_move(Vec2 t_point)
 	m_color_picker.on_pointer_move(t_point);
 	pull_picked_color();
 
-	if (m_animation_speed_drag.is_pressed()) {
-		m_animation_speed_drag.update(t_point);
-		apply_animation_speed(slider_track_rect(current_rows.animation_speed, m_fonts), t_point.x);
-	}
+	for (u32 i = 0; i < slider_count; i += 1) {
+		if (!m_slider_drags[i].is_pressed()) continue;
 
-	if (m_corner_roundness_drag.is_pressed()) {
-		m_corner_roundness_drag.update(t_point);
-		apply_corner_roundness(slider_track_rect(current_rows.corner_roundness, m_fonts), t_point.x);
-	}
-
-	for (u32 i = 0; i < percent_slider_count; i += 1) {
-		if (!m_percent_drags[i].is_pressed()) continue;
-
-		m_percent_drags[i].update(t_point);
-		apply_percent(i, slider_track_rect(current_rows.*percent_sliders[i].row, m_fonts), t_point.x);
-	}
-
-	if (m_auto_lock_drag.is_pressed()) {
-		m_auto_lock_drag.update(t_point);
-		apply_auto_lock(slider_track_rect(current_rows.auto_lock, m_fonts, auto_lock_readout_width), t_point.x);
+		const auto slider = static_cast<SliderKind>(i);
+		m_slider_drags[i].update(t_point);
+		apply_slider(slider, slider_fraction_at(slider_rect(current_rows, slider), t_point.x));
 	}
 
 	if (m_search.is_selecting()) {
@@ -1519,28 +1724,16 @@ bool SettingsPanel::on_pointer_up(Vec2 t_point)
 		return true;
 	}
 
-	if (m_background_list.is_open()) {
-		if (const std::optional<u32> chosen = m_background_list.on_pointer_up(t_point)) {
-			choose_background(*chosen);
-		}
-
-		return true;
-	}
-
 	if (m_color_picker.on_pointer_up(t_point)) {
 		pull_picked_color();
 		return true;
 	}
 
-	const bool ended_drag = m_rows_scroll.is_dragging() || m_animation_speed_drag.is_pressed() ||
-							m_corner_roundness_drag.is_pressed() || m_auto_lock_drag.is_pressed() ||
-							std::ranges::any_of(m_percent_drags, &Draggable::is_pressed) || m_search.is_selecting();
+	const bool ended_drag = m_rows_scroll.is_dragging() ||
+							std::ranges::any_of(m_slider_drags, &Draggable::is_pressed) || m_search.is_selecting();
 
 	m_rows_scroll.on_pointer_up();
-	m_animation_speed_drag.end();
-	m_corner_roundness_drag.end();
-	m_auto_lock_drag.end();
-	for (Draggable &drag : m_percent_drags) {
+	for (Draggable &drag : m_slider_drags) {
 		drag.end();
 	}
 
@@ -1556,6 +1749,19 @@ bool SettingsPanel::on_pointer_up(Vec2 t_point)
 void SettingsPanel::handle_click(Vec2 t_point)
 {
 	const Layout current = layout();
+
+	if (m_pattern_open) {
+		const Rect popup = pattern_popup_rect(rows(current));
+
+		if (const std::optional<u32> pattern = pattern_at(popup, t_point)) {
+			choose_background(*pattern);
+		} else if (!popup.contains(t_point)) {
+			m_pattern_open = false;
+		}
+
+		return;
+	}
+
 	if (back_button_rect(current.header).contains(t_point) || !current.panel.contains(t_point)) {
 		close();
 		return;
@@ -1600,8 +1806,15 @@ void SettingsPanel::handle_click(Vec2 t_point)
 		return;
 	}
 
-	if (hits(current, current_rows.background, dropdown_rect(current_rows.background, m_fonts), t_point)) {
-		open_background_list();
+	if (hits(current, current_rows.background, pattern_select_rect(current_rows.background, m_fonts), t_point)) {
+		m_color_picker.close();
+		m_pattern_open = true;
+		return;
+	}
+
+	const Rect close_choice = close_choice_rect(current_rows.close_to_tray);
+	if (hits(current, current_rows.close_to_tray, close_choice, t_point)) {
+		m_settings.close_to_tray = t_point.x < close_segment(close_choice, 1).x;
 		return;
 	}
 
@@ -1685,6 +1898,8 @@ bool SettingsPanel::on_scroll(Vec2 t_point, float t_wheel_delta)
 		return true;
 	}
 
+	if (m_pattern_open) return true;
+
 	const Layout current = layout();
 	const Rows current_rows = rows(current);
 
@@ -1717,10 +1932,8 @@ bool SettingsPanel::on_key_down(u32 t_key)
 		if (const std::optional<u32> chosen = m_theme_list.on_key_down(t_key)) {
 			choose_theme(static_cast<ThemeKind>(*chosen));
 		}
-	} else if (m_background_list.is_open()) {
-		if (const std::optional<u32> chosen = m_background_list.on_key_down(t_key)) {
-			choose_background(*chosen);
-		}
+	} else if (m_pattern_open) {
+		m_pattern_open = t_key != VK_ESCAPE;
 	} else if (m_color_picker.on_key_down(t_key)) {
 		pull_picked_color();
 	} else if (t_key == VK_ESCAPE && is_searching()) {
@@ -1773,9 +1986,12 @@ CursorKind SettingsPanel::cursor() const
 	if (!is_blocking()) return CursorKind::arrow;
 	if (const ListPopup *list = open_list()) return list->cursor(m_mouse);
 
+	if (m_pattern_open) {
+		return pattern_at(pattern_popup_rect(rows(layout())), m_mouse) ? CursorKind::hand : CursorKind::arrow;
+	}
+
 	const bool dragging = m_rows_scroll.is_dragging() || m_color_picker.is_dragging() ||
-						  m_animation_speed_drag.is_pressed() || m_corner_roundness_drag.is_pressed() ||
-						  m_auto_lock_drag.is_pressed() || std::ranges::any_of(m_percent_drags, &Draggable::is_pressed);
+						  std::ranges::any_of(m_slider_drags, &Draggable::is_pressed);
 	if (dragging) return CursorKind::drag;
 	if (m_search.is_selecting()) return CursorKind::ibeam;
 
@@ -1805,6 +2021,8 @@ CursorKind SettingsPanel::cursor() const
 		}
 	}
 
+	if (slider_at(current, current_rows, m_mouse)) return CursorKind::hand;
+
 	const Rect font_size = stepper_rect(current_rows.font_size, m_fonts);
 	const Rect secondary_size = stepper_rect(current_rows.secondary_font_size, m_fonts);
 
@@ -1814,17 +2032,12 @@ CursorKind SettingsPanel::cursor() const
 	} clickable[]{
 		{current_rows.theme, dropdown_rect(current_rows.theme, m_fonts)},
 		{current_rows.font, dropdown_rect(current_rows.font, m_fonts)},
-		{current_rows.background, dropdown_rect(current_rows.background, m_fonts)},
-		{current_rows.background_intensity, slider_track_rect(current_rows.background_intensity, m_fonts)},
-		{current_rows.background_light_intensity, slider_track_rect(current_rows.background_light_intensity, m_fonts)},
-		{current_rows.background_grain_intensity, slider_track_rect(current_rows.background_grain_intensity, m_fonts)},
+		{current_rows.background, pattern_select_rect(current_rows.background, m_fonts)},
 		{current_rows.font_size, stepper_minus(font_size)},
 		{current_rows.font_size, stepper_plus(font_size)},
 		{current_rows.secondary_font_size, stepper_minus(secondary_size)},
 		{current_rows.secondary_font_size, stepper_plus(secondary_size)},
-		{current_rows.animation_speed, slider_track_rect(current_rows.animation_speed, m_fonts)},
-		{current_rows.corner_roundness, slider_track_rect(current_rows.corner_roundness, m_fonts)},
-		{current_rows.auto_lock, slider_track_rect(current_rows.auto_lock, m_fonts, auto_lock_readout_width)},
+		{current_rows.close_to_tray, close_choice_rect(current_rows.close_to_tray)},
 		{current_rows.accent, swatch_rect(current_rows.accent, m_fonts)},
 		{current_rows.master_password, master_password_button_rect(current_rows.master_password, m_fonts)},
 	};
@@ -1914,11 +2127,9 @@ void SettingsPanel::draw_label(DrawList &t_draw_list, const Rows &t_rows, Rect R
 {
 	const RowSpec &spec = spec_of(t_row);
 	const Rect row = t_rows.*t_row;
-	const float right_edge = label_right_edge(t_control, row, m_fonts);
 
-	if (spec.parent != nullptr) return;
-
-	draw_row_label(t_draw_list, m_fonts, row, spec.title, spec.description, right_edge, t_alpha);
+	draw_row_label(t_draw_list, m_fonts, row, spec.title, spec.description, label_right_edge(t_control, row, m_fonts),
+				   t_alpha);
 }
 
 void SettingsPanel::draw_dropdown_row(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows,
@@ -1942,9 +2153,6 @@ void SettingsPanel::draw_appearance(DrawList &t_draw_list, const Layout &t_layou
 	draw_dropdown_row(t_draw_list, t_layout, t_rows, &Rows::theme,
 					  theme_labels[static_cast<u32>(m_settings.theme)].name, m_theme_list.is_open(), t_alpha);
 	draw_dropdown_row(t_draw_list, t_layout, t_rows, &Rows::font, m_font_label, m_font_list.is_open(), t_alpha);
-	draw_dropdown_row(t_draw_list, t_layout, t_rows, &Rows::background,
-					  background_labels[static_cast<u32>(m_settings.background_style)].name,
-					  m_background_list.is_open(), t_alpha);
 
 	if (is_on_screen(t_layout, t_rows.font_size)) {
 		const Rect stepper = stepper_rect(t_rows.font_size, m_fonts);
@@ -1959,64 +2167,149 @@ void SettingsPanel::draw_appearance(DrawList &t_draw_list, const Layout &t_layou
 	}
 
 	if (is_on_screen(t_layout, t_rows.accent)) {
+		const Theme &colors = theme();
 		const Rect swatch = swatch_rect(t_rows.accent, m_fonts);
+		const Rect ring = swatch.inset(-(swatch_ring_gap + swatch_ring));
+		const Rect gap = swatch.inset(-swatch_ring_gap);
+		const bool hovered = !has_popup_open() && hits(t_layout, t_rows.accent, ring, m_mouse);
+		const Color ring_color = m_color_picker.is_open() ? accent : (hovered ? colors.text_dim : colors.border);
 		const Color shown{static_cast<u8>(std::lround(m_accent_shown[0])),
 						  static_cast<u8>(std::lround(m_accent_shown[1])),
 						  static_cast<u8>(std::lround(m_accent_shown[2])), accent.a};
 
-		draw_label(t_draw_list, t_rows, &Rows::accent, swatch, t_alpha);
-		const Rect ring = swatch.inset(-swatch_ring_gap);
-		t_draw_list.add_bordered_rect(ring, rounded(ring.w * 0.5f), Color{}, faded(theme().border, t_alpha), 1.0f);
+		draw_label(t_draw_list, t_rows, &Rows::accent, ring, t_alpha);
+		t_draw_list.add_rounded_rect(ring, rounded(ring.w * 0.5f), faded(ring_color, t_alpha));
+		t_draw_list.add_rounded_rect(gap, rounded(gap.w * 0.5f), faded(colors.popup, t_alpha));
 		t_draw_list.add_rounded_rect(swatch, rounded(swatch.w * 0.5f), faded(shown, t_alpha));
+	}
+}
+
+void SettingsPanel::draw_pattern_row(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows,
+									 u8 t_alpha) const
+{
+	const Rect row = t_rows.background;
+	if (!is_on_screen(t_layout, row)) return;
+
+	const Rect button = pattern_select_rect(row, m_fonts);
+	const bool hovered = !has_popup_open() && hits(t_layout, row, button, m_mouse);
+	const RowSpec &spec = spec_of(&Rows::background);
+
+	draw_row_label(t_draw_list, m_fonts, row, spec.title, spec.description, inline_slider_left(row) - label_control_gap,
+				   t_alpha);
+	draw_select(t_draw_list, m_fonts.body(), button,
+				background_labels[static_cast<u32>(m_settings.background_style)].name, m_pattern_open, hovered,
+				m_settings.accent, t_alpha);
+}
+
+void SettingsPanel::draw_pattern_popup(DrawList &t_draw_list, const Rows &t_rows, u8 t_alpha) const
+{
+	if (m_pattern_open_amount <= 0.01f) return;
+
+	const Theme &colors = theme();
+	const Font &secondary = m_fonts.secondary();
+	const float amount = m_pattern_open_amount;
+	const auto alpha = static_cast<u8>(t_alpha * amount);
+	const Rect resting = pattern_popup_rect(t_rows);
+	const Rect popup{resting.x, snapped_to_pixel(resting.y - pattern_popup_rise * (1.0f - amount)), resting.w,
+					 resting.h};
+	const float preview_height = std::round(pattern_tile_size().x * tile_aspect);
+
+	controls::draw_popup_shadow(t_draw_list, popup, pattern_popup_radius, amount);
+	t_draw_list.add_bordered_rect(popup, rounded(pattern_popup_radius), faded(colors.popup, alpha),
+								  faded(colors.border, alpha), 1.0f);
+
+	for (u32 i = 0; i < background_count; i += 1) {
+		const Rect cell = pattern_tile(popup, i);
+		const Rect preview{cell.x, cell.y, cell.w, preview_height};
+		const float ring = m_pattern_ring[i];
+		const bool hovered = m_pattern_open && pattern_tile(resting, i).contains(m_mouse);
+
+		if (ring > 0.01f) {
+			const float outer = tile_ring_gap + tile_ring;
+
+			t_draw_list.add_rounded_rect(preview.inset(-outer), rounded(tile_radius + outer),
+										 faded(m_settings.accent, static_cast<u8>(alpha * ring)));
+			t_draw_list.add_rounded_rect(preview.inset(-tile_ring_gap), rounded(tile_radius + tile_ring_gap),
+										 faded(colors.popup, alpha));
+		}
+
+		t_draw_list.add_rounded_rect(preview, rounded(tile_radius),
+									 faded(hovered ? colors.border : colors.separator, alpha));
+		t_draw_list.add_pattern_swatch(preview.inset(1.0f), rounded(tile_radius - 1.0f), faded(colors.window, alpha),
+									   i);
+
+		const std::string_view name = background_labels[i].name;
+		const Color label = hovered ? colors.text : mix(colors.text_dim, colors.text, ring);
+		draw_text(t_draw_list, secondary,
+				  Vec2{snapped_to_pixel(preview.center().x - text_width(secondary, name) * 0.5f),
+					   preview.bottom() + tile_label_gap + secondary.ascent()},
+				  name, faded(label, alpha));
+	}
+}
+
+void SettingsPanel::draw_close_choice(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows,
+									  u8 t_alpha) const
+{
+	const Rect row = t_rows.close_to_tray;
+	if (!is_on_screen(t_layout, row)) return;
+
+	const Theme &colors = theme();
+	const Font &body = m_fonts.body();
+	const Rect choice = close_choice_rect(row);
+	const Rect first = close_segment(choice, 0);
+	const Rect second = close_segment(choice, 1);
+	const float slide = m_close_choice_shown;
+	const Rect thumb{first.x + (second.x - first.x) * slide, first.y, first.w + (second.w - first.w) * slide, first.h};
+	const bool pointer_live = !has_popup_open() && t_layout.rows_region.contains(m_mouse);
+
+	draw_label(t_draw_list, t_rows, &Rows::close_to_tray, choice, t_alpha);
+	draw_inset_control(t_draw_list, choice, colors.separator, t_alpha);
+	t_draw_list.add_bordered_rect(thumb, rounded(control_radius - segment_inset), faded(colors.popup, t_alpha),
+								  faded(colors.separator, t_alpha), 1.0f);
+
+	for (u32 i = 0; i < std::size(close_choice_labels); i += 1) {
+		const Rect segment = close_segment(choice, i);
+		const float selected = i == 0 ? 1.0f - slide : slide;
+		const bool hovered = pointer_live && segment.contains(m_mouse);
+		const Color idle = hovered ? mix(colors.text_dim, colors.text, hovered_tab_brightening) : colors.text_dim;
+
+		draw_text_centered(t_draw_list, body, segment, close_choice_labels[i],
+						   faded(mix(idle, colors.text, selected), t_alpha));
 	}
 }
 
 void SettingsPanel::draw_sliders(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const
 {
-	const Font &readout_font = m_fonts.secondary();
-	char readout[8];
-
-	const auto draw_one = [&](Rect Rows::*t_row, float t_fraction, std::string_view t_readout, u8 t_row_alpha) {
-		const Rect row = t_rows.*t_row;
-		if (!is_on_screen(t_layout, row) || t_row_alpha == 0) return;
-
-		draw_label(t_draw_list, t_rows, t_row, slider_control_rect(row, m_fonts), t_row_alpha);
-		draw_slider(t_draw_list, readout_font, slider_control_rect(row, m_fonts), slider_readout_width, t_fraction,
-					t_readout, m_settings.accent, t_row_alpha);
-	};
-
-	const auto shown = [&readout](int t_written) {
-		return std::string_view{readout, static_cast<usize>(std::max(t_written, 0))};
-	};
-
-	int written = std::snprintf(readout, sizeof(readout), "%.0f%%", m_corner_roundness_shown * 100.0f);
-	draw_one(&Rows::corner_roundness, fraction_in(m_corner_roundness_shown, corner_roundness_min, corner_roundness_max),
-			 shown(written), t_alpha);
-
-	for (u32 i = 0; i < percent_slider_count; i += 1) {
-		written = std::snprintf(readout, sizeof(readout), "%.0f%%", m_percent_shown[i] * 100.0f);
-		draw_one(percent_sliders[i].row, m_percent_shown[i], shown(written),
-				 static_cast<u8>(t_alpha * m_percent_reveal[i] * m_percent_reveal[i]));
-	}
-
-	written = std::snprintf(readout, sizeof(readout), "%.2fx", m_animation_speed_shown);
-	draw_one(&Rows::animation_speed, fraction_in(m_animation_speed_shown, animation_speed_min, animation_speed_max),
-			 shown(written), static_cast<u8>(t_alpha * m_animation_speed_reveal * m_animation_speed_reveal));
-}
-
-void SettingsPanel::draw_auto_lock(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const
-{
-	const Rect row = t_rows.auto_lock;
-	if (!is_on_screen(t_layout, row)) return;
-
 	const auto last_stop = static_cast<float>(auto_lock_stop_count - 1);
 	const float never_amount = std::clamp(m_auto_lock_shown - (last_stop - 1.0f), 0.0f, 1.0f);
 	char readout[16];
 
-	draw_label(t_draw_list, t_rows, &Rows::auto_lock, slider_control_rect(row, m_fonts), t_alpha);
-	draw_slider(t_draw_list, m_fonts.secondary(), slider_control_rect(row, m_fonts), auto_lock_readout_width,
-				m_auto_lock_shown / last_stop, auto_lock_label(m_settings.auto_lock_minutes, readout),
-				mix(m_settings.accent, theme().text_faint, never_amount), t_alpha, auto_lock_stop_count - 1);
+	for (u32 i = 0; i < slider_count; i += 1) {
+		const auto slider = static_cast<SliderKind>(i);
+		const Rect line = slider_line(t_rows, slider);
+		const float visibility = slider_visibility(slider);
+		const auto alpha = static_cast<u8>(t_alpha * visibility * visibility);
+		if (!is_on_screen(t_layout, line) || alpha == 0) continue;
+
+		const bool in_column = slider == SliderKind::corner_roundness || slider == SliderKind::auto_lock;
+		const bool auto_lock = slider == SliderKind::auto_lock;
+		const Rect bounds = slider_rect(t_rows, slider);
+
+		if (in_column) {
+			draw_label(t_draw_list, t_rows, auto_lock ? &Rows::auto_lock : &Rows::corner_roundness, bounds, t_alpha);
+		}
+
+		const SliderLook look{
+			.readout = slider_readout(slider, readout),
+			.caption = in_column ? "" : (slider == SliderKind::animation_speed ? "Speed" : "Strength"),
+			.fraction = slider_fraction(slider),
+			.hover = m_slider_hover[i],
+			.accent = auto_lock ? mix(m_settings.accent, theme().text_faint, never_amount) : m_settings.accent,
+			.steps = auto_lock ? auto_lock_stop_count - 1 : 0,
+		};
+
+		draw_slider(t_draw_list, m_fonts.secondary(), bounds, look, alpha);
+	}
 }
 
 void SettingsPanel::draw_search(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha)
@@ -2052,7 +2345,8 @@ void SettingsPanel::draw_cards(DrawList &t_draw_list, const Layout &t_layout, co
 	for (const Rect &card : t_rows.cards) {
 		if (!is_on_screen(t_layout, card)) continue;
 
-		t_draw_list.add_rounded_rect(card, rounded(card_radius), faded(colors.field, t_alpha));
+		t_draw_list.add_bordered_rect(card, rounded(card_radius), faded(colors.popup, t_alpha),
+									  faded(colors.separator, t_alpha), 1.0f);
 	}
 
 	std::optional<u32> group;
@@ -2064,10 +2358,10 @@ void SettingsPanel::draw_cards(DrawList &t_draw_list, const Layout &t_layout, co
 		const bool first = group != spec.group;
 		group = spec.group;
 
-		if (first || spec.parent != nullptr || !is_on_screen(t_layout, row)) continue;
+		if (first || !is_on_screen(t_layout, row)) continue;
 
 		t_draw_list.add_rect(Rect{row.x + row_inset_x, row.y, row.w - row_inset_x * 2.0f, 1.0f},
-							 faded(mix(colors.field, colors.separator, divider_strength), t_alpha));
+							 faded(colors.separator, t_alpha));
 	}
 }
 
@@ -2159,10 +2453,11 @@ void SettingsPanel::draw(DrawList &t_draw_list)
 	draw_cards(t_draw_list, current, current_rows, alpha);
 	draw_captions(t_draw_list, current, current_rows, alpha);
 	draw_appearance(t_draw_list, current, current_rows, alpha);
-	draw_sliders(t_draw_list, current, current_rows, alpha);
+	draw_pattern_row(t_draw_list, current, current_rows, alpha);
+	draw_close_choice(t_draw_list, current, current_rows, alpha);
 	draw_toggles(t_draw_list, current, current_rows, alpha);
-	draw_auto_lock(t_draw_list, current, current_rows, alpha);
 	draw_master_password(t_draw_list, current, current_rows, alpha);
+	draw_sliders(t_draw_list, current, current_rows, alpha);
 	draw_reset_buttons(t_draw_list, current, current_rows, alpha);
 
 	if (is_searching() && current_rows.listed_count == 0) {
@@ -2178,9 +2473,10 @@ void SettingsPanel::draw(DrawList &t_draw_list)
 		m_color_picker.draw(t_draw_list, m_mouse);
 	}
 
+	draw_pattern_popup(t_draw_list, current_rows, alpha);
+
 	m_font_list.draw(t_draw_list, m_mouse);
 	m_theme_list.draw(t_draw_list, m_mouse);
-	m_background_list.draw(t_draw_list, m_mouse);
 
 	m_tooltip.draw(t_draw_list, m_fonts, current.panel, alpha);
 
