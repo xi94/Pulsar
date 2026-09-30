@@ -43,7 +43,7 @@ constexpr auto window_element_lifetime = std::chrono::milliseconds(2000);
 constexpr auto poll_interval = std::chrono::milliseconds(100);
 constexpr u32 responsiveness_probe_ms = 750;
 constexpr u32 focus_settle_ms = 500;
-constexpr u32 form_gone_polls = 5;
+constexpr u32 form_gone_polls = 30;
 
 bool is_cancelled(const std::atomic<bool> &t_cancel)
 {
@@ -496,12 +496,19 @@ bool RiotClient::wait_for_login_result(const UiAutomation &t_automation, std::ws
 				saw_no_tooltip = true;
 			}
 
+			if (t_automation.find_descendant(window, play_button_name, UIA_ButtonControlTypeId).is_valid()) {
+				debug_log::write(log_category, "the Play button is up - the client signed in");
+				return false;
+			}
+
 			const bool form_shown =
+				t_automation.find_descendant(window, username_field_name, UIA_EditControlTypeId).is_valid() ||
 				t_automation.find_descendant(window, password_field_name, UIA_EditControlTypeId).is_valid();
 			polls_without_form = form_shown ? 0 : polls_without_form + 1;
 
+			// The client hides the form while it talks to Riot, so only a long absence counts as signed in.
 			if (polls_without_form >= form_gone_polls) {
-				debug_log::write(log_category, "the login form is gone - the client signed in");
+				debug_log::write(log_category, "the login form stayed gone - the client signed in");
 				return false;
 			}
 		}
@@ -514,13 +521,20 @@ bool RiotClient::wait_for_login_result(const UiAutomation &t_automation, std::ws
 	return false;
 }
 
-bool RiotClient::click_play_when_ready(const UiAutomation &t_automation, u32 t_timeout_ms,
-									   const std::atomic<bool> &t_cancel) const
+PlayResult RiotClient::click_play_when_ready(const UiAutomation &t_automation, u32 t_timeout_ms,
+											 const std::atomic<bool> &t_cancel, std::wstring &t_out_error) const
 {
 	const auto deadline = deadline_after(t_timeout_ms);
 
 	for (;;) {
 		const UiElement window = current_window_element(t_automation);
+
+		if (window.is_valid() && t_automation.find_descendant(window, login_error_tooltip_name).is_valid()) {
+			t_out_error = login_error_reason(t_automation, window);
+			debug_log::write(log_category, "login error shown while waiting for Play: \"%ls\"", t_out_error.c_str());
+			return PlayResult::login_error;
+		}
+
 		const UiElement play_button =
 			window.is_valid() ? t_automation.find_descendant(window, play_button_name, UIA_ButtonControlTypeId)
 							  : UiElement{};
@@ -528,13 +542,13 @@ bool RiotClient::click_play_when_ready(const UiAutomation &t_automation, u32 t_t
 		if (play_button.is_valid()) {
 			debug_log::write(log_category, "Play button found - invoking it");
 			play_button.invoke();
-			return true;
+			return PlayResult::clicked;
 		}
 
 		if (is_cancelled(t_cancel) || is_past(deadline)) {
 			debug_log::write(log_category, "Play button not found (%s) - leaving the game unlaunched",
 							 is_cancelled(t_cancel) ? "cancelled" : "timed out");
-			return false;
+			return PlayResult::not_found;
 		}
 
 		std::this_thread::sleep_for(poll_interval);

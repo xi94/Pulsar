@@ -171,9 +171,17 @@ void run_login(LoginWork &t_work)
 	if (!authenticate(t_work, automation)) return;
 
 	set_stage(t_work, LoginStage::launching);
-	t_work.riot_client.click_play_when_ready(automation, play_button_timeout_ms, t_work.cancel_requested);
+
+	std::wstring late_error;
+	const PlayResult play = t_work.riot_client.click_play_when_ready(automation, play_button_timeout_ms,
+																	 t_work.cancel_requested, late_error);
 
 	if (stop_if_cancelled(t_work)) return;
+
+	if (play == PlayResult::login_error) {
+		fail(t_work, is_invalid_credentials(late_error) ? invalid_credentials_message : server_error_message);
+		return;
+	}
 
 	set_stage(t_work, LoginStage::success);
 }

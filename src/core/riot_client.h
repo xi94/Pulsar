@@ -9,6 +9,12 @@
 
 #include "core/ui_automation.h"
 
+enum class PlayResult : u8 {
+	clicked,
+	not_found,
+	login_error,
+};
+
 class RiotClient {
   public:
 	RiotClient() = default;
@@ -34,8 +40,8 @@ class RiotClient {
 	bool wait_for_login_result(const UiAutomation &t_automation, std::wstring &t_out_error,
 							   const std::atomic<bool> &t_cancel, const std::wstring *t_error_to_ignore) const;
 
-	bool click_play_when_ready(const UiAutomation &t_automation, u32 t_timeout_ms,
-							   const std::atomic<bool> &t_cancel) const;
+	PlayResult click_play_when_ready(const UiAutomation &t_automation, u32 t_timeout_ms,
+									 const std::atomic<bool> &t_cancel, std::wstring &t_out_error) const;
 
   private:
 	HWND find_client_window() const;
