@@ -20,7 +20,6 @@ enum class ShaderKind : u8 {
 	textured,
 	banner_glow,
 	color_picker,
-	circular_progress,
 	shadow,
 	outline_countdown,
 	backdrop,
@@ -34,19 +33,6 @@ struct RoundedBoxParams {
 	float edge_width;
 
 	bool operator==(const RoundedBoxParams &) const = default;
-};
-
-struct CircularProgressParams {
-	float quad_width;
-	float quad_height;
-	float outer_radius;
-	float inner_radius;
-	float start_angle;
-	float sweep_angle;
-	float glow_strength;
-	Color track;
-
-	bool operator==(const CircularProgressParams &) const = default;
 };
 
 struct OutlineCountdownParams {
@@ -73,7 +59,6 @@ struct DrawCommand {
 	u32 index_offset;
 	u32 index_count;
 	RoundedBoxParams box;
-	CircularProgressParams progress;
 	OutlineCountdownParams outline;
 };
 
@@ -108,6 +93,11 @@ class DrawList {
 
 	void set_probe(Vec2 t_point);
 	Rect visible_rect(Rect t_rect) const;
+
+	bool has_animated_effects() const
+	{
+		return m_has_animated_effects;
+	}
 
 	u32 probe_cover_count() const
 	{
@@ -151,9 +141,6 @@ class DrawList {
 	void add_color_picker_square(Rect t_rect, float t_hue_degrees);
 	void add_banner_glow(Rect t_card, float t_card_radius, float t_glow_size, Color t_color);
 	void add_shadow(Rect t_rect, float t_corner_radius, float t_blur, Color t_color);
-	void add_circular_progress(Vec2 t_center, float t_outer_radius, float t_inner_radius, float t_glow_margin,
-							   float t_start_degrees, float t_sweep_degrees, float t_glow_strength, Color t_color,
-							   Color t_track);
 	void add_outline_countdown(Rect t_path, float t_corner_radius, float t_remaining, float t_thickness, Color t_color);
 
   private:
@@ -163,7 +150,7 @@ class DrawList {
 	static constexpr u32 max_clip_depth = 8;
 
 	void target(ShaderKind t_shader, const Texture *t_texture = nullptr, RoundedBoxParams t_box = {},
-				CircularProgressParams t_progress = {}, OutlineCountdownParams t_outline = {});
+				OutlineCountdownParams t_outline = {});
 	void close_command();
 
 	Vec2 scaled(Vec2 t_point) const;
@@ -192,6 +179,7 @@ class DrawList {
 
 	Vec2 m_probe{-1.0f, -1.0f};
 	u32 m_probe_cover_count = 0;
+	bool m_has_animated_effects = false;
 
 	struct Scale {
 		Vec2 origin{};

@@ -138,6 +138,7 @@ class App {
 
 	std::chrono::steady_clock::time_point m_start_time;
 	std::chrono::steady_clock::time_point m_last_frame_time;
+	float m_effect_seconds = 0.0f;
 	Clock::time_point m_last_activity;
 
 	std::optional<Clock::time_point> m_save_due;

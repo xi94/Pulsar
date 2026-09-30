@@ -166,6 +166,7 @@ void DrawList::init(u32 t_vertex_capacity, u32 t_index_capacity)
 
 void DrawList::clear()
 {
+	m_has_animated_effects = false;
 	m_vertex_count = 0;
 	m_index_count = 0;
 	m_command_count = 0;
@@ -246,7 +247,7 @@ Rect DrawList::scaled(Rect t_rect) const
 }
 
 void DrawList::target(ShaderKind t_shader, const Texture *t_texture, RoundedBoxParams t_box,
-					  CircularProgressParams t_progress, OutlineCountdownParams t_outline)
+					  OutlineCountdownParams t_outline)
 {
 	const bool clipped = m_clip_depth > 0;
 	const Rect clip = clipped ? m_clip_stack[m_clip_depth - 1] : Rect{};
@@ -254,7 +255,6 @@ void DrawList::target(ShaderKind t_shader, const Texture *t_texture, RoundedBoxP
 	const bool continues_open_command = m_has_open_command && m_open.shader == t_shader &&
 										m_open.texture == t_texture && m_open.clipped == clipped &&
 										m_open.clip == clip && (!uses_rounded_box(t_shader) || m_open.box == t_box) &&
-										(t_shader != ShaderKind::circular_progress || m_open.progress == t_progress) &&
 										(t_shader != ShaderKind::outline_countdown || m_open.outline == t_outline);
 	if (continues_open_command) return;
 
@@ -268,7 +268,6 @@ void DrawList::target(ShaderKind t_shader, const Texture *t_texture, RoundedBoxP
 		.index_offset = m_index_count,
 		.index_count = 0,
 		.box = t_box,
-		.progress = t_progress,
 		.outline = t_outline,
 	};
 	m_has_open_command = true;
@@ -541,6 +540,8 @@ void DrawList::add_color_picker_square(Rect t_rect, float t_hue_degrees)
 
 void DrawList::add_banner_glow(Rect t_card, float t_card_radius, float t_glow_size, Color t_color)
 {
+	m_has_animated_effects = true;
+
 	const Rect quad{t_card.x - t_glow_size, t_card.y - t_glow_size, t_card.w + t_glow_size * 2.0f,
 					t_card.h + t_glow_size * 2.0f};
 
@@ -600,28 +601,6 @@ void DrawList::add_outline_countdown(Rect t_path, float t_corner_radius, float t
 		.padding = {},
 	};
 
-	target(ShaderKind::outline_countdown, nullptr, {}, {}, outline);
-	push_quad(quad, full_uv, pack(t_color));
-}
-
-void DrawList::add_circular_progress(Vec2 t_center, float t_outer_radius, float t_inner_radius, float t_glow_margin,
-									 float t_start_degrees, float t_sweep_degrees, float t_glow_strength, Color t_color,
-									 Color t_track)
-{
-	const float half_size = t_outer_radius + t_glow_margin;
-	const Rect quad{t_center.x - half_size, t_center.y - half_size, half_size * 2.0f, half_size * 2.0f};
-
-	const CircularProgressParams progress{
-		.quad_width = quad.w,
-		.quad_height = quad.h,
-		.outer_radius = t_outer_radius,
-		.inner_radius = t_inner_radius,
-		.start_angle = t_start_degrees * degrees_to_radians,
-		.sweep_angle = t_sweep_degrees * degrees_to_radians,
-		.glow_strength = t_glow_strength,
-		.track = t_track,
-	};
-
-	target(ShaderKind::circular_progress, nullptr, {}, progress);
+	target(ShaderKind::outline_countdown, nullptr, {}, outline);
 	push_quad(quad, full_uv, pack(t_color));
 }

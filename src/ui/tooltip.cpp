@@ -42,6 +42,10 @@ void Tooltip::update(float t_delta_seconds)
 	m_hover_seconds = m_requested_this_frame ? m_hover_seconds + t_delta_seconds : 0.0f;
 
 	const bool showing = m_requested_this_frame && m_hover_seconds >= show_delay_seconds;
+	if (m_requested_this_frame && !showing) {
+		animation::request_frame_after(show_delay_seconds - m_hover_seconds);
+	}
+
 	m_visible_amount = animation::ease_toward(m_visible_amount, showing ? 1.0f : 0.0f, fade_rate, t_delta_seconds);
 
 	m_requested_this_frame = false;

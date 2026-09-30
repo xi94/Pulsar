@@ -37,14 +37,6 @@ struct ShadowConstants {
 static_assert(sizeof(ViewportConstants) == 16);
 static_assert(sizeof(BannerGlowConstants) == 32);
 static_assert(sizeof(ShadowConstants) == 16);
-static_assert(sizeof(CircularProgressParams) == 32);
-
-struct CircularProgressConstants {
-	CircularProgressParams params;
-};
-
-static_assert(sizeof(CircularProgressConstants) == 32);
-
 struct OutlineCountdownConstants {
 	OutlineCountdownParams params;
 };
@@ -237,11 +229,15 @@ bool Renderer::create_shaders()
 	};
 
 	CompileJob jobs[]{
-		{"vs_main", "vs_5_0"},		   {"ps_solid", "ps_5_0"},
-		{"ps_textured", "ps_5_0"},	   {"ps_banner_glow", "ps_5_0"},
-		{"ps_color_picker", "ps_5_0"}, {"ps_circular_progress", "ps_5_0"},
-		{"ps_shadow", "ps_5_0"},	   {"ps_outline_countdown", "ps_5_0"},
-		{"ps_backdrop", "ps_5_0"},	   {"ps_backdrop_plain", "ps_5_0"},
+		{"vs_main", "vs_5_0"},
+		{"ps_solid", "ps_5_0"},
+		{"ps_textured", "ps_5_0"},
+		{"ps_banner_glow", "ps_5_0"},
+		{"ps_color_picker", "ps_5_0"},
+		{"ps_shadow", "ps_5_0"},
+		{"ps_outline_countdown", "ps_5_0"},
+		{"ps_backdrop", "ps_5_0"},
+		{"ps_backdrop_plain", "ps_5_0"},
 	};
 
 	std::vector<std::thread> compilers;
@@ -262,15 +258,8 @@ bool Renderer::create_shaders()
 	}
 
 	ComPtr<ID3D11PixelShader> *const pixel_shaders[]{
-		&m_solid_shader,
-		&m_textured_shader,
-		&m_banner_glow_shader,
-		&m_color_picker_shader,
-		&m_circular_progress_shader,
-		&m_shadow_shader,
-		&m_outline_countdown_shader,
-		&m_backdrop_shader,
-		&m_backdrop_plain_shader,
+		&m_solid_shader,  &m_textured_shader,		   &m_banner_glow_shader, &m_color_picker_shader,
+		&m_shadow_shader, &m_outline_countdown_shader, &m_backdrop_shader,	  &m_backdrop_plain_shader,
 	};
 
 	for (usize i = 0; i < std::size(pixel_shaders); i += 1) {
@@ -297,7 +286,6 @@ bool Renderer::create_constant_buffers()
 {
 	return create_constant_buffer<ViewportConstants>(*m_device.Get(), m_viewport_constants) &&
 		   create_constant_buffer<BannerGlowConstants>(*m_device.Get(), m_banner_glow_constants) &&
-		   create_constant_buffer<CircularProgressConstants>(*m_device.Get(), m_circular_progress_constants) &&
 		   create_constant_buffer<ShadowConstants>(*m_device.Get(), m_shadow_constants) &&
 		   create_constant_buffer<OutlineCountdownConstants>(*m_device.Get(), m_outline_countdown_constants) &&
 		   create_constant_buffer<BackdropConstants>(*m_device.Get(), m_backdrop_constants);
@@ -444,14 +432,6 @@ void Renderer::draw_command(const DrawCommand &t_command)
 		case ShaderKind::color_picker:
 			shader = m_color_picker_shader.Get();
 			break;
-
-		case ShaderKind::circular_progress: {
-			const CircularProgressConstants constants{.params = t_command.progress};
-			m_context->UpdateSubresource(m_circular_progress_constants.Get(), 0, nullptr, &constants, 0, 0);
-			shader = m_circular_progress_shader.Get();
-			extra_constants = m_circular_progress_constants.Get();
-			break;
-		}
 
 		case ShaderKind::shadow: {
 			const ShadowConstants constants{.params = t_command.box};

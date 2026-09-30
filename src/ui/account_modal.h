@@ -249,6 +249,8 @@ class AccountModal : public Widget {
 						  bool t_raised, float t_delete_countdown, u8 t_alpha) const;
 	void draw_row_details(DrawList &t_draw_list, Rect t_row, float t_baseline, float t_max_width,
 						  const Account &t_account, u8 t_alpha) const;
+	std::string_view login_status() const;
+	void update_login_progress(float t_delta_seconds);
 	void draw_login_progress(DrawList &t_draw_list, Rect t_main, u8 t_alpha) const;
 	void draw_edit_form(DrawList &t_draw_list, Rect t_main, u8 t_alpha);
 	void draw_footer(DrawList &t_draw_list, Rect t_footer, u8 t_alpha) const;
@@ -290,6 +292,13 @@ class AccountModal : public Widget {
 	std::optional<PendingLogin> m_queued_login;
 	std::optional<AccountRef> m_login_account;
 	float m_login_seconds = 0.0f;
+	LoginStage m_progress_stage = LoginStage::idle;
+	float m_stage_seconds = 0.0f;
+	float m_login_progress = 0.0f;
+	float m_login_outcome = 0.0f;
+	float m_status_change = 1.0f;
+	char m_status_from[160]{};
+	char m_status_to[160]{};
 
 	TextInput m_fields[field_count];
 	std::optional<AccountRef> m_edited;

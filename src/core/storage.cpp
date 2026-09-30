@@ -234,6 +234,21 @@ void read_game_order(const json &t_json, Settings &t_settings)
 	}
 }
 
+i32 read_zoom_stop(const json &t_json, i32 t_fallback)
+{
+	if (t_json.contains("view_zoom")) return t_json.value("view_zoom", t_fallback);
+
+	// Older saves used earlier stop layouts: carousel, grid, list, then carousel, shelf, grid, list, icons.
+	const i32 legacy = t_json.value("carousel_zoom_stop", t_fallback);
+	const i32 shelf_era = t_json.value("view_zoom_stop", legacy > 0 ? legacy + 1 : legacy);
+
+	if (shelf_era <= 1) return shelf_era;
+	if (shelf_era <= 4) return shelf_era + 1;
+	if (shelf_era <= 7) return shelf_era + 4;
+
+	return shelf_era - 2;
+}
+
 storage::LoadResult read_settings(Settings &t_settings)
 {
 	const std::string path = storage_path(settings_file_name);
@@ -255,10 +270,7 @@ storage::LoadResult read_settings(Settings &t_settings)
 			settings.value("block_overlay_injection", t_settings.block_overlay_injection);
 		t_settings.show_notifications = settings.value("show_notifications", t_settings.show_notifications);
 		t_settings.auto_lock_minutes = settings.value("auto_lock_minutes", t_settings.auto_lock_minutes);
-		// Every stop after the carousel moved up by one when the shelf stop was added.
-		const i32 legacy_zoom_stop = settings.value("carousel_zoom_stop", t_settings.zoom_stop);
-		t_settings.zoom_stop =
-			settings.value("view_zoom_stop", legacy_zoom_stop > 0 ? legacy_zoom_stop + 1 : legacy_zoom_stop);
+		t_settings.zoom_stop = read_zoom_stop(settings, t_settings.zoom_stop);
 		t_settings.selected_game = settings.value("carousel_selected_banner", t_settings.selected_game);
 		copy_to(settings.value("last_run_version", std::string{}), t_settings.last_run_version);
 		copy_to(settings.value("release_notes_version", std::string{}), t_settings.release_notes_version);
@@ -457,7 +469,7 @@ bool storage::save_settings(const Settings &t_settings)
 		{"last_run_version", t_settings.last_run_version},
 		{"release_notes_version", t_settings.release_notes_version},
 		{"release_notes", t_settings.release_notes},
-		{"view_zoom_stop", t_settings.zoom_stop},
+		{"view_zoom", t_settings.zoom_stop},
 		{"carousel_selected_banner", t_settings.selected_game},
 		{"carousel_order", game_order},
 		{"master_password", master_password_to_json(t_settings)},

@@ -2,10 +2,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace {
 bool g_enabled = true;
 float g_speed = 1.0f;
+bool g_frame_requested = false;
+float g_wake_after = std::numeric_limits<float>::max();
 }
 
 float animation::ease_toward(float t_value, float t_target, float t_rate, float t_delta_seconds,
@@ -15,7 +18,11 @@ float animation::ease_toward(float t_value, float t_target, float t_rate, float 
 
 	const float eased = t_value + (t_target - t_value) * (1.0f - std::exp(-t_rate * g_speed * t_delta_seconds));
 
-	return std::fabs(t_target - eased) < t_settle_distance ? t_target : eased;
+	if (std::fabs(t_target - eased) < t_settle_distance) return t_target;
+
+	request_frame();
+
+	return eased;
 }
 
 float animation::spring_toward(float t_value, float &t_velocity, float t_target, float t_stiffness,
@@ -46,6 +53,8 @@ float animation::spring_toward(float t_value, float &t_velocity, float t_target,
 		return t_target;
 	}
 
+	request_frame();
+
 	return value;
 }
 
@@ -55,7 +64,32 @@ float animation::step_toward(float t_value, float t_target, float t_duration_sec
 
 	const float step = t_delta_seconds * g_speed / t_duration_seconds;
 
-	return t_value < t_target ? std::min(t_value + step, t_target) : std::max(t_value - step, t_target);
+	const float stepped = t_value < t_target ? std::min(t_value + step, t_target) : std::max(t_value - step, t_target);
+	if (stepped != t_target) {
+		request_frame();
+	}
+
+	return stepped;
+}
+
+void animation::request_frame()
+{
+	g_frame_requested = true;
+}
+
+void animation::request_frame_after(float t_seconds)
+{
+	g_wake_after = std::min(g_wake_after, std::max(t_seconds, 0.0f));
+}
+
+float animation::take_idle_wait(float t_limit_seconds)
+{
+	const float wait = g_frame_requested ? 0.0f : std::min(g_wake_after, t_limit_seconds);
+
+	g_frame_requested = false;
+	g_wake_after = std::numeric_limits<float>::max();
+
+	return wait;
 }
 
 void animation::set_enabled(bool t_enabled)

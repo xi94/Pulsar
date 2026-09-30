@@ -8,6 +8,7 @@
 
 #include <Windows.h>
 
+#include "core/animation.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "platform/clipboard.h"
@@ -293,6 +294,13 @@ void TextInput::on_right_click(const Font &t_font, Rect t_field, float t_x)
 void TextInput::update(float t_delta_seconds)
 {
 	m_caret_blink_seconds = std::fmod(m_caret_blink_seconds + t_delta_seconds, caret_blink_period);
+
+	if (m_focused) {
+		const float half_period = caret_blink_period * 0.5f;
+		const float next_toggle = m_caret_blink_seconds < half_period ? half_period - m_caret_blink_seconds
+																	  : caret_blink_period - m_caret_blink_seconds;
+		animation::request_frame_after(next_toggle);
+	}
 }
 
 void TextInput::draw(DrawList &t_draw_list, const Font &t_font, Rect t_field, Color t_text_color, Color t_caret_color,

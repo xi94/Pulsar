@@ -6,6 +6,7 @@
 #include <span>
 
 #include "core/app_identity.h"
+#include "core/animation.h"
 #include "core/settings.h"
 #include "core/str.h"
 #include "gfx/draw_list.h"
@@ -241,6 +242,19 @@ bool UpdateOverlay::has_notes() const
 void UpdateOverlay::update(float t_delta_seconds)
 {
 	m_notes_scroll.update(t_delta_seconds);
+
+	switch (m_updater.stage()) {
+		case UpdateStage::checking:
+		case UpdateStage::downloading:
+		case UpdateStage::verifying:
+		case UpdateStage::installing:
+			if (m_open) {
+				animation::request_frame();
+			}
+			break;
+		default:
+			break;
+	}
 }
 
 Rect UpdateOverlay::card_rect() const

@@ -122,7 +122,6 @@ class Renderer {
 	ComPtr<ID3D11PixelShader> m_textured_shader;
 	ComPtr<ID3D11PixelShader> m_banner_glow_shader;
 	ComPtr<ID3D11PixelShader> m_color_picker_shader;
-	ComPtr<ID3D11PixelShader> m_circular_progress_shader;
 	ComPtr<ID3D11PixelShader> m_shadow_shader;
 	ComPtr<ID3D11PixelShader> m_outline_countdown_shader;
 	ComPtr<ID3D11PixelShader> m_backdrop_shader;
@@ -131,7 +130,6 @@ class Renderer {
 
 	ComPtr<ID3D11Buffer> m_viewport_constants;
 	ComPtr<ID3D11Buffer> m_banner_glow_constants;
-	ComPtr<ID3D11Buffer> m_circular_progress_constants;
 	ComPtr<ID3D11Buffer> m_shadow_constants;
 	ComPtr<ID3D11Buffer> m_outline_countdown_constants;
 	ComPtr<ID3D11Buffer> m_backdrop_constants;

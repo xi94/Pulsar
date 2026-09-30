@@ -116,6 +116,17 @@ class Window {
 		m_should_close = true;
 	}
 
+	bool is_active() const
+	{
+		return GetForegroundWindow() == m_window;
+	}
+
+	bool wait_for_messages(float t_seconds) const
+	{
+		const auto milliseconds = static_cast<DWORD>(t_seconds * 1000.0f);
+		return MsgWaitForMultipleObjectsEx(0, nullptr, milliseconds, QS_ALLINPUT, MWMO_INPUTAVAILABLE) == WAIT_OBJECT_0;
+	}
+
 	bool is_hidden() const
 	{
 		return !IsWindowVisible(m_window);

@@ -256,6 +256,10 @@ void ListPopup::update(float t_delta_seconds, Rect t_anchor, Rect t_bounds)
 	if (m_open && m_highlighted < m_matches.size()) {
 		m_hover_seconds += t_delta_seconds;
 
+		if (m_hover_seconds < m_options.hover_preview_seconds) {
+			animation::request_frame_after(m_options.hover_preview_seconds - m_hover_seconds);
+		}
+
 		if (m_hover_seconds >= m_options.hover_preview_seconds) {
 			m_previewed_item = m_matches[m_highlighted];
 		}

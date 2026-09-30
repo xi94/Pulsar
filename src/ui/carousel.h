@@ -109,7 +109,7 @@ class Carousel : public Widget {
 	Rect shown_card(ViewMode t_mode, u32 t_game) const;
 	Rect dragged_rect() const;
 	Rect list_thumb(Rect t_row) const;
-	Rect grown_grid_card(Rect t_card, u32 t_game) const;
+	Rect grown(Rect t_card, u32 t_game) const;
 	Rect art_rect(ViewMode t_mode, u32 t_game) const;
 	Rect morph_art(u32 t_game) const;
 	float mode_morph() const;
@@ -196,6 +196,7 @@ class Carousel : public Widget {
 	Vec2 m_last_centers[max_games]{};
 	u32 m_grid_columns = 0;
 	float m_shelf = 0.0f;
+	float m_spread = 0.0f;
 	Scrollable m_wrap_scroll;
 
 	float m_switcher_hold_seconds = 0.0f;

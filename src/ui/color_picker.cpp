@@ -9,6 +9,7 @@
 
 #include <Windows.h>
 
+#include "core/animation.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "core/str.h"
@@ -533,6 +534,10 @@ void ColorPicker::update(float t_delta_seconds)
 {
 	m_copied_seconds = std::max(0.0f, m_copied_seconds - t_delta_seconds);
 	m_paste_failed_seconds = std::max(0.0f, m_paste_failed_seconds - t_delta_seconds);
+
+	if (m_copied_seconds > 0.0f || m_paste_failed_seconds > 0.0f) {
+		animation::request_frame_after(std::max(m_copied_seconds, m_paste_failed_seconds));
+	}
 
 	if (!m_open) return;
 

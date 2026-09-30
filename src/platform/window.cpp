@@ -209,6 +209,8 @@ void Window::pump_messages()
 
 void Window::set_cursor(CursorKind t_cursor)
 {
+	if (t_cursor == m_cursor) return;
+
 	m_cursor = t_cursor;
 	SetCursor(system_cursor(t_cursor));
 }

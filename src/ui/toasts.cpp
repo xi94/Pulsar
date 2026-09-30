@@ -75,6 +75,8 @@ bool Toasts::is_offering(CommandType t_type) const
 
 void Toasts::show(const Notification &t_notification, float t_seconds, bool t_countdown)
 {
+	animation::request_frame();
+
 	if (!m_settings.show_notifications && !t_notification.always_show) return;
 
 	copy_to(t_notification.message, m_message);
@@ -135,6 +137,10 @@ void Toasts::update(float t_delta_seconds)
 	m_presence = animation::ease_toward(m_presence, m_showing ? 1.0f : 0.0f, presence_ease_rate, t_delta_seconds,
 										animation::settled_pixels / slide_distance);
 	m_elapsed_seconds += t_delta_seconds;
+
+	if (m_showing || m_presence > 0.0f) {
+		animation::request_frame();
+	}
 }
 
 bool Toasts::on_pointer_down(Vec2 t_point)

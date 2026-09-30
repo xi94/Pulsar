@@ -109,11 +109,21 @@ constexpr float cancel_padding = 32.0f;
 constexpr float reveal_button_size = 24.0f;
 constexpr float reveal_button_margin = 6.0f;
 
-constexpr float ring_outer_radius = 40.0f;
-constexpr float ring_inner_radius = 32.0f;
-constexpr float ring_glow_margin = 22.0f;
-constexpr float ring_sweep_degrees = 112.0f;
-constexpr float ring_spin_degrees_per_second = 260.0f;
+constexpr float progress_max_width = 320.0f;
+constexpr float progress_bar_height = 6.0f;
+constexpr float progress_status_gap = 16.0f;
+constexpr float progress_step_gap = 14.0f;
+constexpr float progress_text_rise = 8.0f;
+constexpr float progress_ease_rate = 5.0f;
+constexpr float progress_creep_seconds = 2.5f;
+constexpr float status_ease_rate = 10.0f;
+constexpr float outcome_ease_rate = 8.0f;
+constexpr float progress_glow_blur = 8.0f;
+constexpr u8 progress_glow_alpha = 70;
+constexpr float sheen_width = 60.0f;
+constexpr float sheen_passes_per_second = 0.7f;
+constexpr u8 sheen_alpha = 90;
+constexpr u32 login_step_count = 4;
 constexpr u32 max_message_lines = 3;
 
 constexpr Color color_on_art{255, 255, 255, 255};
@@ -329,6 +339,55 @@ void shift_after_removal(std::optional<AccountRef> &t_ref, AccountRef t_removed)
 	} else if (t_ref->index > t_removed.index) {
 		t_ref->index -= 1;
 	}
+}
+
+struct StageSpan {
+	float start;
+	float end;
+};
+
+std::optional<StageSpan> stage_span(LoginStage t_stage)
+{
+	switch (t_stage) {
+		case LoginStage::idle:
+			return StageSpan{0.02f, 0.1f};
+		case LoginStage::waiting_for_process:
+			return StageSpan{0.08f, 0.3f};
+		case LoginStage::connecting:
+			return StageSpan{0.32f, 0.55f};
+		case LoginStage::authenticating:
+			return StageSpan{0.58f, 0.82f};
+		case LoginStage::launching:
+			return StageSpan{0.85f, 0.97f};
+		case LoginStage::success:
+			return StageSpan{1.0f, 1.0f};
+		case LoginStage::error:
+		case LoginStage::cancelled:
+			break;
+	}
+
+	return std::nullopt;
+}
+
+u32 stage_step(LoginStage t_stage)
+{
+	switch (t_stage) {
+		case LoginStage::waiting_for_process:
+			return 1;
+		case LoginStage::connecting:
+			return 2;
+		case LoginStage::authenticating:
+			return 3;
+		case LoginStage::launching:
+			return 4;
+		case LoginStage::idle:
+		case LoginStage::success:
+		case LoginStage::error:
+		case LoginStage::cancelled:
+			break;
+	}
+
+	return 0;
 }
 
 std::string_view stage_message(LoginStage t_stage)
@@ -1057,6 +1116,12 @@ void AccountModal::request_login(u32 t_game, AccountRef t_account)
 	m_selected = t_account;
 	m_mode = Mode::login_progress;
 	m_login_seconds = 0.0f;
+	m_login_progress = 0.0f;
+	m_login_outcome = 0.0f;
+	m_stage_seconds = 0.0f;
+	m_status_from[0] = '\0';
+	m_status_to[0] = '\0';
+	m_status_change = 1.0f;
 	m_search.set_focused(false);
 
 	const PendingLogin login{t_game, t_account};
@@ -1392,6 +1457,10 @@ void AccountModal::update(float t_delta_seconds)
 		m_armed_delete.reset();
 	}
 
+	if (m_armed_delete || m_drag.lifted) {
+		animation::request_frame();
+	}
+
 	switch (m_mode) {
 		case Mode::account_list:
 			m_search.update(t_delta_seconds);
@@ -1406,6 +1475,8 @@ void AccountModal::update(float t_delta_seconds)
 
 		case Mode::login_progress:
 			m_login_seconds += t_delta_seconds;
+			update_login_progress(t_delta_seconds);
+			animation::request_frame();
 			break;
 
 		case Mode::edit_account:
@@ -2369,58 +2440,116 @@ void AccountModal::draw_account_list(DrawList &t_draw_list, const Layout &t_layo
 	m_rows_scroll.draw(t_draw_list, rows.scroll, m_mouse, t_alpha);
 }
 
+std::string_view AccountModal::login_status() const
+{
+	if (m_queued_login) return "Switching account...";
+
+	const LoginStage stage = m_login.stage();
+	if (LoginAttempt::is_terminal(stage) && !m_login.terminal_message().empty()) return m_login.terminal_message();
+
+	return stage_message(stage);
+}
+
+void AccountModal::update_login_progress(float t_delta_seconds)
+{
+	const LoginStage stage = m_queued_login ? LoginStage::idle : m_login.stage();
+	const bool finished = !m_queued_login && LoginAttempt::is_terminal(stage);
+
+	if (stage != m_progress_stage) {
+		m_progress_stage = stage;
+		m_stage_seconds = 0.0f;
+	}
+
+	m_stage_seconds += t_delta_seconds;
+
+	const std::string_view status = login_status();
+	if (status != std::string_view{m_status_to}) {
+		copy_to(m_status_to, m_status_from);
+		copy_to(status, m_status_to);
+		m_status_change = 0.0f;
+	}
+
+	if (const std::optional<StageSpan> span = stage_span(stage)) {
+		const float creep = 1.0f - std::exp(-m_stage_seconds / progress_creep_seconds);
+		const float target = span->start + (span->end - span->start) * creep;
+		m_login_progress = animation::ease_toward(m_login_progress, std::max(target, m_login_progress),
+												  progress_ease_rate, t_delta_seconds);
+	}
+
+	m_status_change = animation::ease_toward(m_status_change, 1.0f, status_ease_rate, t_delta_seconds);
+	m_login_outcome =
+		animation::ease_toward(m_login_outcome, finished ? 1.0f : 0.0f, outcome_ease_rate, t_delta_seconds);
+}
+
 void AccountModal::draw_login_progress(DrawList &t_draw_list, Rect t_main, u8 t_alpha) const
 {
 	const LoginStage stage = m_login.stage();
 	const bool finished = !m_queued_login && LoginAttempt::is_terminal(stage);
-	const Vec2 center{t_main.center().x, t_main.center().y - 24.0f};
+	const Theme &colors = theme();
+	const Font &body = m_fonts.body();
+	const Font &secondary = m_fonts.secondary();
 
-	Color ring_color = m_settings.accent;
-	if (finished && stage == LoginStage::success) {
-		ring_color = theme().success;
-	} else if (finished && stage == LoginStage::error) {
-		ring_color = theme().error;
-	}
+	const float width = std::min(t_main.w - row_padding * 2.0f, progress_max_width);
+	const Rect bar{snapped_to_pixel(t_main.center().x - width * 0.5f), snapped_to_pixel(t_main.center().y), width,
+				   progress_bar_height};
+	const float alpha_scale = t_alpha / 255.0f;
 
-	const float pulse = finished ? 1.0f : 0.55f + 0.45f * (0.5f + 0.5f * std::sin(m_login_seconds * 2.6f));
-	const float glow_strength = 0.85f * pulse * (t_alpha / 255.0f);
-	const float spin = std::fmod(m_login_seconds * ring_spin_degrees_per_second, 360.0f);
-	const float start_degrees = finished ? 0.0f : spin - 90.0f - ring_sweep_degrees;
-	const float sweep_degrees = finished ? 360.0f : ring_sweep_degrees;
+	const auto draw_status = [&](std::string_view t_text, float t_opacity, float t_offset) {
+		if (t_text.empty() || t_opacity <= 0.0f) return;
 
-	t_draw_list.add_circular_progress(center, ring_outer_radius, ring_inner_radius, ring_glow_margin, start_degrees,
-									  sweep_degrees, glow_strength, faded(ring_color, t_alpha), theme().control);
+		std::string_view lines[max_message_lines];
+		const u32 line_count = wrap_text(body, t_text, width, lines);
+		const auto alpha = static_cast<u8>(t_alpha * t_opacity);
+		float baseline = bar.y - progress_status_gap - body.descent() + t_offset -
+						 static_cast<float>(line_count > 0 ? line_count - 1 : 0) * body.line_height();
 
-	if (finished) {
-		const Color glyph = faded(theme().text, t_alpha);
+		for (const std::string_view line : std::span{lines, line_count}) {
+			draw_text(t_draw_list, body,
+					  Vec2{snapped_to_pixel(bar.center().x - text_width(body, line) * 0.5f), baseline}, line,
+					  faded(colors.text, alpha));
+			baseline += body.line_height();
+		}
+	};
 
-		if (stage == LoginStage::success) {
-			t_draw_list.add_line({center.x - 13.0f, center.y}, {center.x - 3.0f, center.y + 11.0f}, 4.0f, glyph);
-			t_draw_list.add_line({center.x - 3.0f, center.y + 11.0f}, {center.x + 15.0f, center.y - 11.0f}, 4.0f,
-								 glyph);
-		} else {
-			t_draw_list.add_line({center.x - 11.0f, center.y - 11.0f}, {center.x + 11.0f, center.y + 11.0f}, 4.0f,
-								 glyph);
-			t_draw_list.add_line({center.x - 11.0f, center.y + 11.0f}, {center.x + 11.0f, center.y - 11.0f}, 4.0f,
-								 glyph);
+	draw_status(m_status_from, 1.0f - m_status_change, -progress_text_rise * m_status_change);
+	draw_status(m_status_to, m_status_change, progress_text_rise * (1.0f - m_status_change));
+
+	const Color outcome = stage == LoginStage::success ? colors.success : colors.error;
+	const Color fill_color = finished ? mix(m_settings.accent, outcome, m_login_outcome) : m_settings.accent;
+	const Rect fill{bar.x, bar.y, bar.w * std::clamp(m_login_progress, 0.0f, 1.0f), bar.h};
+
+	t_draw_list.add_rounded_rect(bar, rounded(bar.h * 0.5f), faded(colors.control, t_alpha));
+
+	if (fill.w > 0.5f) {
+		t_draw_list.add_shadow(fill, bar.h * 0.5f, progress_glow_blur,
+							   with_alpha(fill_color, static_cast<u8>(progress_glow_alpha * alpha_scale)));
+		t_draw_list.add_rounded_rect(fill, rounded(bar.h * 0.5f), faded(fill_color, t_alpha));
+
+		if (!finished) {
+			const float travel = std::fmod(m_login_seconds * sheen_passes_per_second, 1.0f);
+			const float sheen_x = fill.x - sheen_width + travel * (fill.w + sheen_width);
+			const float half = sheen_width * 0.5f;
+			const Color edge = with_alpha(lightened(fill_color, 80), 0);
+			const Color peak = with_alpha(lightened(fill_color, 80), static_cast<u8>(sheen_alpha * alpha_scale));
+
+			t_draw_list.push_clip(fill);
+			t_draw_list.add_gradient(Rect{sheen_x, fill.y, half, fill.h}, edge, peak, edge, peak);
+			t_draw_list.add_gradient(Rect{sheen_x + half, fill.y, half, fill.h}, peak, edge, peak, edge);
+			t_draw_list.pop_clip();
 		}
 	}
 
-	std::string_view message = m_queued_login ? "Switching account..." : stage_message(stage);
-	if (finished && !m_login.terminal_message().empty()) {
-		message = m_login.terminal_message();
-	}
+	const u32 step = m_queued_login ? 0 : stage_step(stage);
+	if (step == 0) return;
 
-	const Font &font = m_fonts.body();
-	std::string_view lines[max_message_lines];
-	const u32 line_count = wrap_text(font, message, std::max(t_main.w - row_padding * 2.0f, 40.0f), lines);
+	char label[24];
+	const int written = std::snprintf(label, sizeof(label), "Step %u of %u", step, login_step_count);
+	const std::string_view step_text{label, static_cast<usize>(std::max(written, 0))};
 
-	float baseline = center.y + ring_outer_radius + 40.0f;
-	for (const std::string_view line : std::span{lines, line_count}) {
-		draw_text(t_draw_list, font, Vec2{center.x - text_width(font, line) * 0.5f, baseline}, line,
-				  faded(theme().text, t_alpha));
-		baseline += font.line_height();
-	}
+	draw_text(t_draw_list, secondary,
+			  Vec2{snapped_to_pixel(bar.center().x - text_width(secondary, step_text) * 0.5f),
+				   bar.bottom() + progress_step_gap + secondary.ascent()},
+			  step_text, faded(colors.text_faint, static_cast<u8>(t_alpha * (1.0f - m_login_outcome))));
 }
 
 void AccountModal::draw_edit_form(DrawList &t_draw_list, Rect t_main, u8 t_alpha)
@@ -2575,8 +2704,8 @@ void AccountModal::draw_footer(DrawList &t_draw_list, Rect t_footer, u8 t_alpha)
 		case Mode::login_progress: {
 			const bool finished = !m_queued_login && LoginAttempt::is_terminal(m_login.stage());
 
-			draw_text_truncated(t_draw_list, secondary, Vec2{t_footer.x + row_padding, hint_baseline},
-								finished ? "" : "Logging in...", hint_width, faded(theme().text_faint, t_alpha));
+			draw_text_truncated(t_draw_list, secondary, Vec2{t_footer.x + row_padding, hint_baseline}, "", hint_width,
+								faded(theme().text_faint, t_alpha));
 			controls::draw_button(t_draw_list, body, primary, finished ? "Back" : "Cancel",
 								  controls::ButtonStyle::neutral, m_settings.accent, true, primary.contains(m_mouse),
 								  t_alpha);

@@ -13,6 +13,10 @@ float spring_toward(float t_value, float &t_velocity, float t_target, float t_st
 
 float step_toward(float t_value, float t_target, float t_duration_seconds, float t_delta_seconds);
 
+void request_frame();
+void request_frame_after(float t_seconds);
+float take_idle_wait(float t_limit_seconds);
+
 void set_enabled(bool t_enabled);
 void set_speed(float t_speed);
 

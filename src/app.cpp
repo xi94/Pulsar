@@ -23,6 +23,8 @@ namespace {
 constexpr u32 draw_list_vertex_capacity = 1 << 16;
 constexpr u32 draw_list_index_capacity = (1 << 16) * 3 / 2;
 constexpr auto save_delay = std::chrono::milliseconds(500);
+constexpr float idle_poll_seconds = 0.25f;
+constexpr auto resume_frame_time = std::chrono::microseconds(16667);
 constexpr auto clipboard_secret_lifetime = std::chrono::seconds(30);
 
 constexpr float status_padding = 14.0f;
@@ -514,6 +516,8 @@ void App::process_commands()
 
 void App::process(const Command &t_command)
 {
+	animation::request_frame();
+
 	switch (t_command.type) {
 		case CommandType::toggle_app_menu:
 			if (m_app_menu.is_open()) {
@@ -786,9 +790,13 @@ void App::frame()
 		m_window.set_cursor(m_widgets.cursor());
 	}
 
-	m_renderer.set_effect_time(std::chrono::duration<float>(now - m_start_time).count());
+	if (m_window.is_active()) {
+		m_effect_seconds += delta_seconds;
+	}
 
-	if (!m_window.is_minimized()) {
+	m_renderer.set_effect_time(m_effect_seconds);
+
+	if (!m_window.is_minimized() && !m_window.is_hidden()) {
 		render();
 	}
 
@@ -845,6 +853,10 @@ void App::render()
 		m_draw_list.finish();
 	}
 
+	if (m_draw_list.has_animated_effects() && m_window.is_active()) {
+		animation::request_frame();
+	}
+
 	m_renderer.set_backdrop(static_cast<u32>(m_settings.background_style), m_settings.background_intensity,
 							m_settings.background_light ? m_settings.background_light_intensity : 0.0f,
 							m_settings.background_grain ? m_settings.background_grain_intensity : 0.0f);
@@ -871,8 +883,11 @@ void App::run()
 
 		m_window.set_excluded_from_capture(m_settings.hide_accounts_from_capture && m_account_modal.is_blocking());
 
-		if (m_window.is_hidden() || m_window.is_minimized()) {
-			Sleep(16);
+		const float requested_wait = animation::take_idle_wait(idle_poll_seconds);
+		const float wait = m_window.is_hidden() || m_window.is_minimized() ? idle_poll_seconds : requested_wait;
+
+		if (wait > 0.0f && m_window.wait_for_messages(wait)) {
+			m_last_frame_time = std::chrono::steady_clock::now() - resume_frame_time;
 		}
 
 		debug_log::mark_ui_thread_alive();
