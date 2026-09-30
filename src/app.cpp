@@ -32,17 +32,18 @@ constexpr float status_baseline_nudge = 2.0f;
 
 struct GameInfo {
 	const char *title;
+	const char *short_title;
 	Asset banner;
 	Asset icon;
 	Color accent;
 };
 
 constexpr GameInfo games[]{
-	{"League of Legends", Asset::banner_league_of_legends, Asset::icon_league_of_legends, {210, 175, 55, 255}},
-	{"Teamfight Tactics", Asset::banner_teamfight_tactics, Asset::icon_teamfight_tactics, {70, 140, 190, 255}},
-	{"Valorant", Asset::banner_valorant, Asset::icon_valorant, {210, 55, 60, 255}},
-	{"2XKO", Asset::banner_two_xko, Asset::icon_two_xko, {45, 205, 210, 255}},
-	{"Legends of Runeterra", Asset::banner_runeterra, Asset::icon_runeterra, {140, 90, 200, 255}},
+	{"League of Legends", "LoL", Asset::banner_league_of_legends, Asset::icon_league_of_legends, {210, 175, 55, 255}},
+	{"Teamfight Tactics", "TFT", Asset::banner_teamfight_tactics, Asset::icon_teamfight_tactics, {70, 140, 190, 255}},
+	{"Valorant", "Valorant", Asset::banner_valorant, Asset::icon_valorant, {210, 55, 60, 255}},
+	{"2XKO", "2XKO", Asset::banner_two_xko, Asset::icon_two_xko, {45, 205, 210, 255}},
+	{"Legends of Runeterra", "LoR", Asset::banner_runeterra, Asset::icon_runeterra, {140, 90, 200, 255}},
 };
 
 static_assert(std::size(games) <= max_games);
@@ -220,7 +221,8 @@ void App::add_games()
 	for (u32 i = 0; i < std::size(games); i += 1) {
 		const GameInfo &game = games[i];
 
-		m_library.add_game(game.title, m_assets.get(game.banner), m_assets.get(game.icon), game.accent);
+		m_library.add_game(game.title, game.short_title, m_assets.get(game.banner), m_assets.get(game.icon),
+						   game.accent);
 		m_tray.set_game_icon(i, Assets::encoded_bytes(game.icon));
 	}
 
@@ -843,7 +845,8 @@ void App::render()
 		m_draw_list.finish();
 	}
 
-	m_renderer.set_backdrop(static_cast<u32>(m_settings.background_style), m_settings.background_intensity);
+	m_renderer.set_backdrop(static_cast<u32>(m_settings.background_style), m_settings.background_intensity,
+							m_settings.background_light);
 	m_renderer.render(m_draw_list, theme().window);
 }
 

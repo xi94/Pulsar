@@ -30,11 +30,13 @@ u16 Account::visible_games(u32 t_owning_game) const
 	return visible_game_mask != 0 ? visible_game_mask : static_cast<u16>(1u << t_owning_game);
 }
 
-void Library::add_game(std::string_view t_title, const Texture *t_banner, const Texture *t_icon, Color t_accent)
+void Library::add_game(std::string_view t_title, std::string_view t_short_title, const Texture *t_banner,
+					   const Texture *t_icon, Color t_accent)
 {
 	assert(m_game_count < max_games);
 
-	m_games[m_game_count] = Game{.title = t_title, .accent = t_accent, .banner = t_banner, .icon = t_icon};
+	m_games[m_game_count] =
+		Game{.title = t_title, .short_title = t_short_title, .accent = t_accent, .banner = t_banner, .icon = t_icon};
 	m_game_count += 1;
 }
 

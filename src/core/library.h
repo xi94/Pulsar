@@ -28,6 +28,7 @@ struct Account {
 
 struct Game {
 	std::string_view title;
+	std::string_view short_title;
 	Color accent{};
 	const Texture *banner = nullptr;
 	const Texture *icon = nullptr;
@@ -54,7 +55,8 @@ struct VisibleAccounts {
 
 class Library {
   public:
-	void add_game(std::string_view t_title, const Texture *t_banner, const Texture *t_icon, Color t_accent);
+	void add_game(std::string_view t_title, std::string_view t_short_title, const Texture *t_banner,
+				  const Texture *t_icon, Color t_accent);
 
 	std::optional<AccountRef> add_account(u32 t_game, const Account &t_account);
 	std::optional<AccountRef> insert_account(AccountRef t_where, const Account &t_account);

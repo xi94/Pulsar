@@ -24,6 +24,7 @@ enum class ShaderKind : u8 {
 	shadow,
 	outline_countdown,
 	backdrop,
+	backdrop_plain,
 };
 
 struct RoundedBoxParams {
@@ -136,6 +137,8 @@ class DrawList {
 	void add_rect_outline(Rect t_rect, float t_thickness, Color t_color);
 	void add_gradient(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right);
 	void add_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right);
+	void add_plain_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left,
+							Color t_bottom_right);
 	void add_line(Vec2 t_from, Vec2 t_to, float t_thickness, Color t_color);
 
 	void add_rounded_rect(Rect t_rect, CornerRadii t_radii, Color t_color);
@@ -166,6 +169,8 @@ class DrawList {
 	Vec2 scaled(Vec2 t_point) const;
 	Rect scaled(Rect t_rect) const;
 
+	void push_backdrop(ShaderKind t_shader, Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left,
+					   Color t_bottom_right);
 	void push_quad(Rect t_rect, UvRect t_uv, u32 t_color);
 	void push_quad(const Vertex2D (&t_corners)[4]);
 	void push_rounded(Rect t_rect, CornerRadii t_radii, UvRect t_uv, u32 t_color);

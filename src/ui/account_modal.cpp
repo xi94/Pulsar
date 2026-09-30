@@ -48,6 +48,7 @@ constexpr float icon_crossfade_share = 0.35f;
 constexpr float morph_seconds = 0.22f;
 constexpr float panel_reveal_progress = 0.6f;
 constexpr float morph_return_open_amount = 0.35f;
+constexpr float interactive_open_amount = 0.5f;
 
 constexpr std::string_view accounts_title = "Accounts";
 constexpr float search_max_width = 170.0f;
@@ -1436,6 +1437,11 @@ bool AccountModal::on_pointer_down(Vec2 t_point)
 {
 	if (!is_blocking()) return false;
 
+	if (m_open_amount < interactive_open_amount) {
+		m_press_swallowed = true;
+		return true;
+	}
+
 	const Layout current = layout();
 
 	if (m_mode == Mode::edit_account && m_region_list.is_open()) {
@@ -1530,6 +1536,8 @@ bool AccountModal::on_pointer_move(Vec2 t_point)
 
 bool AccountModal::on_pointer_up(Vec2 t_point)
 {
+	if (std::exchange(m_press_swallowed, false)) return true;
+
 	if (m_region_list.is_open()) {
 		if (const std::optional<u32> chosen = m_region_list.on_pointer_up(t_point)) {
 			choose_region(*chosen);
@@ -1709,6 +1717,7 @@ void AccountModal::handle_edit_click(const Layout &t_layout, Vec2 t_point)
 bool AccountModal::on_right_click(Vec2 t_point)
 {
 	if (!is_blocking()) return false;
+	if (m_open_amount < interactive_open_amount) return true;
 
 	const Layout current = layout();
 
@@ -1750,6 +1759,7 @@ bool AccountModal::on_right_click(Vec2 t_point)
 bool AccountModal::on_scroll(Vec2, float t_wheel_delta)
 {
 	if (!is_blocking()) return false;
+	if (m_open_amount < interactive_open_amount) return true;
 
 	if (m_region_list.is_open()) {
 		m_region_list.on_scroll(t_wheel_delta);

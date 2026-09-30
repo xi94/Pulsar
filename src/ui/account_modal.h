@@ -65,7 +65,7 @@ class AccountModal : public Widget {
 
 	bool is_blocking() const override
 	{
-		return m_open_amount > 0.01f;
+		return m_open || m_open_amount > 0.01f;
 	}
 
 	CursorKind cursor() const override;
@@ -266,6 +266,7 @@ class AccountModal : public Widget {
 	float m_open_amount = 0.0f;
 	std::optional<ArtSource> m_art_source;
 	float m_morph_progress = 0.0f;
+	bool m_press_swallowed = false;
 	i32 m_game = -1;
 	std::optional<AccountRef> m_selected;
 	Mode m_mode = Mode::account_list;

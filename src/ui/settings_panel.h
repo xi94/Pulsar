@@ -17,7 +17,7 @@ class Window;
 
 enum class SettingsTab : u8 {
 	appearance,
-	motion,
+	behavior,
 	privacy,
 	security,
 	count,
@@ -33,6 +33,7 @@ enum class ResettableSetting : u8 {
 	accent,
 	corner_roundness,
 	background,
+	background_light,
 	background_intensity,
 	animations,
 	animation_speed,
@@ -74,6 +75,7 @@ class SettingsPanel : public Widget {
 
   private:
 	static constexpr u32 resettable_count = static_cast<u32>(ResettableSetting::count);
+	static constexpr u32 group_count = 6;
 
 	struct Layout {
 		Rect panel;
@@ -92,6 +94,7 @@ class SettingsPanel : public Widget {
 		Rect accent;
 		Rect corner_roundness;
 		Rect background;
+		Rect background_light;
 		Rect background_intensity;
 		Rect notifications;
 		Rect animations;
@@ -102,7 +105,8 @@ class SettingsPanel : public Widget {
 		Rect auto_lock;
 		Rect master_password;
 		float content_height;
-		Rect captions[settings_tab_count];
+		Rect cards[group_count];
+		Rect group_titles[group_count];
 		u32 listed_count;
 	};
 
@@ -116,9 +120,16 @@ class SettingsPanel : public Widget {
 	struct RowSpec {
 		Rect Rows::*row;
 		SettingsTab tab;
+		u32 group;
+		Rect Rows::*parent;
 		const char *title;
 		const char *description;
 		const char *keywords;
+	};
+
+	struct GroupSpec {
+		SettingsTab tab;
+		const char *title;
 	};
 
 	struct Toggle {
@@ -126,10 +137,11 @@ class SettingsPanel : public Widget {
 		Rect Rows::*row;
 	};
 
-	static constexpr u32 row_spec_count = 16;
+	static constexpr u32 row_spec_count = 17;
 	static const RowSpec row_specs[row_spec_count];
+	static const GroupSpec group_specs[group_count];
 
-	static constexpr u32 toggle_count = 5;
+	static constexpr u32 toggle_count = 6;
 	static const Toggle toggles[toggle_count];
 
 	Layout layout() const;
@@ -147,7 +159,10 @@ class SettingsPanel : public Widget {
 
 	static const RowSpec &spec_of(Rect Rows::*t_row);
 	bool is_searching() const;
+	bool matches_search(const RowSpec &t_spec) const;
 	bool is_listed(const RowSpec &t_spec) const;
+	float reveal_of(const RowSpec &t_spec) const;
+	float row_extent(const RowSpec &t_spec) const;
 	Rect search_rect(const Layout &t_layout) const;
 	Rect search_text_rect(Rect t_search) const;
 	Rect search_clear_rect(Rect t_search) const;
@@ -185,12 +200,12 @@ class SettingsPanel : public Widget {
 	void update_hover_hints(float t_delta_seconds);
 
 	void draw_chrome(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
-	void draw_row_highlight(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
 	void draw_rail(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
 	void draw_label(DrawList &t_draw_list, const Rows &t_rows, Rect Rows::*t_row, Rect t_control, u8 t_alpha) const;
 	void draw_dropdown_row(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, Rect Rows::*t_row,
 						   std::string_view t_value, bool t_open, u8 t_alpha) const;
 	void draw_search(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha);
+	void draw_cards(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
 	void draw_captions(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
 	void draw_no_results(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
 	void draw_appearance(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
@@ -232,13 +247,15 @@ class SettingsPanel : public Widget {
 	TextInput m_search;
 	char m_applied_query[text_input_capacity]{};
 
-	float m_toggles_shown[toggle_count]{1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+	float m_toggles_shown[toggle_count]{1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
 
 	float m_font_size_shown = 0.0f;
 	float m_secondary_font_size_shown = 0.0f;
 	float m_animation_speed_shown = 0.0f;
 	float m_corner_roundness_shown = 0.0f;
 	float m_background_intensity_shown = 0.0f;
+	float m_background_strength_reveal = 0.0f;
+	float m_animation_speed_reveal = 0.0f;
 	float m_auto_lock_shown = 0.0f;
 	float m_accent_shown[3]{};
 

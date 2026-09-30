@@ -348,6 +348,11 @@ bool is_control_held()
 {
 	return (GetKeyState(VK_CONTROL) & 0x8000) != 0;
 }
+
+bool is_primary_button_held()
+{
+	return (GetKeyState(VK_LBUTTON) & 0x8000) != 0;
+}
 }
 
 Carousel::Carousel(const Library &t_library, const Settings &t_settings, const Fonts &t_fonts, const Assets &t_assets,
@@ -834,6 +839,20 @@ void Carousel::open_game(i32 t_game)
 	m_commands.push(Command{.type = CommandType::open_game, .index = t_game});
 }
 
+void Carousel::drop_lost_press()
+{
+	m_long_press.game = -1;
+
+	if (m_reorder.active) {
+		end_reorder(false);
+	}
+
+	if (m_card_drag.is_pressed()) {
+		m_card_drag.end();
+		m_target_scroll = clamp_scroll(std::round(m_scroll));
+	}
+}
+
 void Carousel::start_press(i32 t_game, Vec2 t_point)
 {
 	m_long_press = LongPress{t_game, t_point, 0.0f};
@@ -1286,6 +1305,10 @@ CursorKind Carousel::cursor() const
 
 void Carousel::update(float t_delta_seconds)
 {
+	if (!is_primary_button_held() || m_detached_game >= 0) {
+		drop_lost_press();
+	}
+
 	m_scroll = animation::ease_toward(m_scroll, m_target_scroll, scroll_ease_rate, t_delta_seconds,
 									  animation::settled_pixels / (drag_pixels_per_card * view_scale()));
 	m_mode_transition = animation::step_toward(m_mode_transition, 0.0f, mode_morph_seconds, t_delta_seconds);
@@ -1360,22 +1383,52 @@ void Carousel::draw_carousel_edges(DrawList &t_draw_list, u8 t_alpha) const
 
 	if (left > 0.0f) {
 		const Color opaque = faded(theme().window, static_cast<u8>(fade * left));
-		t_draw_list.add_backdrop(Rect{m_bounds.x, m_bounds.y, edge_fade_width, m_bounds.h}, opaque, clear, opaque,
-								 clear);
+		fade_cards(t_draw_list, Rect{m_bounds.x, m_bounds.y, edge_fade_width, m_bounds.h}, opaque, clear, opaque,
+				   clear);
 	}
 
 	if (right > 0.0f) {
 		const Color opaque = faded(theme().window, static_cast<u8>(fade * right));
-		t_draw_list.add_backdrop(Rect{m_bounds.right() - edge_fade_width, m_bounds.y, edge_fade_width, m_bounds.h},
-								 clear, opaque, clear, opaque);
+		fade_cards(t_draw_list, Rect{m_bounds.right() - edge_fade_width, m_bounds.y, edge_fade_width, m_bounds.h},
+				   clear, opaque, clear, opaque);
+	}
+}
+
+Rect Carousel::faded_rect(u32 t_game) const
+{
+	if (m_mode_transition > 0.0f) return morph_art(t_game);
+
+	const Rect shown = shown_card(m_mode, t_game);
+
+	return m_mode == ViewMode::grid ? grown_grid_card(shown, t_game) : shown;
+}
+
+void Carousel::fade_cards(DrawList &t_draw_list, Rect t_band, Color t_top_left, Color t_top_right, Color t_bottom_left,
+						  Color t_bottom_right) const
+{
+	if (t_band.w <= 0.0f || t_band.h <= 0.0f) return;
+
+	for (u32 game = 0; game < game_count(); game += 1) {
+		const Rect card = faded_rect(game);
+		const bool touches =
+			card.right() > t_band.x && card.x < t_band.right() && card.bottom() > t_band.y && card.y < t_band.bottom();
+		if (!touches) continue;
+
+		t_draw_list.push_clip(card);
+		t_draw_list.add_plain_backdrop(t_band, t_top_left, t_top_right, t_bottom_left, t_bottom_right);
+		t_draw_list.pop_clip();
 	}
 }
 
 void Carousel::draw_wrap_scroll(DrawList &t_draw_list, u8 t_alpha) const
 {
 	const ScrollGeometry geometry = wrap_scroll_geometry();
+	const Scrollable::EdgeFades fades = m_wrap_scroll.edge_fades(m_bounds, geometry);
+	const Color edge = faded(theme().window, t_alpha);
+	const Color clear = faded(theme().window, 0);
 
-	m_wrap_scroll.draw_edge_fade(t_draw_list, m_bounds, geometry, faded(theme().window, t_alpha), true);
+	fade_cards(t_draw_list, fades.top, edge, edge, clear, clear);
+	fade_cards(t_draw_list, fades.bottom, clear, clear, edge, edge);
 	m_wrap_scroll.draw(t_draw_list, geometry, m_mouse, t_alpha);
 }
 
@@ -1442,7 +1495,7 @@ void Carousel::draw_icon_tile_frame(DrawList &t_draw_list, Rect t_tile, u32 t_ga
 	}
 
 	const float title_baseline = art.bottom() + icon_label_gap + title_font.ascent();
-	draw_centered_label(t_draw_list, title_font, t_tile.center().x, title_baseline, game.title, label_width,
+	draw_centered_label(t_draw_list, title_font, t_tile.center().x, title_baseline, game.short_title, label_width,
 						faded(theme().text, t_alpha));
 }
 

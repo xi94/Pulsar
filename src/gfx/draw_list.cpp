@@ -423,7 +423,19 @@ void DrawList::add_gradient(Rect t_rect, Color t_top_left, Color t_top_right, Co
 
 void DrawList::add_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right)
 {
-	target(ShaderKind::backdrop);
+	push_backdrop(ShaderKind::backdrop, t_rect, t_top_left, t_top_right, t_bottom_left, t_bottom_right);
+}
+
+void DrawList::add_plain_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left,
+								  Color t_bottom_right)
+{
+	push_backdrop(ShaderKind::backdrop_plain, t_rect, t_top_left, t_top_right, t_bottom_left, t_bottom_right);
+}
+
+void DrawList::push_backdrop(ShaderKind t_shader, Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left,
+							 Color t_bottom_right)
+{
+	target(t_shader);
 
 	const Vertex2D corners[4]{
 		{t_rect.x, t_rect.y, 0.0f, 0.0f, pack(t_top_left)},

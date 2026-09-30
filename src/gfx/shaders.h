@@ -296,11 +296,12 @@ constexpr const char *shader_source = R"(
 		float backdrop_intensity;
 		float backdrop_style;
 		float backdrop_pixel_scale;
-		float3 backdrop_padding;
+		float backdrop_light;
+		float2 backdrop_padding;
 	};
 
-	static const float backdrop_pattern_strength[6] = {0.0, 0.0, 0.2, 0.06, 0.24, 0.05};
-	static const float backdrop_pattern_spacing[6] = {1.0, 1.0, 24.0, 40.0, 48.0, 10.0};
+	static const float backdrop_pattern_strength[5] = {0.0, 0.0, 0.2, 0.035, 0.05};
+	static const float backdrop_pattern_spacing[5] = {1.0, 1.0, 24.0, 40.0, 10.0};
 
 	float backdrop_noise(float2 pixel)
 	{
@@ -313,7 +314,6 @@ constexpr const char *shader_source = R"(
 	{
 		float spacing = max(round(backdrop_pattern_spacing[style] * scale), 2.0);
 		float stroke = max(round(scale), 1.0);
-		float arm = round(5.0 * scale);
 
 		float2 cell = floor(pixel) - floor(size * 0.5);
 		float2 m = cell - spacing * floor(cell / spacing);
@@ -321,44 +321,43 @@ constexpr const char *shader_source = R"(
 		float slant = diagonal - spacing * floor(diagonal / spacing);
 
 		bool on_dot = m.x < stroke && m.y < stroke;
-		bool on_grid = m.x < stroke || m.y < stroke;
-		bool across = m.y < stroke && (m.x < arm + stroke || m.x >= spacing - arm);
-		bool upright = m.x < stroke && (m.y < arm + stroke || m.y >= spacing - arm);
+		bool on_grid = m.x < 1.0 || m.y < 1.0;
 		bool on_line = slant < stroke;
 
 		bool hit = false;
 		hit = style == 2 ? on_dot : hit;
 		hit = style == 3 ? on_grid : hit;
-		hit = style == 4 ? (across || upright) : hit;
-		hit = style == 5 ? on_line : hit;
+		hit = style == 4 ? on_line : hit;
 
 		return hit ? 1.0 : 0.0;
 	}
 
-	float4 ps_backdrop(PixelInput input) : SV_TARGET
+	float4 backdrop_color(PixelInput input, bool with_pattern)
 	{
-		int style = clamp((int)(backdrop_style + 0.5), 0, 5);
+		int style = clamp((int)(backdrop_style + 0.5), 0, 4);
 		float2 pixel = input.position.xy;
 		float2 size = backdrop_target_size;
-		float k = style == 0 ? 0.0 : backdrop_intensity;
+		float k = backdrop_intensity;
 
-		float light_distance = length(pixel - float2(size.x * 0.5, -size.y * 0.2));
-		float light = saturate(1.0 - light_distance / (size.y * 1.3));
-
-		float vignette_start = size.y * 0.3;
-		float vignette_span = max(size.x * 0.75 - vignette_start, 1.0);
-		float vignette = saturate((length(pixel - size * 0.5) - vignette_start) / vignette_span);
-
-		float pattern = backdrop_pattern(pixel, size, max(backdrop_pixel_scale, 0.5), style);
-		float reveal = 0.4 + 0.6 * smoothstep(0.0, 0.8, light);
+		float light = saturate(1.0 - (pixel.y + size.y * 0.2) / (size.y * 1.3));
+		float pattern = with_pattern ? backdrop_pattern(pixel, size, max(backdrop_pixel_scale, 0.5), style) : 0.0;
 		float3 ink = dot(input.color.rgb, float3(0.299, 0.587, 0.114)) > 0.5 ? 0.0 : 1.0;
 
 		float3 rgb = input.color.rgb;
-		rgb = lerp(rgb, 1.0, light * 0.07 * k);
-		rgb *= 1.0 - vignette * 0.25 * k;
-		rgb = lerp(rgb, ink, pattern * backdrop_pattern_strength[style] * k * reveal);
-		rgb += (backdrop_noise(pixel) - 0.5) * (8.0 / 255.0) * k;
+		rgb = lerp(rgb, 1.0, light * 0.07 * k * backdrop_light);
+		rgb = lerp(rgb, ink, pattern * backdrop_pattern_strength[style] * k);
+		rgb += (backdrop_noise(pixel) - 0.5) * (10.5 / 255.0) * (style == 1 ? k : 0.0);
 
 		return float4(saturate(rgb), input.color.a);
+	}
+
+	float4 ps_backdrop(PixelInput input) : SV_TARGET
+	{
+		return backdrop_color(input, true);
+	}
+
+	float4 ps_backdrop_plain(PixelInput input) : SV_TARGET
+	{
+		return backdrop_color(input, false);
 	}
 )";

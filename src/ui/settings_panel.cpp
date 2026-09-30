@@ -42,12 +42,18 @@ constexpr float back_button_size = 32.0f;
 constexpr float back_button_margin = 12.0f;
 constexpr float back_icon_size = 18.0f;
 constexpr float title_gap = 10.0f;
-constexpr float label_top_gap = 14.0f;
-constexpr float label_line_gap = 6.0f;
-constexpr float label_bottom_gap = 16.0f;
+constexpr float label_line_gap = 3.0f;
 constexpr float label_control_gap = 16.0f;
-constexpr float highlight_inset_x = 12.0f;
-constexpr float highlight_radius = 8.0f;
+constexpr float highlight_inset_x = 4.0f;
+constexpr float highlight_inset_y = 3.0f;
+constexpr float row_inset_x = 16.0f;
+constexpr float two_line_padding_y = 10.0f;
+constexpr float single_row_padding_y = 6.0f;
+constexpr float nested_row_padding_y = 4.0f;
+constexpr float card_margin_x = 18.0f;
+constexpr float card_radius = 10.0f;
+constexpr float group_gap = 6.0f;
+constexpr float reveal_ease_rate = 16.0f;
 constexpr float rows_top_padding = 8.0f;
 constexpr float rail_width = 150.0f;
 constexpr float rail_padding = 10.0f;
@@ -63,13 +69,13 @@ constexpr float reset_button_size = 28.0f;
 constexpr float reset_button_gap = 10.0f;
 constexpr float reset_icon_size = 18.0f;
 
-constexpr float slider_track_width = 130.0f;
-constexpr float slider_bar_height = 6.0f;
-constexpr float slider_thumb_radius = 8.0f;
-constexpr float slider_readout_gap = 8.0f;
-constexpr float slider_readout_width = 48.0f;
+constexpr float slider_track_height = 22.0f;
+constexpr float slider_bar_height = 4.0f;
+constexpr float slider_thumb_radius = 7.0f;
+constexpr float slider_readout_gap = 10.0f;
+constexpr float slider_readout_width = 34.0f;
 constexpr float slider_tick_size = 3.0f;
-constexpr float auto_lock_readout_width = 64.0f;
+constexpr float auto_lock_readout_width = 52.0f;
 constexpr u32 auto_lock_stops[]{1, 2, 5, 10, 15, 30, 60, 0};
 constexpr u32 auto_lock_stop_count = static_cast<u32>(std::size(auto_lock_stops));
 
@@ -82,8 +88,8 @@ constexpr float search_icon_size = 13.0f;
 constexpr float search_icon_gap = 7.0f;
 constexpr float search_clear_margin = 8.0f;
 constexpr u32 search_max_length = 48;
-constexpr float caption_top_gap = 12.0f;
-constexpr float caption_bottom_gap = 2.0f;
+constexpr float group_title_top_gap = 16.0f;
+constexpr float group_title_bottom_gap = 10.0f;
 constexpr float knob_ring = 1.5f;
 
 constexpr float animation_speed_min = 0.25f;
@@ -98,8 +104,14 @@ constexpr float font_size_max = 24.0f;
 constexpr float secondary_font_size_min = 8.0f;
 constexpr float secondary_font_size_max = 18.0f;
 
-constexpr float dropdown_width = 200.0f;
+constexpr float control_column_width = 170.0f;
+constexpr float control_radius = 8.0f;
+constexpr float stepper_width = 96.0f;
+constexpr float swatch_size = 22.0f;
+constexpr float swatch_ring_gap = 3.0f;
+constexpr float divider_strength = 0.55f;
 constexpr float font_list_width = 290.0f;
+constexpr float theme_list_width = 250.0f;
 
 constexpr float theme_dot_size = 16.0f;
 constexpr float theme_dot_overlap = 6.0f;
@@ -107,7 +119,7 @@ constexpr float theme_dot_cutout = 2.0f;
 constexpr float theme_hover_preview_seconds = 1.0f;
 constexpr Vec2 theme_preview_size{theme_dot_size * 2.0f - theme_dot_overlap, theme_dot_size};
 
-constexpr std::string_view tab_names[]{"Appearance", "Motion", "Privacy", "Security"};
+constexpr std::string_view tab_names[]{"Appearance", "Behavior", "Privacy", "Security"};
 static_assert(std::size(tab_names) == settings_tab_count);
 
 const Settings default_settings{};
@@ -150,15 +162,19 @@ float header_height(const Fonts &t_fonts)
 	return t_fonts.body().line_height() + 20.0f;
 }
 
-float row_height(const Fonts &t_fonts)
+float label_block_height(const Fonts &t_fonts)
 {
-	return label_top_gap + t_fonts.body().line_height() + label_line_gap + t_fonts.secondary().line_height() +
-		   label_bottom_gap;
+	return t_fonts.body().line_height() + label_line_gap + t_fonts.secondary().line_height();
 }
 
-float caption_height(const Fonts &t_fonts)
+float row_height(const Fonts &t_fonts)
 {
-	return caption_top_gap + t_fonts.secondary().line_height() + caption_bottom_gap;
+	return label_block_height(t_fonts) + two_line_padding_y * 2.0f;
+}
+
+float group_title_height(const Fonts &t_fonts)
+{
+	return group_title_top_gap + t_fonts.secondary().line_height() + group_title_bottom_gap;
 }
 
 float tab_height(const Fonts &t_fonts)
@@ -168,27 +184,38 @@ float tab_height(const Fonts &t_fonts)
 
 float control_height(const Fonts &t_fonts)
 {
-	return std::max(34.0f, t_fonts.body().line_height() + 12.0f);
+	return std::max(30.0f, t_fonts.body().line_height() + 10.0f);
+}
+
+float single_row_height(const Fonts &t_fonts)
+{
+	return std::max(control_height(t_fonts), t_fonts.body().line_height()) + single_row_padding_y * 2.0f;
+}
+
+float nested_row_height(const Fonts &t_fonts)
+{
+	return std::max(slider_track_height, t_fonts.secondary().line_height()) + nested_row_padding_y * 2.0f;
 }
 
 float title_baseline(Rect t_row, const Fonts &t_fonts)
 {
-	return t_row.y + label_top_gap + t_fonts.body().ascent();
+	return t_row.center().y - label_block_height(t_fonts) * 0.5f + t_fonts.body().ascent();
 }
 
 float description_baseline(Rect t_row, const Fonts &t_fonts)
 {
-	return t_row.y + label_top_gap + t_fonts.body().line_height() + label_line_gap + t_fonts.secondary().ascent();
+	return t_row.center().y - label_block_height(t_fonts) * 0.5f + t_fonts.body().line_height() + label_line_gap +
+		   t_fonts.secondary().ascent();
 }
 
-float control_center_y(Rect t_row, const Fonts &t_fonts)
+float control_center_y(Rect t_row, const Fonts &)
 {
-	return (title_baseline(t_row, t_fonts) + description_baseline(t_row, t_fonts)) * 0.5f;
+	return t_row.center().y;
 }
 
 Rect right_aligned_control(Rect t_row, const Fonts &t_fonts, float t_width, float t_height)
 {
-	return Rect{t_row.right() - row_padding_x - t_width, control_center_y(t_row, t_fonts) - t_height * 0.5f, t_width,
+	return Rect{t_row.right() - row_inset_x - t_width, control_center_y(t_row, t_fonts) - t_height * 0.5f, t_width,
 				t_height};
 }
 
@@ -200,12 +227,12 @@ Rect back_button_rect(Rect t_header)
 
 Rect dropdown_rect(Rect t_row, const Fonts &t_fonts)
 {
-	return right_aligned_control(t_row, t_fonts, dropdown_width, control_height(t_fonts));
+	return right_aligned_control(t_row, t_fonts, control_column_width, control_height(t_fonts));
 }
 
 Rect stepper_rect(Rect t_row, const Fonts &t_fonts)
 {
-	return right_aligned_control(t_row, t_fonts, 108.0f, 28.0f);
+	return right_aligned_control(t_row, t_fonts, stepper_width, control_height(t_fonts));
 }
 
 Rect stepper_minus(Rect t_stepper)
@@ -220,12 +247,12 @@ Rect stepper_plus(Rect t_stepper)
 
 Rect toggle_rect(Rect t_row, const Fonts &t_fonts)
 {
-	return right_aligned_control(t_row, t_fonts, 40.0f, 22.0f);
+	return right_aligned_control(t_row, t_fonts, 36.0f, 20.0f);
 }
 
 Rect swatch_rect(Rect t_row, const Fonts &t_fonts)
 {
-	return right_aligned_control(t_row, t_fonts, 40.0f, 24.0f);
+	return right_aligned_control(t_row, t_fonts, swatch_size, swatch_size);
 }
 
 Rect master_password_button_rect(Rect t_row, const Fonts &t_fonts)
@@ -233,17 +260,16 @@ Rect master_password_button_rect(Rect t_row, const Fonts &t_fonts)
 	return right_aligned_control(t_row, t_fonts, 140.0f, control_height(t_fonts));
 }
 
-Rect slider_track_rect(Rect t_row, const Fonts &t_fonts)
+Rect slider_control_rect(Rect t_row, const Fonts &t_fonts)
 {
-	return right_aligned_control(t_row, t_fonts, slider_track_width, 22.0f);
+	return right_aligned_control(t_row, t_fonts, control_column_width, slider_track_height);
 }
 
-Rect slider_control_rect(Rect t_row, const Fonts &t_fonts, float t_readout_width = slider_readout_width)
+Rect slider_track_rect(Rect t_row, const Fonts &t_fonts, float t_readout_width = slider_readout_width)
 {
-	const Rect track = slider_track_rect(t_row, t_fonts);
-	const float readout = slider_readout_gap + t_readout_width;
+	const Rect control = slider_control_rect(t_row, t_fonts);
 
-	return Rect{track.x - readout, track.y, track.w + readout, track.h};
+	return Rect{control.x, control.y, control.w - t_readout_width - slider_readout_gap, control.h};
 }
 
 Rect reset_button_rect(Rect t_control, Rect t_row, const Fonts &t_fonts)
@@ -260,9 +286,16 @@ float label_right_edge(Rect t_control, Rect t_row, const Fonts &t_fonts)
 void draw_row_label(DrawList &t_draw_list, const Fonts &t_fonts, Rect t_row, const char *t_title,
 					const char *t_description, float t_right_edge, u8 t_alpha)
 {
-	const float x = t_row.x + row_padding_x;
+	const Font &body = t_fonts.body();
+	const float x = t_row.x + row_inset_x;
 
-	draw_text_truncated(t_draw_list, t_fonts.body(), Vec2{x, title_baseline(t_row, t_fonts)}, t_title, t_right_edge - x,
+	if (*t_description == '\0') {
+		draw_text_truncated(t_draw_list, body, Vec2{x, body.centered_baseline(t_row)}, t_title, t_right_edge - x,
+							faded(theme().text, t_alpha));
+		return;
+	}
+
+	draw_text_truncated(t_draw_list, body, Vec2{x, title_baseline(t_row, t_fonts)}, t_title, t_right_edge - x,
 						faded(theme().text, t_alpha));
 	draw_text_truncated(t_draw_list, t_fonts.secondary(), Vec2{x, description_baseline(t_row, t_fonts)}, t_description,
 						t_right_edge - x, faded(theme().text_dim, t_alpha));
@@ -284,16 +317,17 @@ void draw_toggle(DrawList &t_draw_list, Rect t_toggle, float t_on, Color t_accen
 	draw_knob(t_draw_list, knob, foreground_on(track), t_alpha);
 }
 
-void draw_slider(DrawList &t_draw_list, const Font &t_font, Rect t_track, float t_fraction, std::string_view t_readout,
-				 Color t_accent, u8 t_alpha, u32 t_steps = 0)
+void draw_slider(DrawList &t_draw_list, const Font &t_font, Rect t_control, float t_readout_width, float t_fraction,
+				 std::string_view t_readout, Color t_accent, u8 t_alpha, u32 t_steps = 0)
 {
-	const float center_y = t_track.center().y;
-	const float readout_x = t_track.x - slider_readout_gap - text_width(t_font, t_readout);
+	const Rect track{t_control.x, t_control.y, t_control.w - t_readout_width - slider_readout_gap, t_control.h};
+	const float center_y = track.center().y;
 
-	draw_text(t_draw_list, t_font, Vec2{readout_x, t_font.centered_baseline(t_track)}, t_readout,
-			  faded(theme().text, t_alpha));
+	draw_text(t_draw_list, t_font,
+			  Vec2{t_control.right() - text_width(t_font, t_readout), t_font.centered_baseline(t_control)}, t_readout,
+			  faded(theme().text_dim, t_alpha));
 
-	const Rect bar{t_track.x, center_y - slider_bar_height * 0.5f, t_track.w, slider_bar_height};
+	const Rect bar{track.x, center_y - slider_bar_height * 0.5f, track.w, slider_bar_height};
 	const Rect filled{bar.x, bar.y, bar.w * std::clamp(t_fraction, 0.0f, 1.0f), bar.h};
 
 	t_draw_list.add_rounded_rect(bar, rounded(slider_bar_height * 0.5f), faded(theme().track, t_alpha));
@@ -315,27 +349,48 @@ void draw_slider(DrawList &t_draw_list, const Font &t_font, Rect t_track, float 
 	draw_knob(t_draw_list, knob, foreground_on(t_accent), t_alpha);
 }
 
+void draw_select(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label, bool t_open,
+				 bool t_hovered, Color t_accent, u8 t_alpha)
+{
+	constexpr float padding = 10.0f;
+	constexpr Vec2 chevron_size{9.0f, 5.0f};
+
+	const Theme &colors = theme();
+	const Color fill = faded(t_open || t_hovered ? colors.control : colors.popup, t_alpha);
+	const Rect chevron{t_rect.right() - padding - chevron_size.x, t_rect.center().y - chevron_size.y * 0.5f,
+					   chevron_size.x, chevron_size.y};
+
+	if (t_open) {
+		t_draw_list.add_bordered_rect(t_rect, rounded(control_radius), fill, faded(t_accent, t_alpha), 1.0f);
+	} else {
+		t_draw_list.add_rounded_rect(t_rect, rounded(control_radius), fill);
+	}
+
+	draw_text_truncated(t_draw_list, t_font, Vec2{t_rect.x + padding, t_font.centered_baseline(t_rect)}, t_label,
+						chevron.x - padding - (t_rect.x + padding), faded(colors.text, t_alpha));
+	controls::draw_chevron(t_draw_list, chevron, t_open, faded(t_open ? colors.text : colors.text_dim, t_alpha));
+}
+
 void draw_stepper(DrawList &t_draw_list, const Font &t_font, Rect t_stepper, float t_value, u8 t_alpha)
 {
-	const Rect minus = stepper_minus(t_stepper);
-	const Rect plus = stepper_plus(t_stepper);
-	const Color glyph = faded(theme().text, t_alpha);
+	constexpr float glyph_half = 4.5f;
+	constexpr float glyph_thickness = 1.5f;
 
-	t_draw_list.add_rounded_rect(minus, rounded(6.0f), faded(theme().control, t_alpha));
-	t_draw_list.add_rounded_rect(plus, rounded(6.0f), faded(theme().control, t_alpha));
+	const Theme &colors = theme();
+	const Vec2 minus = stepper_minus(t_stepper).center();
+	const Vec2 plus = stepper_plus(t_stepper).center();
+	const Color glyph = faded(colors.text_dim, t_alpha);
 
-	const Vec2 minus_center = minus.center();
-	const Vec2 plus_center = plus.center();
-	t_draw_list.add_line({minus_center.x - 6.0f, minus_center.y}, {minus_center.x + 6.0f, minus_center.y}, 2.0f, glyph);
-	t_draw_list.add_line({plus_center.x - 6.0f, plus_center.y}, {plus_center.x + 6.0f, plus_center.y}, 2.0f, glyph);
-	t_draw_list.add_line({plus_center.x, plus_center.y - 6.0f}, {plus_center.x, plus_center.y + 6.0f}, 2.0f, glyph);
+	t_draw_list.add_rounded_rect(t_stepper, rounded(control_radius), faded(colors.popup, t_alpha));
+	t_draw_list.add_line({minus.x - glyph_half, minus.y}, {minus.x + glyph_half, minus.y}, glyph_thickness, glyph);
+	t_draw_list.add_line({plus.x - glyph_half, plus.y}, {plus.x + glyph_half, plus.y}, glyph_thickness, glyph);
+	t_draw_list.add_line({plus.x, plus.y - glyph_half}, {plus.x, plus.y + glyph_half}, glyph_thickness, glyph);
 
 	char buffer[8];
 	const int written = std::snprintf(buffer, sizeof(buffer), "%d", static_cast<int>(std::lround(t_value)));
-	const Rect number{minus.right(), t_stepper.y, plus.x - minus.right(), t_stepper.h};
 
-	draw_text_centered(t_draw_list, t_font, number, std::string_view{buffer, static_cast<usize>(std::max(written, 0))},
-					   glyph);
+	draw_text_centered(t_draw_list, t_font, t_stepper,
+					   std::string_view{buffer, static_cast<usize>(std::max(written, 0))}, faded(colors.text, t_alpha));
 }
 
 void draw_reset_button(DrawList &t_draw_list, const Texture *t_icon, Rect t_button, float t_visible, float t_spin,
@@ -418,31 +473,38 @@ void draw_theme_preview(DrawList &t_draw_list, Rect t_preview, ThemeKind t_kind,
 }
 }
 
+const SettingsPanel::GroupSpec SettingsPanel::group_specs[group_count]{
+	{SettingsTab::appearance, "Look"},	{SettingsTab::appearance, "Text"},	  {SettingsTab::behavior, "Motion"},
+	{SettingsTab::behavior, "General"}, {SettingsTab::privacy, "Protection"}, {SettingsTab::security, "Vault"},
+};
+
 const SettingsPanel::RowSpec SettingsPanel::row_specs[row_spec_count]{
-	{&Rows::theme, SettingsTab::appearance, "Theme", "Colors of the interface.", "dark light mode palette colour"},
-	{&Rows::font, SettingsTab::appearance, "Font", "Typeface for all text.", "typeface family text"},
-	{&Rows::font_size, SettingsTab::appearance, "Font Size", "Scales the whole interface.", "text scale zoom bigger"},
-	{&Rows::secondary_font_size, SettingsTab::appearance, "Secondary Font Size", "Size of labels and hints.",
-	 "text scale smaller"},
-	{&Rows::accent, SettingsTab::appearance, "Accent Color", "Color of buttons and highlights.", "colour highlight"},
-	{&Rows::corner_roundness, SettingsTab::appearance, "Corner Roundness", "Rounding of corners.", "radius rounded"},
-	{&Rows::background, SettingsTab::appearance, "Background", "Subtle texture behind the interface.",
-	 "backdrop texture pattern grain noise dots grid wallpaper"},
-	{&Rows::background_intensity, SettingsTab::appearance, "Background Strength", "How visible the texture is.",
+	{&Rows::theme, SettingsTab::appearance, 0, nullptr, "Theme", "", "dark light mode palette colour colors interface"},
+	{&Rows::accent, SettingsTab::appearance, 0, nullptr, "Accent Color", "", "colour highlight buttons"},
+	{&Rows::background, SettingsTab::appearance, 0, nullptr, "Background", "",
+	 "backdrop texture pattern grain noise dots grid lines wallpaper"},
+	{&Rows::background_intensity, SettingsTab::appearance, 0, &Rows::background, "Strength", "",
 	 "backdrop texture intensity opacity subtle"},
-	{&Rows::notifications, SettingsTab::appearance, "Notifications", "Show short confirmation messages.",
-	 "toast popup alert"},
-	{&Rows::animations, SettingsTab::motion, "Animations", "Animate popups and scrolling.", "motion effects reduce"},
-	{&Rows::animation_speed, SettingsTab::motion, "Animation Speed", "How fast animations play.", "motion fast slow"},
-	{&Rows::hide_from_capture, SettingsTab::privacy, "Hide From Screen Capture",
-	 "Hide accounts from screenshares, recordings and screenshots.", "stream record share obs discord"},
-	{&Rows::block_overlay_injection, SettingsTab::privacy, "Block Overlay Injection",
-	 "Block overlays and keyloggers. Restart to apply.", "security inject dll"},
-	{&Rows::close_to_tray, SettingsTab::privacy, "Close To Tray", "Closing hides the app to the tray.",
+	{&Rows::background_light, SettingsTab::appearance, 0, nullptr, "Soft Light", "",
+	 "backdrop glow gradient top light depth"},
+	{&Rows::corner_roundness, SettingsTab::appearance, 0, nullptr, "Corner Roundness", "", "radius rounded corners"},
+	{&Rows::font, SettingsTab::appearance, 1, nullptr, "Font", "", "typeface family text"},
+	{&Rows::font_size, SettingsTab::appearance, 1, nullptr, "Font Size", "", "text scale zoom bigger interface"},
+	{&Rows::secondary_font_size, SettingsTab::appearance, 1, nullptr, "Small Text Size", "",
+	 "secondary font labels hints scale smaller"},
+	{&Rows::animations, SettingsTab::behavior, 2, nullptr, "Animations", "", "motion effects reduce animate popups"},
+	{&Rows::animation_speed, SettingsTab::behavior, 2, &Rows::animations, "Speed", "", "animation motion fast slow"},
+	{&Rows::notifications, SettingsTab::behavior, 3, nullptr, "Notifications", "",
+	 "toast popup alert confirmation messages"},
+	{&Rows::close_to_tray, SettingsTab::behavior, 3, nullptr, "Close To Tray", "Closing hides the app to the tray.",
 	 "minimize background system tray"},
-	{&Rows::auto_lock, SettingsTab::security, "Auto-Lock", "Lock the vault after being idle.",
+	{&Rows::hide_from_capture, SettingsTab::privacy, 4, nullptr, "Hide From Screen Capture",
+	 "Hide accounts from screenshares, recordings and screenshots.", "stream record share obs discord"},
+	{&Rows::block_overlay_injection, SettingsTab::privacy, 4, nullptr, "Block Overlay Injection",
+	 "Block overlays and keyloggers. Restart to apply.", "security inject dll"},
+	{&Rows::auto_lock, SettingsTab::security, 5, nullptr, "Auto-Lock", "Lock the vault after being idle.",
 	 "timeout idle inactive away"},
-	{&Rows::master_password, SettingsTab::security, "Master Password", "Encrypts saved passwords.",
+	{&Rows::master_password, SettingsTab::security, 5, nullptr, "Master Password", "Encrypts saved passwords.",
 	 "change reset vault encryption"},
 };
 
@@ -452,6 +514,7 @@ const SettingsPanel::Toggle SettingsPanel::toggles[toggle_count]{
 	{&Settings::hide_accounts_from_capture, &Rows::hide_from_capture},
 	{&Settings::block_overlay_injection, &Rows::block_overlay_injection},
 	{&Settings::close_to_tray, &Rows::close_to_tray},
+	{&Settings::background_light, &Rows::background_light},
 };
 
 SettingsPanel::SettingsPanel(Settings &t_settings, Fonts &t_fonts, Renderer &t_renderer, const Window &t_window,
@@ -472,6 +535,7 @@ SettingsPanel::SettingsPanel(Settings &t_settings, Fonts &t_fonts, Renderer &t_r
 				   ListPopupOptions{
 					   .search_placeholder = "Search themes",
 					   .empty_message = "No themes match your search",
+					   .min_width = theme_list_width,
 					   .preview_size = theme_preview_size,
 					   .draw_preview =
 						   [](DrawList &t_draw_list, Rect t_preview, u32 t_theme, Color t_backdrop, u8 t_alpha) {
@@ -502,6 +566,9 @@ void SettingsPanel::sync_with_settings()
 	m_animation_speed_shown = m_settings.animation_speed;
 	m_corner_roundness_shown = m_settings.corner_roundness;
 	m_background_intensity_shown = m_settings.background_intensity;
+	m_background_strength_reveal =
+		m_settings.background_style != BackgroundStyle::none || m_settings.background_light ? 1.0f : 0.0f;
+	m_animation_speed_reveal = m_settings.animations_enabled ? 1.0f : 0.0f;
 	m_auto_lock_shown = static_cast<float>(auto_lock_stop(m_settings.auto_lock_minutes));
 	m_accent_shown[0] = m_settings.accent.r;
 	m_accent_shown[1] = m_settings.accent.g;
@@ -584,33 +651,51 @@ SettingsPanel::Layout SettingsPanel::layout() const
 
 SettingsPanel::Rows SettingsPanel::rows(const Layout &t_layout) const
 {
-	const float row = row_height(m_fonts);
 	const Rect hidden{0.0f, -1.0e6f, 0.0f, 0.0f};
+	const Rect region = t_layout.rows_region;
 
-	Rect cursor{t_layout.rows_region.x, t_layout.rows_region.y + rows_top_padding - m_rows_scroll.offset(),
-				t_layout.rows_region.w, 1.0e6f};
+	Rect cursor{region.x + card_margin_x, region.y + rows_top_padding - m_rows_scroll.offset(),
+				region.w - card_margin_x * 2.0f, 1.0e6f};
 	const float top = cursor.y;
-	const bool searching = is_searching();
 
 	Rows result{};
-	std::fill(std::begin(result.captions), std::end(result.captions), hidden);
-	std::optional<SettingsTab> captioned;
+	std::fill(std::begin(result.cards), std::end(result.cards), hidden);
+	std::fill(std::begin(result.group_titles), std::end(result.group_titles), hidden);
+
+	std::optional<u32> open_group;
+	float card_top = 0.0f;
+
+	const auto close_card = [&]() {
+		if (open_group) {
+			result.cards[*open_group] = Rect{cursor.x, card_top, cursor.w, cursor.y - card_top};
+		}
+	};
 
 	for (const RowSpec &spec : row_specs) {
-		if (!is_listed(spec)) {
+		const float height = row_extent(spec);
+
+		if (!is_listed(spec) || height <= 0.0f) {
 			result.*spec.row = hidden;
 			continue;
 		}
 
-		if (searching && captioned != spec.tab) {
-			result.captions[static_cast<u32>(spec.tab)] = cursor.split_top(caption_height(m_fonts));
-			captioned = spec.tab;
+		if (open_group != spec.group) {
+			close_card();
+
+			if (open_group) {
+				cursor.split_top(group_gap);
+			}
+
+			result.group_titles[spec.group] = cursor.split_top(group_title_height(m_fonts));
+			open_group = spec.group;
+			card_top = cursor.y;
 		}
 
-		result.*spec.row = cursor.split_top(row);
+		result.*spec.row = cursor.split_top(height);
 		result.listed_count += 1;
 	}
 
+	close_card();
 	result.content_height = cursor.y - top + rows_top_padding * 2.0f;
 
 	return result;
@@ -630,14 +715,38 @@ bool SettingsPanel::is_searching() const
 	return !m_search.value().empty();
 }
 
-bool SettingsPanel::is_listed(const RowSpec &t_spec) const
+bool SettingsPanel::matches_search(const RowSpec &t_spec) const
 {
-	if (!is_searching()) return t_spec.tab == m_tab;
-
 	const std::string_view fields[]{t_spec.title, t_spec.description, t_spec.keywords,
-									tab_names[static_cast<u32>(t_spec.tab)]};
+									tab_names[static_cast<u32>(t_spec.tab)], group_specs[t_spec.group].title};
 
 	return matches_every_word(m_search.value(), fields);
+}
+
+bool SettingsPanel::is_listed(const RowSpec &t_spec) const
+{
+	if (t_spec.parent != nullptr) return is_listed(spec_of(t_spec.parent));
+	if (!is_searching()) return t_spec.tab == m_tab;
+	if (matches_search(t_spec)) return true;
+
+	return std::ranges::any_of(
+		row_specs, [&](const RowSpec &t_child) { return t_child.parent == t_spec.row && matches_search(t_child); });
+}
+
+float SettingsPanel::reveal_of(const RowSpec &t_spec) const
+{
+	if (t_spec.row == &Rows::background_intensity) return m_background_strength_reveal;
+	if (t_spec.row == &Rows::animation_speed) return m_animation_speed_reveal;
+
+	return 1.0f;
+}
+
+float SettingsPanel::row_extent(const RowSpec &t_spec) const
+{
+	if (t_spec.parent != nullptr) return nested_row_height(m_fonts) * reveal_of(t_spec);
+	if (*t_spec.description == '\0') return single_row_height(m_fonts);
+
+	return row_height(m_fonts);
 }
 
 Rect SettingsPanel::search_rect(const Layout &t_layout) const
@@ -765,7 +874,7 @@ bool SettingsPanel::has_popup_open() const
 bool SettingsPanel::is_row_hovered(const Layout &t_layout, Rect t_row) const
 {
 	return is_blocking() && !has_popup_open() && t_layout.rows_region.contains(m_mouse) &&
-		   is_on_screen(t_layout, t_row) && t_row.inset(highlight_inset_x, 0.0f).contains(m_mouse);
+		   is_on_screen(t_layout, t_row) && t_row.inset(highlight_inset_x, highlight_inset_y).contains(m_mouse);
 }
 
 Rect SettingsPanel::reset_row(const Rows &t_rows, ResettableSetting t_setting) const
@@ -785,6 +894,8 @@ Rect SettingsPanel::reset_row(const Rows &t_rows, ResettableSetting t_setting) c
 			return t_rows.corner_roundness;
 		case ResettableSetting::background:
 			return t_rows.background;
+		case ResettableSetting::background_light:
+			return t_rows.background_light;
 		case ResettableSetting::background_intensity:
 			return t_rows.background_intensity;
 		case ResettableSetting::animations:
@@ -831,9 +942,10 @@ Rect SettingsPanel::reset_control(const Rows &t_rows, ResettableSetting t_settin
 		case ResettableSetting::hide_from_capture:
 		case ResettableSetting::block_overlay_injection:
 		case ResettableSetting::close_to_tray:
+		case ResettableSetting::background_light:
 			return toggle_rect(row, m_fonts);
 		case ResettableSetting::auto_lock:
-			return slider_control_rect(row, m_fonts, auto_lock_readout_width);
+			return slider_control_rect(row, m_fonts);
 		case ResettableSetting::count:
 			break;
 	}
@@ -866,6 +978,8 @@ bool SettingsPanel::is_default(ResettableSetting t_setting) const
 			return same(m_settings.corner_roundness, defaults.corner_roundness);
 		case ResettableSetting::background:
 			return m_settings.background_style == defaults.background_style;
+		case ResettableSetting::background_light:
+			return m_settings.background_light == defaults.background_light;
 		case ResettableSetting::background_intensity:
 			return same(m_settings.background_intensity, defaults.background_intensity);
 		case ResettableSetting::animations:
@@ -924,6 +1038,9 @@ void SettingsPanel::reset(ResettableSetting t_setting)
 			break;
 		case ResettableSetting::background_intensity:
 			m_settings.background_intensity = defaults.background_intensity;
+			break;
+		case ResettableSetting::background_light:
+			m_settings.background_light = defaults.background_light;
 			break;
 		case ResettableSetting::animations:
 			m_settings.animations_enabled = defaults.animations_enabled;
@@ -1148,6 +1265,13 @@ void SettingsPanel::update(float t_delta_seconds)
 									   ? m_settings.background_intensity
 									   : ease_value(m_background_intensity_shown, m_settings.background_intensity);
 
+	m_background_strength_reveal = animation::ease_toward(
+		m_background_strength_reveal,
+		m_settings.background_style != BackgroundStyle::none || m_settings.background_light ? 1.0f : 0.0f,
+		reveal_ease_rate, t_delta_seconds);
+	m_animation_speed_reveal = animation::ease_toward(
+		m_animation_speed_reveal, m_settings.animations_enabled ? 1.0f : 0.0f, reveal_ease_rate, t_delta_seconds);
+
 	m_auto_lock_shown = ease_value(m_auto_lock_shown, static_cast<float>(auto_lock_stop(m_settings.auto_lock_minutes)));
 
 	set_corner_roundness(m_corner_roundness_shown);
@@ -1200,8 +1324,10 @@ void SettingsPanel::update_hover_hints(float t_delta_seconds)
 		const auto setting = static_cast<ResettableSetting>(i);
 		const bool at_default = is_default(setting);
 
-		m_reset_visible[i] = animation::ease_toward(m_reset_visible[i], is_blocking() && !at_default ? 1.0f : 0.0f,
-													reset_appear_rate, t_delta_seconds);
+		m_reset_visible[i] = animation::ease_toward(
+			m_reset_visible[i],
+			pointer_live && !at_default && is_row_hovered(current, reset_row(current_rows, setting)) ? 1.0f : 0.0f,
+			reset_appear_rate, t_delta_seconds);
 		m_reset_spin[i] = animation::ease_toward(m_reset_spin[i], 0.0f, reset_spin_rate, t_delta_seconds);
 
 		const Rect button = reset_button(current_rows, setting);
@@ -1266,7 +1392,7 @@ bool SettingsPanel::on_pointer_down(Vec2 t_point)
 		return true;
 	}
 
-	const Rect auto_lock_track = slider_track_rect(current_rows.auto_lock, m_fonts);
+	const Rect auto_lock_track = slider_track_rect(current_rows.auto_lock, m_fonts, auto_lock_readout_width);
 	if (hits(current, current_rows.auto_lock, auto_lock_track, t_point)) {
 		m_auto_lock_drag.begin(t_point);
 		apply_auto_lock(auto_lock_track, t_point.x);
@@ -1309,7 +1435,7 @@ bool SettingsPanel::on_pointer_move(Vec2 t_point)
 
 	if (m_auto_lock_drag.is_pressed()) {
 		m_auto_lock_drag.update(t_point);
-		apply_auto_lock(slider_track_rect(current_rows.auto_lock, m_fonts), t_point.x);
+		apply_auto_lock(slider_track_rect(current_rows.auto_lock, m_fonts, auto_lock_readout_width), t_point.x);
 	}
 
 	if (m_search.is_selecting()) {
@@ -1639,7 +1765,7 @@ CursorKind SettingsPanel::cursor() const
 		{current_rows.secondary_font_size, stepper_plus(secondary_size)},
 		{current_rows.animation_speed, slider_track_rect(current_rows.animation_speed, m_fonts)},
 		{current_rows.corner_roundness, slider_track_rect(current_rows.corner_roundness, m_fonts)},
-		{current_rows.auto_lock, slider_track_rect(current_rows.auto_lock, m_fonts)},
+		{current_rows.auto_lock, slider_track_rect(current_rows.auto_lock, m_fonts, auto_lock_readout_width)},
 		{current_rows.accent, swatch_rect(current_rows.accent, m_fonts)},
 		{current_rows.master_password, master_password_button_rect(current_rows.master_password, m_fonts)},
 	};
@@ -1685,19 +1811,6 @@ void SettingsPanel::draw_chrome(DrawList &t_draw_list, const Layout &t_layout, u
 						 faded(colors.separator, t_alpha));
 }
 
-void SettingsPanel::draw_row_highlight(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows,
-									   u8 t_alpha) const
-{
-	for (const RowSpec &spec : row_specs) {
-		const Rect row = t_rows.*spec.row;
-		if (!is_row_hovered(t_layout, row)) continue;
-
-		t_draw_list.add_rounded_rect(row.inset(highlight_inset_x, 0.0f), rounded(highlight_radius),
-									 faded(theme().row_hover, t_alpha));
-		return;
-	}
-}
-
 void SettingsPanel::draw_rail(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const
 {
 	const Theme &colors = theme();
@@ -1711,6 +1824,9 @@ void SettingsPanel::draw_rail(DrawList &t_draw_list, const Layout &t_layout, u8 
 
 	if (!searching) {
 		const Rect first_tab = tab_rect(t_layout, SettingsTab::appearance);
+		const Rect active{first_tab.x, snapped_to_pixel(first_tab.y + m_tab_indicator * height), first_tab.w, height};
+		t_draw_list.add_rounded_rect(active, rounded(control_radius), faded(colors.row_hover, t_alpha));
+
 		const Rect indicator{first_tab.x,
 							 snapped_to_pixel(first_tab.y + m_tab_indicator * height) + tab_indicator_inset,
 							 tab_indicator_width, height - tab_indicator_inset * 2.0f};
@@ -1739,9 +1855,11 @@ void SettingsPanel::draw_label(DrawList &t_draw_list, const Rows &t_rows, Rect R
 {
 	const RowSpec &spec = spec_of(t_row);
 	const Rect row = t_rows.*t_row;
+	const float right_edge = label_right_edge(t_control, row, m_fonts);
 
-	draw_row_label(t_draw_list, m_fonts, row, spec.title, spec.description, label_right_edge(t_control, row, m_fonts),
-				   t_alpha);
+	if (spec.parent != nullptr) return;
+
+	draw_row_label(t_draw_list, m_fonts, row, spec.title, spec.description, right_edge, t_alpha);
 }
 
 void SettingsPanel::draw_dropdown_row(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows,
@@ -1754,7 +1872,7 @@ void SettingsPanel::draw_dropdown_row(DrawList &t_draw_list, const Layout &t_lay
 	const bool hovered = !has_popup_open() && hits(t_layout, row, button, m_mouse);
 
 	draw_label(t_draw_list, t_rows, t_row, button, t_alpha);
-	controls::draw_dropdown(t_draw_list, m_fonts.body(), button, t_value, t_open, hovered, m_settings.accent, t_alpha);
+	draw_select(t_draw_list, m_fonts.body(), button, t_value, t_open, hovered, m_settings.accent, t_alpha);
 }
 
 void SettingsPanel::draw_appearance(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const
@@ -1788,44 +1906,42 @@ void SettingsPanel::draw_appearance(DrawList &t_draw_list, const Layout &t_layou
 						  static_cast<u8>(std::lround(m_accent_shown[2])), accent.a};
 
 		draw_label(t_draw_list, t_rows, &Rows::accent, swatch, t_alpha);
-		t_draw_list.add_rounded_rect(swatch, rounded(6.0f), faded(shown, t_alpha));
+		const Rect ring = swatch.inset(-swatch_ring_gap);
+		t_draw_list.add_bordered_rect(ring, rounded(ring.w * 0.5f), Color{}, faded(theme().border, t_alpha), 1.0f);
+		t_draw_list.add_rounded_rect(swatch, rounded(swatch.w * 0.5f), faded(shown, t_alpha));
 	}
 }
 
 void SettingsPanel::draw_sliders(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const
 {
-	const Font &body = m_fonts.body();
+	const Font &readout_font = m_fonts.secondary();
 	char readout[8];
 
-	if (is_on_screen(t_layout, t_rows.corner_roundness)) {
-		const Rect row = t_rows.corner_roundness;
-		const int written = std::snprintf(readout, sizeof(readout), "%.0f%%", m_corner_roundness_shown * 100.0f);
+	const auto draw_one = [&](Rect Rows::*t_row, float t_fraction, std::string_view t_readout, u8 t_row_alpha) {
+		const Rect row = t_rows.*t_row;
+		if (!is_on_screen(t_layout, row) || t_row_alpha == 0) return;
 
-		draw_label(t_draw_list, t_rows, &Rows::corner_roundness, slider_control_rect(row, m_fonts), t_alpha);
-		draw_slider(t_draw_list, body, slider_track_rect(row, m_fonts),
-					fraction_in(m_corner_roundness_shown, corner_roundness_min, corner_roundness_max),
-					std::string_view{readout, static_cast<usize>(std::max(written, 0))}, m_settings.accent, t_alpha);
-	}
+		draw_label(t_draw_list, t_rows, t_row, slider_control_rect(row, m_fonts), t_row_alpha);
+		draw_slider(t_draw_list, readout_font, slider_control_rect(row, m_fonts), slider_readout_width, t_fraction,
+					t_readout, m_settings.accent, t_row_alpha);
+	};
 
-	if (is_on_screen(t_layout, t_rows.background_intensity)) {
-		const Rect row = t_rows.background_intensity;
-		const int written = std::snprintf(readout, sizeof(readout), "%.0f%%", m_background_intensity_shown * 100.0f);
+	const auto shown = [&readout](int t_written) {
+		return std::string_view{readout, static_cast<usize>(std::max(t_written, 0))};
+	};
 
-		draw_label(t_draw_list, t_rows, &Rows::background_intensity, slider_control_rect(row, m_fonts), t_alpha);
-		draw_slider(t_draw_list, body, slider_track_rect(row, m_fonts),
-					fraction_in(m_background_intensity_shown, background_intensity_min, background_intensity_max),
-					std::string_view{readout, static_cast<usize>(std::max(written, 0))}, m_settings.accent, t_alpha);
-	}
+	int written = std::snprintf(readout, sizeof(readout), "%.0f%%", m_corner_roundness_shown * 100.0f);
+	draw_one(&Rows::corner_roundness, fraction_in(m_corner_roundness_shown, corner_roundness_min, corner_roundness_max),
+			 shown(written), t_alpha);
 
-	if (is_on_screen(t_layout, t_rows.animation_speed)) {
-		const Rect row = t_rows.animation_speed;
-		const int written = std::snprintf(readout, sizeof(readout), "%.2fx", m_animation_speed_shown);
+	written = std::snprintf(readout, sizeof(readout), "%.0f%%", m_background_intensity_shown * 100.0f);
+	draw_one(&Rows::background_intensity,
+			 fraction_in(m_background_intensity_shown, background_intensity_min, background_intensity_max),
+			 shown(written), static_cast<u8>(t_alpha * m_background_strength_reveal * m_background_strength_reveal));
 
-		draw_label(t_draw_list, t_rows, &Rows::animation_speed, slider_control_rect(row, m_fonts), t_alpha);
-		draw_slider(t_draw_list, body, slider_track_rect(row, m_fonts),
-					fraction_in(m_animation_speed_shown, animation_speed_min, animation_speed_max),
-					std::string_view{readout, static_cast<usize>(std::max(written, 0))}, m_settings.accent, t_alpha);
-	}
+	written = std::snprintf(readout, sizeof(readout), "%.2fx", m_animation_speed_shown);
+	draw_one(&Rows::animation_speed, fraction_in(m_animation_speed_shown, animation_speed_min, animation_speed_max),
+			 shown(written), static_cast<u8>(t_alpha * m_animation_speed_reveal * m_animation_speed_reveal));
 }
 
 void SettingsPanel::draw_auto_lock(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const
@@ -1837,10 +1953,9 @@ void SettingsPanel::draw_auto_lock(DrawList &t_draw_list, const Layout &t_layout
 	const float never_amount = std::clamp(m_auto_lock_shown - (last_stop - 1.0f), 0.0f, 1.0f);
 	char readout[16];
 
-	draw_label(t_draw_list, t_rows, &Rows::auto_lock, slider_control_rect(row, m_fonts, auto_lock_readout_width),
-			   t_alpha);
-	draw_slider(t_draw_list, m_fonts.body(), slider_track_rect(row, m_fonts), m_auto_lock_shown / last_stop,
-				auto_lock_label(m_settings.auto_lock_minutes, readout),
+	draw_label(t_draw_list, t_rows, &Rows::auto_lock, slider_control_rect(row, m_fonts), t_alpha);
+	draw_slider(t_draw_list, m_fonts.secondary(), slider_control_rect(row, m_fonts), auto_lock_readout_width,
+				m_auto_lock_shown / last_stop, auto_lock_label(m_settings.auto_lock_minutes, readout),
 				mix(m_settings.accent, theme().text_faint, never_amount), t_alpha, auto_lock_stop_count - 1);
 }
 
@@ -1870,17 +1985,43 @@ void SettingsPanel::draw_search(DrawList &t_draw_list, const Layout &t_layout, u
 					 faded(clear.contains(m_mouse) ? colors.text : colors.text_faint, t_alpha));
 }
 
+void SettingsPanel::draw_cards(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const
+{
+	const Theme &colors = theme();
+
+	for (const Rect &card : t_rows.cards) {
+		if (!is_on_screen(t_layout, card)) continue;
+
+		t_draw_list.add_rounded_rect(card, rounded(card_radius), faded(colors.field, t_alpha));
+	}
+
+	std::optional<u32> group;
+
+	for (const RowSpec &spec : row_specs) {
+		const Rect row = t_rows.*spec.row;
+		if (row.h <= 0.0f) continue;
+
+		const bool first = group != spec.group;
+		group = spec.group;
+
+		if (first || spec.parent != nullptr || !is_on_screen(t_layout, row)) continue;
+
+		t_draw_list.add_rect(Rect{row.x + row_inset_x, row.y, row.w - row_inset_x * 2.0f, 1.0f},
+							 faded(mix(colors.field, colors.separator, divider_strength), t_alpha));
+	}
+}
+
 void SettingsPanel::draw_captions(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const
 {
 	const Font &secondary = m_fonts.secondary();
 
-	for (u32 i = 0; i < settings_tab_count; i += 1) {
-		const Rect caption = t_rows.captions[i];
-		if (!is_on_screen(t_layout, caption)) continue;
+	for (u32 i = 0; i < group_count; i += 1) {
+		const Rect title = t_rows.group_titles[i];
+		if (!is_on_screen(t_layout, title)) continue;
 
 		draw_text(t_draw_list, secondary,
-				  Vec2{caption.x + row_padding_x, caption.y + caption_top_gap + secondary.ascent()}, tab_names[i],
-				  faded(theme().text_faint, t_alpha));
+				  Vec2{title.x + row_inset_x * 0.5f, title.bottom() - group_title_bottom_gap - secondary.descent()},
+				  group_specs[i].title, faded(theme().text_faint, t_alpha));
 	}
 }
 
@@ -1955,7 +2096,7 @@ void SettingsPanel::draw(DrawList &t_draw_list)
 	draw_rail(t_draw_list, current, alpha);
 
 	t_draw_list.push_clip(current.rows_region);
-	draw_row_highlight(t_draw_list, current, current_rows, alpha);
+	draw_cards(t_draw_list, current, current_rows, alpha);
 	draw_captions(t_draw_list, current, current_rows, alpha);
 	draw_appearance(t_draw_list, current, current_rows, alpha);
 	draw_sliders(t_draw_list, current, current_rows, alpha);

@@ -132,6 +132,7 @@ class Carousel : public Widget {
 	void move_focus(i32 t_delta);
 	void open_game(i32 t_game);
 
+	void drop_lost_press();
 	void start_press(i32 t_game, Vec2 t_point);
 	void begin_reorder(u32 t_game, Vec2 t_point);
 	void end_reorder(bool t_cancel);
@@ -160,6 +161,9 @@ class Carousel : public Widget {
 	void draw_mode_morph(DrawList &t_draw_list) const;
 	void draw_carousel_mode(DrawList &t_draw_list) const;
 	void draw_carousel_edges(DrawList &t_draw_list, u8 t_alpha) const;
+	Rect faded_rect(u32 t_game) const;
+	void fade_cards(DrawList &t_draw_list, Rect t_band, Color t_top_left, Color t_top_right, Color t_bottom_left,
+					Color t_bottom_right) const;
 	void draw_grid_mode(DrawList &t_draw_list) const;
 	void draw_list_mode(DrawList &t_draw_list) const;
 	void draw_wrap_scroll(DrawList &t_draw_list, u8 t_alpha) const;

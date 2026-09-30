@@ -72,10 +72,11 @@ class Renderer {
 		m_effect_time_seconds = t_seconds;
 	}
 
-	void set_backdrop(u32 t_style, float t_intensity)
+	void set_backdrop(u32 t_style, float t_intensity, bool t_light)
 	{
 		m_backdrop_style = t_style;
 		m_backdrop_intensity = t_intensity;
+		m_backdrop_light = t_light;
 	}
 
 	void render(const DrawList &t_draw_list, Color t_clear_color);
@@ -124,6 +125,7 @@ class Renderer {
 	ComPtr<ID3D11PixelShader> m_shadow_shader;
 	ComPtr<ID3D11PixelShader> m_outline_countdown_shader;
 	ComPtr<ID3D11PixelShader> m_backdrop_shader;
+	ComPtr<ID3D11PixelShader> m_backdrop_plain_shader;
 	ComPtr<ID3D11InputLayout> m_input_layout;
 
 	ComPtr<ID3D11Buffer> m_viewport_constants;
@@ -154,4 +156,5 @@ class Renderer {
 	float m_effect_time_seconds = 0.0f;
 	u32 m_backdrop_style = 0;
 	float m_backdrop_intensity = 0.0f;
+	bool m_backdrop_light = false;
 };

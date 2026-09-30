@@ -209,6 +209,7 @@ void read_appearance(const json &t_json, Settings &t_settings)
 		}
 	}
 
+	t_settings.background_light = t_json.value("background_light", t_settings.background_light);
 	t_settings.background_intensity =
 		std::clamp(t_json.value("background_intensity", t_settings.background_intensity), 0.0f, 1.0f);
 }
@@ -433,6 +434,7 @@ bool storage::save_settings(const Settings &t_settings)
 		{"animation_speed", t_settings.animation_speed},
 		{"corner_roundness", t_settings.corner_roundness},
 		{"background", background_labels[static_cast<u32>(t_settings.background_style)].id},
+		{"background_light", t_settings.background_light},
 		{"background_intensity", t_settings.background_intensity},
 		{"font_pixel_size", t_settings.font_size},
 		{"secondary_font_pixel_size", t_settings.secondary_font_size},

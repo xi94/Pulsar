@@ -57,7 +57,8 @@ struct BackdropConstants {
 	float intensity;
 	float style;
 	float pixel_scale;
-	float padding[3];
+	float light;
+	float padding[2];
 };
 
 static_assert(sizeof(BackdropConstants) == 32);
@@ -239,7 +240,7 @@ bool Renderer::create_shaders()
 		{"ps_textured", "ps_5_0"},	   {"ps_banner_glow", "ps_5_0"},
 		{"ps_color_picker", "ps_5_0"}, {"ps_circular_progress", "ps_5_0"},
 		{"ps_shadow", "ps_5_0"},	   {"ps_outline_countdown", "ps_5_0"},
-		{"ps_backdrop", "ps_5_0"},
+		{"ps_backdrop", "ps_5_0"},	   {"ps_backdrop_plain", "ps_5_0"},
 	};
 
 	std::vector<std::thread> compilers;
@@ -268,6 +269,7 @@ bool Renderer::create_shaders()
 		&m_shadow_shader,
 		&m_outline_countdown_shader,
 		&m_backdrop_shader,
+		&m_backdrop_plain_shader,
 	};
 
 	for (usize i = 0; i < std::size(pixel_shaders); i += 1) {
@@ -466,16 +468,18 @@ void Renderer::draw_command(const DrawCommand &t_command)
 			break;
 		}
 
-		case ShaderKind::backdrop: {
+		case ShaderKind::backdrop:
+		case ShaderKind::backdrop_plain: {
 			const float pixel_scale =
 				m_logical_width > 0.0f ? static_cast<float>(m_physical_width) / m_logical_width : 1.0f;
 			const BackdropConstants constants{.target_width = static_cast<float>(m_physical_width),
 											  .target_height = static_cast<float>(m_physical_height),
 											  .intensity = m_backdrop_intensity,
 											  .style = static_cast<float>(m_backdrop_style),
-											  .pixel_scale = pixel_scale};
+											  .pixel_scale = pixel_scale,
+											  .light = m_backdrop_light ? 1.0f : 0.0f};
 			m_context->UpdateSubresource(m_backdrop_constants.Get(), 0, nullptr, &constants, 0, 0);
-			shader = m_backdrop_shader.Get();
+			shader = t_command.shader == ShaderKind::backdrop ? m_backdrop_shader.Get() : m_backdrop_plain_shader.Get();
 			extra_constants = m_backdrop_constants.Get();
 			break;
 		}
