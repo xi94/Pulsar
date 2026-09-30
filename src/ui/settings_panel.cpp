@@ -63,6 +63,9 @@ constexpr float tab_slide_rate = 18.0f;
 constexpr float active_tab_tint = 0.18f;
 constexpr float hovered_tab_brightening = 0.5f;
 constexpr float scrollbar_margin = 4.0f;
+constexpr float header_shadow_height = 14.0f;
+constexpr float header_shadow_alpha = 0.35f;
+constexpr float header_shadow_travel = 24.0f;
 
 constexpr float reset_button_size = 28.0f;
 constexpr float reset_button_gap = 10.0f;
@@ -1129,7 +1132,10 @@ void SettingsPanel::select_tab(SettingsTab t_tab)
 ScrollGeometry SettingsPanel::rows_scroll(const Layout &t_layout, const Rows &t_rows) const
 {
 	const Rect region = t_layout.rows_region;
-	const Rect track{region.right() - scrollbar_width - scrollbar_margin, region.y, scrollbar_width, region.h};
+	const float bottom_margin =
+		t_layout.docked ? scrollbar_margin : std::max(scrollbar_margin, scaled_radius(panel_radius) * 0.75f);
+	const Rect track{region.right() - scrollbar_width - scrollbar_margin, region.y + scrollbar_margin, scrollbar_width,
+					 std::max(0.0f, region.h - scrollbar_margin - bottom_margin)};
 
 	return ScrollGeometry{track, t_rows.content_height, region.h};
 }
@@ -2058,9 +2064,6 @@ void SettingsPanel::draw_chrome(DrawList &t_draw_list, const Layout &t_layout, u
 
 	draw_text(t_draw_list, body, Vec2{back.right() + title_gap, body.centered_baseline(t_layout.header)}, panel_title,
 			  faded(colors.text, t_alpha));
-
-	t_draw_list.add_rect(Rect{t_layout.header.x, t_layout.header.bottom(), t_layout.header.w, 1.0f},
-						 faded(colors.separator, t_alpha));
 }
 
 void SettingsPanel::draw_rail(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const
@@ -2429,7 +2432,13 @@ void SettingsPanel::draw(DrawList &t_draw_list)
 	draw_search(t_draw_list, current, alpha);
 	draw_rail(t_draw_list, current, alpha);
 
-	t_draw_list.push_clip(current.rows_region);
+	const Rect region = current.rows_region;
+	const float divider_y = snapped_to_pixel(current.header.bottom());
+	const float divider_thickness = snapped_to_pixel(1.0f);
+	const Rect content{region.x, divider_y + divider_thickness, region.w,
+					   region.bottom() - divider_y - divider_thickness};
+
+	t_draw_list.push_clip(content);
 	draw_cards(t_draw_list, current, current_rows, alpha);
 	draw_captions(t_draw_list, current, current_rows, alpha);
 	draw_appearance(t_draw_list, current, current_rows, alpha);
@@ -2446,7 +2455,23 @@ void SettingsPanel::draw(DrawList &t_draw_list)
 
 	t_draw_list.pop_clip();
 
-	m_rows_scroll.draw_edge_fade(t_draw_list, current.rows_region, scroll, faded(theme().surface, alpha));
+	const Rect card_span{region.x + card_margin_x, content.y, region.w - card_margin_x * 2.0f, content.h};
+	const Scrollable::EdgeFades fades = m_rows_scroll.edge_fades(card_span, scroll);
+	const float header_shadow = std::clamp(m_rows_scroll.offset() / header_shadow_travel, 0.0f, 1.0f);
+
+	if (header_shadow > 0.0f) {
+		const Color shadow = faded(theme().shadow, static_cast<u8>(alpha * header_shadow_alpha * header_shadow));
+		t_draw_list.add_gradient(Rect{region.x, content.y, region.w, header_shadow_height}, shadow, shadow,
+								 faded(shadow, 0), faded(shadow, 0));
+	}
+
+	if (fades.bottom.h > 0.0f) {
+		const Color surface = faded(theme().surface, alpha);
+		t_draw_list.add_gradient(fades.bottom, faded(surface, 0), faded(surface, 0), surface, surface);
+	}
+
+	t_draw_list.add_rect(Rect{current.header.x, divider_y, current.header.w, divider_thickness},
+						 faded(theme().separator, alpha));
 	m_rows_scroll.draw(t_draw_list, scroll, m_mouse, alpha);
 
 	if (is_on_screen(current, current_rows.accent)) {
