@@ -297,11 +297,11 @@ constexpr const char *shader_source = R"(
 		float backdrop_style;
 		float backdrop_pixel_scale;
 		float backdrop_light;
-		float2 backdrop_padding;
+		float backdrop_grain;
+		float backdrop_padding;
 	};
 
-	static const float backdrop_pattern_strength[5] = {0.0, 0.0, 0.2, 0.035, 0.05};
-	static const float backdrop_pattern_spacing[5] = {1.0, 1.0, 24.0, 40.0, 10.0};
+	static const float backdrop_pattern_strength[9] = {0.0, 0.2, 0.035, 0.05, 0.09, 0.08, 0.5, 0.045, 0.04};
 
 	float backdrop_noise(float2 pixel)
 	{
@@ -310,31 +310,106 @@ constexpr const char *shader_source = R"(
 		return frac((p.x + p.y) * p.z);
 	}
 
+	float backdrop_hash(float2 p)
+	{
+		uint2 q = asuint(int2(p));
+		uint h = q.x * 374761393u + q.y * 668265263u;
+		h = (h ^ (h >> 13)) * 1274126177u;
+		h ^= h >> 16;
+		return h / 4294967296.0;
+	}
+
+	float backdrop_value_noise(float2 p)
+	{
+		float2 i = floor(p);
+		float2 f = p - i;
+		float2 s = f * f * (3.0 - 2.0 * f);
+		float a = backdrop_hash(i);
+		float b = backdrop_hash(i + float2(1.0, 0.0));
+		float c = backdrop_hash(i + float2(0.0, 1.0));
+		float d = backdrop_hash(i + float2(1.0, 1.0));
+		return a + (b - a) * s.x + (c - a) * s.y + (a - b - c + d) * s.x * s.y;
+	}
+
+	static const int backdrop_bias_cells = 4096;
+
+	int backdrop_wrap(int a, int b)
+	{
+		return int(uint(a + b * backdrop_bias_cells) % uint(b));
+	}
+
+	int backdrop_floor_div(int a, int b)
+	{
+		return int(uint(a + b * backdrop_bias_cells) / uint(b)) - backdrop_bias_cells;
+	}
+
+	int backdrop_spacing(float t_logical, float scale)
+	{
+		return max((int)round(t_logical * scale), 2);
+	}
+
 	float backdrop_pattern(float2 pixel, float2 size, float scale, int style)
 	{
-		float spacing = max(round(backdrop_pattern_spacing[style] * scale), 2.0);
-		float stroke = max(round(scale), 1.0);
+		int stroke = max((int)round(scale), 1);
+		int2 p = int2(floor(pixel)) - int2(floor(size * 0.5));
 
-		float2 cell = floor(pixel) - floor(size * 0.5);
-		float2 m = cell - spacing * floor(cell / spacing);
-		float diagonal = cell.x + cell.y;
-		float slant = diagonal - spacing * floor(diagonal / spacing);
+		int dot_spacing = backdrop_spacing(24.0, scale);
+		float dots = backdrop_wrap(p.x, dot_spacing) < stroke && backdrop_wrap(p.y, dot_spacing) < stroke ? 1.0 : 0.0;
 
-		bool on_dot = m.x < stroke && m.y < stroke;
-		bool on_grid = m.x < 1.0 || m.y < 1.0;
-		bool on_line = slant < stroke;
+		int grid_spacing = backdrop_spacing(40.0, scale);
+		float grid = backdrop_wrap(p.x, grid_spacing) == 0 || backdrop_wrap(p.y, grid_spacing) == 0 ? 1.0 : 0.0;
 
-		bool hit = false;
-		hit = style == 2 ? on_dot : hit;
-		hit = style == 3 ? on_grid : hit;
-		hit = style == 4 ? on_line : hit;
+		float lines = backdrop_wrap(p.x + p.y, backdrop_spacing(10.0, scale)) < stroke ? 1.0 : 0.0;
 
-		return hit ? 1.0 : 0.0;
+		int polka_spacing = backdrop_spacing(28.0, scale);
+		int polka_row = backdrop_floor_div(p.y, polka_spacing);
+		int polka_offset = backdrop_wrap(polka_row, 2) == 1 ? polka_spacing >> 1 : 0;
+		int polka_column = backdrop_floor_div(p.x - polka_offset, polka_spacing);
+		float2 polka_center = float2(polka_column * polka_spacing + polka_offset, polka_row * polka_spacing) +
+							  polka_spacing * 0.5;
+		float polka = saturate(2.0 * scale + 0.5 - length(float2(p) - polka_center));
+
+		float2 terrain = float2(p) / (170.0 * scale);
+		float height = (backdrop_value_noise(terrain) * 0.65 +
+						backdrop_value_noise(terrain * 2.1 + float2(5.2, 1.3)) * 0.35) * 8.0;
+		float contour = min(frac(height), 1.0 - frac(height)) / max(length(float2(ddx(height), ddy(height))), 0.00001);
+		float topography = saturate(1.0 - contour / 0.9);
+
+		int star_spacing = backdrop_spacing(14.0, scale);
+		int2 star_cell = int2(backdrop_floor_div(p.x, star_spacing), backdrop_floor_div(p.y, star_spacing));
+		float2 cell = float2(star_cell);
+		int2 star = star_cell * star_spacing + int2(float2(backdrop_hash(cell + float2(9.0, 0.0)),
+														  backdrop_hash(cell + float2(0.0, 9.0))) * star_spacing);
+		int2 star_offset = abs(p - star);
+		float star_brightness = 0.2 + 0.8 * pow(backdrop_hash(cell + float2(5.0, 3.0)), 2.0);
+		bool has_glint = backdrop_hash(cell + float2(11.0, 13.0)) < 0.08;
+		bool on_glint = min(star_offset.x, star_offset.y) == 0 && max(star_offset.x, star_offset.y) <= 2 * stroke;
+		float star_shape = star_offset.x == 0 && star_offset.y == 0 ? 1.0 : (has_glint && on_glint ? 0.5 : 0.0);
+		float starfield = backdrop_hash(cell) < 0.11 ? star_shape * star_brightness : 0.0;
+
+		float scanlines = backdrop_wrap(p.y, backdrop_spacing(3.0, scale)) < stroke ? 1.0 : 0.0;
+
+		int hatch_spacing = backdrop_spacing(14.0, scale);
+		float crosshatch =
+			backdrop_wrap(p.x + p.y, hatch_spacing) < stroke || backdrop_wrap(p.x - p.y, hatch_spacing) < stroke ? 1.0
+																												 : 0.0;
+
+		float pattern = 0.0;
+		pattern = style == 1 ? dots : pattern;
+		pattern = style == 2 ? grid : pattern;
+		pattern = style == 3 ? lines : pattern;
+		pattern = style == 4 ? polka : pattern;
+		pattern = style == 5 ? topography : pattern;
+		pattern = style == 6 ? starfield : pattern;
+		pattern = style == 7 ? scanlines : pattern;
+		pattern = style == 8 ? crosshatch : pattern;
+
+		return pattern;
 	}
 
 	float4 backdrop_color(PixelInput input, bool with_pattern)
 	{
-		int style = clamp((int)(backdrop_style + 0.5), 0, 4);
+		int style = clamp((int)(backdrop_style + 0.5), 0, 8);
 		float2 pixel = input.position.xy;
 		float2 size = backdrop_target_size;
 		float k = backdrop_intensity;
@@ -344,9 +419,9 @@ constexpr const char *shader_source = R"(
 		float3 ink = dot(input.color.rgb, float3(0.299, 0.587, 0.114)) > 0.5 ? 0.0 : 1.0;
 
 		float3 rgb = input.color.rgb;
-		rgb = lerp(rgb, 1.0, light * 0.07 * k * backdrop_light);
+		rgb = lerp(rgb, 1.0, light * 0.07 * backdrop_light);
 		rgb = lerp(rgb, ink, pattern * backdrop_pattern_strength[style] * k);
-		rgb += (backdrop_noise(pixel) - 0.5) * (10.5 / 255.0) * (style == 1 ? k : 0.0);
+		rgb += (backdrop_noise(pixel) - 0.5) * (10.5 / 255.0) * backdrop_grain;
 
 		return float4(saturate(rgb), input.color.a);
 	}

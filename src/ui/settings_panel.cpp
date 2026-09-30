@@ -96,8 +96,6 @@ constexpr float animation_speed_min = 0.25f;
 constexpr float animation_speed_max = 3.0f;
 constexpr float corner_roundness_min = 0.0f;
 constexpr float corner_roundness_max = 1.5f;
-constexpr float background_intensity_min = 0.0f;
-constexpr float background_intensity_max = 1.0f;
 constexpr float background_hover_preview_seconds = 0.35f;
 constexpr float font_size_min = 10.0f;
 constexpr float font_size_max = 24.0f;
@@ -474,38 +472,54 @@ void draw_theme_preview(DrawList &t_draw_list, Rect t_preview, ThemeKind t_kind,
 }
 
 const SettingsPanel::GroupSpec SettingsPanel::group_specs[group_count]{
-	{SettingsTab::appearance, "Look"},	{SettingsTab::appearance, "Text"},	  {SettingsTab::behavior, "Motion"},
-	{SettingsTab::behavior, "General"}, {SettingsTab::privacy, "Protection"}, {SettingsTab::security, "Vault"},
+	{SettingsTab::appearance, "Look"}, {SettingsTab::appearance, "Background"}, {SettingsTab::appearance, "Text"},
+	{SettingsTab::behavior, "Motion"}, {SettingsTab::behavior, "General"},		{SettingsTab::privacy, "Protection"},
+	{SettingsTab::security, "Vault"},
 };
 
 const SettingsPanel::RowSpec SettingsPanel::row_specs[row_spec_count]{
 	{&Rows::theme, SettingsTab::appearance, 0, nullptr, "Theme", "", "dark light mode palette colour colors interface"},
 	{&Rows::accent, SettingsTab::appearance, 0, nullptr, "Accent Color", "", "colour highlight buttons"},
-	{&Rows::background, SettingsTab::appearance, 0, nullptr, "Background", "",
-	 "backdrop texture pattern grain noise dots grid lines wallpaper"},
-	{&Rows::background_intensity, SettingsTab::appearance, 0, &Rows::background, "Strength", "",
-	 "backdrop texture intensity opacity subtle"},
-	{&Rows::background_light, SettingsTab::appearance, 0, nullptr, "Soft Light", "",
-	 "backdrop glow gradient top light depth"},
 	{&Rows::corner_roundness, SettingsTab::appearance, 0, nullptr, "Corner Roundness", "", "radius rounded corners"},
-	{&Rows::font, SettingsTab::appearance, 1, nullptr, "Font", "", "typeface family text"},
-	{&Rows::font_size, SettingsTab::appearance, 1, nullptr, "Font Size", "", "text scale zoom bigger interface"},
-	{&Rows::secondary_font_size, SettingsTab::appearance, 1, nullptr, "Small Text Size", "",
+	{&Rows::background, SettingsTab::appearance, 1, nullptr, "Pattern", "",
+	 "background backdrop texture dots grid lines polka topography starfield stars scanlines crosshatch wallpaper"},
+	{&Rows::background_intensity, SettingsTab::appearance, 1, &Rows::background, "Pattern Strength", "",
+	 "background backdrop pattern intensity opacity subtle"},
+	{&Rows::background_light, SettingsTab::appearance, 1, nullptr, "Soft Light", "",
+	 "background backdrop glow gradient top light depth"},
+	{&Rows::background_light_intensity, SettingsTab::appearance, 1, &Rows::background_light, "Light Strength", "",
+	 "background backdrop glow intensity"},
+	{&Rows::background_grain, SettingsTab::appearance, 1, nullptr, "Grain", "",
+	 "background backdrop noise film texture"},
+	{&Rows::background_grain_intensity, SettingsTab::appearance, 1, &Rows::background_grain, "Grain Strength", "",
+	 "background backdrop noise intensity"},
+	{&Rows::font, SettingsTab::appearance, 2, nullptr, "Font", "", "typeface family text"},
+	{&Rows::font_size, SettingsTab::appearance, 2, nullptr, "Font Size", "", "text scale zoom bigger interface"},
+	{&Rows::secondary_font_size, SettingsTab::appearance, 2, nullptr, "Small Text Size", "",
 	 "secondary font labels hints scale smaller"},
-	{&Rows::animations, SettingsTab::behavior, 2, nullptr, "Animations", "", "motion effects reduce animate popups"},
-	{&Rows::animation_speed, SettingsTab::behavior, 2, &Rows::animations, "Speed", "", "animation motion fast slow"},
-	{&Rows::notifications, SettingsTab::behavior, 3, nullptr, "Notifications", "",
+	{&Rows::animations, SettingsTab::behavior, 3, nullptr, "Animations", "", "motion effects reduce animate popups"},
+	{&Rows::animation_speed, SettingsTab::behavior, 3, &Rows::animations, "Speed", "", "animation motion fast slow"},
+	{&Rows::notifications, SettingsTab::behavior, 4, nullptr, "Notifications", "",
 	 "toast popup alert confirmation messages"},
-	{&Rows::close_to_tray, SettingsTab::behavior, 3, nullptr, "Close To Tray", "Closing hides the app to the tray.",
+	{&Rows::close_to_tray, SettingsTab::behavior, 4, nullptr, "Close To Tray", "Closing hides the app to the tray.",
 	 "minimize background system tray"},
-	{&Rows::hide_from_capture, SettingsTab::privacy, 4, nullptr, "Hide From Screen Capture",
+	{&Rows::hide_from_capture, SettingsTab::privacy, 5, nullptr, "Hide From Screen Capture",
 	 "Hide accounts from screenshares, recordings and screenshots.", "stream record share obs discord"},
-	{&Rows::block_overlay_injection, SettingsTab::privacy, 4, nullptr, "Block Overlay Injection",
+	{&Rows::block_overlay_injection, SettingsTab::privacy, 5, nullptr, "Block Overlay Injection",
 	 "Block overlays and keyloggers. Restart to apply.", "security inject dll"},
-	{&Rows::auto_lock, SettingsTab::security, 5, nullptr, "Auto-Lock", "Lock the vault after being idle.",
+	{&Rows::auto_lock, SettingsTab::security, 6, nullptr, "Auto-Lock", "Lock the vault after being idle.",
 	 "timeout idle inactive away"},
-	{&Rows::master_password, SettingsTab::security, 5, nullptr, "Master Password", "Encrypts saved passwords.",
+	{&Rows::master_password, SettingsTab::security, 6, nullptr, "Master Password", "Encrypts saved passwords.",
 	 "change reset vault encryption"},
+};
+
+const SettingsPanel::PercentSlider SettingsPanel::percent_sliders[percent_slider_count]{
+	{&Rows::background_intensity, &Settings::background_intensity,
+	 [](const Settings &t_settings) { return t_settings.background_style != BackgroundStyle::none; }},
+	{&Rows::background_light_intensity, &Settings::background_light_intensity,
+	 [](const Settings &t_settings) { return t_settings.background_light; }},
+	{&Rows::background_grain_intensity, &Settings::background_grain_intensity,
+	 [](const Settings &t_settings) { return t_settings.background_grain; }},
 };
 
 const SettingsPanel::Toggle SettingsPanel::toggles[toggle_count]{
@@ -515,6 +529,7 @@ const SettingsPanel::Toggle SettingsPanel::toggles[toggle_count]{
 	{&Settings::block_overlay_injection, &Rows::block_overlay_injection},
 	{&Settings::close_to_tray, &Rows::close_to_tray},
 	{&Settings::background_light, &Rows::background_light},
+	{&Settings::background_grain, &Rows::background_grain},
 };
 
 SettingsPanel::SettingsPanel(Settings &t_settings, Fonts &t_fonts, Renderer &t_renderer, const Window &t_window,
@@ -565,9 +580,11 @@ void SettingsPanel::sync_with_settings()
 	m_secondary_font_size_shown = m_settings.secondary_font_size;
 	m_animation_speed_shown = m_settings.animation_speed;
 	m_corner_roundness_shown = m_settings.corner_roundness;
-	m_background_intensity_shown = m_settings.background_intensity;
-	m_background_strength_reveal =
-		m_settings.background_style != BackgroundStyle::none || m_settings.background_light ? 1.0f : 0.0f;
+	for (u32 i = 0; i < percent_slider_count; i += 1) {
+		m_percent_shown[i] = m_settings.*percent_sliders[i].value;
+		m_percent_reveal[i] = percent_sliders[i].shown(m_settings) ? 1.0f : 0.0f;
+	}
+
 	m_animation_speed_reveal = m_settings.animations_enabled ? 1.0f : 0.0f;
 	m_auto_lock_shown = static_cast<float>(auto_lock_stop(m_settings.auto_lock_minutes));
 	m_accent_shown[0] = m_settings.accent.r;
@@ -609,7 +626,9 @@ void SettingsPanel::close()
 	m_open = false;
 	m_search.set_focused(false);
 	m_auto_lock_drag.end();
-	m_background_intensity_drag.end();
+	for (Draggable &drag : m_percent_drags) {
+		drag.end();
+	}
 	m_font_list.close();
 	m_theme_list.close();
 	m_background_list.close();
@@ -735,7 +754,10 @@ bool SettingsPanel::is_listed(const RowSpec &t_spec) const
 
 float SettingsPanel::reveal_of(const RowSpec &t_spec) const
 {
-	if (t_spec.row == &Rows::background_intensity) return m_background_strength_reveal;
+	for (u32 i = 0; i < percent_slider_count; i += 1) {
+		if (t_spec.row == percent_sliders[i].row) return m_percent_reveal[i];
+	}
+
 	if (t_spec.row == &Rows::animation_speed) return m_animation_speed_reveal;
 
 	return 1.0f;
@@ -743,10 +765,12 @@ float SettingsPanel::reveal_of(const RowSpec &t_spec) const
 
 float SettingsPanel::row_extent(const RowSpec &t_spec) const
 {
-	if (t_spec.parent != nullptr) return nested_row_height(m_fonts) * reveal_of(t_spec);
-	if (*t_spec.description == '\0') return single_row_height(m_fonts);
+	const float reveal = reveal_of(t_spec);
 
-	return row_height(m_fonts);
+	if (t_spec.parent != nullptr) return nested_row_height(m_fonts) * reveal;
+	if (*t_spec.description == '\0') return single_row_height(m_fonts) * reveal;
+
+	return row_height(m_fonts) * reveal;
 }
 
 Rect SettingsPanel::search_rect(const Layout &t_layout) const
@@ -896,8 +920,14 @@ Rect SettingsPanel::reset_row(const Rows &t_rows, ResettableSetting t_setting) c
 			return t_rows.background;
 		case ResettableSetting::background_light:
 			return t_rows.background_light;
+		case ResettableSetting::background_grain:
+			return t_rows.background_grain;
 		case ResettableSetting::background_intensity:
 			return t_rows.background_intensity;
+		case ResettableSetting::background_light_intensity:
+			return t_rows.background_light_intensity;
+		case ResettableSetting::background_grain_intensity:
+			return t_rows.background_grain_intensity;
 		case ResettableSetting::animations:
 			return t_rows.animations;
 		case ResettableSetting::animation_speed:
@@ -935,6 +965,8 @@ Rect SettingsPanel::reset_control(const Rows &t_rows, ResettableSetting t_settin
 			return swatch_rect(row, m_fonts);
 		case ResettableSetting::corner_roundness:
 		case ResettableSetting::background_intensity:
+		case ResettableSetting::background_light_intensity:
+		case ResettableSetting::background_grain_intensity:
 		case ResettableSetting::animation_speed:
 			return slider_control_rect(row, m_fonts);
 		case ResettableSetting::animations:
@@ -943,6 +975,7 @@ Rect SettingsPanel::reset_control(const Rows &t_rows, ResettableSetting t_settin
 		case ResettableSetting::block_overlay_injection:
 		case ResettableSetting::close_to_tray:
 		case ResettableSetting::background_light:
+		case ResettableSetting::background_grain:
 			return toggle_rect(row, m_fonts);
 		case ResettableSetting::auto_lock:
 			return slider_control_rect(row, m_fonts);
@@ -980,8 +1013,14 @@ bool SettingsPanel::is_default(ResettableSetting t_setting) const
 			return m_settings.background_style == defaults.background_style;
 		case ResettableSetting::background_light:
 			return m_settings.background_light == defaults.background_light;
+		case ResettableSetting::background_grain:
+			return m_settings.background_grain == defaults.background_grain;
 		case ResettableSetting::background_intensity:
 			return same(m_settings.background_intensity, defaults.background_intensity);
+		case ResettableSetting::background_light_intensity:
+			return same(m_settings.background_light_intensity, defaults.background_light_intensity);
+		case ResettableSetting::background_grain_intensity:
+			return same(m_settings.background_grain_intensity, defaults.background_grain_intensity);
 		case ResettableSetting::animations:
 			return m_settings.animations_enabled == defaults.animations_enabled;
 		case ResettableSetting::animation_speed:
@@ -1039,8 +1078,17 @@ void SettingsPanel::reset(ResettableSetting t_setting)
 		case ResettableSetting::background_intensity:
 			m_settings.background_intensity = defaults.background_intensity;
 			break;
+		case ResettableSetting::background_light_intensity:
+			m_settings.background_light_intensity = defaults.background_light_intensity;
+			break;
+		case ResettableSetting::background_grain_intensity:
+			m_settings.background_grain_intensity = defaults.background_grain_intensity;
+			break;
 		case ResettableSetting::background_light:
 			m_settings.background_light = defaults.background_light;
+			break;
+		case ResettableSetting::background_grain:
+			m_settings.background_grain = defaults.background_grain;
 			break;
 		case ResettableSetting::animations:
 			m_settings.animations_enabled = defaults.animations_enabled;
@@ -1206,10 +1254,9 @@ void SettingsPanel::update_background_preview()
 	m_settings.background_style = shown;
 }
 
-void SettingsPanel::apply_background_intensity(Rect t_track, float t_x)
+void SettingsPanel::apply_percent(u32 t_slider, Rect t_track, float t_x)
 {
-	m_settings.background_intensity =
-		value_at((t_x - t_track.x) / t_track.w, background_intensity_min, background_intensity_max);
+	m_settings.*percent_sliders[t_slider].value = value_at((t_x - t_track.x) / t_track.w, 0.0f, 1.0f);
 }
 
 void SettingsPanel::apply_auto_lock(Rect t_track, float t_x)
@@ -1261,14 +1308,15 @@ void SettingsPanel::update(float t_delta_seconds)
 	m_corner_roundness_shown = m_corner_roundness_drag.is_pressed()
 								   ? m_settings.corner_roundness
 								   : ease_value(m_corner_roundness_shown, m_settings.corner_roundness);
-	m_background_intensity_shown = m_background_intensity_drag.is_pressed()
-									   ? m_settings.background_intensity
-									   : ease_value(m_background_intensity_shown, m_settings.background_intensity);
+	for (u32 i = 0; i < percent_slider_count; i += 1) {
+		const PercentSlider &slider = percent_sliders[i];
 
-	m_background_strength_reveal = animation::ease_toward(
-		m_background_strength_reveal,
-		m_settings.background_style != BackgroundStyle::none || m_settings.background_light ? 1.0f : 0.0f,
-		reveal_ease_rate, t_delta_seconds);
+		m_percent_shown[i] = m_percent_drags[i].is_pressed() ? m_settings.*slider.value
+															 : ease_value(m_percent_shown[i], m_settings.*slider.value);
+		m_percent_reveal[i] = animation::ease_toward(m_percent_reveal[i], slider.shown(m_settings) ? 1.0f : 0.0f,
+													 reveal_ease_rate, t_delta_seconds);
+	}
+
 	m_animation_speed_reveal = animation::ease_toward(
 		m_animation_speed_reveal, m_settings.animations_enabled ? 1.0f : 0.0f, reveal_ease_rate, t_delta_seconds);
 
@@ -1385,11 +1433,15 @@ bool SettingsPanel::on_pointer_down(Vec2 t_point)
 		return true;
 	}
 
-	const Rect background_track = slider_track_rect(current_rows.background_intensity, m_fonts);
-	if (hits(current, current_rows.background_intensity, background_track, t_point)) {
-		m_background_intensity_drag.begin(t_point);
-		apply_background_intensity(background_track, t_point.x);
-		return true;
+	for (u32 i = 0; i < percent_slider_count; i += 1) {
+		const Rect row = current_rows.*percent_sliders[i].row;
+		const Rect track = slider_track_rect(row, m_fonts);
+
+		if (hits(current, row, track, t_point)) {
+			m_percent_drags[i].begin(t_point);
+			apply_percent(i, track, t_point.x);
+			return true;
+		}
 	}
 
 	const Rect auto_lock_track = slider_track_rect(current_rows.auto_lock, m_fonts, auto_lock_readout_width);
@@ -1428,9 +1480,11 @@ bool SettingsPanel::on_pointer_move(Vec2 t_point)
 		apply_corner_roundness(slider_track_rect(current_rows.corner_roundness, m_fonts), t_point.x);
 	}
 
-	if (m_background_intensity_drag.is_pressed()) {
-		m_background_intensity_drag.update(t_point);
-		apply_background_intensity(slider_track_rect(current_rows.background_intensity, m_fonts), t_point.x);
+	for (u32 i = 0; i < percent_slider_count; i += 1) {
+		if (!m_percent_drags[i].is_pressed()) continue;
+
+		m_percent_drags[i].update(t_point);
+		apply_percent(i, slider_track_rect(current_rows.*percent_sliders[i].row, m_fonts), t_point.x);
 	}
 
 	if (m_auto_lock_drag.is_pressed()) {
@@ -1480,13 +1534,16 @@ bool SettingsPanel::on_pointer_up(Vec2 t_point)
 
 	const bool ended_drag = m_rows_scroll.is_dragging() || m_animation_speed_drag.is_pressed() ||
 							m_corner_roundness_drag.is_pressed() || m_auto_lock_drag.is_pressed() ||
-							m_background_intensity_drag.is_pressed() || m_search.is_selecting();
+							std::ranges::any_of(m_percent_drags, &Draggable::is_pressed) || m_search.is_selecting();
 
 	m_rows_scroll.on_pointer_up();
 	m_animation_speed_drag.end();
 	m_corner_roundness_drag.end();
 	m_auto_lock_drag.end();
-	m_background_intensity_drag.end();
+	for (Draggable &drag : m_percent_drags) {
+		drag.end();
+	}
+
 	m_search.on_pointer_up();
 
 	if (!ended_drag && !m_color_picker.contains(t_point)) {
@@ -1718,7 +1775,7 @@ CursorKind SettingsPanel::cursor() const
 
 	const bool dragging = m_rows_scroll.is_dragging() || m_color_picker.is_dragging() ||
 						  m_animation_speed_drag.is_pressed() || m_corner_roundness_drag.is_pressed() ||
-						  m_auto_lock_drag.is_pressed() || m_background_intensity_drag.is_pressed();
+						  m_auto_lock_drag.is_pressed() || std::ranges::any_of(m_percent_drags, &Draggable::is_pressed);
 	if (dragging) return CursorKind::drag;
 	if (m_search.is_selecting()) return CursorKind::ibeam;
 
@@ -1759,6 +1816,8 @@ CursorKind SettingsPanel::cursor() const
 		{current_rows.font, dropdown_rect(current_rows.font, m_fonts)},
 		{current_rows.background, dropdown_rect(current_rows.background, m_fonts)},
 		{current_rows.background_intensity, slider_track_rect(current_rows.background_intensity, m_fonts)},
+		{current_rows.background_light_intensity, slider_track_rect(current_rows.background_light_intensity, m_fonts)},
+		{current_rows.background_grain_intensity, slider_track_rect(current_rows.background_grain_intensity, m_fonts)},
 		{current_rows.font_size, stepper_minus(font_size)},
 		{current_rows.font_size, stepper_plus(font_size)},
 		{current_rows.secondary_font_size, stepper_minus(secondary_size)},
@@ -1934,10 +1993,11 @@ void SettingsPanel::draw_sliders(DrawList &t_draw_list, const Layout &t_layout, 
 	draw_one(&Rows::corner_roundness, fraction_in(m_corner_roundness_shown, corner_roundness_min, corner_roundness_max),
 			 shown(written), t_alpha);
 
-	written = std::snprintf(readout, sizeof(readout), "%.0f%%", m_background_intensity_shown * 100.0f);
-	draw_one(&Rows::background_intensity,
-			 fraction_in(m_background_intensity_shown, background_intensity_min, background_intensity_max),
-			 shown(written), static_cast<u8>(t_alpha * m_background_strength_reveal * m_background_strength_reveal));
+	for (u32 i = 0; i < percent_slider_count; i += 1) {
+		written = std::snprintf(readout, sizeof(readout), "%.0f%%", m_percent_shown[i] * 100.0f);
+		draw_one(percent_sliders[i].row, m_percent_shown[i], shown(written),
+				 static_cast<u8>(t_alpha * m_percent_reveal[i] * m_percent_reveal[i]));
+	}
 
 	written = std::snprintf(readout, sizeof(readout), "%.2fx", m_animation_speed_shown);
 	draw_one(&Rows::animation_speed, fraction_in(m_animation_speed_shown, animation_speed_min, animation_speed_max),

@@ -72,11 +72,12 @@ class Renderer {
 		m_effect_time_seconds = t_seconds;
 	}
 
-	void set_backdrop(u32 t_style, float t_intensity, bool t_light)
+	void set_backdrop(u32 t_style, float t_intensity, float t_light, float t_grain)
 	{
 		m_backdrop_style = t_style;
 		m_backdrop_intensity = t_intensity;
 		m_backdrop_light = t_light;
+		m_backdrop_grain = t_grain;
 	}
 
 	void render(const DrawList &t_draw_list, Color t_clear_color);
@@ -156,5 +157,6 @@ class Renderer {
 	float m_effect_time_seconds = 0.0f;
 	u32 m_backdrop_style = 0;
 	float m_backdrop_intensity = 0.0f;
-	bool m_backdrop_light = false;
+	float m_backdrop_light = 0.0f;
+	float m_backdrop_grain = 0.0f;
 };

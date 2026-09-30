@@ -49,14 +49,20 @@ constexpr u32 theme_count = static_cast<u32>(std::size(theme_labels));
 
 enum class BackgroundStyle : u8 {
 	none,
-	grain,
 	dots,
 	grid,
 	lines,
+	polka,
+	topography,
+	starfield,
+	scanlines,
+	crosshatch,
 };
 
 constexpr OptionLabel background_labels[]{
-	{"none", "None"}, {"grain", "Grain"}, {"dots", "Dots"}, {"grid", "Grid"}, {"lines", "Lines"},
+	{"none", "None"},			{"dots", "Dots"},			{"grid", "Grid"},
+	{"lines", "Lines"},			{"polka", "Polka"},			{"topography", "Topography"},
+	{"starfield", "Starfield"}, {"scanlines", "Scanlines"}, {"crosshatch", "Crosshatch"},
 };
 
 constexpr u32 background_count = static_cast<u32>(std::size(background_labels));
@@ -68,8 +74,11 @@ struct Settings {
 	bool animations_enabled = true;
 	float animation_speed = 1.0f;
 	float corner_roundness = 1.0f;
-	BackgroundStyle background_style = BackgroundStyle::grain;
+	BackgroundStyle background_style = BackgroundStyle::none;
 	bool background_light = true;
+	bool background_grain = true;
+	float background_light_intensity = 0.5f;
+	float background_grain_intensity = 0.5f;
 	float background_intensity = 0.5f;
 
 	float font_size = 14.0f;

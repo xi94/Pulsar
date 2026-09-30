@@ -846,7 +846,8 @@ void App::render()
 	}
 
 	m_renderer.set_backdrop(static_cast<u32>(m_settings.background_style), m_settings.background_intensity,
-							m_settings.background_light);
+							m_settings.background_light ? m_settings.background_light_intensity : 0.0f,
+							m_settings.background_grain ? m_settings.background_grain_intensity : 0.0f);
 	m_renderer.render(m_draw_list, theme().window);
 }
 

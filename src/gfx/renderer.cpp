@@ -58,7 +58,8 @@ struct BackdropConstants {
 	float style;
 	float pixel_scale;
 	float light;
-	float padding[2];
+	float grain;
+	float padding;
 };
 
 static_assert(sizeof(BackdropConstants) == 32);
@@ -477,7 +478,8 @@ void Renderer::draw_command(const DrawCommand &t_command)
 											  .intensity = m_backdrop_intensity,
 											  .style = static_cast<float>(m_backdrop_style),
 											  .pixel_scale = pixel_scale,
-											  .light = m_backdrop_light ? 1.0f : 0.0f};
+											  .light = m_backdrop_light,
+											  .grain = m_backdrop_grain};
 			m_context->UpdateSubresource(m_backdrop_constants.Get(), 0, nullptr, &constants, 0, 0);
 			shader = t_command.shader == ShaderKind::backdrop ? m_backdrop_shader.Get() : m_backdrop_plain_shader.Get();
 			extra_constants = m_backdrop_constants.Get();

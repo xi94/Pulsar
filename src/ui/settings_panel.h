@@ -34,7 +34,10 @@ enum class ResettableSetting : u8 {
 	corner_roundness,
 	background,
 	background_light,
+	background_grain,
 	background_intensity,
+	background_light_intensity,
+	background_grain_intensity,
 	animations,
 	animation_speed,
 	notifications,
@@ -75,7 +78,7 @@ class SettingsPanel : public Widget {
 
   private:
 	static constexpr u32 resettable_count = static_cast<u32>(ResettableSetting::count);
-	static constexpr u32 group_count = 6;
+	static constexpr u32 group_count = 7;
 
 	struct Layout {
 		Rect panel;
@@ -95,6 +98,9 @@ class SettingsPanel : public Widget {
 		Rect corner_roundness;
 		Rect background;
 		Rect background_light;
+		Rect background_grain;
+		Rect background_light_intensity;
+		Rect background_grain_intensity;
 		Rect background_intensity;
 		Rect notifications;
 		Rect animations;
@@ -137,11 +143,20 @@ class SettingsPanel : public Widget {
 		Rect Rows::*row;
 	};
 
-	static constexpr u32 row_spec_count = 17;
+	static constexpr u32 row_spec_count = 20;
 	static const RowSpec row_specs[row_spec_count];
 	static const GroupSpec group_specs[group_count];
 
-	static constexpr u32 toggle_count = 6;
+	struct PercentSlider {
+		Rect Rows::*row;
+		float Settings::*value;
+		bool (*shown)(const Settings &t_settings);
+	};
+
+	static constexpr u32 percent_slider_count = 3;
+	static const PercentSlider percent_sliders[percent_slider_count];
+
+	static constexpr u32 toggle_count = 7;
 	static const Toggle toggles[toggle_count];
 
 	Layout layout() const;
@@ -191,7 +206,7 @@ class SettingsPanel : public Widget {
 	void open_background_list();
 	void choose_background(u32 t_index);
 	void update_background_preview();
-	void apply_background_intensity(Rect t_track, float t_x);
+	void apply_percent(u32 t_slider, Rect t_track, float t_x);
 	void apply_auto_lock(Rect t_track, float t_x);
 	void pull_picked_color();
 	void step_font_size(Rect t_stepper, float &t_value, float t_min, float t_max, Vec2 t_point);
@@ -241,20 +256,20 @@ class SettingsPanel : public Widget {
 	Tooltip m_tooltip;
 	Draggable m_animation_speed_drag;
 	Draggable m_corner_roundness_drag;
-	Draggable m_background_intensity_drag;
+	Draggable m_percent_drags[percent_slider_count];
 	Draggable m_auto_lock_drag;
 
 	TextInput m_search;
 	char m_applied_query[text_input_capacity]{};
 
-	float m_toggles_shown[toggle_count]{1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+	float m_toggles_shown[toggle_count]{1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
 
 	float m_font_size_shown = 0.0f;
 	float m_secondary_font_size_shown = 0.0f;
 	float m_animation_speed_shown = 0.0f;
 	float m_corner_roundness_shown = 0.0f;
-	float m_background_intensity_shown = 0.0f;
-	float m_background_strength_reveal = 0.0f;
+	float m_percent_shown[percent_slider_count]{};
+	float m_percent_reveal[percent_slider_count]{};
 	float m_animation_speed_reveal = 0.0f;
 	float m_auto_lock_shown = 0.0f;
 	float m_accent_shown[3]{};
