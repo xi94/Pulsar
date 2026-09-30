@@ -31,7 +31,7 @@ constexpr Theme dark{
 	.shadow = {0, 0, 0, 255},
 	.success = {80, 200, 120, 255},
 	.error = {220, 90, 80, 255},
-	.default_accent = {108, 90, 220, 255},
+	.default_accent = {203, 166, 247, 255},
 };
 
 constexpr Theme light{

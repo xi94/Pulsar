@@ -86,7 +86,7 @@ struct Settings {
 	// Braces, not `= "..."`: MSVC zeroes that form whenever a Settings is constant-initialized.
 	char font_name[260]{"segoeui.ttf"};
 	ThemeKind theme = ThemeKind::dark;
-	Color accent{108, 90, 220, 255};
+	Color accent{203, 166, 247, 255};
 
 	bool show_notifications = true;
 	bool hide_accounts_from_capture = true;
