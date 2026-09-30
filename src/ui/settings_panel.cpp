@@ -848,9 +848,9 @@ Rect SettingsPanel::slider_rect(const Rows &t_rows, SliderKind t_slider) const
 		case SliderKind::auto_lock:
 			return slider_control_rect(line, m_fonts);
 		case SliderKind::pattern_strength:
-			return inline_slider_rect(line, pattern_select_rect(line, m_fonts), inline_slider_left(line), m_fonts);
 		case SliderKind::light_strength:
 		case SliderKind::grain_strength:
+			return inline_slider_rect(line, pattern_select_rect(line, m_fonts), inline_slider_left(line), m_fonts);
 		case SliderKind::animation_speed:
 			return inline_slider_rect(line, toggle_rect(line, m_fonts), inline_slider_left(line), m_fonts);
 		case SliderKind::count:
