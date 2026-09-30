@@ -111,8 +111,8 @@ constexpr float reveal_button_margin = 6.0f;
 
 constexpr float progress_max_width = 320.0f;
 constexpr float progress_bar_height = 6.0f;
-constexpr float progress_status_gap = 16.0f;
-constexpr float progress_step_gap = 14.0f;
+constexpr float progress_text_gap = 18.0f;
+constexpr float cap_height_share = 0.66f;
 constexpr float progress_text_rise = 8.0f;
 constexpr float progress_ease_rate = 5.0f;
 constexpr float progress_creep_seconds = 2.5f;
@@ -2492,6 +2492,8 @@ void AccountModal::draw_login_progress(DrawList &t_draw_list, Rect t_main, u8 t_
 	const float width = std::min(t_main.w - row_padding * 2.0f, progress_max_width);
 	const Rect bar{snapped_to_pixel(t_main.center().x - width * 0.5f), snapped_to_pixel(t_main.center().y), width,
 				   progress_bar_height};
+	const float status_baseline = bar.y - progress_text_gap;
+	const float step_baseline = bar.bottom() + progress_text_gap + secondary.ascent() * cap_height_share;
 	const float alpha_scale = t_alpha / 255.0f;
 
 	const auto draw_status = [&](std::string_view t_text, float t_opacity, float t_offset) {
@@ -2500,8 +2502,8 @@ void AccountModal::draw_login_progress(DrawList &t_draw_list, Rect t_main, u8 t_
 		std::string_view lines[max_message_lines];
 		const u32 line_count = wrap_text(body, t_text, width, lines);
 		const auto alpha = static_cast<u8>(t_alpha * t_opacity);
-		float baseline = bar.y - progress_status_gap - body.descent() + t_offset -
-						 static_cast<float>(line_count > 0 ? line_count - 1 : 0) * body.line_height();
+		float baseline =
+			status_baseline + t_offset - static_cast<float>(line_count > 0 ? line_count - 1 : 0) * body.line_height();
 
 		for (const std::string_view line : std::span{lines, line_count}) {
 			draw_text(t_draw_list, body,
@@ -2547,8 +2549,7 @@ void AccountModal::draw_login_progress(DrawList &t_draw_list, Rect t_main, u8 t_
 	const std::string_view step_text{label, static_cast<usize>(std::max(written, 0))};
 
 	draw_text(t_draw_list, secondary,
-			  Vec2{snapped_to_pixel(bar.center().x - text_width(secondary, step_text) * 0.5f),
-				   bar.bottom() + progress_step_gap + secondary.ascent()},
+			  Vec2{snapped_to_pixel(bar.center().x - text_width(secondary, step_text) * 0.5f), step_baseline},
 			  step_text, faded(colors.text_faint, static_cast<u8>(t_alpha * (1.0f - m_login_outcome))));
 }
 
