@@ -790,10 +790,7 @@ void App::frame()
 		m_window.set_cursor(m_widgets.cursor());
 	}
 
-	if (m_window.is_active()) {
-		m_effect_seconds += delta_seconds;
-	}
-
+	m_effect_seconds += delta_seconds;
 	m_renderer.set_effect_time(m_effect_seconds);
 
 	if (!m_window.is_minimized() && !m_window.is_hidden()) {
@@ -853,7 +850,7 @@ void App::render()
 		m_draw_list.finish();
 	}
 
-	if (m_draw_list.has_animated_effects() && m_window.is_active()) {
+	if (m_draw_list.has_animated_effects()) {
 		animation::request_frame();
 	}
 
