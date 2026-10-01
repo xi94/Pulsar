@@ -38,5 +38,6 @@ class TitleBar : public Widget {
 
 	float m_pill_width = 0.0f;
 	float m_update_reveal = 0.0f;
+	float m_status_emphasis = 0.0f;
 	float m_pill_spin = 0.0f;
 };

@@ -22,7 +22,6 @@ constexpr u8 hover_alpha = 18;
 
 constexpr float glyph_thickness = 1.5f;
 constexpr float icon_size = 16.0f;
-constexpr float pill_inset_y = 7.0f;
 constexpr float pill_icon_gap = 8.0f;
 constexpr float identity_mark_size = 16.0f;
 constexpr float identity_gap = 8.0f;
@@ -56,7 +55,8 @@ constexpr float pill_spin_turns_per_second = 0.9f;
 constexpr float status_reveal_rate = 14.0f;
 constexpr float status_shift = 4.0f;
 constexpr float status_padding_right = 10.0f;
-constexpr float status_hover_radius = 7.0f;
+constexpr float status_emphasis_rate = 16.0f;
+constexpr float status_emphasis_strength = 0.75f;
 
 struct PillLook {
 	std::string_view label;
@@ -142,6 +142,11 @@ void TitleBar::update(float t_delta_seconds)
 	m_window.set_update_button_visible(visible);
 	m_update_reveal =
 		animation::ease_toward(m_update_reveal, visible ? 1.0f : 0.0f, status_reveal_rate, t_delta_seconds);
+
+	const bool emphasized = visible && (m_update_overlay.is_open() ||
+										m_window.title_bar_button_rect(TitleBarButton::update).contains(m_mouse));
+	m_status_emphasis =
+		animation::ease_toward(m_status_emphasis, emphasized ? 1.0f : 0.0f, status_emphasis_rate, t_delta_seconds);
 
 	if (!visible && m_update_reveal <= 0.0f) return;
 
@@ -238,14 +243,6 @@ void TitleBar::draw_update_status(DrawList &t_draw_list, float t_amount) const
 	const Rect area = m_window.title_bar_button_rect(TitleBarButton::update);
 	const auto alpha = static_cast<u8>(255.0f * t_amount);
 	const float shift = status_shift * (1.0f - t_amount);
-	const bool emphasized =
-		m_window.is_update_button_visible() && (m_update_overlay.is_open() || area.contains(m_mouse));
-
-	if (emphasized) {
-		t_draw_list.add_rounded_rect(area.inset(0.0f, pill_inset_y), rounded(status_hover_radius),
-									 faded(with_alpha(theme().text, hover_alpha), alpha));
-	}
-
 	t_draw_list.push_clip(area);
 
 	const Font &font = m_fonts.secondary();
@@ -261,7 +258,7 @@ void TitleBar::draw_update_status(DrawList &t_draw_list, float t_amount) const
 	}
 
 	draw_text(t_draw_list, font, Vec2{icon.right() + pill_icon_gap, font.centered_baseline(area) + shift}, look.label,
-			  faded(look.text_color, alpha));
+			  faded(mix(look.text_color, theme().text, status_emphasis_strength * m_status_emphasis), alpha));
 
 	t_draw_list.pop_clip();
 }
