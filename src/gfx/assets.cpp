@@ -28,6 +28,7 @@
 #include "embeds/icons/LeagueIcon.hpp"
 #include "embeds/icons/ListArrow.hpp"
 #include "embeds/icons/ListIcon.hpp"
+#include "embeds/icons/LockIcon.hpp"
 #include "embeds/icons/MenuIcon.hpp"
 #include "embeds/icons/Minimize.hpp"
 #include "embeds/icons/ResetIcon.hpp"
@@ -104,6 +105,7 @@ const EncodedAsset encoded_assets[asset_count]{
 	{icon::account_icon, "AccountIcon"},
 	{icon::image_icon, "ImageIcon"},
 	{icon::username_icon, "UsernameIcon"},
+	{icon::lock_icon, "LockIcon"},
 	{icon::app_mark, "AppMark"},
 	{icon::league_of_legends_icon, "LeagueIcon"},
 	{icon::valorant_icon, "ValorantIcon"},

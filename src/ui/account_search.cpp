@@ -641,7 +641,7 @@ void AccountSearch::draw_action(DrawList &t_draw_list, Rect t_row, const Action 
 			text = "Copy username";
 			break;
 		case ActionKind::copy_password:
-			controls::draw_lock(t_draw_list, icon, icon_color, faded(backdrop, t_alpha));
+			controls::draw_icon(t_draw_list, icon, m_assets.get(Asset::icon_lock), icon_color);
 			text = "Copy password";
 			break;
 		case ActionKind::login: {
