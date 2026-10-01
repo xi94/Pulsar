@@ -528,7 +528,7 @@ void ListPopup::draw_search(DrawList &t_draw_list, const Layout &t_layout, Vec2 
 								  faded(colors.separator, t_alpha), 1.0f);
 	controls::draw_magnifier(t_draw_list, icon, faded(has_query ? colors.text_dim : colors.text_faint, t_alpha));
 	m_search.draw(t_draw_list, m_fonts.body(), search_field_rect(t_layout), faded(colors.text, t_alpha),
-				  faded(m_settings.accent, t_alpha), std::nullopt);
+				  faded(m_settings.accent, t_alpha), search_field_rect(t_layout));
 
 	if (!has_query) return;
 

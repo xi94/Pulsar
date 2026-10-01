@@ -537,7 +537,7 @@ void AccountSearch::draw_header(DrawList &t_draw_list, const Layout &t_layout, u
 
 		controls::draw_magnifier(t_draw_list, icon, faded(colors.text_dim, t_alpha));
 		m_query.draw(t_draw_list, body, query_text_rect(t_layout), faded(colors.text, t_alpha),
-					 faded(colors.text_dim, t_alpha), std::nullopt);
+					 faded(colors.text_dim, t_alpha), query_text_rect(t_layout));
 		controls::draw_shortcut(t_draw_list, secondary, Vec2{header.right() - header_padding, header.center().y}, "Esc",
 								colors.popup, t_alpha);
 		return;

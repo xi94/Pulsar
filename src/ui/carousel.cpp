@@ -87,7 +87,7 @@ constexpr float icon_label_inset = 6.0f;
 
 constexpr float switcher_hold_seconds = 0.7f;
 constexpr float switcher_ease_rate = 18.0f;
-constexpr float switcher_width = 150.0f;
+constexpr float switcher_width = 184.0f;
 constexpr float switcher_padding = 6.0f;
 constexpr float switcher_radius = 10.0f;
 constexpr float switcher_margin = 16.0f;
@@ -95,10 +95,23 @@ constexpr float switcher_slide_distance = 8.0f;
 constexpr float switcher_icon_size = 24.0f;
 constexpr float switcher_icon_gap = 10.0f;
 constexpr float switcher_content_inset = 12.0f;
-constexpr float switcher_track_column_min = 26.0f;
-constexpr float switcher_track_width = 4.0f;
-constexpr float switcher_indicator_height = 18.0f;
-constexpr float switcher_indicator_padding = 7.0f;
+constexpr float switcher_row_radius = 6.0f;
+constexpr float switcher_hover_fill = 0.5f;
+constexpr float switcher_hover_brightening = 0.5f;
+constexpr float size_dot_size = 6.0f;
+constexpr float size_dot_gap = 4.0f;
+constexpr float size_dot_dimming = 0.45f;
+constexpr float size_slider_height = 30.0f;
+constexpr float size_slider_fold_rate = 16.0f;
+constexpr float size_slider_rise = 6.0f;
+constexpr float size_slider_track_height = 4.0f;
+constexpr float size_slider_tick_size = 4.0f;
+constexpr float size_slider_thumb_size = 12.0f;
+constexpr float size_slider_thumb_ring = 2.0f;
+constexpr float size_slider_small_icon = 12.0f;
+constexpr float size_slider_large_icon = 18.0f;
+constexpr float size_slider_icon_gap = 8.0f;
+constexpr float size_slider_icon_reach = 4.0f;
 
 constexpr float status_icon_size = 16.0f;
 constexpr float status_icon_gap = 8.0f;
@@ -108,7 +121,6 @@ constexpr float baseline_nudge = 2.0f;
 constexpr Color color_image{255, 255, 255, 255};
 constexpr u8 card_border_alpha = 160;
 constexpr u8 card_border_highlighted_alpha = 235;
-constexpr u8 switcher_tick_alpha = 190;
 
 constexpr i32 zoom_stop_count = 12;
 constexpr i32 shelf_stop = 1;
@@ -136,13 +148,23 @@ constexpr SwitcherRow switcher_rows[]{
 };
 constexpr u32 switcher_row_count = static_cast<u32>(std::size(switcher_rows));
 
-const SwitcherRow &row_at_stop(i32 t_stop)
+u32 row_index_at_stop(i32 t_stop)
 {
-	for (const SwitcherRow &row : switcher_rows) {
-		if (t_stop >= row.first_stop && t_stop <= row.last_stop) return row;
+	for (u32 index = 0; index < switcher_row_count; index += 1) {
+		if (t_stop >= switcher_rows[index].first_stop && t_stop <= switcher_rows[index].last_stop) return index;
 	}
 
-	return switcher_rows[switcher_row_count - 1];
+	return switcher_row_count - 1;
+}
+
+const SwitcherRow &row_at_stop(i32 t_stop)
+{
+	return switcher_rows[row_index_at_stop(t_stop)];
+}
+
+bool has_sizes(const SwitcherRow &t_row)
+{
+	return t_row.last_stop > t_row.first_stop;
 }
 
 bool is_shelf_stop(i32 t_stop)
@@ -323,16 +345,40 @@ void draw_framed_art(DrawList &t_draw_list, Rect t_rect, const Game &t_game, con
 	}
 }
 
-float track_column_width(const Font &t_font)
+float size_slider_center_y(Rect t_slider)
 {
-	return std::max(switcher_track_column_min, text_width(t_font, "100%") + switcher_indicator_padding * 2.0f + 6.0f);
+	return t_slider.y + (t_slider.h - switcher_padding) * 0.5f;
 }
 
-i32 stop_at_track_position(Rect t_track, float t_y)
+Rect size_slider_icon_rect(Rect t_slider, bool t_large)
 {
-	const float t = std::clamp(1.0f - (t_y - t_track.y) / t_track.h, 0.0f, 1.0f);
+	const float size = t_large ? size_slider_large_icon : size_slider_small_icon;
+	const float x = t_large ? t_slider.right() - switcher_content_inset - size : t_slider.x + switcher_content_inset;
 
-	return static_cast<i32>(std::round(t * (zoom_stop_count - 1)));
+	return Rect{x, snapped_to_pixel(size_slider_center_y(t_slider) - size * 0.5f), size, size};
+}
+
+Rect size_slider_track_rect(Rect t_slider)
+{
+	const float left = size_slider_icon_rect(t_slider, false).right() + size_slider_icon_gap;
+	const float right = size_slider_icon_rect(t_slider, true).x - size_slider_icon_gap;
+
+	return Rect{left, snapped_to_pixel(size_slider_center_y(t_slider) - size_slider_track_height * 0.5f),
+				std::max(0.0f, right - left), size_slider_track_height};
+}
+
+Rect size_slider_grab_rect(Rect t_slider)
+{
+	const Rect track = size_slider_track_rect(t_slider);
+
+	return Rect{track.x - size_slider_thumb_size * 0.5f, t_slider.y, track.w + size_slider_thumb_size, t_slider.h};
+}
+
+i32 stop_at_track_x(const SwitcherRow &t_row, Rect t_track, float t_x)
+{
+	const float t = t_track.w > 0.0f ? std::clamp((t_x - t_track.x) / t_track.w, 0.0f, 1.0f) : 0.0f;
+
+	return t_row.first_stop + static_cast<i32>(std::round(t * static_cast<float>(t_row.last_stop - t_row.first_stop)));
 }
 
 Rect lerp_rect(Rect t_from, Rect t_to, float t_amount)
@@ -739,38 +785,51 @@ Rect Carousel::status_indicator_rect() const
 	return Rect{m_bounds.right() - status_padding_right - width, m_bounds.bottom(), width, status_bar_height};
 }
 
+float Carousel::switcher_row_height() const
+{
+	return m_fonts.body().line_height() + 10.0f;
+}
+
+float Carousel::size_slider_shown_height() const
+{
+	return snapped_to_pixel(size_slider_height * m_size_slider_fold);
+}
+
 Rect Carousel::switcher_panel_rect() const
 {
-	const float row_height = m_fonts.body().line_height() + 10.0f;
-	const float height = switcher_padding * 2.0f + row_height * switcher_row_count;
-	const float width = switcher_width + track_column_width(m_fonts.secondary());
+	const float height =
+		switcher_padding * 2.0f + switcher_row_height() * switcher_row_count + size_slider_shown_height();
 
-	return Rect{m_bounds.right() - width - switcher_margin, m_bounds.bottom() - height - switcher_margin, width,
-				height};
+	return Rect{m_bounds.right() - switcher_width - switcher_margin, m_bounds.bottom() - height - switcher_margin,
+				switcher_width, height};
 }
 
 Rect Carousel::switcher_row_rect(Rect t_panel, u32 t_row) const
 {
-	const float row_height = m_fonts.body().line_height() + 10.0f;
+	const float row_height = switcher_row_height();
+	const float fold = t_row > row_index_at_stop(m_zoom_stop) ? size_slider_shown_height() : 0.0f;
 
-	return Rect{t_panel.x + switcher_padding, t_panel.y + switcher_padding + row_height * t_row,
-				switcher_width - switcher_padding * 2.0f, row_height};
+	return Rect{t_panel.x + switcher_padding, t_panel.y + switcher_padding + row_height * t_row + fold,
+				t_panel.w - switcher_padding * 2.0f, row_height};
 }
 
-Rect Carousel::switcher_track_rect(Rect t_panel) const
+Rect Carousel::switcher_active_pill(Rect t_panel) const
 {
-	const float column = track_column_width(m_fonts.secondary());
+	const Rect row = switcher_row_rect(t_panel, row_index_at_stop(m_zoom_stop));
 
-	return Rect{t_panel.right() - column * 0.5f - switcher_track_width * 0.5f,
-				t_panel.y + switcher_padding + switcher_indicator_height * 0.5f, switcher_track_width,
-				t_panel.h - switcher_padding * 2.0f - switcher_indicator_height};
+	return Rect{row.x, row.y, row.w, row.h + size_slider_shown_height()};
 }
 
-Rect Carousel::switcher_track_grab_rect(Rect t_panel) const
+Rect Carousel::size_slider_rect(Rect t_panel) const
 {
-	const Rect track = switcher_track_rect(t_panel);
+	const Rect row = switcher_row_rect(t_panel, row_index_at_stop(m_zoom_stop));
 
-	return Rect{track.x - 10.0f, t_panel.y, track.w + 20.0f, t_panel.h};
+	return Rect{row.x, row.bottom(), row.w, size_slider_height};
+}
+
+bool Carousel::is_size_slider_open() const
+{
+	return m_size_slider_fold > 0.5f && has_sizes(row_at_stop(m_zoom_stop));
 }
 
 bool Carousel::is_switcher_shown() const
@@ -1076,16 +1135,34 @@ bool Carousel::switcher_pointer_down(Vec2 t_point)
 
 	m_switcher_owns_pointer = true;
 
-	for (u32 row = 0; row < switcher_row_count; row += 1) {
-		if (switcher_row_rect(panel, row).contains(t_point)) {
-			set_zoom_stop(switcher_rows[row].first_stop);
+	const u32 active = row_index_at_stop(m_zoom_stop);
+	const SwitcherRow &entry = switcher_rows[active];
+
+	if (is_size_slider_open()) {
+		const Rect slider = size_slider_rect(panel);
+
+		if (size_slider_icon_rect(slider, false).inset(-size_slider_icon_reach).contains(t_point)) {
+			set_zoom_stop(std::max(entry.first_stop, m_zoom_stop - 1));
+			return true;
+		}
+
+		if (size_slider_icon_rect(slider, true).inset(-size_slider_icon_reach).contains(t_point)) {
+			set_zoom_stop(std::min(entry.last_stop, m_zoom_stop + 1));
+			return true;
+		}
+
+		if (size_slider_grab_rect(slider).contains(t_point)) {
+			m_switcher_drag.begin(t_point);
+			set_zoom_stop(stop_at_track_x(entry, size_slider_track_rect(slider), t_point.x));
 			return true;
 		}
 	}
 
-	if (switcher_track_grab_rect(panel).contains(t_point)) {
-		m_switcher_drag.begin(t_point);
-		set_zoom_stop(stop_at_track_position(switcher_track_rect(panel), t_point.y));
+	for (u32 row = 0; row < switcher_row_count; row += 1) {
+		if (row != active && switcher_row_rect(panel, row).contains(t_point)) {
+			set_zoom_stop(switcher_rows[row].first_stop);
+			return true;
+		}
 	}
 
 	return true;
@@ -1096,7 +1173,9 @@ bool Carousel::switcher_pointer_move(Vec2 t_point)
 	if (!m_switcher_drag.is_pressed()) return false;
 
 	m_switcher_drag.update(t_point);
-	set_zoom_stop(stop_at_track_position(switcher_track_rect(switcher_panel_rect()), t_point.y));
+
+	const Rect slider = size_slider_rect(switcher_panel_rect());
+	set_zoom_stop(stop_at_track_x(row_at_stop(m_zoom_stop), size_slider_track_rect(slider), t_point.x));
 
 	return true;
 }
@@ -1311,12 +1390,21 @@ CursorKind Carousel::cursor() const
 
 	if (is_switcher_shown()) {
 		const Rect panel = switcher_panel_rect();
+		const u32 active = row_index_at_stop(m_zoom_stop);
 
 		for (u32 row = 0; row < switcher_row_count; row += 1) {
-			if (switcher_row_rect(panel, row).contains(m_mouse)) return CursorKind::hand;
+			if (row != active && switcher_row_rect(panel, row).contains(m_mouse)) return CursorKind::hand;
 		}
 
-		if (switcher_track_grab_rect(panel).contains(m_mouse)) return CursorKind::hand;
+		if (is_size_slider_open()) {
+			const Rect slider = size_slider_rect(panel);
+
+			if (size_slider_grab_rect(slider).contains(m_mouse) ||
+				size_slider_icon_rect(slider, false).inset(-size_slider_icon_reach).contains(m_mouse) ||
+				size_slider_icon_rect(slider, true).inset(-size_slider_icon_reach).contains(m_mouse)) {
+				return CursorKind::hand;
+			}
+		}
 	}
 
 	if (const i32 game = game_at(m_mouse); game >= 0) {
@@ -1366,6 +1454,12 @@ void Carousel::update(float t_delta_seconds)
 
 	const float switcher_target = m_switcher_hold_seconds > 0.0f ? 1.0f : 0.0f;
 	m_switcher_shown = animation::ease_toward(m_switcher_shown, switcher_target, switcher_ease_rate, t_delta_seconds);
+
+	const bool fold_open =
+		is_switcher_shown() && has_sizes(row_at_stop(m_zoom_stop)) &&
+		(m_switcher_drag.is_pressed() || switcher_active_pill(switcher_panel_rect()).contains(m_mouse));
+	m_size_slider_fold = animation::ease_toward(m_size_slider_fold, fold_open ? 1.0f : 0.0f, size_slider_fold_rate,
+												t_delta_seconds, animation::settled_pixels / size_slider_height);
 
 	update_reorder(t_delta_seconds);
 
@@ -1760,59 +1854,108 @@ void Carousel::draw_status_bar(DrawList &t_draw_list) const
 
 void Carousel::draw_switcher_rows(DrawList &t_draw_list, Rect t_panel, u8 t_alpha) const
 {
+	const Theme &colors = theme();
 	const Font &font = m_fonts.body();
+	const u32 active = row_index_at_stop(m_zoom_stop);
+	const Color active_fill = hovered(colors.popup);
+	const bool pointer_live = !m_switcher_drag.is_pressed();
+
+	t_draw_list.add_rounded_rect(switcher_active_pill(t_panel), rounded(switcher_row_radius),
+								 faded(active_fill, t_alpha));
 
 	for (u32 index = 0; index < switcher_row_count; index += 1) {
 		const SwitcherRow &entry = switcher_rows[index];
 		const Rect row = switcher_row_rect(t_panel, index);
-		const bool active = m_zoom_stop >= entry.first_stop && m_zoom_stop <= entry.last_stop;
+		const bool is_active = index == active;
+		const bool is_hovered = !is_active && pointer_live && row.contains(m_mouse);
 
-		if (active) {
-			t_draw_list.add_rounded_rect(row, rounded(6.0f), faded(theme().row_selected, t_alpha));
-			t_draw_list.add_rounded_rect(Rect{row.x + 2.0f, row.y + 3.0f, 3.0f, row.h - 6.0f}, rounded(1.5f),
-										 faded(m_settings.accent, t_alpha));
+		if (is_hovered) {
+			t_draw_list.add_rounded_rect(row, rounded(switcher_row_radius),
+										 faded(mix(colors.popup, active_fill, switcher_hover_fill), t_alpha));
 		}
 
-		const Color content = faded(active ? theme().text : theme().text_dim, t_alpha);
+		Color content = colors.text_dim;
+		if (is_active) {
+			content = colors.text;
+		} else if (is_hovered) {
+			content = mix(colors.text_dim, colors.text, switcher_hover_brightening);
+		}
+
 		const float icon_center_y = row.center().y + font.ascent() * 0.15f;
 		const Rect icon{row.x + switcher_content_inset, icon_center_y - switcher_icon_size * 0.5f, switcher_icon_size,
 						switcher_icon_size};
 
-		t_draw_list.add_image(icon, m_assets.get(entry.icon), content);
+		t_draw_list.add_image(icon, m_assets.get(entry.icon), faded(content, t_alpha));
 		draw_text(t_draw_list, font, Vec2{icon.right() + switcher_icon_gap, font.centered_baseline(row)}, entry.name,
-				  content);
+				  faded(content, t_alpha));
+
+		if (!is_active || !has_sizes(entry) || m_size_slider_fold >= 0.999f) continue;
+
+		const auto dots_alpha = static_cast<u8>(static_cast<float>(t_alpha) * (1.0f - m_size_slider_fold));
+		const i32 sizes = entry.last_stop - entry.first_stop + 1;
+		float x = row.right() - switcher_content_inset -
+				  (static_cast<float>(sizes) * size_dot_size + static_cast<float>(sizes - 1) * size_dot_gap);
+
+		for (i32 size = 0; size < sizes; size += 1) {
+			const Rect dot{snapped_to_pixel(x), snapped_to_pixel(icon_center_y - size_dot_size * 0.5f), size_dot_size,
+						   size_dot_size};
+			const Color fill = entry.first_stop + size == m_zoom_stop
+								   ? m_settings.accent
+								   : mix(colors.text_faint, active_fill, size_dot_dimming);
+
+			t_draw_list.add_rounded_rect(dot, rounded(size_dot_size * 0.5f), faded(fill, dots_alpha));
+			x += size_dot_size + size_dot_gap;
+		}
 	}
 }
 
-void Carousel::draw_switcher_slider(DrawList &t_draw_list, Rect t_panel, u8 t_alpha) const
+void Carousel::draw_size_slider(DrawList &t_draw_list, Rect t_panel, u8 t_alpha) const
 {
-	const Font &font = m_fonts.secondary();
-	const Rect track = switcher_track_rect(t_panel);
+	const SwitcherRow &entry = row_at_stop(m_zoom_stop);
+	if (m_size_slider_fold <= 0.001f || !has_sizes(entry)) return;
 
-	t_draw_list.add_rounded_rect(track, rounded(track.w * 0.5f), faded(theme().track, t_alpha));
+	const Theme &colors = theme();
+	const Color backdrop = hovered(colors.popup);
+	const auto alpha = static_cast<u8>(static_cast<float>(t_alpha) * m_size_slider_fold);
+	const bool pointer_live = !m_switcher_drag.is_pressed();
 
-	for (i32 stop = 0; stop < zoom_stop_count; stop += 1) {
-		const float tick_y = track.y + track.h * (1.0f - stop_percent(stop) / 100.0f);
-		t_draw_list.add_rect(Rect{track.x - 3.0f, tick_y - 0.75f, track.w + 6.0f, 1.5f},
-							 faded(with_alpha(theme().text_faint, switcher_tick_alpha), t_alpha));
+	Rect slider = size_slider_rect(t_panel);
+	const Rect shown{slider.x, slider.y, slider.w, size_slider_shown_height()};
+	slider.y -= snapped_to_pixel((1.0f - m_size_slider_fold) * size_slider_rise);
+
+	const Rect track = size_slider_track_rect(slider);
+	const i32 sizes = entry.last_stop - entry.first_stop + 1;
+
+	t_draw_list.push_clip(shown);
+
+	for (const bool large : {false, true}) {
+		const Rect icon = size_slider_icon_rect(slider, large);
+		const bool icon_hovered = pointer_live && icon.inset(-size_slider_icon_reach).contains(m_mouse);
+
+		t_draw_list.add_image(icon, m_assets.get(Asset::icon_image),
+							  faded(icon_hovered ? colors.text : colors.text_faint, alpha));
 	}
 
-	char buffer[8];
-	const int written = std::snprintf(buffer, sizeof(buffer), "%d%%", static_cast<int>(m_zoom_percent + 0.5f));
-	const std::string_view percent{buffer, static_cast<usize>(std::max(written, 0))};
+	t_draw_list.add_rounded_rect(track, rounded(track.h * 0.5f), faded(colors.track, alpha));
 
-	const float indicator_width = text_width(font, percent) + switcher_indicator_padding * 2.0f;
-	const float indicator_center_y = track.y + track.h * (1.0f - std::clamp(m_zoom_percent / 100.0f, 0.0f, 1.0f));
-	const Rect indicator{track.center().x - indicator_width * 0.5f,
-						 indicator_center_y - switcher_indicator_height * 0.5f, indicator_width,
-						 switcher_indicator_height};
+	for (i32 size = 0; size < sizes; size += 1) {
+		const float x = track.x + track.w * static_cast<float>(size) / static_cast<float>(sizes - 1);
+		const Rect tick{snapped_to_pixel(x - size_slider_tick_size * 0.5f),
+						track.center().y - size_slider_tick_size * 0.5f, size_slider_tick_size, size_slider_tick_size};
 
-	t_draw_list.add_bordered_rect(indicator.inset(-1.0f), rounded(indicator.h * 0.5f + 1.0f),
-								  faded(m_settings.accent, t_alpha), faded(outline_on(m_settings.accent), t_alpha),
-								  1.0f);
-	draw_text(t_draw_list, font,
-			  Vec2{indicator.x + switcher_indicator_padding, font.centered_baseline(indicator) - 1.0f}, percent,
-			  faded(foreground_on(m_settings.accent), t_alpha));
+		t_draw_list.add_rounded_rect(tick, rounded(size_slider_tick_size * 0.5f), faded(colors.text_faint, alpha));
+	}
+
+	const float thumb_x = track.x + track.w * zoom_within(m_zoom_percent, entry.first_stop, entry.last_stop);
+	const Rect thumb{thumb_x - size_slider_thumb_size * 0.5f, track.center().y - size_slider_thumb_size * 0.5f,
+					 size_slider_thumb_size, size_slider_thumb_size};
+
+	t_draw_list.add_rounded_rect(thumb.inset(-size_slider_thumb_ring),
+								 rounded(size_slider_thumb_size * 0.5f + size_slider_thumb_ring),
+								 faded(backdrop, alpha));
+	t_draw_list.add_rounded_rect(thumb, rounded(size_slider_thumb_size * 0.5f), faded(m_settings.accent, alpha));
+
+	t_draw_list.pop_clip();
 }
 
 void Carousel::draw_switcher(DrawList &t_draw_list) const
@@ -1828,7 +1971,7 @@ void Carousel::draw_switcher(DrawList &t_draw_list) const
 								  faded(theme().border, alpha), 1.0f);
 
 	draw_switcher_rows(t_draw_list, panel, alpha);
-	draw_switcher_slider(t_draw_list, panel, alpha);
+	draw_size_slider(t_draw_list, panel, alpha);
 }
 
 void Carousel::draw(DrawList &t_draw_list)

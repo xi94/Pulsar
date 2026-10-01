@@ -24,6 +24,7 @@
 #include "embeds/icons/FolderIcon.hpp"
 #include "embeds/icons/GridIcon.hpp"
 #include "embeds/icons/IconsIcon.hpp"
+#include "embeds/icons/ImageIcon.hpp"
 #include "embeds/icons/LeagueIcon.hpp"
 #include "embeds/icons/ListArrow.hpp"
 #include "embeds/icons/ListIcon.hpp"
@@ -100,6 +101,7 @@ const EncodedAsset encoded_assets[asset_count]{
 	{icon::update_icon, "UpdateIcon"},
 	{icon::reset_icon, "ResetIcon"},
 	{icon::account_icon, "AccountIcon"},
+	{icon::image_icon, "ImageIcon"},
 	{icon::app_mark, "AppMark"},
 	{icon::league_of_legends_icon, "LeagueIcon"},
 	{icon::valorant_icon, "ValorantIcon"},

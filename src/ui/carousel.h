@@ -119,10 +119,13 @@ class Carousel : public Widget {
 	i32 game_at(Vec2 t_point) const;
 
 	Rect status_indicator_rect() const;
+	float switcher_row_height() const;
+	float size_slider_shown_height() const;
 	Rect switcher_panel_rect() const;
 	Rect switcher_row_rect(Rect t_panel, u32 t_row) const;
-	Rect switcher_track_rect(Rect t_panel) const;
-	Rect switcher_track_grab_rect(Rect t_panel) const;
+	Rect switcher_active_pill(Rect t_panel) const;
+	Rect size_slider_rect(Rect t_panel) const;
+	bool is_size_slider_open() const;
 	bool is_switcher_shown() const;
 	bool is_mouse_over_switcher(Vec2 t_mouse) const;
 
@@ -171,7 +174,7 @@ class Carousel : public Widget {
 	void draw_reorder_hint(DrawList &t_draw_list) const;
 	void draw_switcher(DrawList &t_draw_list) const;
 	void draw_switcher_rows(DrawList &t_draw_list, Rect t_panel, u8 t_alpha) const;
-	void draw_switcher_slider(DrawList &t_draw_list, Rect t_panel, u8 t_alpha) const;
+	void draw_size_slider(DrawList &t_draw_list, Rect t_panel, u8 t_alpha) const;
 
 	const Library &m_library;
 	const Settings &m_settings;
@@ -201,6 +204,7 @@ class Carousel : public Widget {
 
 	float m_switcher_hold_seconds = 0.0f;
 	float m_switcher_shown = 0.0f;
+	float m_size_slider_fold = 0.0f;
 	Draggable m_switcher_drag;
 	bool m_switcher_owns_pointer = false;
 
