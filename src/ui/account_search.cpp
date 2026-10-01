@@ -46,26 +46,25 @@ constexpr u32 query_max_length = 64;
 constexpr u32 group_break_row = 3;
 constexpr float group_gap = 9.0f;
 
-std::string_view account_name(const Account &t_account)
+std::string_view account_name(const Account *t_account)
 {
-	return t_account.note[0] != '\0' ? std::string_view{t_account.note} : std::string_view{t_account.username};
+	return t_account->note[0] != '\0' ? std::string_view{t_account->note} : std::string_view{t_account->username};
 }
 
-bool matches(const Account &t_account, std::string_view t_query)
+bool matches(const Account *t_account, std::string_view t_query)
 {
-	return find_ignoring_case(t_account.note, t_query) != std::string_view::npos ||
-		   find_ignoring_case(t_account.username, t_query) != std::string_view::npos ||
-		   find_ignoring_case(t_account.region, t_query) != std::string_view::npos;
+	return find_ignoring_case(t_account->note, t_query) != std::string_view::npos ||
+		   find_ignoring_case(t_account->username, t_query) != std::string_view::npos ||
+		   find_ignoring_case(t_account->region, t_query) != std::string_view::npos;
 }
 
-bool starts_with_query(const Account &t_account, std::string_view t_query)
+bool starts_with_query(const Account *t_account, std::string_view t_query)
 {
-	return find_ignoring_case(t_account.note, t_query) == 0 || find_ignoring_case(t_account.username, t_query) == 0;
+	return find_ignoring_case(t_account->note, t_query) == 0 || find_ignoring_case(t_account->username, t_query) == 0;
 }
 }
 
-AccountSearch::AccountSearch(const Library &t_library, const Fonts &t_fonts, const Assets &t_assets,
-							 const Window &t_window, CommandQueue &t_commands)
+AccountSearch::AccountSearch(const Library *t_library, const Fonts *t_fonts, const Assets *t_assets, const Window *t_window, CommandQueue *t_commands)
 	: m_library(t_library)
 	, m_fonts(t_fonts)
 	, m_assets(t_assets)
@@ -96,31 +95,30 @@ void AccountSearch::close()
 
 bool AccountSearch::is_valid(AccountRef t_account) const
 {
-	return t_account.game < m_library.game_count && t_account.index < m_library.games[t_account.game].account_count;
+	return t_account.game < m_library->game_count && t_account.index < m_library->games[t_account.game].account_count;
 }
 
 void AccountSearch::rebuild_results()
 {
 	const std::string_view query = m_query.value();
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
 	const float name_limit = text_width(body, name_column_sample);
 	m_results.clear();
 	m_name_column = 0.0f;
 	m_region_column = 0.0f;
 
-	for (u32 game = 0; game < m_library.game_count; game += 1) {
-		for (u32 index = 0; index < m_library.games[game].account_count; index += 1) {
+	for (u32 game = 0; game < m_library->game_count; game += 1) {
+		for (u32 index = 0; index < m_library->games[game].account_count; index += 1) {
 			const AccountRef ref{game, index};
-			const Account &account = m_library.account(ref);
+			const Account *account = m_library->account(ref);
 
-			if (account.note[0] != '\0') {
-				m_name_column = std::max(m_name_column, std::min(text_width(body, account.note), name_limit));
+			if (account->note[0] != '\0') {
+				m_name_column = std::max(m_name_column, std::min(text_width(body, account->note), name_limit));
 			}
 
-			if (account.region[0] != '\0') {
-				m_region_column =
-					std::max(m_region_column, text_width(secondary, account.region) + region_chip_padding * 2.0f);
+			if (account->region[0] != '\0') {
+				m_region_column = std::max(m_region_column, text_width(secondary, account->region) + region_chip_padding * 2.0f);
 			}
 
 			if (query.empty() || matches(account, query)) {
@@ -133,14 +131,14 @@ void AccountSearch::rebuild_results()
 	m_region_column = std::ceil(m_region_column);
 
 	std::ranges::stable_sort(m_results, [&](AccountRef t_a, AccountRef t_b) {
-		const Account &a = m_library.account(t_a);
-		const Account &b = m_library.account(t_b);
+		const Account *a = m_library->account(t_a);
+		const Account *b = m_library->account(t_b);
 		const bool a_starts = !query.empty() && starts_with_query(a, query);
 		const bool b_starts = !query.empty() && starts_with_query(b, query);
 
 		if (a_starts != b_starts) return a_starts;
 
-		return a.last_used > b.last_used;
+		return a->last_used > b->last_used;
 	});
 }
 
@@ -153,9 +151,9 @@ void AccountSearch::rebuild_actions()
 	m_actions[m_action_count++] = Action{ActionKind::CopyUsername, 0};
 	m_actions[m_action_count++] = Action{ActionKind::CopyPassword, 0};
 
-	const u16 visible = m_library.account(*m_account).visible_games(m_account->game);
+	const u16 visible = m_library->account(*m_account)->visible_games(m_account->game);
 
-	for (u32 game = 0; game < m_library.game_count && m_action_count < max_actions; game += 1) {
+	for (u32 game = 0; game < m_library->game_count && m_action_count < max_actions; game += 1) {
 		if ((visible & (1u << game)) != 0) {
 			m_actions[m_action_count++] = Action{ActionKind::Login, game};
 		}
@@ -198,17 +196,16 @@ void AccountSearch::activate(u32 t_row)
 
 	switch (action.kind) {
 		case ActionKind::Edit:
-			m_commands.push(Command{.type = CommandType::EditAccount, .account = account});
+			m_commands->push(Command{.type = CommandType::EditAccount, .account = account});
 			break;
 		case ActionKind::CopyUsername:
-			m_commands.push(Command{.type = CommandType::CopyAccountUsername, .account = account});
+			m_commands->push(Command{.type = CommandType::CopyAccountUsername, .account = account});
 			break;
 		case ActionKind::CopyPassword:
-			m_commands.push(Command{.type = CommandType::CopyAccountPassword, .account = account});
+			m_commands->push(Command{.type = CommandType::CopyAccountPassword, .account = account});
 			break;
 		case ActionKind::Login:
-			m_commands.push(
-				Command{.type = CommandType::LoginAccount, .index = static_cast<i32>(action.game), .account = account});
+			m_commands->push(Command{.type = CommandType::LoginAccount, .index = static_cast<i32>(action.game), .account = account});
 			break;
 	}
 
@@ -243,22 +240,20 @@ u32 AccountSearch::shown_rows() const
 
 float AccountSearch::row_height() const
 {
-	return std::max(36.0f, m_fonts.body.line_height() + 14.0f);
+	return std::max(36.0f, m_fonts->body.line_height() + 14.0f);
 }
 
 AccountSearch::Layout AccountSearch::layout() const
 {
-	const Vec2 window = m_window.size();
+	const Vec2 window = m_window->size();
 	const float width = std::min(panel_max_width, window.x - panel_side_margin * 2.0f);
-	const float list_height =
-		list_padding * 2.0f + row_height() * static_cast<float>(shown_rows()) + (has_group_gap() ? group_gap : 0.0f);
-	const float footer_height = controls::keycap_height(m_fonts.secondary) + footer_padding_y * 2.0f;
+	const float list_height = list_padding * 2.0f + row_height() * static_cast<float>(shown_rows()) + (has_group_gap() ? group_gap : 0.0f);
+	const float footer_height = controls::keycap_height(m_fonts->secondary) + footer_padding_y * 2.0f;
 	const float rise = panel_rise * (1.0f - m_open_amount);
 
 	Layout result{};
-	result.panel =
-		Rect{snapped_to_pixel((window.x - width) * 0.5f), snapped_to_pixel(title_bar_height + panel_top_gap - rise),
-			 width, header_height + 1.0f + list_height + 1.0f + footer_height + 1.0f};
+	result.panel = Rect{snapped_to_pixel((window.x - width) * 0.5f), snapped_to_pixel(title_bar_height + panel_top_gap - rise), width,
+						header_height + 1.0f + list_height + 1.0f + footer_height + 1.0f};
 
 	Rect remaining = result.panel;
 	result.header = remaining.split_top(header_height);
@@ -275,7 +270,7 @@ Rect AccountSearch::query_text_rect(const Layout &t_layout) const
 {
 	const Rect &header = t_layout.header;
 	const float left = header.x + header_padding + header_icon_size + header_icon_gap;
-	const float right = header.right() - header_padding - controls::keycap_width(m_fonts.secondary, "Esc") - 8.0f;
+	const float right = header.right() - header_padding - controls::keycap_width(m_fonts->secondary, "Esc") - 8.0f;
 
 	return Rect{left, header.y, std::max(0.0f, right - left), header.h};
 }
@@ -293,9 +288,7 @@ Rect AccountSearch::row_rect(const Layout &t_layout, u32 t_row) const
 	const float height = row_height();
 	const bool below_gap = has_group_gap() && m_first_row < group_break_row && t_row >= group_break_row;
 
-	return Rect{t_layout.list.x,
-				t_layout.list.y + static_cast<float>(t_row - m_first_row) * height + (below_gap ? group_gap : 0.0f),
-				t_layout.list.w, height};
+	return Rect{t_layout.list.x, t_layout.list.y + static_cast<float>(t_row - m_first_row) * height + (below_gap ? group_gap : 0.0f), t_layout.list.w, height};
 }
 
 std::optional<u32> AccountSearch::row_at(const Layout &t_layout, Vec2 t_point) const
@@ -350,7 +343,7 @@ bool AccountSearch::on_pointer_down(Vec2 t_point)
 
 	if (!m_account && current.header.contains(t_point)) {
 		m_query.set_focused(true);
-		m_query.on_pointer_down(m_fonts.body, query_text_rect(current), t_point.x);
+		m_query.on_pointer_down(m_fonts->body, query_text_rect(current), t_point.x);
 		return true;
 	}
 
@@ -367,7 +360,7 @@ bool AccountSearch::on_pointer_move(Vec2 t_point)
 	const Layout current = layout();
 
 	if (m_query.is_selecting()) {
-		m_query.on_pointer_move(m_fonts.body, query_text_rect(current), t_point.x);
+		m_query.on_pointer_move(m_fonts->body, query_text_rect(current), t_point.x);
 	}
 
 	if (const std::optional<u32> hovered_row = row_at(current, t_point)) {
@@ -418,8 +411,8 @@ bool AccountSearch::on_right_click(Vec2 t_point)
 
 	if (current.header.contains(t_point)) {
 		m_query.set_focused(true);
-		m_query.on_right_click(m_fonts.body, query_text_rect(current), t_point.x);
-		m_commands.push(Command{.type = CommandType::ShowTextMenu, .position = t_point, .text_input = &m_query});
+		m_query.on_right_click(m_fonts->body, query_text_rect(current), t_point.x);
+		m_commands->push(Command{.type = CommandType::ShowTextMenu, .position = t_point, .text_input = &m_query});
 	}
 
 	return true;
@@ -435,8 +428,7 @@ bool AccountSearch::on_scroll(Vec2, float t_wheel_delta)
 	if (count <= shown) return true;
 
 	const i32 step = t_wheel_delta > 0.0f ? -1 : 1;
-	m_first_row =
-		static_cast<u32>(std::clamp(static_cast<i32>(m_first_row) + step, 0, static_cast<i32>(count - shown)));
+	m_first_row = static_cast<u32>(std::clamp(static_cast<i32>(m_first_row) + step, 0, static_cast<i32>(count - shown)));
 	m_highlighted = std::clamp(m_highlighted, m_first_row, m_first_row + shown - 1);
 
 	return true;
@@ -535,105 +527,97 @@ CursorKind AccountSearch::cursor() const
 	return row_at(current, m_mouse) ? CursorKind::Hand : CursorKind::Arrow;
 }
 
-void AccountSearch::draw_header(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha)
+void AccountSearch::draw_header(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha)
 {
 	const Theme &colors = theme();
 	const Rect &header = t_layout.header;
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
 
 	if (!m_account) {
-		const Rect icon{header.x + header_padding, header.center().y - header_icon_size * 0.5f, header_icon_size,
-						header_icon_size};
+		const Rect icon{header.x + header_padding, header.center().y - header_icon_size * 0.5f, header_icon_size, header_icon_size};
 
 		controls::draw_magnifier(t_draw_list, icon, faded(colors.text_dim, t_alpha));
-		m_query.draw(t_draw_list, body, query_text_rect(t_layout), faded(colors.text, t_alpha),
-					 faded(colors.text_dim, t_alpha), query_text_rect(t_layout));
-		controls::draw_shortcut(t_draw_list, secondary, Vec2{header.right() - header_padding, header.center().y}, "Esc",
-								colors.popup, t_alpha);
+		m_query.draw(t_draw_list, body, query_text_rect(t_layout), faded(colors.text, t_alpha), faded(colors.text_dim, t_alpha), query_text_rect(t_layout));
+		controls::draw_shortcut(t_draw_list, secondary, Vec2{header.right() - header_padding, header.center().y}, "Esc", colors.popup, t_alpha);
 		return;
 	}
 
-	const Account &account = m_library.account(*m_account);
+	const Account *account = m_library->account(*m_account);
 	const Rect back = back_button_rect(t_layout);
 	const bool back_hovered = back.contains(m_mouse);
 
 	if (back_hovered) {
-		t_draw_list.add_rounded_rect(back, rounded(row_radius), faded(hovered(colors.popup), t_alpha));
+		t_draw_list->add_rounded_rect(back, rounded(row_radius), faded(hovered(colors.popup), t_alpha));
 	}
 
-	t_draw_list.add_image(back.centered(header_icon_size, header_icon_size), m_assets.get(Asset::IconArrowBack),
-						  faded(back_hovered ? colors.text : colors.text_dim, t_alpha));
+	t_draw_list->add_image(back.centered(header_icon_size, header_icon_size), m_assets->get(Asset::IconArrowBack),
+						   faded(back_hovered ? colors.text : colors.text_dim, t_alpha));
 
 	const Rect icon{back.right() + 6.0f, header.center().y - row_icon_size * 0.5f, row_icon_size, row_icon_size};
-	t_draw_list.add_image(icon, m_assets.get(Asset::IconAccount), faded(colors.text_dim, t_alpha));
+	t_draw_list->add_image(icon, m_assets->get(Asset::IconAccount), faded(colors.text_dim, t_alpha));
 
 	const std::string_view name = account_name(account);
 	const float name_x = icon.right() + row_icon_gap;
 	const float room = header.right() - header_padding - name_x;
-	const float name_width = std::min(text_width(body, name), account.note[0] != '\0' ? room * 0.6f : room);
+	const float name_width = std::min(text_width(body, name), account->note[0] != '\0' ? room * 0.6f : room);
 	const float baseline = body.centered_baseline(header);
 	draw_text_truncated(t_draw_list, body, Vec2{name_x, baseline}, name, name_width, faded(colors.text, t_alpha));
 
-	if (account.note[0] != '\0') {
+	if (account->note[0] != '\0') {
 		const float username_x = name_x + name_width + row_text_gap;
-		draw_text_truncated(t_draw_list, secondary, Vec2{username_x, baseline}, account.username,
-							header.right() - header_padding - username_x, faded(colors.text_faint, t_alpha));
+		draw_text_truncated(t_draw_list, secondary, Vec2{username_x, baseline}, account->username, header.right() - header_padding - username_x,
+							faded(colors.text_faint, t_alpha));
 	}
 }
 
-void AccountSearch::draw_result(DrawList &t_draw_list, Rect t_row, AccountRef t_account, bool t_highlighted,
-								u8 t_alpha) const
+void AccountSearch::draw_result(DrawList *t_draw_list, Rect t_row, AccountRef t_account, bool t_highlighted, u8 t_alpha) const
 {
 	const Theme &colors = theme();
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
-	const Account &account = m_library.account(t_account);
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
+	const Account *account = m_library->account(t_account);
 
 	if (t_highlighted) {
-		t_draw_list.add_rounded_rect(t_row, rounded(row_radius), faded(hovered(colors.popup), t_alpha));
+		t_draw_list->add_rounded_rect(t_row, rounded(row_radius), faded(hovered(colors.popup), t_alpha));
 	}
 
 	const Rect icon{t_row.x + row_padding, t_row.center().y - row_icon_size * 0.5f, row_icon_size, row_icon_size};
-	t_draw_list.add_image(icon, m_assets.get(Asset::IconAccount), faded(colors.text_dim, t_alpha));
+	t_draw_list->add_image(icon, m_assets->get(Asset::IconAccount), faded(colors.text_dim, t_alpha));
 
-	const std::string_view region = account.region;
+	const std::string_view region = account->region;
 	const float right = t_row.right() - row_padding - (m_region_column > 0.0f ? m_region_column + column_gap : 0.0f);
 	const float baseline = body.centered_baseline(t_row);
 	const float name_x = icon.right() + row_icon_gap;
 	const Color name_color = faded(t_highlighted ? colors.text : mix(colors.text_dim, colors.text, 0.5f), t_alpha);
 
-	if (account.note[0] == '\0') {
-		draw_text_truncated(t_draw_list, body, Vec2{name_x, baseline}, account.username, right - name_x, name_color);
+	if (account->note[0] == '\0') {
+		draw_text_truncated(t_draw_list, body, Vec2{name_x, baseline}, account->username, right - name_x, name_color);
 	} else {
 		const float name_width = std::min(m_name_column, std::max(0.0f, (right - name_x) * 0.6f));
 		const float username_x = name_x + name_width + column_gap;
 
-		draw_text_truncated(t_draw_list, body, Vec2{name_x, baseline}, account.note, name_width, name_color);
-		draw_text_truncated(t_draw_list, secondary, Vec2{username_x, baseline}, account.username, right - username_x,
-							faded(colors.text_faint, t_alpha));
+		draw_text_truncated(t_draw_list, body, Vec2{name_x, baseline}, account->note, name_width, name_color);
+		draw_text_truncated(t_draw_list, secondary, Vec2{username_x, baseline}, account->username, right - username_x, faded(colors.text_faint, t_alpha));
 	}
 
 	if (!region.empty()) {
 		const float height = secondary.line_height() + 2.0f;
-		const Rect chip{t_row.right() - row_padding - m_region_column, t_row.center().y - height * 0.5f,
-						m_region_column, height};
+		const Rect chip{t_row.right() - row_padding - m_region_column, t_row.center().y - height * 0.5f, m_region_column, height};
 
-		t_draw_list.add_bordered_rect(chip, rounded(4.0f), faded(colors.popup, t_alpha), faded(colors.border, t_alpha),
-									  1.0f);
+		t_draw_list->add_bordered_rect(chip, rounded(4.0f), faded(colors.popup, t_alpha), faded(colors.border, t_alpha), 1.0f);
 		draw_text_centered(t_draw_list, secondary, chip, region, faded(colors.text_dim, t_alpha));
 	}
 }
 
-void AccountSearch::draw_action(DrawList &t_draw_list, Rect t_row, const Action &t_action, bool t_highlighted,
-								u8 t_alpha) const
+void AccountSearch::draw_action(DrawList *t_draw_list, Rect t_row, const Action &t_action, bool t_highlighted, u8 t_alpha) const
 {
 	const Theme &colors = theme();
-	const Font &body = m_fonts.body;
+	const Font &body = m_fonts->body;
 	const Color backdrop = t_highlighted ? hovered(colors.popup) : colors.popup;
 
 	if (t_highlighted) {
-		t_draw_list.add_rounded_rect(t_row, rounded(row_radius), faded(backdrop, t_alpha));
+		t_draw_list->add_rounded_rect(t_row, rounded(row_radius), faded(backdrop, t_alpha));
 	}
 
 	const Rect icon{t_row.x + row_padding, t_row.center().y - row_icon_size * 0.5f, row_icon_size, row_icon_size};
@@ -643,28 +627,27 @@ void AccountSearch::draw_action(DrawList &t_draw_list, Rect t_row, const Action 
 
 	switch (t_action.kind) {
 		case ActionKind::Edit:
-			t_draw_list.add_image(icon, m_assets.get(Asset::IconEdit), icon_color);
+			t_draw_list->add_image(icon, m_assets->get(Asset::IconEdit), icon_color);
 			text = "Edit account";
 			break;
 		case ActionKind::CopyUsername:
-			t_draw_list.add_image(icon, m_assets.get(Asset::IconUsername), icon_color);
+			t_draw_list->add_image(icon, m_assets->get(Asset::IconUsername), icon_color);
 			text = "Copy username";
 			break;
 		case ActionKind::CopyPassword:
-			t_draw_list.add_image(icon, m_assets.get(Asset::IconLock), icon_color);
+			t_draw_list->add_image(icon, m_assets->get(Asset::IconLock), icon_color);
 			text = "Copy password";
 			break;
 		case ActionKind::Login: {
-			const Game &game = m_library.games[t_action.game];
+			const Game &game = m_library->games[t_action.game];
 
 			if (game.icon != nullptr) {
-				t_draw_list.add_image(icon, game.icon, faded(Color{255, 255, 255, 255}, t_alpha), rounded(4.0f));
+				t_draw_list->add_image(icon, game.icon, faded(Color{255, 255, 255, 255}, t_alpha), rounded(4.0f));
 			} else {
-				t_draw_list.add_rounded_rect(icon, rounded(4.0f), faded(game.accent, t_alpha));
+				t_draw_list->add_rounded_rect(icon, rounded(4.0f), faded(game.accent, t_alpha));
 			}
 
-			const int written = std::snprintf(label, sizeof(label), "Log in to %.*s",
-											  static_cast<int>(game.title.size()), game.title.data());
+			const int written = std::snprintf(label, sizeof(label), "Log in to %.*s", static_cast<int>(game.title.size()), game.title.data());
 			text = std::string_view{label, static_cast<usize>(std::max(written, 0))};
 			break;
 		}
@@ -675,10 +658,10 @@ void AccountSearch::draw_action(DrawList &t_draw_list, Rect t_row, const Action 
 						faded(t_highlighted ? colors.text : mix(colors.text_dim, colors.text, 0.5f), t_alpha));
 }
 
-void AccountSearch::draw_footer(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const
+void AccountSearch::draw_footer(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha) const
 {
 	const Theme &colors = theme();
-	const Font &font = m_fonts.secondary;
+	const Font &font = m_fonts->secondary;
 	const Rect &footer = t_layout.footer;
 	const float cap = controls::keycap_height(font);
 	const float cap_y = snapped_to_pixel(footer.center().y - cap * 0.5f);
@@ -686,13 +669,11 @@ void AccountSearch::draw_footer(DrawList &t_draw_list, const Layout &t_layout, u
 	const Color label = faded(colors.text_faint, t_alpha);
 	float x = footer.x + footer_padding_x;
 
-	t_draw_list.add_rounded_rect(footer, rounded(0.0f, 0.0f, panel_radius - 1.0f, panel_radius - 1.0f),
-								 faded(colors.field, t_alpha));
+	t_draw_list->add_rounded_rect(footer, rounded(0.0f, 0.0f, panel_radius - 1.0f, panel_radius - 1.0f), faded(colors.field, t_alpha));
 
 	const auto key = [&](std::string_view t_key) {
 		const float width = controls::keycap_width(font, t_key);
-		controls::draw_keycap(t_draw_list, font, Rect{snapped_to_pixel(x), cap_y, width, cap}, t_key, colors.field,
-							  t_alpha);
+		controls::draw_keycap(t_draw_list, font, Rect{snapped_to_pixel(x), cap_y, width, cap}, t_key, colors.field, t_alpha);
 		x += width + hint_key_gap;
 	};
 
@@ -703,8 +684,8 @@ void AccountSearch::draw_footer(DrawList &t_draw_list, const Layout &t_layout, u
 
 	for (const bool up : {true, false}) {
 		const Rect arrow{snapped_to_pixel(x), cap_y, cap, cap};
-		const Rect chevron{arrow.center().x - hint_arrow_size.x * 0.5f,
-						   arrow.center().y - hint_arrow_size.y * 0.5f - 0.5f, hint_arrow_size.x, hint_arrow_size.y};
+		const Rect chevron{arrow.center().x - hint_arrow_size.x * 0.5f, arrow.center().y - hint_arrow_size.y * 0.5f - 0.5f, hint_arrow_size.x,
+						   hint_arrow_size.y};
 
 		controls::draw_keycap_frame(t_draw_list, arrow, colors.field, t_alpha);
 		controls::draw_chevron(t_draw_list, chevron, up, faded(controls::keycap_label_color(), t_alpha));
@@ -722,34 +703,30 @@ void AccountSearch::draw_footer(DrawList &t_draw_list, const Layout &t_layout, u
 	}
 }
 
-void AccountSearch::draw(DrawList &t_draw_list)
+void AccountSearch::draw(DrawList *t_draw_list)
 {
 	if (m_open_amount <= 0.01f) return;
 
 	const Theme &colors = theme();
 	const auto alpha = to_alpha(m_open_amount);
-	const Vec2 window = m_window.size();
+	const Vec2 window = m_window->size();
 	const Layout current = layout();
 
-	t_draw_list.add_rect(Rect{0.0f, title_bar_height, window.x, window.y - title_bar_height},
-						 faded(colors.scrim, alpha));
+	t_draw_list->add_rect(Rect{0.0f, title_bar_height, window.x, window.y - title_bar_height}, faded(colors.scrim, alpha));
 
 	controls::draw_popup_shadow(t_draw_list, current.panel, panel_radius, m_open_amount);
-	t_draw_list.add_bordered_rect(current.panel, rounded(panel_radius), faded(colors.popup, alpha),
-								  faded(colors.border, alpha), 1.0f);
+	t_draw_list->add_bordered_rect(current.panel, rounded(panel_radius), faded(colors.popup, alpha), faded(colors.border, alpha), 1.0f);
 
 	draw_header(t_draw_list, current, alpha);
-	t_draw_list.add_rect(Rect{current.panel.x + 1.0f, current.header.bottom(), current.panel.w - 2.0f, 1.0f},
-						 faded(colors.separator, alpha));
-	t_draw_list.add_rect(Rect{current.panel.x + 1.0f, current.footer.y - 1.0f, current.panel.w - 2.0f, 1.0f},
-						 faded(colors.separator, alpha));
+	t_draw_list->add_rect(Rect{current.panel.x + 1.0f, current.header.bottom(), current.panel.w - 2.0f, 1.0f}, faded(colors.separator, alpha));
+	t_draw_list->add_rect(Rect{current.panel.x + 1.0f, current.footer.y - 1.0f, current.panel.w - 2.0f, 1.0f}, faded(colors.separator, alpha));
 
 	const u32 count = row_count();
 
 	if (count == 0) {
 		const bool empty_library = !m_account && m_query.value().empty();
-		draw_text_centered(t_draw_list, m_fonts.secondary, current.list,
-						   empty_library ? "No accounts yet" : "No accounts match", faded(colors.text_faint, alpha));
+		draw_text_centered(t_draw_list, m_fonts->secondary, current.list, empty_library ? "No accounts yet" : "No accounts match",
+						   faded(colors.text_faint, alpha));
 	}
 
 	const u32 last = std::min(count, m_first_row + shown_rows());
@@ -761,8 +738,7 @@ void AccountSearch::draw(DrawList &t_draw_list)
 		if (m_account) {
 			if (row == group_break_row && row > m_first_row) {
 				const float y = snapped_to_pixel(rect.y - group_gap * 0.5f - 0.5f);
-				t_draw_list.add_rect(Rect{rect.x + row_padding, y, rect.w - row_padding * 2.0f, 1.0f},
-									 faded(colors.separator, alpha));
+				t_draw_list->add_rect(Rect{rect.x + row_padding, y, rect.w - row_padding * 2.0f, 1.0f}, faded(colors.separator, alpha));
 			}
 
 			draw_action(t_draw_list, rect.inset(0.0f, 1.0f), m_actions[row], highlighted, alpha);

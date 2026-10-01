@@ -75,9 +75,8 @@ void write_line(const char *t_category, const char *t_message)
 	const u64 elapsed_ms = now_ms() - g_start_ms;
 
 	char line[1400];
-	_snprintf_s(line, _TRUNCATE, "%02u:%02u:%02u.%03u  +%4llu.%03llus  t%-5lu  %-8s  %s\n", local_time.wHour,
-				local_time.wMinute, local_time.wSecond, local_time.wMilliseconds, elapsed_ms / 1000, elapsed_ms % 1000,
-				GetCurrentThreadId(), t_category != nullptr ? t_category : "-", t_message);
+	_snprintf_s(line, _TRUNCATE, "%02u:%02u:%02u.%03u  +%4llu.%03llus  t%-5lu  %-8s  %s\n", local_time.wHour, local_time.wMinute, local_time.wSecond,
+				local_time.wMilliseconds, elapsed_ms / 1000, elapsed_ms % 1000, GetCurrentThreadId(), t_category != nullptr ? t_category : "-", t_message);
 
 	AcquireSRWLockExclusive(&g_write_lock);
 
@@ -124,10 +123,10 @@ void write_hang_dump_once()
 	}
 }
 
-u32 collect_stuck_scopes(u64 t_now, StuckReport *t_out_reports, bool &t_out_past_hang_threshold)
+u32 collect_stuck_scopes(u64 t_now, StuckReport *t_out_reports, bool *t_out_past_hang_threshold)
 {
 	u32 report_count = 0;
-	t_out_past_hang_threshold = false;
+	*t_out_past_hang_threshold = false;
 
 	AcquireSRWLockExclusive(&g_scope_lock);
 
@@ -135,13 +134,13 @@ u32 collect_stuck_scopes(u64 t_now, StuckReport *t_out_reports, bool &t_out_past
 		if (!scope.in_use || t_now < scope.next_report_ms) continue;
 
 		const u64 age_ms = t_now - scope.start_ms;
-		t_out_past_hang_threshold = t_out_past_hang_threshold || age_ms >= hang_dump_after_ms;
+		*t_out_past_hang_threshold = *t_out_past_hang_threshold || age_ms >= hang_dump_after_ms;
 
-		StuckReport &report = t_out_reports[report_count];
-		report.category = scope.category;
-		report.thread_id = scope.thread_id;
-		report.age_ms = age_ms;
-		std::memcpy(report.label, scope.label, sizeof(report.label));
+		StuckReport *report = &t_out_reports[report_count];
+		report->category = scope.category;
+		report->thread_id = scope.thread_id;
+		report->age_ms = age_ms;
+		std::memcpy(report->label, scope.label, sizeof(report->label));
 		report_count += 1;
 
 		scope.report_interval_ms = std::min(scope.report_interval_ms * 2, max_stuck_report_interval_ms);
@@ -157,11 +156,11 @@ void report_stuck_scopes()
 {
 	StuckReport reports[max_open_scopes];
 	bool past_hang_threshold = false;
-	const u32 report_count = collect_stuck_scopes(now_ms(), reports, past_hang_threshold);
+	const u32 report_count = collect_stuck_scopes(now_ms(), reports, &past_hang_threshold);
 
 	for (const StuckReport &report : std::span{reports, report_count}) {
-		write_unchecked("watchdog", "STILL RUNNING after %llums on thread t%lu  [%s] %s", report.age_ms,
-						report.thread_id, report.category != nullptr ? report.category : "-", report.label);
+		write_unchecked("watchdog", "STILL RUNNING after %llums on thread t%lu  [%s] %s", report.age_ms, report.thread_id,
+						report.category != nullptr ? report.category : "-", report.label);
 	}
 
 	if (past_hang_threshold) {
@@ -179,9 +178,7 @@ void report_ui_thread_stall()
 	if (since_ms >= ui_stall_ms) {
 		bool already_reported = false;
 		if (g_ui_stall_reported.compare_exchange_strong(already_reported, true)) {
-			write_unchecked("watchdog",
-							"UI THREAD STALLED - no frame for %llums (the whole app is frozen, not just a worker)",
-							since_ms);
+			write_unchecked("watchdog", "UI THREAD STALLED - no frame for %llums (the whole app is frozen, not just a worker)", since_ms);
 		}
 
 		return;
@@ -263,8 +260,7 @@ void debug_log::init()
 	open_log_file();
 	g_enabled.store(true, std::memory_order_release);
 
-	write_unchecked("app", "%s %s%s - diagnostic log started", app_name, app_version,
-					is_debug_build ? " [debug]" : " [release]");
+	write_unchecked("app", "%s %s%s - diagnostic log started", app_name, app_version, is_debug_build ? " [debug]" : " [release]");
 	start_watchdog();
 }
 
@@ -327,16 +323,16 @@ debug_log::Scope::Scope(const char *t_category, const char *t_format, ...)
 	AcquireSRWLockExclusive(&g_scope_lock);
 
 	for (u32 i = 0; i < max_open_scopes; i += 1) {
-		OpenScope &scope = g_open_scopes[i];
-		if (scope.in_use) continue;
+		OpenScope *scope = &g_open_scopes[i];
+		if (scope->in_use) continue;
 
-		scope.in_use = true;
-		scope.thread_id = GetCurrentThreadId();
-		scope.start_ms = m_start_ms;
-		scope.report_interval_ms = first_stuck_report_ms;
-		scope.next_report_ms = m_start_ms + first_stuck_report_ms;
-		scope.category = t_category;
-		std::memcpy(scope.label, m_label, sizeof(m_label));
+		scope->in_use = true;
+		scope->thread_id = GetCurrentThreadId();
+		scope->start_ms = m_start_ms;
+		scope->report_interval_ms = first_stuck_report_ms;
+		scope->next_report_ms = m_start_ms + first_stuck_report_ms;
+		scope->category = t_category;
+		std::memcpy(scope->label, m_label, sizeof(m_label));
 		m_slot = static_cast<i32>(i);
 		break;
 	}

@@ -19,8 +19,7 @@ constexpr auto shutdown_join_timeout = std::chrono::milliseconds(3000);
 constexpr auto finished_join_timeout = std::chrono::milliseconds(50);
 
 constexpr const char *invalid_credentials_message = "Invalid username or password.";
-constexpr const char *server_error_message =
-	"Something went wrong - Riot's servers might be overloaded. Try again in a moment.";
+constexpr const char *server_error_message = "Something went wrong - Riot's servers might be overloaded. Try again in a moment.";
 constexpr const char *game_in_progress_message = "A game is already running - close it before switching accounts.";
 constexpr const char *no_riot_client_message = "Couldn't find the Riot Client - is it installed?";
 constexpr const char *launch_failed_message = "Couldn't launch the Riot Client.";
@@ -51,22 +50,21 @@ const char *stage_name(LoginStage t_stage)
 	return "?";
 }
 
-void set_stage(LoginWork &t_work, LoginStage t_stage)
+void set_stage(LoginWork *t_work, LoginStage t_stage)
 {
-	debug_log::write(log_category, "stage -> %s%s", stage_name(t_stage),
-					 t_work.message[0] != '\0' ? " (with a message)" : "");
-	t_work.stage.store(t_stage, std::memory_order_release);
+	debug_log::write(log_category, "stage -> %s%s", stage_name(t_stage), t_work->message[0] != '\0' ? " (with a message)" : "");
+	t_work->stage.store(t_stage, std::memory_order_release);
 }
 
-void fail(LoginWork &t_work, const char *t_message)
+void fail(LoginWork *t_work, const char *t_message)
 {
-	copy_to(t_message, t_work.message);
+	copy_to(t_message, t_work->message);
 	set_stage(t_work, LoginStage::Error);
 }
 
-bool stop_if_cancelled(LoginWork &t_work)
+bool stop_if_cancelled(LoginWork *t_work)
 {
-	if (!t_work.cancel_requested.load(std::memory_order_relaxed)) return false;
+	if (!t_work->cancel_requested.load(std::memory_order_relaxed)) return false;
 
 	set_stage(t_work, LoginStage::Cancelled);
 
@@ -78,17 +76,15 @@ bool is_invalid_credentials(const std::wstring &t_error)
 	return t_error.find(L"credentials") != std::wstring::npos;
 }
 
-bool submit_and_wait_for_error(LoginWork &t_work, const UiAutomation &t_automation, std::wstring &t_out_error,
-							   const std::wstring *t_error_to_ignore = nullptr)
+bool submit_and_wait_for_error(LoginWork *t_work, const UiAutomation &t_automation, std::wstring *t_out_error, const std::wstring *t_error_to_ignore = nullptr)
 {
-	t_out_error.clear();
+	t_out_error->clear();
 
-	return t_work.riot_client.submit_login(t_automation, t_work.username, t_work.password, t_work.cancel_requested) &&
-		   t_work.riot_client.wait_for_login_result(t_automation, t_out_error, t_work.cancel_requested,
-													t_error_to_ignore);
+	return t_work->riot_client.submit_login(t_automation, t_work->username, t_work->password, &t_work->cancel_requested) &&
+		   t_work->riot_client.wait_for_login_result(t_automation, t_out_error, &t_work->cancel_requested, t_error_to_ignore);
 }
 
-bool start_fresh_client(LoginWork &t_work)
+bool start_fresh_client(LoginWork *t_work)
 {
 	if (RiotClient::is_game_in_progress()) {
 		fail(t_work, game_in_progress_message);
@@ -97,41 +93,41 @@ bool start_fresh_client(LoginWork &t_work)
 
 	if (stop_if_cancelled(t_work)) return false;
 
-	RiotClient::kill_all_client_processes(t_work.cancel_requested);
+	RiotClient::kill_all_client_processes(&t_work->cancel_requested);
 
 	if (stop_if_cancelled(t_work)) return false;
 
-	if (!t_work.riot_client.resolve_executable_path()) {
+	if (!t_work->riot_client.resolve_executable_path()) {
 		fail(t_work, no_riot_client_message);
 		return false;
 	}
 
-	if (!t_work.riot_client.launch(t_work.launch_product)) {
+	if (!t_work->riot_client.launch(t_work->launch_product)) {
 		fail(t_work, launch_failed_message);
 		return false;
 	}
 
-	t_work.riot_client.wait_for_responsive_window(t_work.cancel_requested);
+	t_work->riot_client.wait_for_responsive_window(&t_work->cancel_requested);
 
 	return !stop_if_cancelled(t_work);
 }
 
-bool focus_client(LoginWork &t_work)
+bool focus_client(LoginWork *t_work)
 {
 	set_stage(t_work, LoginStage::Connecting);
 
-	t_work.riot_client.bring_to_foreground(t_work.cancel_requested);
-	t_work.riot_client.take_keyboard_focus(t_work.cancel_requested);
+	t_work->riot_client.bring_to_foreground(&t_work->cancel_requested);
+	t_work->riot_client.take_keyboard_focus(&t_work->cancel_requested);
 
 	return !stop_if_cancelled(t_work);
 }
 
-bool authenticate(LoginWork &t_work, const UiAutomation &t_automation)
+bool authenticate(LoginWork *t_work, const UiAutomation &t_automation)
 {
 	set_stage(t_work, LoginStage::Authenticating);
 
 	std::wstring error;
-	bool error_shown = submit_and_wait_for_error(t_work, t_automation, error);
+	bool error_shown = submit_and_wait_for_error(t_work, t_automation, &error);
 
 	if (stop_if_cancelled(t_work)) return false;
 
@@ -141,7 +137,7 @@ bool authenticate(LoginWork &t_work, const UiAutomation &t_automation)
 		set_stage(t_work, LoginStage::Authenticating);
 
 		const std::wstring previous_error = error;
-		error_shown = submit_and_wait_for_error(t_work, t_automation, error, &previous_error);
+		error_shown = submit_and_wait_for_error(t_work, t_automation, &error, &previous_error);
 
 		if (stop_if_cancelled(t_work)) return false;
 	}
@@ -154,14 +150,14 @@ bool authenticate(LoginWork &t_work, const UiAutomation &t_automation)
 	return true;
 }
 
-void run_login(LoginWork &t_work)
+void run_login(LoginWork *t_work)
 {
-	t_work.message[0] = '\0';
+	t_work->message[0] = '\0';
 	set_stage(t_work, LoginStage::WaitingForProcess);
 
 	if (!start_fresh_client(t_work) || !focus_client(t_work)) return;
 
-	UiAutomation automation{t_work.cancel_requested};
+	UiAutomation automation{&t_work->cancel_requested};
 	if (!automation.init()) {
 		debug_log::write(log_category, "UiAutomation::init failed - see the uia lines just above for the HRESULT");
 		fail(t_work, automation_failed_message);
@@ -173,8 +169,7 @@ void run_login(LoginWork &t_work)
 	set_stage(t_work, LoginStage::Launching);
 
 	std::wstring late_error;
-	const PlayResult play = t_work.riot_client.click_play_when_ready(automation, play_button_timeout_ms,
-																	 t_work.cancel_requested, late_error);
+	const PlayResult play = t_work->riot_client.click_play_when_ready(automation, play_button_timeout_ms, &t_work->cancel_requested, &late_error);
 
 	if (stop_if_cancelled(t_work)) return;
 
@@ -189,13 +184,12 @@ void run_login(LoginWork &t_work)
 void worker_main(std::shared_ptr<LoginWork> t_work)
 {
 	debug_log::write(log_category, "worker started");
-	run_login(*t_work);
+	run_login(t_work.get());
 	sodium_memzero(t_work->password, sizeof(t_work->password));
 
 	t_work->worker_finished.store(true, std::memory_order_release);
 
-	debug_log::write(log_category, "worker finished (stage %s), unwinding",
-					 stage_name(t_work->stage.load(std::memory_order_acquire)));
+	debug_log::write(log_category, "worker finished (stage %s), unwinding", stage_name(t_work->stage.load(std::memory_order_acquire)));
 }
 }
 
@@ -210,7 +204,7 @@ LoginAttempt::~LoginAttempt()
 	}
 
 	const debug_log::Scope scope(log_category, "shutdown join of the login worker");
-	join_or_abandon(m_worker, shutdown_join_timeout);
+	join_or_abandon(&m_worker, shutdown_join_timeout);
 }
 
 bool LoginAttempt::is_terminal(LoginStage t_stage)
@@ -221,12 +215,11 @@ bool LoginAttempt::is_terminal(LoginStage t_stage)
 void LoginAttempt::start(std::string_view t_username, std::string_view t_password, std::string_view t_launch_product)
 {
 	if (m_active && !is_terminal(stage())) {
-		debug_log::write(log_category, "start refused - the previous attempt is still active (stage %s)",
-						 stage_name(stage()));
+		debug_log::write(log_category, "start refused - the previous attempt is still active (stage %s)", stage_name(stage()));
 		return;
 	}
 
-	join_or_abandon(m_worker, finished_join_timeout);
+	join_or_abandon(&m_worker, finished_join_timeout);
 
 	auto work = std::make_shared<LoginWork>();
 	copy_to(t_username, work->username);
@@ -266,7 +259,7 @@ void LoginAttempt::update()
 
 	if (m_work->worker_finished.load(std::memory_order_acquire)) {
 		const debug_log::Scope scope(log_category, "render-thread join of a finished login worker");
-		join_or_abandon(m_worker, finished_join_timeout);
+		join_or_abandon(&m_worker, finished_join_timeout);
 		m_active = false;
 
 		debug_log::write(log_category, "attempt retired (final stage %s)", stage_name(stage()));
@@ -274,8 +267,7 @@ void LoginAttempt::update()
 		return;
 	}
 
-	const bool cancel_ignored = m_work->cancel_requested.load(std::memory_order_relaxed) &&
-								std::chrono::steady_clock::now() >= m_cancel_deadline;
+	const bool cancel_ignored = m_work->cancel_requested.load(std::memory_order_relaxed) && std::chrono::steady_clock::now() >= m_cancel_deadline;
 	if (cancel_ignored) {
 		abandon_worker();
 	}
@@ -285,12 +277,11 @@ void LoginAttempt::abandon_worker()
 {
 	const bool user_cancelled = m_work->cancel_requested.load(std::memory_order_relaxed);
 
-	debug_log::write(log_category, "ABANDONING the login worker - it never acknowledged the cancel (stage %s)",
-					 stage_name(stage()));
+	debug_log::write(log_category, "ABANDONING the login worker - it never acknowledged the cancel (stage %s)", stage_name(stage()));
 
 	// The detached worker keeps its own reference to the old work, so it can never write into the next attempt.
 	m_work->cancel_requested.store(true, std::memory_order_relaxed);
-	join_or_abandon(m_worker, std::chrono::milliseconds{0});
+	join_or_abandon(&m_worker, std::chrono::milliseconds{0});
 
 	auto abandoned = std::make_shared<LoginWork>();
 	if (user_cancelled) {

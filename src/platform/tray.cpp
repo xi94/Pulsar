@@ -78,8 +78,7 @@ HICON greyscale_icon(HICON t_icon)
 
 		std::vector<u8> pixels(static_cast<usize>(source.bmWidth) * source.bmHeight * 4);
 		const HDC screen = GetDC(nullptr);
-		const bool read = GetDIBits(screen, info.hbmColor, 0, static_cast<UINT>(source.bmHeight), pixels.data(),
-									&format, DIB_RGB_COLORS) != 0;
+		const bool read = GetDIBits(screen, info.hbmColor, 0, static_cast<UINT>(source.bmHeight), pixels.data(), &format, DIB_RGB_COLORS) != 0;
 
 		void *bits = nullptr;
 		const HBITMAP grey = read ? CreateDIBSection(screen, &format, DIB_RGB_COLORS, &bits, nullptr, 0) : nullptr;
@@ -160,9 +159,7 @@ HBITMAP decode_icon_bitmap(std::span<const u8> t_png, int t_size)
 				}
 
 				const u32 alpha = samples > 0 ? sum[3] / samples : 0;
-				const auto premultiplied = [&](int t_channel) {
-					return static_cast<u8>(samples > 0 ? sum[t_channel] / samples * alpha / 255 : 0);
-				};
+				const auto premultiplied = [&](int t_channel) { return static_cast<u8>(samples > 0 ? sum[t_channel] / samples * alpha / 255 : 0); };
 
 				u8 *destination = out + (static_cast<usize>(y) * t_size + x) * 4;
 				destination[0] = premultiplied(2);
@@ -222,8 +219,7 @@ bool Tray::create(const wchar_t *t_tooltip)
 		return false;
 	}
 
-	if (CreateWindowExW(0, tray_window_class_name, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, instance, this) ==
-		nullptr) {
+	if (CreateWindowExW(0, tray_window_class_name, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, instance, this) == nullptr) {
 		debug_log::write(log_category, "failed to create the tray window, err=%lu", GetLastError());
 		m_window = nullptr;
 		return false;
@@ -252,7 +248,7 @@ bool Tray::create(const wchar_t *t_tooltip)
 	return true;
 }
 
-void Tray::on_menu_open(std::function<void(TrayMenu &)> t_fill_menu)
+void Tray::on_menu_open(std::function<void(TrayMenu *)> t_fill_menu)
 {
 	m_fill_menu = std::move(t_fill_menu);
 }
@@ -338,23 +334,23 @@ HBITMAP Tray::game_icon(i32 t_game)
 {
 	if (t_game < 0 || static_cast<u32>(t_game) >= tray_max_games) return nullptr;
 
-	HBITMAP &icon = m_game_icons[t_game];
-	if (icon == nullptr && !m_game_icon_sources[t_game].empty()) {
-		icon = decode_icon_bitmap(m_game_icon_sources[t_game], menu_icon_size());
+	HBITMAP *icon = &m_game_icons[t_game];
+	if (*icon == nullptr && !m_game_icon_sources[t_game].empty()) {
+		*icon = decode_icon_bitmap(m_game_icon_sources[t_game], menu_icon_size());
 	}
 
-	return icon;
+	return *icon;
 }
 
 void Tray::append_row(HMENU t_menu, UINT t_flags, UINT_PTR t_id, const MenuRow &t_row)
 {
 	if (m_row_count >= max_menu_rows) return;
 
-	MenuRow &stored = m_rows[m_row_count];
-	stored = t_row;
+	MenuRow *stored = &m_rows[m_row_count];
+	*stored = t_row;
 	m_row_count += 1;
 
-	AppendMenuW(t_menu, t_flags | MF_OWNERDRAW, t_id, reinterpret_cast<LPCWSTR>(&stored));
+	AppendMenuW(t_menu, t_flags | MF_OWNERDRAW, t_id, reinterpret_cast<LPCWSTR>(stored));
 }
 
 HMENU Tray::build_game_submenu(const TrayGame &t_game)
@@ -371,8 +367,7 @@ HMENU Tray::build_game_submenu(const TrayGame &t_game)
 	}
 
 	if (t_game.account_count == 0) {
-		append_row(submenu, MF_DISABLED | MF_GRAYED, placeholder_command,
-				   MenuRow{.label = L"No accounts", .disabled = true});
+		append_row(submenu, MF_DISABLED | MF_GRAYED, placeholder_command, MenuRow{.label = L"No accounts", .disabled = true});
 	}
 
 	return submenu;
@@ -390,11 +385,9 @@ HMENU Tray::build_menu()
 	}
 
 	if (m_menu.locked) {
-		append_row(menu, MF_DISABLED | MF_GRAYED, placeholder_command,
-				   MenuRow{.label = L"Vault locked", .indented = true, .disabled = true});
+		append_row(menu, MF_DISABLED | MF_GRAYED, placeholder_command, MenuRow{.label = L"Vault locked", .indented = true, .disabled = true});
 	} else if (m_menu.game_count == 0) {
-		append_row(menu, MF_DISABLED | MF_GRAYED, placeholder_command,
-				   MenuRow{.label = L"No games", .indented = true, .disabled = true});
+		append_row(menu, MF_DISABLED | MF_GRAYED, placeholder_command, MenuRow{.label = L"No games", .indented = true, .disabled = true});
 	}
 
 	append_row(menu, MF_DISABLED | MF_GRAYED, 0, MenuRow{.separator = true, .disabled = true});
@@ -419,7 +412,7 @@ void Tray::show_menu()
 	m_menu = TrayMenu{};
 	m_menu.locked = m_locked;
 	if (m_fill_menu && !m_locked) {
-		m_fill_menu(m_menu);
+		m_fill_menu(&m_menu);
 	}
 
 	m_row_count = 0;
@@ -429,50 +422,49 @@ void Tray::show_menu()
 	SetForegroundWindow(m_window);
 
 	TPMPARAMS placement{.cbSize = sizeof(TPMPARAMS), .rcExclude = RECT{cursor.x, cursor.y, cursor.x, cursor.y}};
-	TrackPopupMenuEx(menu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON | TPM_WORKAREA, cursor.x, cursor.y, m_window,
-					 &placement);
+	TrackPopupMenuEx(menu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON | TPM_WORKAREA, cursor.x, cursor.y, m_window, &placement);
 	PostMessageW(m_window, WM_NULL, 0, 0);
 
 	DestroyMenu(menu);
 	m_row_count = 0;
 }
 
-void Tray::measure_row(MEASUREITEMSTRUCT &t_measure) const
+void Tray::measure_row(MEASUREITEMSTRUCT *t_measure) const
 {
-	const auto &row = *reinterpret_cast<const MenuRow *>(t_measure.itemData);
+	const auto *row = reinterpret_cast<const MenuRow *>(t_measure->itemData);
 
-	if (row.separator) {
-		t_measure.itemWidth = min_row_width;
-		t_measure.itemHeight = separator_height;
+	if (row->separator) {
+		t_measure->itemWidth = min_row_width;
+		t_measure->itemHeight = separator_height;
 		return;
 	}
 
 	SIZE text_size{};
 	if (const HDC dc = GetDC(m_window)) {
 		const HGDIOBJ previous_font = SelectObject(dc, m_menu_font);
-		GetTextExtentPoint32W(dc, row.label, static_cast<int>(wcslen(row.label)), &text_size);
+		GetTextExtentPoint32W(dc, row->label, static_cast<int>(wcslen(row->label)), &text_size);
 		SelectObject(dc, previous_font);
 		ReleaseDC(m_window, dc);
 	}
 
-	const int indent = row.indented ? menu_icon_size() + icon_gap : 0;
-	const int width = padding_x * 2 + indent + text_size.cx + (row.submenu ? submenu_arrow_width : 0);
+	const int indent = row->indented ? menu_icon_size() + icon_gap : 0;
+	const int width = padding_x * 2 + indent + text_size.cx + (row->submenu ? submenu_arrow_width : 0);
 
-	t_measure.itemWidth = static_cast<UINT>(std::max(width, min_row_width));
-	t_measure.itemHeight = row_height;
+	t_measure->itemWidth = static_cast<UINT>(std::max(width, min_row_width));
+	t_measure->itemHeight = row_height;
 }
 
-void Tray::draw_row(const DRAWITEMSTRUCT &t_draw) const
+void Tray::draw_row(const DRAWITEMSTRUCT *t_draw) const
 {
-	const auto &row = *reinterpret_cast<const MenuRow *>(t_draw.itemData);
-	const HDC dc = t_draw.hDC;
-	const RECT rect = t_draw.rcItem;
+	const auto *row = reinterpret_cast<const MenuRow *>(t_draw->itemData);
+	const HDC dc = t_draw->hDC;
+	const RECT rect = t_draw->rcItem;
 	const int middle_y = (rect.top + rect.bottom) / 2;
 
-	const bool hovered = (t_draw.itemState & ODS_SELECTED) != 0 && !row.separator && !row.disabled;
+	const bool hovered = (t_draw->itemState & ODS_SELECTED) != 0 && !row->separator && !row->disabled;
 	FillRect(dc, &rect, hovered ? m_hover_brush : m_background_brush);
 
-	if (row.separator) {
+	if (row->separator) {
 		const RECT line{rect.left + padding_x, middle_y, rect.right - padding_x, middle_y + 1};
 		const HBRUSH brush = CreateSolidBrush(to_colorref(m_colors.separator));
 		FillRect(dc, &line, brush);
@@ -482,29 +474,28 @@ void Tray::draw_row(const DRAWITEMSTRUCT &t_draw) const
 
 	const int icon_size = menu_icon_size();
 
-	if (row.icon != nullptr) {
+	if (row->icon != nullptr) {
 		if (const HDC memory_dc = CreateCompatibleDC(dc)) {
-			const HGDIOBJ previous_bitmap = SelectObject(memory_dc, row.icon);
+			const HGDIOBJ previous_bitmap = SelectObject(memory_dc, row->icon);
 			const BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
 
-			AlphaBlend(dc, rect.left + padding_x, middle_y - icon_size / 2, icon_size, icon_size, memory_dc, 0, 0,
-					   icon_size, icon_size, blend);
+			AlphaBlend(dc, rect.left + padding_x, middle_y - icon_size / 2, icon_size, icon_size, memory_dc, 0, 0, icon_size, icon_size, blend);
 
 			SelectObject(memory_dc, previous_bitmap);
 			DeleteDC(memory_dc);
 		}
 	}
 
-	const Color text_color = row.disabled ? m_colors.text_disabled : m_colors.text;
+	const Color text_color = row->disabled ? m_colors.text_disabled : m_colors.text;
 	SetBkMode(dc, TRANSPARENT);
 	SetTextColor(dc, to_colorref(text_color));
 	const HGDIOBJ previous_font = SelectObject(dc, m_menu_font);
 
-	const int indent = row.indented ? icon_size + icon_gap : 0;
+	const int indent = row->indented ? icon_size + icon_gap : 0;
 	RECT text_rect{rect.left + padding_x + indent, rect.top, rect.right - padding_x, rect.bottom};
-	DrawTextW(dc, row.label, -1, &text_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+	DrawTextW(dc, row->label, -1, &text_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 
-	if (row.submenu) {
+	if (row->submenu) {
 		const int tip_x = rect.right - padding_x - 4;
 		const POINT arrow[3]{{tip_x - 4, middle_y - 4}, {tip_x, middle_y}, {tip_x - 4, middle_y + 4}};
 
@@ -545,8 +536,7 @@ bool Tray::add_icon()
 		return true;
 	}
 
-	debug_log::write(log_category, "Shell_NotifyIcon(NIM_ADD) failed on attempt %u, err=%lu", m_add_attempts,
-					 GetLastError());
+	debug_log::write(log_category, "Shell_NotifyIcon(NIM_ADD) failed on attempt %u, err=%lu", m_add_attempts, GetLastError());
 
 	if (m_add_attempts < max_add_icon_attempts) {
 		SetTimer(m_window, add_icon_retry_timer, add_icon_retry_interval_ms, nullptr);
@@ -617,16 +607,16 @@ LRESULT Tray::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 			return 0;
 
 		case WM_MEASUREITEM: {
-			auto &measure = *reinterpret_cast<MEASUREITEMSTRUCT *>(t_lparam);
-			if (measure.CtlType != ODT_MENU || measure.itemData == 0) break;
+			auto *measure = reinterpret_cast<MEASUREITEMSTRUCT *>(t_lparam);
+			if (measure->CtlType != ODT_MENU || measure->itemData == 0) break;
 
 			measure_row(measure);
 			return TRUE;
 		}
 
 		case WM_DRAWITEM: {
-			const auto &draw = *reinterpret_cast<const DRAWITEMSTRUCT *>(t_lparam);
-			if (draw.CtlType != ODT_MENU || draw.itemData == 0) break;
+			const auto *draw = reinterpret_cast<const DRAWITEMSTRUCT *>(t_lparam);
+			if (draw->CtlType != ODT_MENU || draw->itemData == 0) break;
 
 			draw_row(draw);
 			return TRUE;
@@ -646,8 +636,8 @@ LRESULT Tray::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 LRESULT CALLBACK Tray::window_proc(HWND t_window, UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 {
 	if (t_message == WM_NCCREATE) {
-		const auto &create = *reinterpret_cast<const CREATESTRUCTW *>(t_lparam);
-		SetWindowLongPtrW(t_window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create.lpCreateParams));
+		const auto *create = reinterpret_cast<const CREATESTRUCTW *>(t_lparam);
+		SetWindowLongPtrW(t_window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
 	}
 
 	auto *tray = reinterpret_cast<Tray *>(GetWindowLongPtrW(t_window, GWLP_USERDATA));

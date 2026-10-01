@@ -31,8 +31,7 @@ POINT frame_border(UINT t_dpi)
 {
 	const int padding = GetSystemMetricsForDpi(SM_CXPADDEDBORDER, t_dpi);
 
-	return POINT{GetSystemMetricsForDpi(SM_CXFRAME, t_dpi) + padding,
-				 GetSystemMetricsForDpi(SM_CYFRAME, t_dpi) + padding};
+	return POINT{GetSystemMetricsForDpi(SM_CXFRAME, t_dpi) + padding, GetSystemMetricsForDpi(SM_CYFRAME, t_dpi) + padding};
 }
 
 LRESULT resize_edge_at(HWND t_window, POINT t_cursor)
@@ -145,8 +144,8 @@ bool Window::create(const wchar_t *t_title, u32 t_width, u32 t_height, WindowKin
 	const int y = work_area.top + (work_area.bottom - work_area.top - static_cast<int>(m_physical_height)) / 2;
 
 	const DWORD style = dialog ? WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX : WS_OVERLAPPEDWINDOW;
-	m_window = CreateWindowExW(0, class_name, t_title, style, x, y, static_cast<int>(m_physical_width),
-							   static_cast<int>(m_physical_height), nullptr, nullptr, instance, this);
+	m_window = CreateWindowExW(0, class_name, t_title, style, x, y, static_cast<int>(m_physical_width), static_cast<int>(m_physical_height), nullptr, nullptr,
+							   instance, this);
 	if (m_window == nullptr) return false;
 
 	correct_size_for_actual_dpi(t_width, t_height);
@@ -166,8 +165,8 @@ void Window::correct_size_for_actual_dpi(u32 t_width, u32 t_height)
 	if (actual_scale == m_dpi_scale) return;
 
 	m_dpi_scale = actual_scale;
-	SetWindowPos(m_window, nullptr, 0, 0, static_cast<int>(scaled(t_width, actual_scale)),
-				 static_cast<int>(scaled(t_height, actual_scale)), SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+	SetWindowPos(m_window, nullptr, 0, 0, static_cast<int>(scaled(t_width, actual_scale)), static_cast<int>(scaled(t_height, actual_scale)),
+				 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 void Window::show()
@@ -187,8 +186,7 @@ Vec2 Window::restored_size() const
 
 	const RECT &normal = placement.rcNormalPosition;
 
-	return Vec2{static_cast<float>(normal.right - normal.left) / m_dpi_scale,
-				static_cast<float>(normal.bottom - normal.top) / m_dpi_scale};
+	return Vec2{static_cast<float>(normal.right - normal.left) / m_dpi_scale, static_cast<float>(normal.bottom - normal.top) / m_dpi_scale};
 }
 
 void Window::minimize()
@@ -303,8 +301,7 @@ Rect Window::title_bar_button_rect(TitleBarButton t_button) const
 TitleBarButton Window::title_bar_button_at(Vec2 t_point) const
 {
 	constexpr TitleBarButton buttons[]{
-		TitleBarButton::Menu,	  TitleBarButton::Search,	TitleBarButton::Update,
-		TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close,
+		TitleBarButton::Menu, TitleBarButton::Search, TitleBarButton::Update, TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close,
 	};
 
 	for (const TitleBarButton button : buttons) {
@@ -348,8 +345,7 @@ LRESULT Window::handle_hit_test(LPARAM t_lparam)
 	ScreenToClient(m_window, &client);
 
 	const Vec2 point = to_logical(client);
-	const bool over_caption =
-		point.y >= 0.0f && point.y < title_bar_height && title_bar_button_at(point) == TitleBarButton::None;
+	const bool over_caption = point.y >= 0.0f && point.y < title_bar_height && title_bar_button_at(point) == TitleBarButton::None;
 
 	return over_caption ? HTCAPTION : HTCLIENT;
 }
@@ -362,9 +358,9 @@ void Window::handle_dpi_changed(WPARAM t_wparam, LPARAM t_lparam)
 		m_dpi_changed();
 	}
 
-	const RECT &suggested = *reinterpret_cast<const RECT *>(t_lparam);
-	SetWindowPos(m_window, nullptr, suggested.left, suggested.top, suggested.right - suggested.left,
-				 suggested.bottom - suggested.top, SWP_NOZORDER | SWP_NOACTIVATE);
+	const RECT *suggested = reinterpret_cast<const RECT *>(t_lparam);
+	SetWindowPos(m_window, nullptr, suggested->left, suggested->top, suggested->right - suggested->left, suggested->bottom - suggested->top,
+				 SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 void Window::handle_size(WPARAM t_wparam, LPARAM t_lparam)
@@ -384,9 +380,9 @@ void Window::handle_min_max_info(LPARAM t_lparam) const
 {
 	if (m_kind == WindowKind::Dialog) return;
 
-	auto &info = *reinterpret_cast<MINMAXINFO *>(t_lparam);
-	info.ptMinTrackSize.x = std::lround(min_window_width * m_dpi_scale);
-	info.ptMinTrackSize.y = std::lround(min_window_height * m_dpi_scale);
+	auto *info = reinterpret_cast<MINMAXINFO *>(t_lparam);
+	info->ptMinTrackSize.x = std::lround(min_window_width * m_dpi_scale);
+	info->ptMinTrackSize.y = std::lround(min_window_height * m_dpi_scale);
 }
 
 LRESULT Window::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
@@ -404,15 +400,14 @@ LRESULT Window::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 	switch (t_message) {
 		case WM_NCCALCSIZE: {
 			// The first calculation arrives with wParam FALSE and a bare RECT; skipping it leaves the OS caption drawn.
-			RECT &client = t_wparam ? reinterpret_cast<NCCALCSIZE_PARAMS *>(t_lparam)->rgrc[0]
-									: *reinterpret_cast<RECT *>(t_lparam);
+			RECT *client = t_wparam ? &reinterpret_cast<NCCALCSIZE_PARAMS *>(t_lparam)->rgrc[0] : reinterpret_cast<RECT *>(t_lparam);
 
 			if (IsZoomed(m_window)) {
 				const POINT border = frame_border(GetDpiForWindow(m_window));
-				client.left += border.x;
-				client.top += border.y;
-				client.right -= border.x;
-				client.bottom -= border.y;
+				client->left += border.x;
+				client->top += border.y;
+				client->right -= border.x;
+				client->bottom -= border.y;
 			}
 
 			return 0;
@@ -530,8 +525,8 @@ LRESULT Window::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 LRESULT CALLBACK Window::window_proc(HWND t_window, UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 {
 	if (t_message == WM_NCCREATE) {
-		const auto &create = *reinterpret_cast<const CREATESTRUCTW *>(t_lparam);
-		SetWindowLongPtrW(t_window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create.lpCreateParams));
+		const auto *create = reinterpret_cast<const CREATESTRUCTW *>(t_lparam);
+		SetWindowLongPtrW(t_window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
 	}
 
 	auto *window = reinterpret_cast<Window *>(GetWindowLongPtrW(t_window, GWLP_USERDATA));

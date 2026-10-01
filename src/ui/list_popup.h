@@ -20,13 +20,13 @@ struct ListPopupOptions {
 	std::string_view empty_message;
 	float min_width = 0.0f;
 	Vec2 preview_size{};
-	std::function<void(DrawList &t_draw_list, Rect t_preview, u32 t_item, Color t_backdrop, u8 t_alpha)> draw_preview;
+	std::function<void(DrawList *t_draw_list, Rect t_preview, u32 t_item, Color t_backdrop, u8 t_alpha)> draw_preview;
 	float hover_preview_seconds = 0.0f;
 };
 
 class ListPopup {
   public:
-	ListPopup(const Fonts &t_fonts, const Assets &t_assets, const Settings &t_settings, ListPopupOptions t_options);
+	ListPopup(const Fonts *t_fonts, const Assets *t_assets, const Settings *t_settings, ListPopupOptions t_options);
 
 	void open(std::span<const std::string_view> t_items, std::optional<u32> t_selected);
 	void close();
@@ -49,7 +49,7 @@ class ListPopup {
 	void on_char(u32 t_character);
 
 	CursorKind cursor(Vec2 t_mouse) const;
-	void draw(DrawList &t_draw_list, Vec2 t_mouse);
+	void draw(DrawList *t_draw_list, Vec2 t_mouse);
 
   private:
 	enum class Press : u8 {
@@ -102,16 +102,15 @@ class ListPopup {
 	void move_highlight(i32 t_rows);
 	std::optional<u32> choose_highlighted();
 
-	void draw_search(DrawList &t_draw_list, const Layout &t_layout, Vec2 t_mouse, u8 t_alpha);
-	void draw_rows(DrawList &t_draw_list, const Layout &t_layout, Vec2 t_mouse, u8 t_alpha) const;
-	void draw_row(DrawList &t_draw_list, Rect t_row, u32 t_item, bool t_highlighted, u8 t_alpha) const;
-	void draw_label(DrawList &t_draw_list, Rect t_row, float t_left, float t_max_width, std::string_view t_label,
-					u8 t_alpha) const;
-	void draw_key_hints(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
+	void draw_search(DrawList *t_draw_list, const Layout &t_layout, Vec2 t_mouse, u8 t_alpha);
+	void draw_rows(DrawList *t_draw_list, const Layout &t_layout, Vec2 t_mouse, u8 t_alpha) const;
+	void draw_row(DrawList *t_draw_list, Rect t_row, u32 t_item, bool t_highlighted, u8 t_alpha) const;
+	void draw_label(DrawList *t_draw_list, Rect t_row, float t_left, float t_max_width, std::string_view t_label, u8 t_alpha) const;
+	void draw_key_hints(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha) const;
 
-	const Fonts &m_fonts;
-	const Assets &m_assets;
-	const Settings &m_settings;
+	const Fonts *m_fonts;
+	const Assets *m_assets;
+	const Settings *m_settings;
 	ListPopupOptions m_options;
 
 	std::span<const std::string_view> m_items;

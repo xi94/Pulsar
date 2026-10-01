@@ -30,8 +30,8 @@ constexpr float halo_blur = 90.0f;
 constexpr u8 halo_alpha = 46;
 }
 
-UnlockScreen::UnlockScreen(Settings &t_settings, MasterKey &t_master_key, const Fonts &t_fonts, const Assets &t_assets,
-						   const Window &t_window, CommandQueue &t_commands)
+UnlockScreen::UnlockScreen(Settings *t_settings, MasterKey *t_master_key, const Fonts *t_fonts, const Assets *t_assets, const Window *t_window,
+						   CommandQueue *t_commands)
 	: m_settings(t_settings)
 	, m_master_key(t_master_key)
 	, m_fonts(t_fonts)
@@ -75,7 +75,7 @@ void UnlockScreen::hide()
 
 Rect UnlockScreen::card_rect() const
 {
-	const Rect area = m_window.content_rect();
+	const Rect area = m_window->content_rect();
 	const float card_height = m_setup ? setup_card_height : unlock_card_height;
 	const float top = area.y + (area.h - card_height) * 0.5f;
 
@@ -87,8 +87,7 @@ Rect UnlockScreen::field_rect(u32 t_field) const
 	const Rect card = card_rect();
 	const float first_y = card.y + (m_setup ? setup_first_field_y : unlock_first_field_y);
 
-	return Rect{card.x + card_padding, first_y + t_field * (field_height + gap), card.w - card_padding * 2.0f,
-				field_height};
+	return Rect{card.x + card_padding, first_y + t_field * (field_height + gap), card.w - card_padding * 2.0f, field_height};
 }
 
 Rect UnlockScreen::field_text_rect(u32 t_field) const
@@ -103,8 +102,7 @@ Rect UnlockScreen::reveal_rect(u32 t_field) const
 {
 	const Rect field = field_rect(t_field);
 
-	return Rect{field.right() - reveal_size - reveal_margin, field.y + (field.h - reveal_size) * 0.5f, reveal_size,
-				reveal_size};
+	return Rect{field.right() - reveal_size - reveal_margin, field.y + (field.h - reveal_size) * 0.5f, reveal_size, reveal_size};
 }
 
 Rect UnlockScreen::submit_rect() const
@@ -152,15 +150,15 @@ void UnlockScreen::submit()
 
 void UnlockScreen::attempt_unlock()
 {
-	TextInput &field = m_fields[password];
-	const bool unlocked = m_master_key.unlock(field.value(), m_settings.master_key);
+	TextInput *field = &m_fields[password];
+	const bool unlocked = m_master_key->unlock(field->value(), m_settings->master_key);
 
-	field.set_value("");
-	field.set_focused(!unlocked);
+	field->set_value("");
+	field->set_focused(!unlocked);
 	m_wrong_password = !unlocked;
 
 	if (unlocked) {
-		m_commands.push(Command{.type = CommandType::VaultUnlocked});
+		m_commands->push(Command{.type = CommandType::VaultUnlocked});
 	}
 }
 
@@ -177,13 +175,13 @@ void UnlockScreen::attempt_setup()
 		return;
 	}
 
-	if (!m_master_key.create(chosen, m_settings.master_key)) {
+	if (!m_master_key->create(chosen, &m_settings->master_key)) {
 		m_setup_failed = true;
 		m_passwords_differ = false;
 		return;
 	}
 
-	m_settings.master_password_enabled = true;
+	m_settings->master_password_enabled = true;
 	m_passwords_differ = false;
 	m_setup_failed = false;
 
@@ -191,7 +189,7 @@ void UnlockScreen::attempt_setup()
 		field.set_value("");
 	}
 
-	m_commands.push(Command{.type = CommandType::VaultCreated});
+	m_commands->push(Command{.type = CommandType::VaultCreated});
 }
 
 void UnlockScreen::update(float t_delta_seconds)
@@ -238,7 +236,7 @@ bool UnlockScreen::on_pointer_down(Vec2 t_point)
 	const i32 pressed = field_at(t_point);
 	if (pressed >= 0) {
 		focus_field(static_cast<u32>(pressed));
-		m_fields[pressed].on_pointer_down(m_fonts.body, field_text_rect(static_cast<u32>(pressed)), t_point.x);
+		m_fields[pressed].on_pointer_down(m_fonts->body, field_text_rect(static_cast<u32>(pressed)), t_point.x);
 	}
 
 	return true;
@@ -250,7 +248,7 @@ bool UnlockScreen::on_pointer_move(Vec2 t_point)
 
 	for (u32 i = 0; i < field_count(); i += 1) {
 		if (m_fields[i].is_selecting()) {
-			m_fields[i].on_pointer_move(m_fonts.body, field_text_rect(i), t_point.x);
+			m_fields[i].on_pointer_move(m_fonts->body, field_text_rect(i), t_point.x);
 		}
 	}
 
@@ -291,9 +289,8 @@ bool UnlockScreen::on_right_click(Vec2 t_point)
 		const auto field = static_cast<u32>(clicked);
 
 		focus_field(field);
-		m_fields[field].on_right_click(m_fonts.body, field_text_rect(field), t_point.x);
-		m_commands.push(
-			Command{.type = CommandType::ShowTextMenu, .position = t_point, .text_input = &m_fields[field]});
+		m_fields[field].on_right_click(m_fonts->body, field_text_rect(field), t_point.x);
+		m_commands->push(Command{.type = CommandType::ShowTextMenu, .position = t_point, .text_input = &m_fields[field]});
 	}
 
 	return true;
@@ -312,47 +309,42 @@ CursorKind UnlockScreen::cursor() const
 	return field_at(m_mouse) >= 0 ? CursorKind::IBeam : CursorKind::Arrow;
 }
 
-void UnlockScreen::draw_field(DrawList &t_draw_list, u32 t_field)
+void UnlockScreen::draw_field(DrawList *t_draw_list, u32 t_field)
 {
-	const Color accent = m_settings.accent;
-	TextInput &field = m_fields[t_field];
+	const Color accent = m_settings->accent;
+	TextInput *field = &m_fields[t_field];
 	const Rect reveal = reveal_rect(t_field);
 
-	controls::draw_field(t_draw_list, field_rect(t_field), field_radius, field.is_focused() ? accent : theme().control,
-						 theme().field, 255);
-	field.draw(t_draw_list, m_fonts.body, field_text_rect(t_field), theme().text, accent);
-	controls::draw_eye(t_draw_list, m_assets, reveal, !field.is_masked(),
-					   reveal.contains(m_mouse) ? theme().text : theme().text_dim);
+	controls::draw_field(t_draw_list, field_rect(t_field), field_radius, field->is_focused() ? accent : theme().control, theme().field, 255);
+	field->draw(t_draw_list, m_fonts->body, field_text_rect(t_field), theme().text, accent);
+	controls::draw_eye(t_draw_list, m_assets, reveal, !field->is_masked(), reveal.contains(m_mouse) ? theme().text : theme().text_dim);
 }
 
-void UnlockScreen::draw_submit_button(DrawList &t_draw_list, std::string_view t_label) const
+void UnlockScreen::draw_submit_button(DrawList *t_draw_list, std::string_view t_label) const
 {
 	const Rect button = submit_rect();
 
-	controls::draw_button(t_draw_list, m_fonts.body, button, t_label, controls::ButtonStyle::Accent, m_settings.accent,
-						  true, button.contains(m_mouse), 255);
+	controls::draw_button(t_draw_list, m_fonts->body, button, t_label, controls::ButtonStyle::Accent, m_settings->accent, true, button.contains(m_mouse), 255);
 }
 
-void UnlockScreen::draw(DrawList &t_draw_list)
+void UnlockScreen::draw(DrawList *t_draw_list)
 {
 	if (!m_active) return;
 
-	const Vec2 window = m_window.size();
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
-	const Color accent = m_settings.accent;
+	const Vec2 window = m_window->size();
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
+	const Color accent = m_settings->accent;
 	const Rect card = card_rect();
 
 	const auto draw_centered = [&](const Font &t_font, float t_baseline, std::string_view t_text, Color t_color) {
-		draw_text(t_draw_list, t_font, Vec2{card.center().x - text_width(t_font, t_text) * 0.5f, t_baseline}, t_text,
-				  t_color);
+		draw_text(t_draw_list, t_font, Vec2{card.center().x - text_width(t_font, t_text) * 0.5f, t_baseline}, t_text, t_color);
 	};
 
 	const Color backdrop = theme().window;
-	t_draw_list.add_backdrop(Rect{0.0f, 0.0f, window.x, window.y - status_bar_height}, backdrop, backdrop, backdrop,
-							 backdrop);
-	t_draw_list.add_shadow(card, card_radius, halo_blur, with_alpha(accent, halo_alpha));
-	t_draw_list.add_bordered_rect(card, rounded(card_radius), theme().surface, theme().border, 1.0f);
+	t_draw_list->add_backdrop(Rect{0.0f, 0.0f, window.x, window.y - status_bar_height}, backdrop, backdrop, backdrop, backdrop);
+	t_draw_list->add_shadow(card, card_radius, halo_blur, with_alpha(accent, halo_alpha));
+	t_draw_list->add_bordered_rect(card, rounded(card_radius), theme().surface, theme().border, 1.0f);
 
 	const float title_baseline = card.y + card_padding + body.ascent;
 	const float description_baseline = card.y + card_padding + body.line_height() + 4.0f + secondary.ascent;
@@ -361,8 +353,7 @@ void UnlockScreen::draw(DrawList &t_draw_list)
 	if (m_setup) {
 		draw_centered(body, title_baseline, "Create a master password", theme().text);
 		draw_centered(secondary, description_baseline, "It encrypts your saved account passwords.", theme().text_dim);
-		draw_centered(secondary, description_baseline + secondary.line_height(),
-					  "Pick something memorable - it can't be recovered.", theme().text_dim);
+		draw_centered(secondary, description_baseline + secondary.line_height(), "Pick something memorable - it can't be recovered.", theme().text_dim);
 	} else {
 		draw_centered(body, title_baseline, "Welcome back", theme().text);
 		draw_centered(secondary, description_baseline, "Enter your master password to continue.", theme().text_dim);

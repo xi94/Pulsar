@@ -18,7 +18,7 @@ struct ColorPickerHint {
 
 class ColorPicker {
   public:
-	ColorPicker(const Fonts &t_fonts, const Assets &t_assets);
+	ColorPicker(const Fonts *t_fonts, const Assets *t_assets);
 
 	void open(Color t_initial, Rect t_anchor, Rect t_bounds);
 	void close();
@@ -53,7 +53,7 @@ class ColorPicker {
 
 	std::optional<ColorPickerHint> hint(Vec2 t_mouse) const;
 	CursorKind cursor(Vec2 t_mouse) const;
-	void draw(DrawList &t_draw_list, Vec2 t_mouse);
+	void draw(DrawList *t_draw_list, Vec2 t_mouse);
 
   private:
 	static constexpr u32 field_count = 4;
@@ -93,8 +93,8 @@ class ColorPicker {
 	void paste_color();
 	void end_drags();
 
-	const Fonts &m_fonts;
-	const Assets &m_assets;
+	const Fonts *m_fonts;
+	const Assets *m_assets;
 
 	bool m_open = false;
 	Rect m_anchor{};

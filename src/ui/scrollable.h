@@ -17,14 +17,14 @@ class Scrollable {
 	static bool is_needed(const ScrollGeometry &t_geometry);
 
 	void update(float t_delta_seconds);
-	void draw(DrawList &t_draw_list, const ScrollGeometry &t_geometry, Vec2 t_mouse, u8 t_alpha) const;
+	void draw(DrawList *t_draw_list, const ScrollGeometry &t_geometry, Vec2 t_mouse, u8 t_alpha) const;
 	struct EdgeFades {
 		Rect top;
 		Rect bottom;
 	};
 
 	EdgeFades edge_fades(Rect t_area, const ScrollGeometry &t_geometry) const;
-	void draw_edge_fade(DrawList &t_draw_list, Rect t_area, const ScrollGeometry &t_geometry, Color t_edge) const;
+	void draw_edge_fade(DrawList *t_draw_list, Rect t_area, const ScrollGeometry &t_geometry, Color t_edge) const;
 
 	bool on_pointer_down(Vec2 t_point, const ScrollGeometry &t_geometry);
 	void on_pointer_move(float t_y, const ScrollGeometry &t_geometry);

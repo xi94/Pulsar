@@ -50,12 +50,12 @@ u32 layout_lines(const Font &t_font, std::string_view t_text, float t_max_width,
 }
 }
 
-TruncationHint::TruncationHint(const Fonts &t_fonts)
+TruncationHint::TruncationHint(const Fonts *t_fonts)
 	: m_fonts(t_fonts)
 {
 }
 
-void TruncationHint::capture(const DrawList &t_draw_list)
+void TruncationHint::capture(const DrawList *t_draw_list)
 {
 	const std::optional<TruncatedText> hovered = hovered_truncated_text(t_draw_list);
 	m_requested = hovered.has_value();
@@ -86,11 +86,11 @@ void TruncationHint::update(float t_delta_seconds, bool t_suppressed)
 	m_visible_amount = animation::ease_toward(m_visible_amount, showing ? 1.0f : 0.0f, fade_rate, t_delta_seconds);
 }
 
-void TruncationHint::draw(DrawList &t_draw_list, Rect t_bounds) const
+void TruncationHint::draw(DrawList *t_draw_list, Rect t_bounds) const
 {
 	if (m_visible_amount <= 0.001f || m_length == 0) return;
 
-	const Font &font = m_fonts.secondary;
+	const Font &font = m_fonts->secondary;
 	const float wrap_width = std::max(40.0f, std::min(max_width, t_bounds.w - (edge_margin + padding_x) * 2.0f));
 
 	std::string_view lines[max_lines];
@@ -112,17 +112,13 @@ void TruncationHint::draw(DrawList &t_draw_list, Rect t_bounds) const
 
 	const float min_x = t_bounds.x + edge_margin;
 	const float max_x = std::max(min_x, t_bounds.right() - edge_margin - width);
-	const Rect card{snapped_to_pixel(std::clamp(m_anchor.x - padding_x, min_x, max_x)), snapped_to_pixel(y), width,
-					height};
+	const Rect card{snapped_to_pixel(std::clamp(m_anchor.x - padding_x, min_x, max_x)), snapped_to_pixel(y), width, height};
 	const auto alpha = to_alpha(m_visible_amount);
 
 	controls::draw_popup_shadow(t_draw_list, card, corner_radius, m_visible_amount);
-	t_draw_list.add_bordered_rect(card, rounded(corner_radius), faded(theme().popup, alpha),
-								  faded(theme().border, alpha), 1.0f);
+	t_draw_list->add_bordered_rect(card, rounded(corner_radius), faded(theme().popup, alpha), faded(theme().border, alpha), 1.0f);
 
 	for (u32 i = 0; i < line_count; i += 1) {
-		draw_text(t_draw_list, font,
-				  Vec2{card.x + padding_x, card.y + padding_y + font.ascent + i * font.line_height()}, lines[i],
-				  faded(theme().text, alpha));
+		draw_text(t_draw_list, font, Vec2{card.x + padding_x, card.y + padding_y + font.ascent + i * font.line_height()}, lines[i], faded(theme().text, alpha));
 	}
 }

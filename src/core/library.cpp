@@ -33,46 +33,46 @@ u16 Account::visible_games(u32 t_owning_game) const
 
 std::optional<AccountRef> Library::add_account(u32 t_game, const Account &t_account)
 {
-	Game &game = games[t_game];
-	if (game.account_count >= max_accounts_per_game) return std::nullopt;
+	Game *game = &games[t_game];
+	if (game->account_count >= max_accounts_per_game) return std::nullopt;
 
-	Account &added = game.accounts[game.account_count];
-	added = t_account;
-	added.order = next_order;
+	Account *added = &game->accounts[game->account_count];
+	*added = t_account;
+	added->order = next_order;
 
 	next_order += 1;
-	game.account_count += 1;
+	game->account_count += 1;
 
-	return AccountRef{t_game, game.account_count - 1};
+	return AccountRef{t_game, game->account_count - 1};
 }
 
 std::optional<AccountRef> Library::insert_account(AccountRef t_where, const Account &t_account)
 {
-	Game &game = games[t_where.game];
-	if (game.account_count >= max_accounts_per_game) return std::nullopt;
+	Game *game = &games[t_where.game];
+	if (game->account_count >= max_accounts_per_game) return std::nullopt;
 
-	const u32 index = std::min(t_where.index, game.account_count);
-	for (u32 i = game.account_count; i > index; i -= 1) {
-		game.accounts[i] = game.accounts[i - 1];
+	const u32 index = std::min(t_where.index, game->account_count);
+	for (u32 i = game->account_count; i > index; i -= 1) {
+		game->accounts[i] = game->accounts[i - 1];
 	}
 
-	game.accounts[index] = t_account;
-	game.account_count += 1;
+	game->accounts[index] = t_account;
+	game->account_count += 1;
 
 	return AccountRef{t_where.game, index};
 }
 
 void Library::remove_account(AccountRef t_ref)
 {
-	Game &game = games[t_ref.game];
-	assert(t_ref.index < game.account_count);
+	Game *game = &games[t_ref.game];
+	assert(t_ref.index < game->account_count);
 
-	for (u32 i = t_ref.index; i + 1 < game.account_count; i += 1) {
-		game.accounts[i] = game.accounts[i + 1];
+	for (u32 i = t_ref.index; i + 1 < game->account_count; i += 1) {
+		game->accounts[i] = game->accounts[i + 1];
 	}
 
-	game.account_count -= 1;
-	sodium_memzero(&game.accounts[game.account_count], sizeof(Account));
+	game->account_count -= 1;
+	sodium_memzero(&game->accounts[game->account_count], sizeof(Account));
 }
 
 void Library::move_visible_account(u32 t_game, u32 t_from_row, u32 t_to_row)
@@ -88,13 +88,13 @@ void Library::move_visible_account(u32 t_game, u32 t_from_row, u32 t_to_row)
 	std::vector<u32> orders;
 	orders.reserve(sequence.size());
 	for (const AccountRef ref : sequence) {
-		orders.push_back(account(ref).order);
+		orders.push_back(account(ref)->order);
 	}
 
 	std::ranges::sort(orders);
 
 	for (usize i = 0; i < sequence.size(); i += 1) {
-		account(sequence[i]).order = orders[i];
+		account(sequence[i])->order = orders[i];
 	}
 }
 
@@ -147,11 +147,11 @@ VisibleAccounts Library::visible_accounts(u32 t_game) const
 	}
 
 	std::sort(visible.refs, visible.refs + visible.count, [this](AccountRef t_a, AccountRef t_b) {
-		const Account &a = account(t_a);
-		const Account &b = account(t_b);
+		const Account *a = account(t_a);
+		const Account *b = account(t_b);
 
-		if (a.favorite != b.favorite) return a.favorite;
-		if (a.order != b.order) return a.order < b.order;
+		if (a->favorite != b->favorite) return a->favorite;
+		if (a->order != b->order) return a->order < b->order;
 		if (t_a.game != t_b.game) return t_a.game < t_b.game;
 
 		return t_a.index < t_b.index;

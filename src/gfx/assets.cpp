@@ -56,8 +56,7 @@ struct EncodedAsset {
 	const char *name;
 };
 
-void shrink_by_half(const u8 *t_source, u32 t_source_width, u32 t_source_height, u8 *t_target, u32 t_target_width,
-					u32 t_target_height)
+void shrink_by_half(const u8 *t_source, u32 t_source_width, u32 t_source_height, u8 *t_target, u32 t_target_width, u32 t_target_height)
 {
 	for (u32 y = 0; y < t_target_height; y += 1) {
 		const u32 rows[2]{std::min(y * 2, t_source_height - 1), std::min(y * 2 + 1, t_source_height - 1)};
@@ -130,9 +129,8 @@ constexpr EncodedAsset encoded_assets[]{
 };
 
 static_assert(std::size(encoded_assets) == asset_count);
-static_assert(std::ranges::all_of(std::views::iota(usize{0}, asset_count), [](usize t_index) {
-	return encoded_assets[t_index].asset == static_cast<Asset>(t_index);
-}));
+static_assert(std::ranges::all_of(std::views::iota(usize{0}, asset_count),
+								  [](usize t_index) { return encoded_assets[t_index].asset == static_cast<Asset>(t_index); }));
 }
 
 Assets::~Assets()
@@ -147,15 +145,14 @@ std::span<const u8> Assets::encoded_bytes(Asset t_asset)
 	return encoded_assets[static_cast<usize>(t_asset)].bytes;
 }
 
-std::unique_ptr<Texture> Assets::create_texture(Renderer &t_renderer, const u8 *t_rgba_pixels, u32 t_width,
-												u32 t_height)
+std::unique_ptr<Texture> Assets::create_texture(Renderer *t_renderer, const u8 *t_rgba_pixels, u32 t_width, u32 t_height)
 {
 	std::unique_ptr<Texture> texture = upload(t_renderer, with_mipmaps(t_rgba_pixels, t_width, t_height));
 
 	return texture->is_valid() ? std::move(texture) : nullptr;
 }
 
-std::unique_ptr<Texture> Assets::upload(Renderer &t_renderer, const DecodedImage &t_image)
+std::unique_ptr<Texture> Assets::upload(Renderer *t_renderer, const DecodedImage &t_image)
 {
 	std::vector<TextureLevel> levels;
 	levels.reserve(t_image.levels.size());
@@ -186,8 +183,7 @@ Assets::DecodedImage Assets::with_mipmaps(const u8 *t_rgba_pixels, u32 t_width, 
 		const MipLevel &source = image.levels[i - 1];
 		const MipLevel &target = image.levels[i];
 
-		shrink_by_half(image.pixels.data() + source.offset, source.width, source.height,
-					   image.pixels.data() + target.offset, target.width, target.height);
+		shrink_by_half(image.pixels.data() + source.offset, source.width, source.height, image.pixels.data() + target.offset, target.width, target.height);
 	}
 
 	return image;
@@ -206,8 +202,7 @@ void Assets::begin_decode()
 				int width = 0;
 				int height = 0;
 				int channels = 0;
-				u8 *pixels = stbi_load_from_memory(source.bytes.data(), static_cast<int>(source.bytes.size()), &width,
-												   &height, &channels, 4);
+				u8 *pixels = stbi_load_from_memory(source.bytes.data(), static_cast<int>(source.bytes.size()), &width, &height, &channels, 4);
 
 				if (pixels == nullptr) {
 					std::println("Failed to decode embedded asset '{}': {}", source.name, stbi_failure_reason());
@@ -233,7 +228,7 @@ void Assets::begin_decode()
 	});
 }
 
-bool Assets::finish_upload(Renderer &t_renderer)
+bool Assets::finish_upload(Renderer *t_renderer)
 {
 	if (m_decoder.joinable()) {
 		m_decoder.join();

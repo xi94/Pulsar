@@ -213,19 +213,17 @@ constexpr TimeUnit time_units[]{
 
 Rect scaled_about(Rect t_rect, Vec2 t_origin, float t_scale)
 {
-	return Rect{t_origin.x + (t_rect.x - t_origin.x) * t_scale, t_origin.y + (t_rect.y - t_origin.y) * t_scale,
-				t_rect.w * t_scale, t_rect.h * t_scale};
+	return Rect{t_origin.x + (t_rect.x - t_origin.x) * t_scale, t_origin.y + (t_rect.y - t_origin.y) * t_scale, t_rect.w * t_scale, t_rect.h * t_scale};
 }
 
-float panel_size_scale(const Fonts &t_fonts)
+float panel_size_scale(const Fonts *t_fonts)
 {
-	return std::max(1.0f, t_fonts.body.pixel_height / reference_body_pixel_height);
+	return std::max(1.0f, t_fonts->body.pixel_height / reference_body_pixel_height);
 }
 
-float row_height(const Fonts &t_fonts)
+float row_height(const Fonts *t_fonts)
 {
-	return row_top_padding + t_fonts.body.line_height() + row_line_gap + t_fonts.secondary.line_height() +
-		   row_bottom_padding;
+	return row_top_padding + t_fonts->body.line_height() + row_line_gap + t_fonts->secondary.line_height() + row_bottom_padding;
 }
 
 float art_column_width(float t_content_width)
@@ -233,35 +231,34 @@ float art_column_width(float t_content_width)
 	return std::max(t_content_width * art_column_fraction, close_badge_size + close_badge_margin * 2.0f);
 }
 
-float header_height(const Fonts &t_fonts)
+float header_height(const Fonts *t_fonts)
 {
-	return t_fonts.body.line_height() + 20.0f;
+	return t_fonts->body.line_height() + 20.0f;
 }
 
-float footer_height(const Fonts &t_fonts)
+float footer_height(const Fonts *t_fonts)
 {
-	return std::max(56.0f, t_fonts.body.line_height() + 20.0f);
+	return std::max(56.0f, t_fonts->body.line_height() + 20.0f);
 }
 
-float action_button_height(const Fonts &t_fonts)
+float action_button_height(const Fonts *t_fonts)
 {
-	return std::max(32.0f, t_fonts.body.line_height() + 10.0f);
+	return std::max(32.0f, t_fonts->body.line_height() + 10.0f);
 }
 
-float field_input_height(const Fonts &t_fonts)
+float field_input_height(const Fonts *t_fonts)
 {
-	return std::max(34.0f, t_fonts.body.line_height() + 14.0f);
+	return std::max(34.0f, t_fonts->body.line_height() + 14.0f);
 }
 
-void draw_input_box(DrawList &t_draw_list, Rect t_rect, Color t_border, bool t_focused, Color t_accent, u8 t_alpha)
+void draw_input_box(DrawList *t_draw_list, Rect t_rect, Color t_border, bool t_focused, Color t_accent, u8 t_alpha)
 {
 	if (t_focused) {
-		t_draw_list.add_shadow(t_rect, input_radius, focus_glow_blur,
-							   with_alpha(t_accent, static_cast<u8>(focus_glow_alpha * t_alpha / 255)));
+		t_draw_list->add_shadow(t_rect, input_radius, focus_glow_blur, with_alpha(t_accent, static_cast<u8>(focus_glow_alpha * t_alpha / 255)));
 	}
 
-	t_draw_list.add_bordered_rect(t_rect, rounded(input_radius), faded(theme().field, t_alpha),
-								  faded(t_border, t_alpha), t_focused ? input_focus_border : 1.0f);
+	t_draw_list->add_bordered_rect(t_rect, rounded(input_radius), faded(theme().field, t_alpha), faded(t_border, t_alpha),
+								   t_focused ? input_focus_border : 1.0f);
 }
 
 bool is_caps_lock_on()
@@ -274,14 +271,14 @@ Color caution_color()
 	return luminance(theme().surface) > 0.3f ? Color{176, 112, 16, 255} : Color{240, 190, 90, 255};
 }
 
-float row_button_size(const Fonts &t_fonts)
+float row_button_size(const Fonts *t_fonts)
 {
-	return std::max(28.0f, t_fonts.secondary.line_height() + 8.0f);
+	return std::max(28.0f, t_fonts->secondary.line_height() + 8.0f);
 }
 
-float search_height(const Fonts &t_fonts)
+float search_height(const Fonts *t_fonts)
 {
-	return std::max(24.0f, t_fonts.secondary.line_height() + 4.0f);
+	return std::max(24.0f, t_fonts->secondary.line_height() + 4.0f);
 }
 
 Rect vertically_centered(Rect t_strip, float t_x, float t_width, float t_height)
@@ -299,22 +296,19 @@ float region_chip_width(const Font &t_font, std::string_view t_region)
 	return t_region.empty() ? 0.0f : text_width(t_font, t_region) + region_chip_padding * 2.0f;
 }
 
-void draw_region_chip(DrawList &t_draw_list, const Font &t_font, float t_x, float t_center_y, std::string_view t_region,
-					  u8 t_alpha)
+void draw_region_chip(DrawList *t_draw_list, const Font &t_font, float t_x, float t_center_y, std::string_view t_region, u8 t_alpha)
 {
 	const float height = t_font.line_height() + 2.0f;
 	const Rect chip{t_x, t_center_y - height * 0.5f, region_chip_width(t_font, t_region), height};
 
-	t_draw_list.add_rounded_rect(chip, rounded(height * 0.5f),
-								 faded(with_alpha(theme().text, region_chip_alpha), t_alpha));
+	t_draw_list->add_rounded_rect(chip, rounded(height * 0.5f), faded(with_alpha(theme().text, region_chip_alpha), t_alpha));
 	draw_text_centered(t_draw_list, t_font, chip, t_region, faded(theme().text_dim, t_alpha));
 }
 
-bool matches_query(const Account &t_account, std::string_view t_query)
+bool matches_query(const Account *t_account, std::string_view t_query)
 {
-	return find_ignoring_case(t_account.username, t_query) != std::string_view::npos ||
-		   find_ignoring_case(t_account.note, t_query) != std::string_view::npos ||
-		   find_ignoring_case(t_account.region, t_query) != std::string_view::npos;
+	return find_ignoring_case(t_account->username, t_query) != std::string_view::npos ||
+		   find_ignoring_case(t_account->note, t_query) != std::string_view::npos || find_ignoring_case(t_account->region, t_query) != std::string_view::npos;
 }
 
 std::string_view relative_time(i64 t_then, i64 t_now, char (&t_buffer)[32])
@@ -326,8 +320,7 @@ std::string_view relative_time(i64 t_then, i64 t_now, char (&t_buffer)[32])
 		if (count == 0) continue;
 		if (unit.seconds == 86400 && count == 1) return "yesterday";
 
-		const int written = std::snprintf(t_buffer, sizeof(t_buffer), "%lld %s%s ago", static_cast<long long>(count),
-										  unit.name, count == 1 ? "" : "s");
+		const int written = std::snprintf(t_buffer, sizeof(t_buffer), "%lld %s%s ago", static_cast<long long>(count), unit.name, count == 1 ? "" : "s");
 
 		return std::string_view{t_buffer, static_cast<usize>(std::max(written, 0))};
 	}
@@ -335,21 +328,25 @@ std::string_view relative_time(i64 t_then, i64 t_now, char (&t_buffer)[32])
 	return "just now";
 }
 
-void shift_after_insert(std::optional<AccountRef> &t_ref, AccountRef t_inserted)
+void shift_after_insert(std::optional<AccountRef> *t_ref, AccountRef t_inserted)
 {
-	if (t_ref && t_ref->game == t_inserted.game && t_ref->index >= t_inserted.index) {
-		t_ref->index += 1;
+	if (!t_ref->has_value()) return;
+
+	AccountRef *ref = &t_ref->value();
+	if (ref->game == t_inserted.game && ref->index >= t_inserted.index) {
+		ref->index += 1;
 	}
 }
 
-void shift_after_removal(std::optional<AccountRef> &t_ref, AccountRef t_removed)
+void shift_after_removal(std::optional<AccountRef> *t_ref, AccountRef t_removed)
 {
-	if (!t_ref || t_ref->game != t_removed.game) return;
+	if (!t_ref->has_value() || t_ref->value().game != t_removed.game) return;
 
-	if (t_ref->index == t_removed.index) {
-		t_ref.reset();
-	} else if (t_ref->index > t_removed.index) {
-		t_ref->index -= 1;
+	AccountRef *ref = &t_ref->value();
+	if (ref->index == t_removed.index) {
+		t_ref->reset();
+	} else if (ref->index > t_removed.index) {
+		ref->index -= 1;
 	}
 }
 
@@ -427,8 +424,8 @@ std::string_view stage_message(LoginStage t_stage)
 }
 }
 
-AccountModal::AccountModal(Library &t_library, const Settings &t_settings, const Fonts &t_fonts, const Assets &t_assets,
-						   const Window &t_window, Toasts &t_toasts, CommandQueue &t_commands)
+AccountModal::AccountModal(Library *t_library, const Settings *t_settings, const Fonts *t_fonts, const Assets *t_assets, const Window *t_window,
+						   Toasts *t_toasts, CommandQueue *t_commands)
 	: m_library(t_library)
 	, m_settings(t_settings)
 	, m_fonts(t_fonts)
@@ -442,7 +439,7 @@ AccountModal::AccountModal(Library &t_library, const Settings &t_settings, const
 		m_fields[i].set_max_length(field_specs[i].max_length);
 	}
 
-	field(EditField::Note).set_placeholder("Main, smurf, ranked...");
+	field(EditField::Note)->set_placeholder("Main, smurf, ranked...");
 
 	m_search.set_max_length(search_max_length);
 	m_search.set_placeholder("Search");
@@ -450,19 +447,17 @@ AccountModal::AccountModal(Library &t_library, const Settings &t_settings, const
 
 bool AccountModal::has_game() const
 {
-	return m_game >= 0 && static_cast<u32>(m_game) < m_library.game_count;
+	return m_game >= 0 && static_cast<u32>(m_game) < m_library->game_count;
 }
 
 Vec2 AccountModal::floating_panel_size() const
 {
 	const float size_scale = panel_size_scale(m_fonts);
 	const Vec2 max_size{panel_max_size.x * size_scale, panel_max_size.y * size_scale};
-	const Vec2 window = m_window.size();
+	const Vec2 window = m_window->size();
 
-	float width =
-		std::min({window.x * panel_width_fraction, max_size.x, std::max(0.0f, window.x - panel_margin * 2.0f)});
-	float height =
-		std::min({window.y * panel_height_fraction, max_size.y, std::max(0.0f, window.y - panel_margin * 2.0f)});
+	float width = std::min({window.x * panel_width_fraction, max_size.x, std::max(0.0f, window.x - panel_margin * 2.0f)});
+	float height = std::min({window.y * panel_height_fraction, max_size.y, std::max(0.0f, window.y - panel_margin * 2.0f)});
 
 	const float aspect = max_size.x / max_size.y;
 	if (width / height > aspect) {
@@ -496,10 +491,10 @@ bool AccountModal::is_docked() const
 
 Rect AccountModal::panel_rect() const
 {
-	if (is_docked()) return m_window.content_rect().inset(0.0f, 1.0f);
+	if (is_docked()) return m_window->content_rect().inset(0.0f, 1.0f);
 
 	const Vec2 size = floating_panel_size();
-	const Vec2 window = m_window.size();
+	const Vec2 window = m_window->size();
 
 	return Rect{0.0f, 0.0f, window.x, window.y}.centered(size.x, size.y);
 }
@@ -524,13 +519,13 @@ VisibleAccounts AccountModal::displayed_accounts() const
 {
 	if (!has_game()) return VisibleAccounts{};
 
-	const VisibleAccounts visible = m_library.visible_accounts(static_cast<u32>(m_game));
+	const VisibleAccounts visible = m_library->visible_accounts(static_cast<u32>(m_game));
 	const std::string_view query = m_search.value();
 	if (query.empty()) return visible;
 
 	VisibleAccounts matching;
 	for (const AccountRef ref : visible.view()) {
-		if (!matches_query(m_library.account(ref), query)) continue;
+		if (!matches_query(m_library->account(ref), query)) continue;
 
 		matching.refs[matching.count] = ref;
 		matching.count += 1;
@@ -549,8 +544,7 @@ AccountModal::AccountRows AccountModal::account_rows(const Layout &t_layout) con
 	rows.row_height = row_height(m_fonts);
 	rows.accounts = displayed_accounts();
 
-	const Rect track{rows.region.right() - scrollbar_width - scrollbar_margin, rows.region.y, scrollbar_width,
-					 rows.region.h};
+	const Rect track{rows.region.right() - scrollbar_width - scrollbar_margin, rows.region.y, scrollbar_width, rows.region.h};
 	rows.scroll = ScrollGeometry{track, rows.accounts.count * rows.row_height, rows.region.h};
 
 	return rows;
@@ -576,8 +570,7 @@ Rect AccountModal::row_rect_at(const Layout &t_layout, const AccountRows &t_rows
 {
 	const Rect main = t_layout.main_column;
 
-	return Rect{main.x + row_padding, content_to_screen(t_rows, t_content_top), main.w - row_padding * 2.0f,
-				t_rows.row_height};
+	return Rect{main.x + row_padding, content_to_screen(t_rows, t_content_top), main.w - row_padding * 2.0f, t_rows.row_height};
 }
 
 Rect AccountModal::row_rect(const Layout &t_layout, const AccountRows &t_rows, u32 t_row) const
@@ -620,8 +613,7 @@ Rect AccountModal::favorite_button_rect(Rect t_row) const
 
 bool AccountModal::is_row_button_hit(Rect t_row, Vec2 t_point) const
 {
-	return remove_button_rect(t_row).contains(t_point) || edit_button_rect(t_row).contains(t_point) ||
-		   favorite_button_rect(t_row).contains(t_point);
+	return remove_button_rect(t_row).contains(t_point) || edit_button_rect(t_row).contains(t_point) || favorite_button_rect(t_row).contains(t_point);
 }
 
 Rect AccountModal::add_button_rect(Rect t_main) const
@@ -635,34 +627,32 @@ Rect AccountModal::add_button_rect(Rect t_main) const
 Rect AccountModal::search_rect(Rect t_main) const
 {
 	const Rect header{t_main.x, t_main.y, t_main.w, header_height(m_fonts)};
-	const float left = t_main.x + row_padding + text_width(m_fonts.body, accounts_title) + search_title_gap;
+	const float left = t_main.x + row_padding + text_width(m_fonts->body, accounts_title) + search_title_gap;
 	const float right = add_button_rect(t_main).x - search_button_gap;
 	const float width = std::min(search_max_width, right - left);
 	if (width < search_min_width) return Rect{};
 
-	return vertically_centered(header, snapped_to_pixel(left + (right - left - width) * 0.5f), width,
-							   search_height(m_fonts));
+	return vertically_centered(header, snapped_to_pixel(left + (right - left - width) * 0.5f), width, search_height(m_fonts));
 }
 
 Rect AccountModal::primary_button_rect(Rect t_footer) const
 {
-	const float width = m_mode == Mode::EditAccount
-							? std::max(action_button_width, text_width(m_fonts.body, save_label()) + cancel_padding)
-							: action_button_width;
+	const float width =
+		m_mode == Mode::EditAccount ? std::max(action_button_width, text_width(m_fonts->body, save_label()) + cancel_padding) : action_button_width;
 
 	return vertically_centered(t_footer, t_footer.right() - row_padding - width, width, action_button_height(m_fonts));
 }
 
 Rect AccountModal::cancel_button_rect(Rect t_primary) const
 {
-	const float width = text_width(m_fonts.body, "Cancel") + cancel_padding;
+	const float width = text_width(m_fonts->body, "Cancel") + cancel_padding;
 
 	return Rect{t_primary.x - action_button_gap - width, t_primary.y, width, t_primary.h};
 }
 
 float AccountModal::edit_header_height() const
 {
-	const float lines = m_fonts.body.line_height() + edit_header_line_gap + m_fonts.secondary.line_height() + 20.0f;
+	const float lines = m_fonts->body.line_height() + edit_header_line_gap + m_fonts->secondary.line_height() + 20.0f;
 
 	return std::max(header_height(m_fonts), std::max(lines, edit_header_icon_size + 16.0f));
 }
@@ -681,7 +671,7 @@ Rect AccountModal::form_region(Rect t_main) const
 
 u32 AccountModal::show_in_columns(float t_width) const
 {
-	const u32 count = std::max(1u, m_library.game_count);
+	const u32 count = std::max(1u, m_library->game_count);
 	const u32 fitting = std::max(1u, static_cast<u32>((t_width + tile_gap) / (tile_min_width + tile_gap)));
 	if (count <= fitting) return count;
 
@@ -692,12 +682,12 @@ u32 AccountModal::show_in_columns(float t_width) const
 
 float AccountModal::show_in_tile_height() const
 {
-	return tile_padding_y * 2.0f + tile_icon_size + tile_label_gap + m_fonts.secondary.line_height();
+	return tile_padding_y * 2.0f + tile_icon_size + tile_label_gap + m_fonts->secondary.line_height();
 }
 
 AccountModal::FormLayout AccountModal::form_layout(Rect t_main) const
 {
-	const Font &secondary = m_fonts.secondary;
+	const Font &secondary = m_fonts->secondary;
 	const float label_height = secondary.line_height();
 	const float input_height = field_input_height(m_fonts);
 	const float cell_height = label_height + form_label_gap + input_height + label_height + form_hint_gap;
@@ -731,14 +721,12 @@ AccountModal::FormLayout AccountModal::form_layout(Rect t_main) const
 	form.inputs[show_in_row] = Rect{left, y + label_height + form_label_gap, width, input_height};
 	form.tile_columns = show_in_columns(width);
 
-	const u32 tile_rows = (m_library.game_count + form.tile_columns - 1) / form.tile_columns;
-	const float tiles_height = static_cast<float>(tile_rows) * show_in_tile_height() +
-							   static_cast<float>(tile_rows > 0 ? tile_rows - 1 : 0) * tile_gap;
+	const u32 tile_rows = (m_library->game_count + form.tile_columns - 1) / form.tile_columns;
+	const float tiles_height = static_cast<float>(tile_rows) * show_in_tile_height() + static_cast<float>(tile_rows > 0 ? tile_rows - 1 : 0) * tile_gap;
 	form.tiles = Rect{left, form.inputs[show_in_row].bottom() + tiles_top_gap, width, tiles_height};
 
 	const float tiles_shown = (tiles_top_gap + tiles_height) * m_show_in_amount;
-	form.content_height =
-		form.inputs[show_in_row].bottom() + tiles_shown + m_form_scroll.offset() - form.region.y + form_top_padding;
+	form.content_height = form.inputs[show_in_row].bottom() + tiles_shown + m_form_scroll.offset() - form.region.y + form_top_padding;
 
 	return form;
 }
@@ -746,8 +734,7 @@ AccountModal::FormLayout AccountModal::form_layout(Rect t_main) const
 ScrollGeometry AccountModal::form_scroll(Rect t_main) const
 {
 	const FormLayout form = form_layout(t_main);
-	const Rect track{form.region.right() - scrollbar_width - scrollbar_margin, form.region.y, scrollbar_width,
-					 form.region.h};
+	const Rect track{form.region.right() - scrollbar_width - scrollbar_margin, form.region.y, scrollbar_width, form.region.h};
 
 	return ScrollGeometry{track, form.content_height, form.region.h};
 }
@@ -772,8 +759,7 @@ Rect AccountModal::reveal_button_rect(Rect t_main) const
 {
 	const Rect password = field_input_rect(t_main, static_cast<u32>(EditField::Password));
 
-	return vertically_centered(password, password.right() - reveal_button_size - reveal_button_margin,
-							   reveal_button_size, reveal_button_size);
+	return vertically_centered(password, password.right() - reveal_button_size - reveal_button_margin, reveal_button_size, reveal_button_size);
 }
 
 Rect AccountModal::show_in_rect(Rect t_main) const
@@ -794,8 +780,8 @@ Rect AccountModal::show_in_tile(const FormLayout &t_form, u32 t_game) const
 	const auto column = static_cast<float>(t_game % columns);
 	const auto line = static_cast<float>(t_game / columns);
 
-	return Rect{snapped_to_pixel(t_form.tiles.x + column * (width + tile_gap)),
-				snapped_to_pixel(t_form.tiles.y + line * (height + tile_gap)), std::floor(width), height};
+	return Rect{snapped_to_pixel(t_form.tiles.x + column * (width + tile_gap)), snapped_to_pixel(t_form.tiles.y + line * (height + tile_gap)),
+				std::floor(width), height};
 }
 
 std::optional<u32> AccountModal::show_in_tile_at(Rect t_main, Vec2 t_point) const
@@ -805,7 +791,7 @@ std::optional<u32> AccountModal::show_in_tile_at(Rect t_main, Vec2 t_point) cons
 	const FormLayout form = form_layout(t_main);
 	if (!form.region.contains(t_point)) return std::nullopt;
 
-	for (u32 game = 0; game < m_library.game_count; game += 1) {
+	for (u32 game = 0; game < m_library->game_count; game += 1) {
 		if (show_in_tile(form, game).contains(t_point)) return game;
 	}
 
@@ -946,7 +932,7 @@ const Account *AccountModal::account_at_row(i32 t_row) const
 	const VisibleAccounts shown = displayed_accounts();
 	if (static_cast<u32>(t_row) >= shown.count) return nullptr;
 
-	return &m_library.account(shown.refs[t_row]);
+	return m_library->account(shown.refs[t_row]);
 }
 
 void AccountModal::forget_secrets()
@@ -991,7 +977,7 @@ void AccountModal::start_adding()
 	}
 
 	focus_field(static_cast<i32>(EditField::Username));
-	field(EditField::Password).set_masked(true);
+	field(EditField::Password)->set_masked(true);
 
 	m_visible_mask = static_cast<u16>(1u << m_game);
 	m_show_in_open = false;
@@ -1007,39 +993,39 @@ void AccountModal::start_editing(AccountRef t_account)
 	m_edited = t_account;
 	m_search.set_focused(false);
 
-	const Account &account = m_library.account(t_account);
-	field(EditField::Note).set_value(account.note);
-	copy_to(std::string_view{account.region}, m_region);
+	const Account *account = m_library->account(t_account);
+	field(EditField::Note)->set_value(account->note);
+	copy_to(std::string_view{account->region}, m_region);
 	m_region_list.close();
-	field(EditField::Username).set_value(account.username);
-	field(EditField::Password).set_value(account.password);
+	field(EditField::Username)->set_value(account->username);
+	field(EditField::Password)->set_value(account->password);
 
 	focus_field(static_cast<i32>(EditField::Username));
-	field(EditField::Password).set_masked(true);
+	field(EditField::Password)->set_masked(true);
 
-	m_visible_mask = account.visible_games(t_account.game);
+	m_visible_mask = account->visible_games(t_account.game);
 	m_show_in_open = false;
 	m_show_in_amount = 0.0f;
 }
 
 bool AccountModal::can_save() const
 {
-	return !field(EditField::Username).value().empty() && !field(EditField::Password).value().empty();
+	return !field(EditField::Username)->value().empty() && !field(EditField::Password)->value().empty();
 }
 
 bool AccountModal::has_changes() const
 {
-	const std::string_view note = field(EditField::Note).value();
+	const std::string_view note = field(EditField::Note)->value();
 	const std::string_view region = m_region;
-	const std::string_view username = field(EditField::Username).value();
-	const std::string_view password = field(EditField::Password).value();
+	const std::string_view username = field(EditField::Username)->value();
+	const std::string_view password = field(EditField::Password)->value();
 
 	if (!m_edited) return !note.empty() || !region.empty() || !username.empty() || !password.empty();
 
-	const Account &account = m_library.account(*m_edited);
+	const Account *account = m_library->account(*m_edited);
 
-	return note != account.note || region != account.region || username != account.username ||
-		   password != account.password || m_visible_mask != account.visible_games(m_edited->game);
+	return note != account->note || region != account->region || username != account->username || password != account->password ||
+		   m_visible_mask != account->visible_games(m_edited->game);
 }
 
 void AccountModal::save_edit()
@@ -1047,15 +1033,15 @@ void AccountModal::save_edit()
 	m_mode = Mode::AccountList;
 	if (!has_game()) return;
 
-	const std::string_view username = field(EditField::Username).value();
-	const std::string_view note = field(EditField::Note).value();
-	const std::string_view password = field(EditField::Password).value();
+	const std::string_view username = field(EditField::Username)->value();
+	const std::string_view note = field(EditField::Note)->value();
+	const std::string_view password = field(EditField::Password)->value();
 
 	if (m_edited) {
-		Account &account = m_library.account(*m_edited);
-		account.assign(username, note, password);
-		copy_to(std::string_view{m_region}, account.region);
-		account.visible_game_mask = m_visible_mask;
+		Account *account = m_library->account(*m_edited);
+		account->assign(username, note, password);
+		copy_to(std::string_view{m_region}, account->region);
+		account->visible_game_mask = m_visible_mask;
 		return;
 	}
 
@@ -1063,7 +1049,7 @@ void AccountModal::save_edit()
 	account.assign(username, note, password);
 	copy_to(std::string_view{m_region}, account.region);
 
-	const std::optional<AccountRef> added = m_library.add_account(static_cast<u32>(m_game), account);
+	const std::optional<AccountRef> added = m_library->add_account(static_cast<u32>(m_game), account);
 	sodium_memzero(&account, sizeof(account));
 
 	if (!added) {
@@ -1080,12 +1066,12 @@ void AccountModal::delete_account(AccountRef t_account)
 {
 	forget_deleted();
 
-	m_deleted = DeletedAccount{m_library.account(t_account), t_account};
-	m_library.remove_account(t_account);
+	m_deleted = DeletedAccount{*m_library->account(t_account), t_account};
+	m_library->remove_account(t_account);
 	follow_removal(t_account);
 	reset_row_motion();
 
-	m_toasts.notify(Notification{
+	m_toasts->notify(Notification{
 		.message = "Account deleted. Click to undo.",
 		.on_click = Command{.type = CommandType::UndoDelete},
 		.seconds = undo_seconds,
@@ -1122,7 +1108,7 @@ void AccountModal::undo_delete()
 {
 	if (!m_deleted) return;
 
-	const std::optional<AccountRef> restored = m_library.insert_account(m_deleted->position, m_deleted->account);
+	const std::optional<AccountRef> restored = m_library->insert_account(m_deleted->position, m_deleted->account);
 	forget_deleted();
 
 	if (!restored) {
@@ -1150,8 +1136,8 @@ void AccountModal::toggle_favorite(AccountRef t_account)
 {
 	const VisibleAccounts before = displayed_accounts();
 
-	Account &account = m_library.account(t_account);
-	account.favorite = !account.favorite;
+	Account *account = m_library->account(t_account);
+	account->favorite = !account->favorite;
 
 	animate_reorder(before);
 
@@ -1165,28 +1151,28 @@ void AccountModal::toggle_favorite(AccountRef t_account)
 
 void AccountModal::follow_insert(AccountRef t_inserted)
 {
-	shift_after_insert(m_selected, t_inserted);
-	shift_after_insert(m_edited, t_inserted);
-	shift_after_insert(m_login_account, t_inserted);
-	shift_after_insert(m_armed_delete, t_inserted);
+	shift_after_insert(&m_selected, t_inserted);
+	shift_after_insert(&m_edited, t_inserted);
+	shift_after_insert(&m_login_account, t_inserted);
+	shift_after_insert(&m_armed_delete, t_inserted);
 
 	if (m_queued_login) {
 		std::optional<AccountRef> queued = m_queued_login->account;
-		shift_after_insert(queued, t_inserted);
+		shift_after_insert(&queued, t_inserted);
 		m_queued_login->account = *queued;
 	}
 }
 
 void AccountModal::follow_removal(AccountRef t_removed)
 {
-	shift_after_removal(m_selected, t_removed);
-	shift_after_removal(m_edited, t_removed);
-	shift_after_removal(m_login_account, t_removed);
-	shift_after_removal(m_armed_delete, t_removed);
+	shift_after_removal(&m_selected, t_removed);
+	shift_after_removal(&m_edited, t_removed);
+	shift_after_removal(&m_login_account, t_removed);
+	shift_after_removal(&m_armed_delete, t_removed);
 
 	if (m_queued_login) {
 		std::optional<AccountRef> queued = m_queued_login->account;
-		shift_after_removal(queued, t_removed);
+		shift_after_removal(&queued, t_removed);
 
 		if (queued) {
 			m_queued_login->account = *queued;
@@ -1198,7 +1184,7 @@ void AccountModal::follow_removal(AccountRef t_removed)
 
 void AccountModal::notify(std::string_view t_message)
 {
-	m_toasts.notify(Notification{.message = t_message});
+	m_toasts->notify(Notification{.message = t_message});
 }
 
 void AccountModal::request_login(u32 t_game, AccountRef t_account)
@@ -1230,12 +1216,12 @@ void AccountModal::request_login(u32 t_game, AccountRef t_account)
 
 void AccountModal::start_login(PendingLogin t_login)
 {
-	if (t_login.game >= m_library.game_count) return;
-	if (t_login.account.index >= m_library.games[t_login.account.game].account_count) return;
+	if (t_login.game >= m_library->game_count) return;
+	if (t_login.account.index >= m_library->games[t_login.account.game].account_count) return;
 
-	const Account &account = m_library.account(t_login.account);
+	const Account *account = m_library->account(t_login.account);
 	m_login_account = t_login.account;
-	m_login.start(account.username, account.password, m_library.games[t_login.game].launch_product);
+	m_login.start(account->username, account->password, m_library->games[t_login.game].launch_product);
 }
 
 void AccountModal::cancel_login()
@@ -1250,8 +1236,8 @@ void AccountModal::record_login_result()
 	if (!m_login_account || !LoginAttempt::is_terminal(m_login.stage())) return;
 
 	if (m_login.stage() == LoginStage::Success) {
-		m_library.account(*m_login_account).last_used = std::time(nullptr);
-		m_commands.push(Command{.type = CommandType::SaveChanges});
+		m_library->account(*m_login_account)->last_used = std::time(nullptr);
+		m_commands->push(Command{.type = CommandType::SaveChanges});
 	}
 
 	m_login_account.reset();
@@ -1314,7 +1300,7 @@ bool AccountModal::is_search_visible() const
 AccountModal::RowRange AccountModal::drag_range(const VisibleAccounts &t_accounts, u32 t_row) const
 {
 	u32 favorites = 0;
-	while (favorites < t_accounts.count && m_library.account(t_accounts.refs[favorites]).favorite) {
+	while (favorites < t_accounts.count && m_library->account(t_accounts.refs[favorites])->favorite) {
 		favorites += 1;
 	}
 
@@ -1367,7 +1353,7 @@ void AccountModal::drop_row()
 	}
 
 	if (from != to) {
-		m_library.move_visible_account(static_cast<u32>(m_game), from, to);
+		m_library->move_visible_account(static_cast<u32>(m_game), from, to);
 		animate_reorder(rows.accounts);
 	}
 
@@ -1415,14 +1401,12 @@ void AccountModal::update_row_drag(float t_delta_seconds)
 			target = height;
 		}
 
-		m_row_offsets[i] = animation::ease_toward(m_row_offsets[i], target, row_shift_ease_rate, t_delta_seconds,
-												  animation::settled_pixels);
+		m_row_offsets[i] = animation::ease_toward(m_row_offsets[i], target, row_shift_ease_rate, t_delta_seconds, animation::settled_pixels);
 	}
 
 	m_lift_amount = animation::ease_toward(m_lift_amount, m_drag.lifted ? 1.0f : 0.0f, lift_ease_rate, t_delta_seconds);
 
-	const bool raised_settled =
-		!m_raised_row || *m_raised_row >= rows.accounts.count || m_row_offsets[*m_raised_row] == 0.0f;
+	const bool raised_settled = !m_raised_row || *m_raised_row >= rows.accounts.count || m_row_offsets[*m_raised_row] == 0.0f;
 	if (!m_drag.lifted && m_lift_amount == 0.0f && raised_settled) {
 		m_raised_row.reset();
 	}
@@ -1477,8 +1461,7 @@ void AccountModal::request_tooltip()
 		const Rect main = current.main_column;
 
 		if (is_reveal_hit(main, m_mouse)) {
-			m_tooltip.request(field(EditField::Password).is_masked() ? "Show password" : "Hide password",
-							  reveal_button_rect(main));
+			m_tooltip.request(field(EditField::Password)->is_masked() ? "Show password" : "Hide password", reveal_button_rect(main));
 		}
 
 		return;
@@ -1509,7 +1492,7 @@ void AccountModal::request_row_tooltip(const Layout &t_layout)
 	const Rect remove = remove_button_rect(row);
 
 	if (favorite.contains(m_mouse)) {
-		const bool pinned = m_library.account(rows.accounts.refs[hovered_row]).favorite;
+		const bool pinned = m_library->account(rows.accounts.refs[hovered_row])->favorite;
 		m_tooltip.request(pinned ? "Unpin" : "Pin to top", favorite);
 	} else if (edit.contains(m_mouse)) {
 		m_tooltip.request("Edit account", edit);
@@ -1531,15 +1514,14 @@ void AccountModal::update(float t_delta_seconds)
 	}
 
 	const bool panel_shown = m_open && (!morphing || m_morph_progress >= panel_reveal_progress);
-	const float scale_travel = m_window.size().x * 0.5f * (1.0f - panel_closed_scale);
-	m_open_amount = animation::ease_toward(m_open_amount, panel_shown ? 1.0f : 0.0f, open_ease_rate, t_delta_seconds,
-										   animation::settled_pixels / scale_travel);
+	const float scale_travel = m_window->size().x * 0.5f * (1.0f - panel_closed_scale);
+	m_open_amount = animation::ease_toward(m_open_amount, panel_shown ? 1.0f : 0.0f, open_ease_rate, t_delta_seconds, animation::settled_pixels / scale_travel);
 
 	if (!m_open && m_open_amount == 0.0f && m_morph_progress == 0.0f) {
 		m_game = -1;
 	}
 
-	if (m_deleted && !m_toasts.is_offering(CommandType::UndoDelete)) {
+	if (m_deleted && !m_toasts->is_offering(CommandType::UndoDelete)) {
 		forget_deleted();
 	}
 
@@ -1581,16 +1563,14 @@ void AccountModal::update(float t_delta_seconds)
 	}
 
 	const float show_in_before = m_show_in_amount;
-	m_show_in_amount =
-		animation::ease_toward(m_show_in_amount, m_show_in_open ? 1.0f : 0.0f, show_in_ease_rate, t_delta_seconds);
+	m_show_in_amount = animation::ease_toward(m_show_in_amount, m_show_in_open ? 1.0f : 0.0f, show_in_ease_rate, t_delta_seconds);
 
 	if (m_mode == Mode::EditAccount && m_show_in_open && m_show_in_amount != show_in_before) {
 		const Rect main = layout().main_column;
 		const FormLayout form = form_layout(main);
 		const float bottom = form.tiles.y + form.tiles.h * m_show_in_amount;
 
-		m_form_scroll.reveal(form.labels[show_in_row].y, bottom, form.region.y, form.region.bottom(),
-							 form_scroll(main));
+		m_form_scroll.reveal(form.labels[show_in_row].y, bottom, form.region.y, form.region.bottom(), form_scroll(main));
 	}
 	m_region_list.update(t_delta_seconds, region_rect(layout().main_column), layout().inner);
 	request_tooltip();
@@ -1631,7 +1611,7 @@ bool AccountModal::on_pointer_down(Vec2 t_point)
 
 		if (pressed >= 0) {
 			focus_field(pressed);
-			m_fields[pressed].on_pointer_down(m_fonts.body, field_text_rect(current.main_column, pressed), t_point.x);
+			m_fields[pressed].on_pointer_down(m_fonts->body, field_text_rect(current.main_column, pressed), t_point.x);
 		}
 	} else if (m_mode == Mode::AccountList && has_game()) {
 		handle_list_press(current, t_point);
@@ -1650,7 +1630,7 @@ void AccountModal::handle_list_press(const Layout &t_layout, Vec2 t_point)
 
 	if (search.contains(t_point) && !over_clear) {
 		m_search.set_focused(true);
-		m_search.on_pointer_down(m_fonts.secondary, controls::search_text_rect(search, search_inset), t_point.x);
+		m_search.on_pointer_down(m_fonts->secondary, controls::search_text_rect(search, search_inset), t_point.x);
 		return;
 	}
 
@@ -1678,13 +1658,12 @@ bool AccountModal::on_pointer_move(Vec2 t_point)
 
 	for (u32 i = 0; i < field_count; i += 1) {
 		if (m_fields[i].is_selecting()) {
-			m_fields[i].on_pointer_move(m_fonts.body, field_text_rect(current.main_column, i), t_point.x);
+			m_fields[i].on_pointer_move(m_fonts->body, field_text_rect(current.main_column, i), t_point.x);
 		}
 	}
 
 	if (m_search.is_selecting()) {
-		m_search.on_pointer_move(m_fonts.secondary,
-								 controls::search_text_rect(search_rect(current.main_column), search_inset), t_point.x);
+		m_search.on_pointer_move(m_fonts->secondary, controls::search_text_rect(search_rect(current.main_column), search_inset), t_point.x);
 	}
 
 	if (m_rows_scroll.is_dragging()) {
@@ -1864,8 +1843,8 @@ void AccountModal::handle_edit_click(const Layout &t_layout, Vec2 t_point)
 	}
 
 	if (is_reveal_hit(main, t_point)) {
-		TextInput &password = field(EditField::Password);
-		password.set_masked(!password.is_masked());
+		TextInput *password = field(EditField::Password);
+		password->set_masked(!password->is_masked());
 		return;
 	}
 
@@ -1898,9 +1877,8 @@ bool AccountModal::on_right_click(Vec2 t_point)
 
 		if (clicked >= 0) {
 			focus_field(clicked);
-			m_fields[clicked].on_right_click(m_fonts.body, field_text_rect(current.main_column, clicked), t_point.x);
-			m_commands.push(
-				Command{.type = CommandType::ShowTextMenu, .position = t_point, .text_input = &m_fields[clicked]});
+			m_fields[clicked].on_right_click(m_fonts->body, field_text_rect(current.main_column, clicked), t_point.x);
+			m_commands->push(Command{.type = CommandType::ShowTextMenu, .position = t_point, .text_input = &m_fields[clicked]});
 		}
 
 		return true;
@@ -1912,8 +1890,8 @@ bool AccountModal::on_right_click(Vec2 t_point)
 
 	if (search.contains(t_point)) {
 		m_search.set_focused(true);
-		m_search.on_right_click(m_fonts.secondary, controls::search_text_rect(search, search_inset), t_point.x);
-		m_commands.push(Command{.type = CommandType::ShowTextMenu, .position = t_point, .text_input = &m_search});
+		m_search.on_right_click(m_fonts->secondary, controls::search_text_rect(search, search_inset), t_point.x);
+		m_commands->push(Command{.type = CommandType::ShowTextMenu, .position = t_point, .text_input = &m_search});
 		return true;
 	}
 
@@ -1922,7 +1900,7 @@ bool AccountModal::on_right_click(Vec2 t_point)
 
 	if (row >= 0) {
 		m_selected = rows.accounts.refs[row];
-		m_commands.push(Command{.type = CommandType::ShowAccountMenu, .index = row, .position = t_point});
+		m_commands->push(Command{.type = CommandType::ShowAccountMenu, .index = row, .position = t_point});
 	}
 
 	return true;
@@ -2169,54 +2147,49 @@ CursorKind AccountModal::cursor() const
 	return CursorKind::Arrow;
 }
 
-void AccountModal::draw_chrome(DrawList &t_draw_list, const Layout &t_layout, bool t_with_art, u8 t_alpha) const
+void AccountModal::draw_chrome(DrawList *t_draw_list, const Layout &t_layout, bool t_with_art, u8 t_alpha) const
 {
-	const Game &game = m_library.games[static_cast<u32>(m_game)];
+	const Game &game = m_library->games[static_cast<u32>(m_game)];
 	const Rect art = t_layout.art_column;
 	const bool docked = is_docked();
 	const float radius = docked ? 0.0f : panel_radius;
 
 	if (docked) {
-		t_draw_list.add_rect(t_layout.panel, faded(theme().surface, t_alpha));
+		t_draw_list->add_rect(t_layout.panel, faded(theme().surface, t_alpha));
 	} else {
 		controls::draw_panel_shadow(t_draw_list, t_layout.panel, panel_radius, m_open_amount);
-		t_draw_list.add_bordered_rect(t_layout.panel, rounded(panel_radius), faded(theme().surface, t_alpha),
-									  faded(theme().border, t_alpha), panel_border);
+		t_draw_list->add_bordered_rect(t_layout.panel, rounded(panel_radius), faded(theme().surface, t_alpha), faded(theme().border, t_alpha), panel_border);
 
 		const float highlight_inset = scaled_radius(panel_radius);
-		t_draw_list.add_rect(
-			Rect{t_layout.inner.x + highlight_inset, t_layout.inner.y, t_layout.inner.w - highlight_inset * 2.0f, 1.0f},
-			faded(color_top_highlight, t_alpha));
+		t_draw_list->add_rect(Rect{t_layout.inner.x + highlight_inset, t_layout.inner.y, t_layout.inner.w - highlight_inset * 2.0f, 1.0f},
+							  faded(color_top_highlight, t_alpha));
 	}
 
 	const u8 art_alpha = m_art_source ? 255 : t_alpha;
 
 	if (t_with_art && game.banner != nullptr) {
-		t_draw_list.add_image(art, game.banner, faded(color_on_art, art_alpha),
-							  rounded(std::max(0.0f, radius - panel_border), 0.0f, 0.0f, 0.0f),
-							  cover_uv(art.w / art.h, game.banner->aspect()));
+		t_draw_list->add_image(art, game.banner, faded(color_on_art, art_alpha), rounded(std::max(0.0f, radius - panel_border), 0.0f, 0.0f, 0.0f),
+							   cover_uv(art.w / art.h, game.banner->aspect()));
 	} else if (t_with_art) {
-		t_draw_list.add_rect(art, faded(game.accent, art_alpha));
+		t_draw_list->add_rect(art, faded(game.accent, art_alpha));
 	}
 
-	t_draw_list.add_rect(Rect{art.right(), art.y, art_separator_width, art.h}, faded(theme().border, t_alpha));
+	t_draw_list->add_rect(Rect{art.right(), art.y, art_separator_width, art.h}, faded(theme().border, t_alpha));
 }
 
-void AccountModal::draw_back_badge(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const
+void AccountModal::draw_back_badge(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha) const
 {
 	const Rect badge = back_badge_rect(t_layout);
 	const auto badge_alpha = static_cast<u8>(badge.contains(m_mouse) ? 210 : 170);
 
-	t_draw_list.add_rounded_rect(badge, rounded(badge.w * 0.5f),
-								 faded(with_alpha(color_art_badge, badge_alpha), t_alpha));
-	t_draw_list.add_image(badge.centered(close_badge_icon_size, close_badge_icon_size),
-						  m_assets.get(Asset::IconArrowBack), faded(color_on_art, t_alpha));
+	t_draw_list->add_rounded_rect(badge, rounded(badge.w * 0.5f), faded(with_alpha(color_art_badge, badge_alpha), t_alpha));
+	t_draw_list->add_image(badge.centered(close_badge_icon_size, close_badge_icon_size), m_assets->get(Asset::IconArrowBack), faded(color_on_art, t_alpha));
 }
 
-void AccountModal::draw_morphing_art(DrawList &t_draw_list, const Layout &t_layout, float t_scale) const
+void AccountModal::draw_morphing_art(DrawList *t_draw_list, const Layout &t_layout, float t_scale) const
 {
-	const Game &game = m_library.games[static_cast<u32>(m_game)];
-	const ArtSource &source = *m_art_source;
+	const Game &game = m_library->games[static_cast<u32>(m_game)];
+	const ArtSource source = *m_art_source;
 	const float amount = 0.5f - 0.5f * std::cos(m_morph_progress * std::numbers::pi_v<float>);
 
 	const Rect target = scaled_about(t_layout.art_column, t_layout.panel.center(), t_scale);
@@ -2236,84 +2209,75 @@ void AccountModal::draw_morphing_art(DrawList &t_draw_list, const Layout &t_layo
 	const auto frame_alpha = to_alpha(frame);
 
 	if (source.glow > 0.0f && frame_alpha > 0) {
-		t_draw_list.add_banner_glow(art, other_corners, source.glow, faded(source.glow_color, frame_alpha));
+		t_draw_list->add_banner_glow(art, other_corners, source.glow, faded(source.glow_color, frame_alpha));
 	}
 
 	if (source.border > 0.0f && frame_alpha > 0) {
-		t_draw_list.add_rounded_rect(art, radii, faded(source.border_color, frame_alpha));
+		t_draw_list->add_rounded_rect(art, radii, faded(source.border_color, frame_alpha));
 	}
 
 	const float inset = source.border * frame;
 	const Rect image = art.inset(inset);
-	const CornerRadii image_radii =
-		rounded(std::max(0.0f, leading_corner - inset), std::max(0.0f, other_corners - inset),
-				std::max(0.0f, other_corners - inset), std::max(0.0f, other_corners - inset));
+	const CornerRadii image_radii = rounded(std::max(0.0f, leading_corner - inset), std::max(0.0f, other_corners - inset),
+											std::max(0.0f, other_corners - inset), std::max(0.0f, other_corners - inset));
 
 	if (game.banner != nullptr) {
-		t_draw_list.add_image(image, game.banner, faded(color_on_art, to_alpha(banner_share)), image_radii,
-							  cover_uv(image.w / image.h, game.banner->aspect()));
+		t_draw_list->add_image(image, game.banner, faded(color_on_art, to_alpha(banner_share)), image_radii,
+							   cover_uv(image.w / image.h, game.banner->aspect()));
 	} else {
-		t_draw_list.add_rounded_rect(image, image_radii, faded(game.accent, to_alpha(banner_share)));
+		t_draw_list->add_rounded_rect(image, image_radii, faded(game.accent, to_alpha(banner_share)));
 	}
 
 	if (source.is_icon && game.icon != nullptr && banner_share < 1.0f) {
-		t_draw_list.add_image(image, game.icon, faded(color_on_art, to_alpha(1.0f - banner_share)), image_radii,
-							  cover_uv(image.w / image.h, game.icon->aspect()));
+		t_draw_list->add_image(image, game.icon, faded(color_on_art, to_alpha(1.0f - banner_share)), image_radii,
+							   cover_uv(image.w / image.h, game.icon->aspect()));
 	}
 }
 
-void AccountModal::draw_section_title(DrawList &t_draw_list, Rect t_main, std::string_view t_title, u8 t_alpha) const
+void AccountModal::draw_section_title(DrawList *t_draw_list, Rect t_main, std::string_view t_title, u8 t_alpha) const
 {
-	const Font &font = m_fonts.body;
+	const Font &font = m_fonts->body;
 	const Rect header{t_main.x, t_main.y, t_main.w, header_height(m_fonts)};
 
-	draw_text(t_draw_list, font, Vec2{t_main.x + row_padding, font.centered_baseline(header)}, t_title,
-			  faded(theme().text, t_alpha));
-	t_draw_list.add_rect(Rect{t_main.x + row_padding, header.bottom(), t_main.w - row_padding * 2.0f, 1.0f},
-						 faded(theme().separator, t_alpha));
+	draw_text(t_draw_list, font, Vec2{t_main.x + row_padding, font.centered_baseline(header)}, t_title, faded(theme().text, t_alpha));
+	t_draw_list->add_rect(Rect{t_main.x + row_padding, header.bottom(), t_main.w - row_padding * 2.0f, 1.0f}, faded(theme().separator, t_alpha));
 }
 
-void AccountModal::draw_search(DrawList &t_draw_list, Rect t_main, u8 t_alpha)
+void AccountModal::draw_search(DrawList *t_draw_list, Rect t_main, u8 t_alpha)
 {
 	const Rect search = search_rect(t_main);
 	if (search.w <= 0.0f) return;
 
-	controls::draw_search_field(t_draw_list, m_fonts.secondary, search, search_inset, m_search, m_mouse,
-								m_settings.accent, t_alpha);
+	controls::draw_search_field(t_draw_list, m_fonts->secondary, search, search_inset, &m_search, m_mouse, m_settings->accent, t_alpha);
 }
 
-void AccountModal::draw_row_details(DrawList &t_draw_list, Rect t_row, float t_baseline, float t_max_width,
-									const Account &t_account, u8 t_alpha) const
+void AccountModal::draw_row_details(DrawList *t_draw_list, Rect t_row, float t_baseline, float t_max_width, const Account *t_account, u8 t_alpha) const
 {
-	const Font &secondary = m_fonts.secondary;
-	const std::string_view note = t_account.note;
+	const Font &secondary = m_fonts->secondary;
+	const std::string_view note = t_account->note;
 
 	char relative[32];
 	char last_used[48];
 	std::string_view when;
 
-	if (t_account.last_used != 0) {
-		when = relative_time(t_account.last_used, std::time(nullptr), relative);
+	if (t_account->last_used != 0) {
+		when = relative_time(t_account->last_used, std::time(nullptr), relative);
 
 		if (note.empty()) {
-			const int written = std::snprintf(last_used, sizeof(last_used), "Last used %.*s",
-											  static_cast<int>(when.size()), when.data());
+			const int written = std::snprintf(last_used, sizeof(last_used), "Last used %.*s", static_cast<int>(when.size()), when.data());
 			when = std::string_view{last_used, static_cast<usize>(std::max(written, 0))};
 		}
 	}
 
 	if (note.empty()) {
-		draw_text_truncated(t_draw_list, secondary, Vec2{t_row.x, t_baseline}, when, t_max_width,
-							faded(theme().text_faint, t_alpha));
+		draw_text_truncated(t_draw_list, secondary, Vec2{t_row.x, t_baseline}, when, t_max_width, faded(theme().text_faint, t_alpha));
 		return;
 	}
 
-	const float when_width =
-		when.empty() ? 0.0f : text_width(secondary, when) + detail_dot_gap * 2.0f + detail_dot_size;
+	const float when_width = when.empty() ? 0.0f : text_width(secondary, when) + detail_dot_gap * 2.0f + detail_dot_size;
 	const float note_width = std::min(text_width(secondary, note), std::max(0.0f, t_max_width - when_width));
 
-	draw_text_truncated(t_draw_list, secondary, Vec2{t_row.x, t_baseline}, note, note_width + 0.5f,
-						faded(theme().text_dim, t_alpha));
+	draw_text_truncated(t_draw_list, secondary, Vec2{t_row.x, t_baseline}, note, note_width + 0.5f, faded(theme().text_dim, t_alpha));
 
 	if (when.empty()) return;
 
@@ -2321,14 +2285,12 @@ void AccountModal::draw_row_details(DrawList &t_draw_list, Rect t_row, float t_b
 	const float dot_y = t_baseline - secondary.ascent * 0.33f - detail_dot_size * 0.5f;
 	const float when_x = dot_x + detail_dot_size + detail_dot_gap;
 
-	t_draw_list.add_rounded_rect(Rect{dot_x, dot_y, detail_dot_size, detail_dot_size}, rounded(detail_dot_size * 0.5f),
-								 faded(theme().text_faint, t_alpha));
-	draw_text_truncated(t_draw_list, secondary, Vec2{when_x, t_baseline}, when, t_row.x + t_max_width - when_x,
-						faded(theme().text_faint, t_alpha));
+	t_draw_list->add_rounded_rect(Rect{dot_x, dot_y, detail_dot_size, detail_dot_size}, rounded(detail_dot_size * 0.5f), faded(theme().text_faint, t_alpha));
+	draw_text_truncated(t_draw_list, secondary, Vec2{when_x, t_baseline}, when, t_row.x + t_max_width - when_x, faded(theme().text_faint, t_alpha));
 }
 
-void AccountModal::draw_account_row(DrawList &t_draw_list, Rect t_main, Rect t_row, const Account &t_account,
-									bool t_selected, bool t_raised, float t_delete_countdown, u8 t_alpha) const
+void AccountModal::draw_account_row(DrawList *t_draw_list, Rect t_main, Rect t_row, const Account *t_account, bool t_selected, bool t_raised,
+									float t_delete_countdown, u8 t_alpha) const
 {
 	const Rect highlight = row_highlight(t_row);
 	const bool interactive = !m_drag.lifted && !t_raised;
@@ -2338,40 +2300,36 @@ void AccountModal::draw_account_row(DrawList &t_draw_list, Rect t_main, Rect t_r
 		const auto lift_alpha = static_cast<u8>(t_alpha * m_lift_amount);
 
 		controls::draw_popup_shadow(t_draw_list, highlight, row_radius, m_lift_amount * t_alpha / 255.0f);
-		t_draw_list.add_bordered_rect(highlight, rounded(row_radius), faded(theme().popup, lift_alpha),
-									  faded(theme().border, lift_alpha), 1.0f);
+		t_draw_list->add_bordered_rect(highlight, rounded(row_radius), faded(theme().popup, lift_alpha), faded(theme().border, lift_alpha), 1.0f);
 	}
 
 	if (t_selected) {
-		t_draw_list.add_rounded_rect(highlight, rounded(row_radius), faded(theme().row_selected, t_alpha));
-		t_draw_list.add_rounded_rect(Rect{t_main.x + 8.0f, highlight.y, 3.0f, highlight.h}, rounded(1.5f),
-									 faded(m_settings.accent, t_alpha));
+		t_draw_list->add_rounded_rect(highlight, rounded(row_radius), faded(theme().row_selected, t_alpha));
+		t_draw_list->add_rounded_rect(Rect{t_main.x + 8.0f, highlight.y, 3.0f, highlight.h}, rounded(1.5f), faded(m_settings->accent, t_alpha));
 	} else if (hovered) {
-		t_draw_list.add_rounded_rect(highlight, rounded(row_radius), faded(theme().row_hover, t_alpha));
+		t_draw_list->add_rounded_rect(highlight, rounded(row_radius), faded(theme().row_hover, t_alpha));
 	}
 
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
 	const Rect favorite = favorite_button_rect(t_row);
 	const float text_limit = favorite.x - row_button_gap - t_row.x;
-	const bool has_details = t_account.note[0] != '\0' || t_account.last_used != 0;
+	const bool has_details = t_account->note[0] != '\0' || t_account->last_used != 0;
 
 	const float block_height = body.line_height() + row_line_gap + secondary.line_height();
 	const float block_y = t_row.y + (t_row.h - block_height) * 0.5f;
 	const float username_baseline = has_details ? block_y + body.ascent : body.centered_baseline(t_row);
 
-	const std::string_view region = t_account.region;
+	const std::string_view region = t_account->region;
 	const float chip_space = region.empty() ? 0.0f : region_chip_width(secondary, region) + region_chip_gap;
 	const float username_limit = std::max(0.0f, text_limit - chip_space);
 
-	draw_text_truncated(t_draw_list, body, Vec2{t_row.x, username_baseline}, t_account.username, username_limit,
-						faded(theme().text, t_alpha));
+	draw_text_truncated(t_draw_list, body, Vec2{t_row.x, username_baseline}, t_account->username, username_limit, faded(theme().text, t_alpha));
 
 	if (!region.empty()) {
-		const float username_width = std::min(text_width(body, t_account.username), username_limit);
+		const float username_width = std::min(text_width(body, t_account->username), username_limit);
 		const float line_center = username_baseline - body.ascent + body.line_height() * 0.5f;
-		draw_region_chip(t_draw_list, secondary, t_row.x + username_width + region_chip_gap, line_center, region,
-						 t_alpha);
+		draw_region_chip(t_draw_list, secondary, t_row.x + username_width + region_chip_gap, line_center, region, t_alpha);
 	}
 
 	if (has_details) {
@@ -2380,8 +2338,7 @@ void AccountModal::draw_account_row(DrawList &t_draw_list, Rect t_main, Rect t_r
 	}
 
 	const auto separator_alpha = static_cast<u8>(t_alpha * (t_raised ? 1.0f - m_lift_amount : 1.0f));
-	t_draw_list.add_rect(Rect{t_row.x, t_row.bottom() - 1.0f, t_row.w, 1.0f},
-						 faded(theme().separator, separator_alpha));
+	t_draw_list->add_rect(Rect{t_row.x, t_row.bottom() - 1.0f, t_row.w, 1.0f}, faded(theme().separator, separator_alpha));
 
 	const Rect edit = edit_button_rect(t_row);
 	const Rect remove = remove_button_rect(t_row);
@@ -2406,16 +2363,14 @@ void AccountModal::draw_account_row(DrawList &t_draw_list, Rect t_main, Rect t_r
 		controls::draw_circular_hover(t_draw_list, remove, danger, mix(theme().surface, danger, tint), t_alpha);
 	}
 
-	if (t_account.favorite) {
-		controls::draw_favorite(t_draw_list, m_assets, favorite.inset(row_icon_inset), true,
-								faded(m_settings.accent, t_alpha));
+	if (t_account->favorite) {
+		controls::draw_favorite(t_draw_list, m_assets, favorite.inset(row_icon_inset), true, faded(m_settings->accent, t_alpha));
 	} else if (hovered) {
 		controls::draw_favorite(t_draw_list, m_assets, favorite.inset(row_icon_inset), false,
 								faded(favorite_hovered ? theme().text : theme().text_faint, t_alpha));
 	}
 
-	t_draw_list.add_image(edit.inset(row_icon_inset), m_assets.get(Asset::IconEdit),
-						  faded(edit_hovered ? theme().text : theme().text_dim, t_alpha));
+	t_draw_list->add_image(edit.inset(row_icon_inset), m_assets->get(Asset::IconEdit), faded(edit_hovered ? theme().text : theme().text_dim, t_alpha));
 	controls::draw_x(t_draw_list, remove, faded(remove_hovered ? danger : theme().text_dim, t_alpha));
 
 	if (armed) {
@@ -2425,11 +2380,10 @@ void AccountModal::draw_account_row(DrawList &t_draw_list, Rect t_main, Rect t_r
 
 AccountModal::EmptyState AccountModal::empty_state(Rect t_region) const
 {
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
 	const float button_height = action_button_height(m_fonts);
-	const float stack_height = empty_icon_size + empty_gap + body.line_height() + empty_line_gap +
-							   secondary.line_height() + empty_gap + button_height;
+	const float stack_height = empty_icon_size + empty_gap + body.line_height() + empty_line_gap + secondary.line_height() + empty_gap + button_height;
 	const float center_x = t_region.center().x;
 	const float top = t_region.center().y - stack_height * 0.5f;
 
@@ -2437,42 +2391,39 @@ AccountModal::EmptyState AccountModal::empty_state(Rect t_region) const
 	state.icon = Rect{center_x - empty_icon_size * 0.5f, top, empty_icon_size, empty_icon_size};
 	state.title_baseline = state.icon.bottom() + empty_gap + body.ascent;
 	state.hint_baseline = state.icon.bottom() + empty_gap + body.line_height() + empty_line_gap + secondary.ascent;
-	state.button = Rect{center_x - empty_button_width * 0.5f,
-						state.icon.bottom() + empty_gap + body.line_height() + empty_line_gap +
-							secondary.line_height() + empty_gap,
-						empty_button_width, button_height};
+	state.button =
+		Rect{center_x - empty_button_width * 0.5f, state.icon.bottom() + empty_gap + body.line_height() + empty_line_gap + secondary.line_height() + empty_gap,
+			 empty_button_width, button_height};
 
 	return state;
 }
 
-void AccountModal::draw_empty_state(DrawList &t_draw_list, Rect t_region, u8 t_alpha) const
+void AccountModal::draw_empty_state(DrawList *t_draw_list, Rect t_region, u8 t_alpha) const
 {
-	const Game &game = m_library.games[static_cast<u32>(m_game)];
+	const Game &game = m_library->games[static_cast<u32>(m_game)];
 	const EmptyState state = empty_state(t_region);
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
 	constexpr std::string_view title = "No accounts yet";
 	constexpr std::string_view hint = "Add one to log in with a single click.";
 
 	if (game.icon != nullptr) {
-		t_draw_list.add_image(state.icon, game.icon, faded(color_on_art, t_alpha), rounded(empty_icon_radius));
+		t_draw_list->add_image(state.icon, game.icon, faded(color_on_art, t_alpha), rounded(empty_icon_radius));
 	} else {
-		t_draw_list.add_rounded_rect(state.icon, rounded(empty_icon_radius), faded(game.accent, t_alpha));
+		t_draw_list->add_rounded_rect(state.icon, rounded(empty_icon_radius), faded(game.accent, t_alpha));
 	}
 
-	draw_text(t_draw_list, body, Vec2{t_region.center().x - text_width(body, title) * 0.5f, state.title_baseline},
-			  title, faded(theme().text, t_alpha));
-	draw_text(t_draw_list, secondary,
-			  Vec2{t_region.center().x - text_width(secondary, hint) * 0.5f, state.hint_baseline}, hint,
+	draw_text(t_draw_list, body, Vec2{t_region.center().x - text_width(body, title) * 0.5f, state.title_baseline}, title, faded(theme().text, t_alpha));
+	draw_text(t_draw_list, secondary, Vec2{t_region.center().x - text_width(secondary, hint) * 0.5f, state.hint_baseline}, hint,
 			  faded(theme().text_dim, t_alpha));
-	controls::draw_button(t_draw_list, body, state.button, "Add account", controls::ButtonStyle::Accent,
-						  m_settings.accent, true, state.button.contains(m_mouse), t_alpha);
+	controls::draw_button(t_draw_list, body, state.button, "Add account", controls::ButtonStyle::Accent, m_settings->accent, true,
+						  state.button.contains(m_mouse), t_alpha);
 }
 
-void AccountModal::draw_no_matches(DrawList &t_draw_list, Rect t_region, u8 t_alpha) const
+void AccountModal::draw_no_matches(DrawList *t_draw_list, Rect t_region, u8 t_alpha) const
 {
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
 	constexpr std::string_view title = "No matches";
 	constexpr std::string_view hint = "Try a different name or note.";
 
@@ -2480,15 +2431,12 @@ void AccountModal::draw_no_matches(DrawList &t_draw_list, Rect t_region, u8 t_al
 	const float top = t_region.center().y - stack_height * 0.5f;
 	const float center_x = t_region.center().x;
 
-	draw_text(t_draw_list, body, Vec2{center_x - text_width(body, title) * 0.5f, top + body.ascent}, title,
-			  faded(theme().text_dim, t_alpha));
-	draw_text(t_draw_list, secondary,
-			  Vec2{center_x - text_width(secondary, hint) * 0.5f,
-				   top + body.line_height() + empty_line_gap + secondary.ascent},
-			  hint, faded(theme().text_faint, t_alpha));
+	draw_text(t_draw_list, body, Vec2{center_x - text_width(body, title) * 0.5f, top + body.ascent}, title, faded(theme().text_dim, t_alpha));
+	draw_text(t_draw_list, secondary, Vec2{center_x - text_width(secondary, hint) * 0.5f, top + body.line_height() + empty_line_gap + secondary.ascent}, hint,
+			  faded(theme().text_faint, t_alpha));
 }
 
-void AccountModal::draw_account_list(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha)
+void AccountModal::draw_account_list(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha)
 {
 	const Rect main = t_layout.main_column;
 	draw_section_title(t_draw_list, main, accounts_title, t_alpha);
@@ -2501,8 +2449,7 @@ void AccountModal::draw_account_list(DrawList &t_draw_list, const Layout &t_layo
 		controls::draw_circular_hover(t_draw_list, add, theme().shadow, theme().control_hover, t_alpha);
 	}
 
-	t_draw_list.add_image(add.centered(24.0f, 24.0f), m_assets.get(Asset::IconAdd),
-						  faded(add_hovered ? theme().text : theme().text_dim, t_alpha));
+	t_draw_list->add_image(add.centered(24.0f, 24.0f), m_assets->get(Asset::IconAdd), faded(add_hovered ? theme().text : theme().text_dim, t_alpha));
 
 	const AccountRows rows = account_rows(t_layout);
 
@@ -2518,7 +2465,7 @@ void AccountModal::draw_account_list(DrawList &t_draw_list, const Layout &t_layo
 
 	const i32 selected = selected_row(rows.accounts);
 
-	t_draw_list.push_clip(rows.region);
+	t_draw_list->push_clip(rows.region);
 
 	for (u32 i = 0; i < rows.accounts.count; i += 1) {
 		if (m_raised_row == i) continue;
@@ -2526,20 +2473,19 @@ void AccountModal::draw_account_list(DrawList &t_draw_list, const Layout &t_layo
 		const Rect row = row_rect(t_layout, rows, i);
 		if (!row.overlaps_vertically(rows.region)) continue;
 
-		draw_account_row(t_draw_list, main, row, m_library.account(rows.accounts.refs[i]),
-						 static_cast<i32>(i) == selected, false, delete_countdown(rows.accounts.refs[i]), t_alpha);
+		draw_account_row(t_draw_list, main, row, m_library->account(rows.accounts.refs[i]), static_cast<i32>(i) == selected, false,
+						 delete_countdown(rows.accounts.refs[i]), t_alpha);
 	}
 
 	if (m_raised_row && *m_raised_row < rows.accounts.count) {
 		const u32 raised = *m_raised_row;
 		const float top = m_drag.lifted ? lifted_top(rows) : raised * rows.row_height + m_row_offsets[raised];
 
-		draw_account_row(t_draw_list, main, row_rect_at(t_layout, rows, top),
-						 m_library.account(rows.accounts.refs[raised]), static_cast<i32>(raised) == selected, true,
-						 delete_countdown(rows.accounts.refs[raised]), t_alpha);
+		draw_account_row(t_draw_list, main, row_rect_at(t_layout, rows, top), m_library->account(rows.accounts.refs[raised]),
+						 static_cast<i32>(raised) == selected, true, delete_countdown(rows.accounts.refs[raised]), t_alpha);
 	}
 
-	t_draw_list.pop_clip();
+	t_draw_list->pop_clip();
 
 	m_rows_scroll.draw_edge_fade(t_draw_list, rows.region, rows.scroll, faded(theme().surface, t_alpha));
 	m_rows_scroll.draw(t_draw_list, rows.scroll, m_mouse, t_alpha);
@@ -2577,26 +2523,23 @@ void AccountModal::update_login_progress(float t_delta_seconds)
 	if (const std::optional<StageSpan> span = stage_span(stage)) {
 		const float creep = 1.0f - std::exp(-m_stage_seconds / progress_creep_seconds);
 		const float target = span->start + (span->end - span->start) * creep;
-		m_login_progress = animation::ease_toward(m_login_progress, std::max(target, m_login_progress),
-												  progress_ease_rate, t_delta_seconds);
+		m_login_progress = animation::ease_toward(m_login_progress, std::max(target, m_login_progress), progress_ease_rate, t_delta_seconds);
 	}
 
 	m_status_change = animation::ease_toward(m_status_change, 1.0f, status_ease_rate, t_delta_seconds);
-	m_login_outcome =
-		animation::ease_toward(m_login_outcome, finished ? 1.0f : 0.0f, outcome_ease_rate, t_delta_seconds);
+	m_login_outcome = animation::ease_toward(m_login_outcome, finished ? 1.0f : 0.0f, outcome_ease_rate, t_delta_seconds);
 }
 
-void AccountModal::draw_login_progress(DrawList &t_draw_list, Rect t_main, u8 t_alpha) const
+void AccountModal::draw_login_progress(DrawList *t_draw_list, Rect t_main, u8 t_alpha) const
 {
 	const LoginStage stage = m_login.stage();
 	const bool finished = !m_queued_login && LoginAttempt::is_terminal(stage);
 	const Theme &colors = theme();
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
 
 	const float width = std::min(t_main.w - row_padding * 2.0f, progress_max_width);
-	const Rect bar{snapped_to_pixel(t_main.center().x - width * 0.5f), snapped_to_pixel(t_main.center().y), width,
-				   progress_bar_height};
+	const Rect bar{snapped_to_pixel(t_main.center().x - width * 0.5f), snapped_to_pixel(t_main.center().y), width, progress_bar_height};
 	const float status_baseline = bar.y - progress_text_gap;
 	const float step_baseline = bar.bottom() + progress_text_gap + secondary.ascent * cap_height_share;
 	const float alpha_scale = t_alpha / 255.0f;
@@ -2607,13 +2550,10 @@ void AccountModal::draw_login_progress(DrawList &t_draw_list, Rect t_main, u8 t_
 		std::string_view lines[max_message_lines];
 		const u32 line_count = wrap_text(body, t_text, width, lines);
 		const auto alpha = static_cast<u8>(t_alpha * t_opacity);
-		float baseline =
-			status_baseline + t_offset - static_cast<float>(line_count > 0 ? line_count - 1 : 0) * body.line_height();
+		float baseline = status_baseline + t_offset - static_cast<float>(line_count > 0 ? line_count - 1 : 0) * body.line_height();
 
 		for (const std::string_view line : std::span{lines, line_count}) {
-			draw_text(t_draw_list, body,
-					  Vec2{snapped_to_pixel(bar.center().x - text_width(body, line) * 0.5f), baseline}, line,
-					  faded(colors.text, alpha));
+			draw_text(t_draw_list, body, Vec2{snapped_to_pixel(bar.center().x - text_width(body, line) * 0.5f), baseline}, line, faded(colors.text, alpha));
 			baseline += body.line_height();
 		}
 	};
@@ -2622,15 +2562,14 @@ void AccountModal::draw_login_progress(DrawList &t_draw_list, Rect t_main, u8 t_
 	draw_status(m_status_to, m_status_change, progress_text_rise * (1.0f - m_status_change));
 
 	const Color outcome = stage == LoginStage::Success ? colors.success : colors.error;
-	const Color fill_color = finished ? mix(m_settings.accent, outcome, m_login_outcome) : m_settings.accent;
+	const Color fill_color = finished ? mix(m_settings->accent, outcome, m_login_outcome) : m_settings->accent;
 	const Rect fill{bar.x, bar.y, bar.w * std::clamp(m_login_progress, 0.0f, 1.0f), bar.h};
 
-	t_draw_list.add_rounded_rect(bar, rounded(bar.h * 0.5f), faded(colors.control, t_alpha));
+	t_draw_list->add_rounded_rect(bar, rounded(bar.h * 0.5f), faded(colors.control, t_alpha));
 
 	if (fill.w > 0.5f) {
-		t_draw_list.add_shadow(fill, bar.h * 0.5f, progress_glow_blur,
-							   with_alpha(fill_color, static_cast<u8>(progress_glow_alpha * alpha_scale)));
-		t_draw_list.add_rounded_rect(fill, rounded(bar.h * 0.5f), faded(fill_color, t_alpha));
+		t_draw_list->add_shadow(fill, bar.h * 0.5f, progress_glow_blur, with_alpha(fill_color, static_cast<u8>(progress_glow_alpha * alpha_scale)));
+		t_draw_list->add_rounded_rect(fill, rounded(bar.h * 0.5f), faded(fill_color, t_alpha));
 
 		if (!finished) {
 			const float travel = std::fmod(m_login_seconds * sheen_passes_per_second, 1.0f);
@@ -2639,10 +2578,10 @@ void AccountModal::draw_login_progress(DrawList &t_draw_list, Rect t_main, u8 t_
 			const Color edge = with_alpha(lightened(fill_color, 80), 0);
 			const Color peak = with_alpha(lightened(fill_color, 80), static_cast<u8>(sheen_alpha * alpha_scale));
 
-			t_draw_list.push_clip(fill);
-			t_draw_list.add_gradient(Rect{sheen_x, fill.y, half, fill.h}, edge, peak, edge, peak);
-			t_draw_list.add_gradient(Rect{sheen_x + half, fill.y, half, fill.h}, peak, edge, peak, edge);
-			t_draw_list.pop_clip();
+			t_draw_list->push_clip(fill);
+			t_draw_list->add_gradient(Rect{sheen_x, fill.y, half, fill.h}, edge, peak, edge, peak);
+			t_draw_list->add_gradient(Rect{sheen_x + half, fill.y, half, fill.h}, peak, edge, peak, edge);
+			t_draw_list->pop_clip();
 		}
 	}
 
@@ -2653,25 +2592,23 @@ void AccountModal::draw_login_progress(DrawList &t_draw_list, Rect t_main, u8 t_
 	const int written = std::snprintf(label, sizeof(label), "Step %u of %u", step, login_step_count);
 	const std::string_view step_text{label, static_cast<usize>(std::max(written, 0))};
 
-	draw_text(t_draw_list, secondary,
-			  Vec2{snapped_to_pixel(bar.center().x - text_width(secondary, step_text) * 0.5f), step_baseline},
-			  step_text, faded(colors.text_faint, static_cast<u8>(t_alpha * (1.0f - m_login_outcome))));
+	draw_text(t_draw_list, secondary, Vec2{snapped_to_pixel(bar.center().x - text_width(secondary, step_text) * 0.5f), step_baseline}, step_text,
+			  faded(colors.text_faint, static_cast<u8>(t_alpha * (1.0f - m_login_outcome))));
 }
 
-void AccountModal::draw_edit_header(DrawList &t_draw_list, Rect t_main, u8 t_alpha) const
+void AccountModal::draw_edit_header(DrawList *t_draw_list, Rect t_main, u8 t_alpha) const
 {
 	const Theme &colors = theme();
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
-	const Game &game = m_library.games[static_cast<u32>(m_game)];
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
+	const Game &game = m_library->games[static_cast<u32>(m_game)];
 	const Rect header{t_main.x, t_main.y, t_main.w, edit_header_height()};
-	const Rect icon{t_main.x + row_padding, header.center().y - edit_header_icon_size * 0.5f, edit_header_icon_size,
-					edit_header_icon_size};
+	const Rect icon{t_main.x + row_padding, header.center().y - edit_header_icon_size * 0.5f, edit_header_icon_size, edit_header_icon_size};
 
 	if (game.icon != nullptr) {
-		t_draw_list.add_image(icon, game.icon, faded(color_on_art, t_alpha), rounded(edit_header_icon_radius));
+		t_draw_list->add_image(icon, game.icon, faded(color_on_art, t_alpha), rounded(edit_header_icon_radius));
 	} else {
-		t_draw_list.add_rounded_rect(icon, rounded(edit_header_icon_radius), faded(game.accent, t_alpha));
+		t_draw_list->add_rounded_rect(icon, rounded(edit_header_icon_radius), faded(game.accent, t_alpha));
 	}
 
 	const float block = body.line_height() + edit_header_line_gap + secondary.line_height();
@@ -2679,27 +2616,23 @@ void AccountModal::draw_edit_header(DrawList &t_draw_list, Rect t_main, u8 t_alp
 	const float text_x = icon.right() + edit_header_gap;
 	const float limit = header.right() - row_padding - text_x;
 
-	draw_text_truncated(t_draw_list, body, Vec2{text_x, top + body.ascent}, m_edited ? "Edit account" : "Add account",
-						limit, faded(colors.text, t_alpha));
-	draw_text_truncated(t_draw_list, secondary,
-						Vec2{text_x, top + body.line_height() + edit_header_line_gap + secondary.ascent}, game.title,
-						limit, faded(colors.text_faint, t_alpha));
-	t_draw_list.add_rect(Rect{t_main.x + row_padding, header.bottom(), t_main.w - row_padding * 2.0f, 1.0f},
-						 faded(colors.separator, t_alpha));
+	draw_text_truncated(t_draw_list, body, Vec2{text_x, top + body.ascent}, m_edited ? "Edit account" : "Add account", limit, faded(colors.text, t_alpha));
+	draw_text_truncated(t_draw_list, secondary, Vec2{text_x, top + body.line_height() + edit_header_line_gap + secondary.ascent}, game.title, limit,
+						faded(colors.text_faint, t_alpha));
+	t_draw_list->add_rect(Rect{t_main.x + row_padding, header.bottom(), t_main.w - row_padding * 2.0f, 1.0f}, faded(colors.separator, t_alpha));
 }
 
-void AccountModal::draw_show_in(DrawList &t_draw_list, const FormLayout &t_form, u8 t_alpha) const
+void AccountModal::draw_show_in(DrawList *t_draw_list, const FormLayout &t_form, u8 t_alpha) const
 {
 	const Theme &colors = theme();
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
-	const Color accent = m_settings.accent;
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
+	const Color accent = m_settings->accent;
 	const Rect box = t_form.inputs[show_in_row];
 	const bool live = !m_region_list.is_open() && t_form.region.contains(m_mouse);
 	const bool box_hovered = live && box.contains(m_mouse);
 
-	draw_text(t_draw_list, secondary,
-			  Vec2{t_form.labels[show_in_row].x, t_form.labels[show_in_row].y + secondary.ascent}, show_in_field_label,
+	draw_text(t_draw_list, secondary, Vec2{t_form.labels[show_in_row].x, t_form.labels[show_in_row].y + secondary.ascent}, show_in_field_label,
 			  faded(m_show_in_open ? mix(colors.text_dim, accent, 0.6f) : colors.text_dim, t_alpha));
 
 	Color border = colors.separator;
@@ -2714,8 +2647,8 @@ void AccountModal::draw_show_in(DrawList &t_draw_list, const FormLayout &t_form,
 	float x = box.x + input_padding_x;
 	std::optional<u32> only;
 
-	for (u32 index = 0; index < m_library.game_count; index += 1) {
-		const Game &game = m_library.games[index];
+	for (u32 index = 0; index < m_library->game_count; index += 1) {
+		const Game &game = m_library->games[index];
 		const bool selected = (m_visible_mask & (1u << index)) != 0;
 		const u8 icon_alpha = selected ? 255 : summary_unselected_icon_alpha;
 		const Rect icon{x, box.center().y - summary_icon_size * 0.5f, summary_icon_size, summary_icon_size};
@@ -2723,57 +2656,49 @@ void AccountModal::draw_show_in(DrawList &t_draw_list, const FormLayout &t_form,
 		if (selected) only = index;
 
 		if (game.icon != nullptr) {
-			t_draw_list.add_image(icon, game.icon, faded(with_alpha(color_on_art, icon_alpha), t_alpha),
-								  rounded(summary_icon_radius));
+			t_draw_list->add_image(icon, game.icon, faded(with_alpha(color_on_art, icon_alpha), t_alpha), rounded(summary_icon_radius));
 		} else {
-			t_draw_list.add_rounded_rect(icon, rounded(summary_icon_radius),
-										 faded(with_alpha(game.accent, icon_alpha), t_alpha));
+			t_draw_list->add_rounded_rect(icon, rounded(summary_icon_radius), faded(with_alpha(game.accent, icon_alpha), t_alpha));
 		}
 
 		x += summary_icon_size + summary_icon_gap;
 	}
 
 	const auto count = static_cast<u32>(std::popcount(m_visible_mask));
-	const Rect chevron{box.right() - chevron_margin - chevron_size.x, box.center().y - chevron_size.y * 0.5f,
-					   chevron_size.x, chevron_size.y};
+	const Rect chevron{box.right() - chevron_margin - chevron_size.x, box.center().y - chevron_size.y * 0.5f, chevron_size.x, chevron_size.y};
 	const float text_left = x - summary_icon_gap + summary_text_gap;
 	const float text_right = chevron.x - summary_text_gap;
 	const float room = std::max(0.0f, text_right - text_left);
 	char summary[96];
 	int written = 0;
 
-	if (count >= m_library.game_count) {
+	if (count >= m_library->game_count) {
 		written = std::snprintf(summary, sizeof(summary), "All games");
 	} else if (count == 1 && only) {
-		const Game &game = m_library.games[*only];
-		written = std::snprintf(summary, sizeof(summary), "Only %.*s", static_cast<int>(game.title.size()),
-								game.title.data());
+		const Game &game = m_library->games[*only];
+		written = std::snprintf(summary, sizeof(summary), "Only %.*s", static_cast<int>(game.title.size()), game.title.data());
 
-		if (!game.short_title.empty() &&
-			text_width(body, std::string_view{summary, static_cast<usize>(std::max(written, 0))}) > room) {
-			written = std::snprintf(summary, sizeof(summary), "Only %.*s", static_cast<int>(game.short_title.size()),
-									game.short_title.data());
+		if (!game.short_title.empty() && text_width(body, std::string_view{summary, static_cast<usize>(std::max(written, 0))}) > room) {
+			written = std::snprintf(summary, sizeof(summary), "Only %.*s", static_cast<int>(game.short_title.size()), game.short_title.data());
 		}
 	} else {
-		written = std::snprintf(summary, sizeof(summary), "%u of %u", count, m_library.game_count);
+		written = std::snprintf(summary, sizeof(summary), "%u of %u", count, m_library->game_count);
 	}
 
 	const std::string_view summary_text{summary, static_cast<usize>(std::max(written, 0))};
 	const float summary_width = std::min(text_width(body, summary_text), room);
 
-	draw_text_truncated(t_draw_list, body,
-						Vec2{snapped_to_pixel(text_right - summary_width), body.centered_baseline(box)}, summary_text,
-						room, faded(colors.text_dim, t_alpha));
-	controls::draw_chevron(t_draw_list, chevron, m_show_in_open,
-						   faded(m_show_in_open || box_hovered ? colors.text : colors.text_dim, t_alpha));
+	draw_text_truncated(t_draw_list, body, Vec2{snapped_to_pixel(text_right - summary_width), body.centered_baseline(box)}, summary_text, room,
+						faded(colors.text_dim, t_alpha));
+	controls::draw_chevron(t_draw_list, chevron, m_show_in_open, faded(m_show_in_open || box_hovered ? colors.text : colors.text_dim, t_alpha));
 
 	if (m_show_in_amount <= 0.001f) return;
 
 	const float revealed = (tiles_top_gap + t_form.tiles.h + 2.0f) * m_show_in_amount;
-	t_draw_list.push_clip(Rect{t_form.tiles.x - 4.0f, box.bottom(), t_form.tiles.w + 8.0f, revealed});
+	t_draw_list->push_clip(Rect{t_form.tiles.x - 4.0f, box.bottom(), t_form.tiles.w + 8.0f, revealed});
 
-	for (u32 index = 0; index < m_library.game_count; index += 1) {
-		const Game &game = m_library.games[index];
+	for (u32 index = 0; index < m_library->game_count; index += 1) {
+		const Game &game = m_library->games[index];
 		const Rect tile = show_in_tile(t_form, index);
 		const bool selected = (m_visible_mask & (1u << index)) != 0;
 		const bool locked = selected && count == 1;
@@ -2786,43 +2711,36 @@ void AccountModal::draw_show_in(DrawList &t_draw_list, const FormLayout &t_form,
 			tile_border = colors.border;
 		}
 
-		t_draw_list.add_bordered_rect(
-			tile, rounded(tile_radius),
-			faded(selected ? mix(colors.field, accent, tile_selected_tint) : colors.field, t_alpha),
-			faded(tile_border, t_alpha), selected ? input_focus_border : 1.0f);
+		t_draw_list->add_bordered_rect(tile, rounded(tile_radius), faded(selected ? mix(colors.field, accent, tile_selected_tint) : colors.field, t_alpha),
+									   faded(tile_border, t_alpha), selected ? input_focus_border : 1.0f);
 
-		const Rect icon{tile.center().x - tile_icon_size * 0.5f, tile.y + tile_padding_y, tile_icon_size,
-						tile_icon_size};
+		const Rect icon{tile.center().x - tile_icon_size * 0.5f, tile.y + tile_padding_y, tile_icon_size, tile_icon_size};
 		const u8 icon_alpha = selected ? 255 : tile_unselected_icon_alpha;
 
 		if (game.icon != nullptr) {
-			t_draw_list.add_image(icon, game.icon, faded(with_alpha(color_on_art, icon_alpha), t_alpha),
-								  rounded(tile_icon_radius));
+			t_draw_list->add_image(icon, game.icon, faded(with_alpha(color_on_art, icon_alpha), t_alpha), rounded(tile_icon_radius));
 		} else {
-			t_draw_list.add_rounded_rect(icon, rounded(tile_icon_radius),
-										 faded(with_alpha(game.accent, icon_alpha), t_alpha));
+			t_draw_list->add_rounded_rect(icon, rounded(tile_icon_radius), faded(with_alpha(game.accent, icon_alpha), t_alpha));
 		}
 
 		const std::string_view name = game.short_title.empty() ? game.title : game.short_title;
 		const float name_width = std::min(text_width(secondary, name), tile.w - 8.0f);
 		draw_text_truncated(t_draw_list, secondary,
-							Vec2{snapped_to_pixel(tile.center().x - name_width * 0.5f),
-								 icon.bottom() + tile_label_gap + secondary.ascent},
-							name, tile.w - 8.0f,
+							Vec2{snapped_to_pixel(tile.center().x - name_width * 0.5f), icon.bottom() + tile_label_gap + secondary.ascent}, name, tile.w - 8.0f,
 							faded(selected || tile_hovered ? colors.text : colors.text_dim, t_alpha));
 	}
 
-	t_draw_list.pop_clip();
+	t_draw_list->pop_clip();
 }
 
-void AccountModal::draw_edit_form(DrawList &t_draw_list, Rect t_main, u8 t_alpha)
+void AccountModal::draw_edit_form(DrawList *t_draw_list, Rect t_main, u8 t_alpha)
 {
 	draw_edit_header(t_draw_list, t_main, t_alpha);
 
 	const Theme &colors = theme();
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
-	const Color accent = m_settings.accent;
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
+	const Color accent = m_settings->accent;
 	const Color text = faded(colors.text, t_alpha);
 	const Color caret = faded(accent, t_alpha);
 	const Color active_label = mix(colors.text_dim, accent, 0.6f);
@@ -2831,7 +2749,7 @@ void AccountModal::draw_edit_form(DrawList &t_draw_list, Rect t_main, u8 t_alpha
 	const Rect reveal = reveal_button_rect(t_main);
 	const bool live = !m_region_list.is_open() && form.region.contains(m_mouse);
 
-	t_draw_list.push_clip(form.region);
+	t_draw_list->push_clip(form.region);
 
 	const auto draw_label = [&](u32 t_row, std::string_view t_label, Color t_color) {
 		const Vec2 at{form.labels[t_row].x, form.labels[t_row].y + secondary.ascent};
@@ -2841,17 +2759,16 @@ void AccountModal::draw_edit_form(DrawList &t_draw_list, Rect t_main, u8 t_alpha
 
 	const auto draw_hint = [&](u32 t_row, std::string_view t_hint, Color t_color) {
 		const Rect input = form.inputs[t_row];
-		draw_text_truncated(t_draw_list, secondary,
-							Vec2{input.x + 2.0f, input.bottom() + form_hint_gap + secondary.ascent}, t_hint,
-							input.w - 2.0f, faded(t_color, t_alpha));
+		draw_text_truncated(t_draw_list, secondary, Vec2{input.x + 2.0f, input.bottom() + form_hint_gap + secondary.ascent}, t_hint, input.w - 2.0f,
+							faded(t_color, t_alpha));
 	};
 
 	for (u32 i = 0; i < field_count; i += 1) {
-		TextInput &input = m_fields[i];
+		TextInput *input = &m_fields[i];
 		const Rect box = form.inputs[i];
-		const bool focused = input.is_focused();
+		const bool focused = input->is_focused();
 		const bool required = i == static_cast<u32>(EditField::Username) || i == static_cast<u32>(EditField::Password);
-		const bool missing = m_show_required && required && input.value().empty();
+		const bool missing = m_show_required && required && input->value().empty();
 		const bool box_hovered = live && !focused && box.contains(m_mouse);
 
 		Color label = colors.text_dim;
@@ -2868,12 +2785,11 @@ void AccountModal::draw_edit_form(DrawList &t_draw_list, Rect t_main, u8 t_alpha
 
 		const float label_end = draw_label(i, field_specs[i].label, label);
 		if (i == static_cast<u32>(EditField::Note)) {
-			draw_text(t_draw_list, secondary, Vec2{label_end, form.labels[i].y + secondary.ascent}, optional_suffix,
-					  faded(colors.text_faint, t_alpha));
+			draw_text(t_draw_list, secondary, Vec2{label_end, form.labels[i].y + secondary.ascent}, optional_suffix, faded(colors.text_faint, t_alpha));
 		}
 
 		draw_input_box(t_draw_list, box, border, focused && !missing, accent, t_alpha);
-		input.draw(t_draw_list, body, field_text_rect(t_main, i), text, caret);
+		input->draw(t_draw_list, body, field_text_rect(t_main, i), text, caret);
 
 		if (missing) {
 			draw_hint(i, "Required", colors.error);
@@ -2886,10 +2802,8 @@ void AccountModal::draw_edit_form(DrawList &t_draw_list, Rect t_main, u8 t_alpha
 	const bool region_open = m_region_list.is_open();
 	const bool region_hovered = live && region.contains(m_mouse);
 
-	const float region_label_end =
-		draw_label(region_row, region_field_label, region_open ? active_label : colors.text_dim);
-	draw_text(t_draw_list, secondary, Vec2{region_label_end, form.labels[region_row].y + secondary.ascent},
-			  optional_suffix, faded(colors.text_faint, t_alpha));
+	const float region_label_end = draw_label(region_row, region_field_label, region_open ? active_label : colors.text_dim);
+	draw_text(t_draw_list, secondary, Vec2{region_label_end, form.labels[region_row].y + secondary.ascent}, optional_suffix, faded(colors.text_faint, t_alpha));
 
 	Color region_border = colors.separator;
 	if (region_open) {
@@ -2907,70 +2821,63 @@ void AccountModal::draw_edit_form(DrawList &t_draw_list, Rect t_main, u8 t_alpha
 		}
 	}
 
-	const Rect region_chevron{region.right() - chevron_margin - chevron_size.x,
-							  region.center().y - chevron_size.y * 0.5f, chevron_size.x, chevron_size.y};
+	const Rect region_chevron{region.right() - chevron_margin - chevron_size.x, region.center().y - chevron_size.y * 0.5f, chevron_size.x, chevron_size.y};
 	const float region_value_x = region.x + input_padding_x;
 
-	draw_text_truncated(t_draw_list, body, Vec2{region_value_x, body.centered_baseline(region)},
-						region_value.empty() ? std::string_view{"None"} : region_value,
-						region_chevron.x - input_padding_x - region_value_x,
-						region_value.empty() ? faded(colors.text_faint, t_alpha) : text);
-	controls::draw_chevron(t_draw_list, region_chevron, region_open,
-						   faded(region_open || region_hovered ? colors.text : colors.text_dim, t_alpha));
+	draw_text_truncated(t_draw_list, body, Vec2{region_value_x, body.centered_baseline(region)}, region_value.empty() ? std::string_view{"None"} : region_value,
+						region_chevron.x - input_padding_x - region_value_x, region_value.empty() ? faded(colors.text_faint, t_alpha) : text);
+	controls::draw_chevron(t_draw_list, region_chevron, region_open, faded(region_open || region_hovered ? colors.text : colors.text_dim, t_alpha));
 
-	controls::draw_eye(t_draw_list, m_assets, reveal, !field(EditField::Password).is_masked(),
+	controls::draw_eye(t_draw_list, m_assets, reveal, !field(EditField::Password)->is_masked(),
 					   faded(is_reveal_hit(t_main, m_mouse) ? colors.text : colors.text_dim, t_alpha));
 
 	draw_show_in(t_draw_list, form, t_alpha);
 
-	t_draw_list.pop_clip();
+	t_draw_list->pop_clip();
 
 	m_form_scroll.draw_edge_fade(t_draw_list, form.region, scroll, faded(colors.surface, t_alpha));
 	m_form_scroll.draw(t_draw_list, scroll, m_mouse, t_alpha);
 }
 
-void AccountModal::draw_edit_footer(DrawList &t_draw_list, Rect t_footer, u8 t_alpha) const
+void AccountModal::draw_edit_footer(DrawList *t_draw_list, Rect t_footer, u8 t_alpha) const
 {
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
 	const Rect save = primary_button_rect(t_footer);
 	const Rect cancel = cancel_button_rect(save);
 	const float cap = controls::keycap_height(secondary);
 	const float cap_y = snapped_to_pixel(t_footer.center().y - cap * 0.5f);
 	const float baseline = secondary.centered_baseline(Rect{t_footer.x, cap_y, t_footer.w, cap});
 	const Color hint = faded(theme().text_faint, t_alpha);
-	const float hints_width = controls::keycap_width(secondary, "Enter") + hint_key_gap +
-							  text_width(secondary, "save") + hint_gap + controls::keycap_width(secondary, "Esc") +
-							  hint_key_gap + text_width(secondary, "cancel");
+	const float hints_width = controls::keycap_width(secondary, "Enter") + hint_key_gap + text_width(secondary, "save") + hint_gap +
+							  controls::keycap_width(secondary, "Esc") + hint_key_gap + text_width(secondary, "cancel");
 	float x = t_footer.x + row_padding;
 
 	if (x + hints_width <= cancel.x - hint_gap) {
 		for (const auto [key, action] : {std::pair{"Enter", "save"}, std::pair{"Esc", "cancel"}}) {
 			const float width = controls::keycap_width(secondary, key);
 
-			controls::draw_keycap(t_draw_list, secondary, Rect{snapped_to_pixel(x), cap_y, width, cap}, key,
-								  theme().surface, t_alpha);
+			controls::draw_keycap(t_draw_list, secondary, Rect{snapped_to_pixel(x), cap_y, width, cap}, key, theme().surface, t_alpha);
 			x += width + hint_key_gap;
 			draw_text(t_draw_list, secondary, Vec2{snapped_to_pixel(x), baseline}, action, hint);
 			x += text_width(secondary, action) + hint_gap;
 		}
 	}
 
-	controls::draw_button(t_draw_list, body, save, save_label(), controls::ButtonStyle::Accent, m_settings.accent,
-						  has_changes(), save.contains(m_mouse), t_alpha);
-	controls::draw_button(t_draw_list, body, cancel, "Cancel", controls::ButtonStyle::Ghost, m_settings.accent, true,
-						  cancel.contains(m_mouse), t_alpha);
+	controls::draw_button(t_draw_list, body, save, save_label(), controls::ButtonStyle::Accent, m_settings->accent, has_changes(), save.contains(m_mouse),
+						  t_alpha);
+	controls::draw_button(t_draw_list, body, cancel, "Cancel", controls::ButtonStyle::Ghost, m_settings->accent, true, cancel.contains(m_mouse), t_alpha);
 }
 
-void AccountModal::draw_footer(DrawList &t_draw_list, Rect t_footer, u8 t_alpha) const
+void AccountModal::draw_footer(DrawList *t_draw_list, Rect t_footer, u8 t_alpha) const
 {
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
 	const float hint_baseline = secondary.centered_baseline(t_footer);
 	const Rect primary = primary_button_rect(t_footer);
 	const float hint_width = primary.x - row_padding * 2.0f - t_footer.x;
 
-	t_draw_list.add_rect(Rect{t_footer.x, t_footer.y, t_footer.w, 1.0f}, faded(theme().separator, t_alpha));
+	t_draw_list->add_rect(Rect{t_footer.x, t_footer.y, t_footer.w, 1.0f}, faded(theme().separator, t_alpha));
 
 	switch (m_mode) {
 		case Mode::EditAccount:
@@ -2980,27 +2887,25 @@ void AccountModal::draw_footer(DrawList &t_draw_list, Rect t_footer, u8 t_alpha)
 		case Mode::LoginProgress: {
 			const bool finished = !m_queued_login && LoginAttempt::is_terminal(m_login.stage());
 
-			draw_text_truncated(t_draw_list, secondary, Vec2{t_footer.x + row_padding, hint_baseline}, "", hint_width,
-								faded(theme().text_faint, t_alpha));
-			controls::draw_button(t_draw_list, body, primary, finished ? "Back" : "Cancel",
-								  controls::ButtonStyle::Neutral, m_settings.accent, true, primary.contains(m_mouse),
-								  t_alpha);
+			draw_text_truncated(t_draw_list, secondary, Vec2{t_footer.x + row_padding, hint_baseline}, "", hint_width, faded(theme().text_faint, t_alpha));
+			controls::draw_button(t_draw_list, body, primary, finished ? "Back" : "Cancel", controls::ButtonStyle::Neutral, m_settings->accent, true,
+								  primary.contains(m_mouse), t_alpha);
 			break;
 		}
 
 		case Mode::AccountList: {
 			const bool can_login = selected_row(displayed_accounts()) >= 0;
 
-			draw_text_truncated(t_draw_list, secondary, Vec2{t_footer.x + row_padding, hint_baseline},
-								"Select an account to log in", hint_width, faded(theme().text_faint, t_alpha));
-			controls::draw_button(t_draw_list, body, primary, "Login", controls::ButtonStyle::Accent, m_settings.accent,
-								  can_login, primary.contains(m_mouse), t_alpha);
+			draw_text_truncated(t_draw_list, secondary, Vec2{t_footer.x + row_padding, hint_baseline}, "Select an account to log in", hint_width,
+								faded(theme().text_faint, t_alpha));
+			controls::draw_button(t_draw_list, body, primary, "Login", controls::ButtonStyle::Accent, m_settings->accent, can_login, primary.contains(m_mouse),
+								  t_alpha);
 			break;
 		}
 	}
 }
 
-void AccountModal::draw(DrawList &t_draw_list)
+void AccountModal::draw(DrawList *t_draw_list)
 {
 	PULSAR_PROFILE_SCOPE("AccountModal.Draw");
 
@@ -3008,25 +2913,24 @@ void AccountModal::draw(DrawList &t_draw_list)
 	if ((m_open_amount <= 0.001f && !art_visible) || !has_game()) return;
 
 	const auto alpha = to_alpha(m_open_amount);
-	const Vec2 window = m_window.size();
+	const Vec2 window = m_window->size();
 	if (!is_docked()) {
-		t_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y}, faded(theme().scrim, to_alpha(m_open_amount)));
+		t_draw_list->add_rect(Rect{0.0f, 0.0f, window.x, window.y}, faded(theme().scrim, to_alpha(m_open_amount)));
 	}
 
 	const Layout current = layout();
-	const float scale =
-		is_docked() || m_art_source ? 1.0f : panel_closed_scale + (1.0f - panel_closed_scale) * m_open_amount;
+	const float scale = is_docked() || m_art_source ? 1.0f : panel_closed_scale + (1.0f - panel_closed_scale) * m_open_amount;
 	const bool morphing = m_art_source && m_morph_progress != 1.0f;
 
-	t_draw_list.push_scale(current.panel.center(), scale);
+	t_draw_list->push_scale(current.panel.center(), scale);
 	draw_chrome(t_draw_list, current, !morphing, alpha);
-	t_draw_list.pop_scale();
+	t_draw_list->pop_scale();
 
 	if (morphing) {
 		draw_morphing_art(t_draw_list, current, scale);
 	}
 
-	t_draw_list.push_scale(current.panel.center(), scale);
+	t_draw_list->push_scale(current.panel.center(), scale);
 	draw_back_badge(t_draw_list, current, alpha);
 
 	switch (m_mode) {
@@ -3051,5 +2955,5 @@ void AccountModal::draw(DrawList &t_draw_list)
 
 	m_tooltip.draw(t_draw_list, m_fonts, current.panel, alpha);
 
-	t_draw_list.pop_scale();
+	t_draw_list->pop_scale();
 }

@@ -24,23 +24,21 @@ class RiotClient {
 	RiotClient &operator=(const RiotClient &) = delete;
 
 	static bool is_game_in_progress();
-	static void kill_all_client_processes(const std::atomic<bool> &t_cancel);
+	static void kill_all_client_processes(const std::atomic<bool> *t_cancel);
 
 	bool resolve_executable_path();
 	bool launch(std::string_view t_launch_product);
 
-	HWND wait_for_responsive_window(const std::atomic<bool> &t_cancel) const;
-	bool bring_to_foreground(const std::atomic<bool> &t_cancel) const;
-	bool take_keyboard_focus(const std::atomic<bool> &t_cancel) const;
+	HWND wait_for_responsive_window(const std::atomic<bool> *t_cancel) const;
+	bool bring_to_foreground(const std::atomic<bool> *t_cancel) const;
+	bool take_keyboard_focus(const std::atomic<bool> *t_cancel) const;
 
-	bool submit_login(const UiAutomation &t_automation, std::string_view t_username, std::string_view t_password,
-					  const std::atomic<bool> &t_cancel) const;
+	bool submit_login(const UiAutomation &t_automation, std::string_view t_username, std::string_view t_password, const std::atomic<bool> *t_cancel) const;
 
-	bool wait_for_login_result(const UiAutomation &t_automation, std::wstring &t_out_error,
-							   const std::atomic<bool> &t_cancel, const std::wstring *t_error_to_ignore) const;
+	bool wait_for_login_result(const UiAutomation &t_automation, std::wstring *t_out_error, const std::atomic<bool> *t_cancel,
+							   const std::wstring *t_error_to_ignore) const;
 
-	PlayResult click_play_when_ready(const UiAutomation &t_automation, u32 t_timeout_ms,
-									 const std::atomic<bool> &t_cancel, std::wstring &t_out_error) const;
+	PlayResult click_play_when_ready(const UiAutomation &t_automation, u32 t_timeout_ms, const std::atomic<bool> *t_cancel, std::wstring *t_out_error) const;
 
   private:
 	HWND find_client_window() const;

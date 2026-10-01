@@ -17,10 +17,10 @@ class Snowfall {
 	Snowfall(const Snowfall &) = delete;
 	Snowfall &operator=(const Snowfall &) = delete;
 
-	void create_textures(Renderer &t_renderer);
+	void create_textures(Renderer *t_renderer);
 	void update(float t_delta_seconds, Rect t_area, bool t_focused);
 	void clear();
-	void draw(DrawList &t_draw_list) const;
+	void draw(DrawList *t_draw_list) const;
 
   private:
 	static constexpr u32 layer_count = 2;

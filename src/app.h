@@ -89,7 +89,7 @@ class App {
 	void process(const Command &t_command);
 	void open_account_menu(const Command &t_command);
 	void open_text_menu(const Command &t_command);
-	void fill_tray_menu(TrayMenu &t_menu) const;
+	void fill_tray_menu(TrayMenu *t_menu) const;
 
 	void announce_update_stage();
 	void announce_first_run_after_update();

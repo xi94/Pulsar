@@ -19,8 +19,7 @@ usize default_mem_limit();
 
 bool encrypt(const u8 *t_key, const u8 *t_nonce, std::span<const u8> t_plaintext, u8 *t_out_ciphertext, u8 *t_out_tag);
 
-bool decrypt(const u8 *t_key, const u8 *t_nonce, std::span<const u8> t_ciphertext, const u8 *t_tag,
-			 u8 *t_out_plaintext);
+bool decrypt(const u8 *t_key, const u8 *t_nonce, std::span<const u8> t_ciphertext, const u8 *t_tag, u8 *t_out_plaintext);
 
 }
 
@@ -40,10 +39,10 @@ class MasterKey {
 	MasterKey(const MasterKey &) = delete;
 	MasterKey &operator=(const MasterKey &) = delete;
 
-	bool create(std::string_view t_password, MasterKeyParams &t_out_params);
+	bool create(std::string_view t_password, MasterKeyParams *t_out_params);
 	bool unlock(std::string_view t_password, const MasterKeyParams &t_params);
 	void lock();
-	void swap(MasterKey &t_other);
+	void swap(MasterKey *t_other);
 
 	bool is_unlocked() const
 	{

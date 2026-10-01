@@ -22,8 +22,7 @@ enum class ViewMode : u8 {
 
 class Carousel : public Widget {
   public:
-	Carousel(const Library &t_library, const Settings &t_settings, const Fonts &t_fonts, const Assets &t_assets,
-			 CommandQueue &t_commands);
+	Carousel(const Library *t_library, const Settings *t_settings, const Fonts *t_fonts, const Assets *t_assets, CommandQueue *t_commands);
 
 	void set_bounds(Rect t_bounds)
 	{
@@ -42,7 +41,7 @@ class Carousel : public Widget {
 
 	std::span<const u8> order() const
 	{
-		return {m_order, m_library.game_count};
+		return {m_order, m_library->game_count};
 	}
 
 	ArtSource art_source(u32 t_game) const;
@@ -53,8 +52,8 @@ class Carousel : public Widget {
 	}
 
 	void update(float t_delta_seconds) override;
-	void draw(DrawList &t_draw_list) override;
-	void draw_status_bar(DrawList &t_draw_list) const;
+	void draw(DrawList *t_draw_list) override;
+	void draw_status_bar(DrawList *t_draw_list) const;
 
 	bool on_pointer_down(Vec2 t_point) override;
 	bool on_pointer_move(Vec2 t_point) override;
@@ -146,36 +145,33 @@ class Carousel : public Widget {
 	bool switcher_pointer_move(Vec2 t_point);
 	bool switcher_pointer_up();
 
-	void draw_card(DrawList &t_draw_list, Rect t_rect, const Game &t_game, bool t_highlighted, bool t_centered,
-				   u8 t_alpha) const;
-	void draw_list_row_frame(DrawList &t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const;
-	void draw_list_row(DrawList &t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const;
-	void draw_icon_tile_frame(DrawList &t_draw_list, Rect t_tile, u32 t_game, bool t_highlighted, u8 t_alpha) const;
-	void draw_icon_tile(DrawList &t_draw_list, Rect t_tile, u32 t_game, bool t_highlighted, u8 t_alpha) const;
-	void draw_frame(DrawList &t_draw_list, ViewMode t_mode, Rect t_frame, u32 t_game, bool t_highlighted,
-					u8 t_alpha) const;
-	void draw_icons_mode(DrawList &t_draw_list) const;
-	void draw_mode(DrawList &t_draw_list, ViewMode t_mode) const;
-	void draw_mode_morph(DrawList &t_draw_list) const;
-	void draw_carousel_mode(DrawList &t_draw_list) const;
-	void draw_carousel_edges(DrawList &t_draw_list, u8 t_alpha) const;
+	void draw_card(DrawList *t_draw_list, Rect t_rect, const Game &t_game, bool t_highlighted, bool t_centered, u8 t_alpha) const;
+	void draw_list_row_frame(DrawList *t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const;
+	void draw_list_row(DrawList *t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const;
+	void draw_icon_tile_frame(DrawList *t_draw_list, Rect t_tile, u32 t_game, bool t_highlighted, u8 t_alpha) const;
+	void draw_icon_tile(DrawList *t_draw_list, Rect t_tile, u32 t_game, bool t_highlighted, u8 t_alpha) const;
+	void draw_frame(DrawList *t_draw_list, ViewMode t_mode, Rect t_frame, u32 t_game, bool t_highlighted, u8 t_alpha) const;
+	void draw_icons_mode(DrawList *t_draw_list) const;
+	void draw_mode(DrawList *t_draw_list, ViewMode t_mode) const;
+	void draw_mode_morph(DrawList *t_draw_list) const;
+	void draw_carousel_mode(DrawList *t_draw_list) const;
+	void draw_carousel_edges(DrawList *t_draw_list, u8 t_alpha) const;
 	Rect faded_rect(u32 t_game) const;
-	void fade_cards(DrawList &t_draw_list, Rect t_band, Color t_top_left, Color t_top_right, Color t_bottom_left,
-					Color t_bottom_right) const;
-	void draw_grid_mode(DrawList &t_draw_list) const;
-	void draw_list_mode(DrawList &t_draw_list) const;
-	void draw_wrap_scroll(DrawList &t_draw_list, u8 t_alpha) const;
-	void draw_raised(DrawList &t_draw_list, ViewMode t_mode) const;
-	void draw_reorder_hint(DrawList &t_draw_list) const;
-	void draw_switcher(DrawList &t_draw_list) const;
-	void draw_switcher_rows(DrawList &t_draw_list, Rect t_panel, u8 t_alpha) const;
-	void draw_size_slider(DrawList &t_draw_list, Rect t_panel, u8 t_alpha) const;
+	void fade_cards(DrawList *t_draw_list, Rect t_band, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right) const;
+	void draw_grid_mode(DrawList *t_draw_list) const;
+	void draw_list_mode(DrawList *t_draw_list) const;
+	void draw_wrap_scroll(DrawList *t_draw_list, u8 t_alpha) const;
+	void draw_raised(DrawList *t_draw_list, ViewMode t_mode) const;
+	void draw_reorder_hint(DrawList *t_draw_list) const;
+	void draw_switcher(DrawList *t_draw_list) const;
+	void draw_switcher_rows(DrawList *t_draw_list, Rect t_panel, u8 t_alpha) const;
+	void draw_size_slider(DrawList *t_draw_list, Rect t_panel, u8 t_alpha) const;
 
-	const Library &m_library;
-	const Settings &m_settings;
-	const Fonts &m_fonts;
-	const Assets &m_assets;
-	CommandQueue &m_commands;
+	const Library *m_library;
+	const Settings *m_settings;
+	const Fonts *m_fonts;
+	const Assets *m_assets;
+	CommandQueue *m_commands;
 
 	Rect m_bounds{};
 

@@ -17,12 +17,12 @@ struct ContextMenuItem {
 
 class ContextMenu : public Widget {
   public:
-	ContextMenu(const Fonts &t_fonts, CommandQueue &t_commands);
+	ContextMenu(const Fonts *t_fonts, CommandQueue *t_commands);
 
 	void open(Vec2 t_position, std::span<const ContextMenuItem> t_items, Vec2 t_window_size);
 	void close();
 
-	void draw(DrawList &t_draw_list) override;
+	void draw(DrawList *t_draw_list) override;
 
 	bool on_pointer_up(Vec2 t_point) override;
 	bool on_right_click(Vec2 t_point) override;
@@ -42,8 +42,8 @@ class ContextMenu : public Widget {
 	Rect item_rect(u32 t_index) const;
 	i32 item_at(Vec2 t_point) const;
 
-	const Fonts &m_fonts;
-	CommandQueue &m_commands;
+	const Fonts *m_fonts;
+	CommandQueue *m_commands;
 
 	bool m_open = false;
 	Vec2 m_position{};

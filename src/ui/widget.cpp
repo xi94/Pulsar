@@ -8,42 +8,42 @@
 namespace {
 constexpr Vec2 mouse_outside_window{-1.0f, -1.0f};
 
-bool deliver(Widget &t_widget, const InputEvent &t_event)
+bool deliver(Widget *t_widget, const InputEvent &t_event)
 {
 	switch (t_event.type) {
 		case InputEventType::MouseDown:
-			return t_widget.on_pointer_down(t_event.position);
+			return t_widget->on_pointer_down(t_event.position);
 		case InputEventType::MouseMove:
-			return t_widget.on_pointer_move(t_event.position);
+			return t_widget->on_pointer_move(t_event.position);
 		case InputEventType::MouseUp:
-			return t_widget.on_pointer_up(t_event.position);
+			return t_widget->on_pointer_up(t_event.position);
 		case InputEventType::RightClick:
-			return t_widget.on_right_click(t_event.position);
+			return t_widget->on_right_click(t_event.position);
 		case InputEventType::MouseWheel:
-			return t_widget.on_scroll(t_event.position, t_event.wheel_delta);
+			return t_widget->on_scroll(t_event.position, t_event.wheel_delta);
 		case InputEventType::KeyDown:
-			return t_widget.on_key_down(t_event.key);
+			return t_widget->on_key_down(t_event.key);
 		case InputEventType::Character:
-			return t_widget.on_char(t_event.key);
+			return t_widget->on_char(t_event.key);
 	}
 
 	return false;
 }
 }
 
-void WidgetStack::push(Widget &t_widget)
+void WidgetStack::push(Widget *t_widget)
 {
 	assert(m_widget_count < max_widgets);
 
-	m_widgets[m_widget_count] = &t_widget;
+	m_widgets[m_widget_count] = t_widget;
 	m_widget_count += 1;
 }
 
-void WidgetStack::push_overlay(Widget &t_widget)
+void WidgetStack::push_overlay(Widget *t_widget)
 {
 	assert(m_overlay_count < max_widgets);
 
-	m_overlays[m_overlay_count] = &t_widget;
+	m_overlays[m_overlay_count] = t_widget;
 	m_overlay_count += 1;
 }
 
@@ -51,11 +51,11 @@ template <typename Visitor>
 bool WidgetStack::visit_top_down(Visitor &&t_visitor) const
 {
 	for (u32 i = m_overlay_count; i > 0; i -= 1) {
-		if (t_visitor(*m_overlays[i - 1])) return true;
+		if (t_visitor(m_overlays[i - 1])) return true;
 	}
 
 	for (u32 i = m_widget_count; i > 0; i -= 1) {
-		if (t_visitor(*m_widgets[i - 1])) return true;
+		if (t_visitor(m_widgets[i - 1])) return true;
 	}
 
 	return false;
@@ -65,16 +65,16 @@ void WidgetStack::update(Vec2 t_mouse, float t_delta_seconds)
 {
 	bool covered_by_blocker = false;
 
-	visit_top_down([&](Widget &t_widget) {
-		t_widget.set_mouse(covered_by_blocker ? mouse_outside_window : t_mouse);
-		t_widget.update(t_delta_seconds);
-		covered_by_blocker = covered_by_blocker || (t_widget.is_visible() && t_widget.is_blocking());
+	visit_top_down([&](Widget *t_widget) {
+		t_widget->set_mouse(covered_by_blocker ? mouse_outside_window : t_mouse);
+		t_widget->update(t_delta_seconds);
+		covered_by_blocker = covered_by_blocker || (t_widget->is_visible() && t_widget->is_blocking());
 
 		return false;
 	});
 }
 
-void WidgetStack::draw(DrawList &t_draw_list)
+void WidgetStack::draw(DrawList *t_draw_list)
 {
 	for (Widget *widget : std::span{m_widgets, m_widget_count}) {
 		if (widget->is_visible()) {
@@ -91,18 +91,16 @@ void WidgetStack::draw(DrawList &t_draw_list)
 
 bool WidgetStack::dispatch(const InputEvent &t_event)
 {
-	return visit_top_down([&](Widget &t_widget) {
-		return t_widget.is_visible() && (deliver(t_widget, t_event) || t_widget.is_blocking());
-	});
+	return visit_top_down([&](Widget *t_widget) { return t_widget->is_visible() && (deliver(t_widget, t_event) || t_widget->is_blocking()); });
 }
 
 CursorKind WidgetStack::cursor() const
 {
 	CursorKind wanted = CursorKind::Arrow;
 
-	visit_top_down([&](Widget &t_widget) {
-		if (t_widget.is_visible()) {
-			wanted = t_widget.cursor();
+	visit_top_down([&](Widget *t_widget) {
+		if (t_widget->is_visible()) {
+			wanted = t_widget->cursor();
 		}
 
 		return wanted != CursorKind::Arrow;

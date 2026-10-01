@@ -7,8 +7,8 @@
 #define PULSAR_STRINGIFY_IMPL(x) #x
 #define PULSAR_STRINGIFY(x) PULSAR_STRINGIFY_IMPL(x)
 
-#define PULSAR_VERSION_STRING                                                                                          \
-	PULSAR_STRINGIFY(PULSAR_VERSION_MAJOR)                                                                             \
+#define PULSAR_VERSION_STRING                                                                                                                                  \
+	PULSAR_STRINGIFY(PULSAR_VERSION_MAJOR)                                                                                                                     \
 	"." PULSAR_STRINGIFY(PULSAR_VERSION_MINOR) "." PULSAR_STRINGIFY(PULSAR_VERSION_PATCH)
 
 #define PULSAR_APP_NAME "Pulsar"

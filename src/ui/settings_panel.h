@@ -46,16 +46,15 @@ enum class ResettableSetting : u8 {
 
 class SettingsPanel : public Widget {
   public:
-	SettingsPanel(Settings &t_settings, Fonts &t_fonts, Renderer &t_renderer, const Window &t_window,
-				  const Assets &t_assets, CommandQueue &t_commands);
+	SettingsPanel(Settings *t_settings, Fonts *t_fonts, Renderer *t_renderer, const Window *t_window, const Assets *t_assets, CommandQueue *t_commands);
 
 	void open();
 	void close();
 	void sync_with_settings();
-	void restore_committed_previews(Settings &t_settings) const;
+	void restore_committed_previews(Settings *t_settings) const;
 
 	void update(float t_delta_seconds) override;
-	void draw(DrawList &t_draw_list) override;
+	void draw(DrawList *t_draw_list) override;
 
 	bool on_pointer_down(Vec2 t_point) override;
 	bool on_pointer_move(Vec2 t_point) override;
@@ -153,7 +152,7 @@ class SettingsPanel : public Widget {
 	struct PercentSlider {
 		Rect Rows::*row;
 		float Settings::*value;
-		bool (*shown)(const Settings &t_settings);
+		bool (*shown)(const Settings *t_settings);
 	};
 
 	static constexpr u32 percent_slider_count = 3;
@@ -236,35 +235,35 @@ class SettingsPanel : public Widget {
 	void update_theme_preview();
 	void choose_background(u32 t_index);
 	void pull_picked_color();
-	void step_font_size(Rect t_stepper, float &t_value, float t_min, float t_max, Vec2 t_point);
+	void step_font_size(Rect t_stepper, float *t_value, float t_min, float t_max, Vec2 t_point);
 	void handle_click(Vec2 t_point);
 
 	void update_hover_hints(float t_delta_seconds);
 
-	void draw_chrome(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
-	void draw_rail(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
-	void draw_label(DrawList &t_draw_list, const Rows &t_rows, Rect Rows::*t_row, Rect t_control, u8 t_alpha) const;
-	void draw_dropdown_row(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, Rect Rows::*t_row,
-						   std::string_view t_value, bool t_open, u8 t_alpha) const;
-	void draw_search(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha);
-	void draw_cards(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_captions(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_no_results(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
-	void draw_appearance(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_pattern_row(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_pattern_popup(DrawList &t_draw_list, const Rows &t_rows, u8 t_alpha) const;
-	void draw_close_choice(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_toggles(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_sliders(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_master_password(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_reset_buttons(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
+	void draw_chrome(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha) const;
+	void draw_rail(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha) const;
+	void draw_label(DrawList *t_draw_list, const Rows &t_rows, Rect Rows::*t_row, Rect t_control, u8 t_alpha) const;
+	void draw_dropdown_row(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, Rect Rows::*t_row, std::string_view t_value, bool t_open,
+						   u8 t_alpha) const;
+	void draw_search(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha);
+	void draw_cards(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
+	void draw_captions(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
+	void draw_no_results(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha) const;
+	void draw_appearance(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
+	void draw_pattern_row(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
+	void draw_pattern_popup(DrawList *t_draw_list, const Rows &t_rows, u8 t_alpha) const;
+	void draw_close_choice(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
+	void draw_toggles(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
+	void draw_sliders(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
+	void draw_master_password(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
+	void draw_reset_buttons(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
 
-	Settings &m_settings;
-	Fonts &m_fonts;
-	Renderer &m_renderer;
-	const Window &m_window;
-	const Assets &m_assets;
-	CommandQueue &m_commands;
+	Settings *m_settings;
+	Fonts *m_fonts;
+	Renderer *m_renderer;
+	const Window *m_window;
+	const Assets *m_assets;
+	CommandQueue *m_commands;
 
 	bool m_open = false;
 	SettingsTab m_tab = SettingsTab::Appearance;

@@ -27,8 +27,8 @@ enum class EditField : u8 {
 
 class AccountModal : public Widget {
   public:
-	AccountModal(Library &t_library, const Settings &t_settings, const Fonts &t_fonts, const Assets &t_assets,
-				 const Window &t_window, Toasts &t_toasts, CommandQueue &t_commands);
+	AccountModal(Library *t_library, const Settings *t_settings, const Fonts *t_fonts, const Assets *t_assets, const Window *t_window, Toasts *t_toasts,
+				 CommandQueue *t_commands);
 
 	void open(i32 t_game);
 
@@ -48,7 +48,7 @@ class AccountModal : public Widget {
 	const Account *account_at_row(i32 t_row) const;
 
 	void update(float t_delta_seconds) override;
-	void draw(DrawList &t_draw_list) override;
+	void draw(DrawList *t_draw_list) override;
 
 	bool on_pointer_down(Vec2 t_point) override;
 	bool on_pointer_move(Vec2 t_point) override;
@@ -180,14 +180,14 @@ class AccountModal : public Widget {
 	std::optional<u32> show_in_tile_at(Rect t_main, Vec2 t_point) const;
 	void toggle_visible_game(u32 t_game);
 
-	TextInput &field(EditField t_field)
+	TextInput *field(EditField t_field)
 	{
-		return m_fields[static_cast<u32>(t_field)];
+		return &m_fields[static_cast<u32>(t_field)];
 	}
 
-	const TextInput &field(EditField t_field) const
+	const TextInput *field(EditField t_field) const
 	{
-		return m_fields[static_cast<u32>(t_field)];
+		return &m_fields[static_cast<u32>(t_field)];
 	}
 
 	i32 focused_field() const;
@@ -239,34 +239,33 @@ class AccountModal : public Widget {
 	CursorKind list_cursor(const Layout &t_layout) const;
 	CursorKind edit_cursor(const Layout &t_layout) const;
 
-	void draw_chrome(DrawList &t_draw_list, const Layout &t_layout, bool t_with_art, u8 t_alpha) const;
-	void draw_back_badge(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
-	void draw_morphing_art(DrawList &t_draw_list, const Layout &t_layout, float t_scale) const;
-	void draw_section_title(DrawList &t_draw_list, Rect t_main, std::string_view t_title, u8 t_alpha) const;
-	void draw_search(DrawList &t_draw_list, Rect t_main, u8 t_alpha);
-	void draw_empty_state(DrawList &t_draw_list, Rect t_region, u8 t_alpha) const;
-	void draw_no_matches(DrawList &t_draw_list, Rect t_region, u8 t_alpha) const;
-	void draw_account_list(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha);
-	void draw_account_row(DrawList &t_draw_list, Rect t_main, Rect t_row, const Account &t_account, bool t_selected,
-						  bool t_raised, float t_delete_countdown, u8 t_alpha) const;
-	void draw_row_details(DrawList &t_draw_list, Rect t_row, float t_baseline, float t_max_width,
-						  const Account &t_account, u8 t_alpha) const;
+	void draw_chrome(DrawList *t_draw_list, const Layout &t_layout, bool t_with_art, u8 t_alpha) const;
+	void draw_back_badge(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha) const;
+	void draw_morphing_art(DrawList *t_draw_list, const Layout &t_layout, float t_scale) const;
+	void draw_section_title(DrawList *t_draw_list, Rect t_main, std::string_view t_title, u8 t_alpha) const;
+	void draw_search(DrawList *t_draw_list, Rect t_main, u8 t_alpha);
+	void draw_empty_state(DrawList *t_draw_list, Rect t_region, u8 t_alpha) const;
+	void draw_no_matches(DrawList *t_draw_list, Rect t_region, u8 t_alpha) const;
+	void draw_account_list(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha);
+	void draw_account_row(DrawList *t_draw_list, Rect t_main, Rect t_row, const Account *t_account, bool t_selected, bool t_raised, float t_delete_countdown,
+						  u8 t_alpha) const;
+	void draw_row_details(DrawList *t_draw_list, Rect t_row, float t_baseline, float t_max_width, const Account *t_account, u8 t_alpha) const;
 	std::string_view login_status() const;
 	void update_login_progress(float t_delta_seconds);
-	void draw_login_progress(DrawList &t_draw_list, Rect t_main, u8 t_alpha) const;
-	void draw_edit_header(DrawList &t_draw_list, Rect t_main, u8 t_alpha) const;
-	void draw_show_in(DrawList &t_draw_list, const FormLayout &t_form, u8 t_alpha) const;
-	void draw_edit_form(DrawList &t_draw_list, Rect t_main, u8 t_alpha);
-	void draw_footer(DrawList &t_draw_list, Rect t_footer, u8 t_alpha) const;
-	void draw_edit_footer(DrawList &t_draw_list, Rect t_footer, u8 t_alpha) const;
+	void draw_login_progress(DrawList *t_draw_list, Rect t_main, u8 t_alpha) const;
+	void draw_edit_header(DrawList *t_draw_list, Rect t_main, u8 t_alpha) const;
+	void draw_show_in(DrawList *t_draw_list, const FormLayout &t_form, u8 t_alpha) const;
+	void draw_edit_form(DrawList *t_draw_list, Rect t_main, u8 t_alpha);
+	void draw_footer(DrawList *t_draw_list, Rect t_footer, u8 t_alpha) const;
+	void draw_edit_footer(DrawList *t_draw_list, Rect t_footer, u8 t_alpha) const;
 
-	Library &m_library;
-	const Settings &m_settings;
-	const Fonts &m_fonts;
-	const Assets &m_assets;
-	const Window &m_window;
-	Toasts &m_toasts;
-	CommandQueue &m_commands;
+	Library *m_library;
+	const Settings *m_settings;
+	const Fonts *m_fonts;
+	const Assets *m_assets;
+	const Window *m_window;
+	Toasts *m_toasts;
+	CommandQueue *m_commands;
 
 	bool m_open = false;
 	float m_open_amount = 0.0f;

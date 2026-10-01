@@ -60,7 +60,7 @@ class Assets {
 	Assets &operator=(const Assets &) = delete;
 
 	void begin_decode();
-	bool finish_upload(Renderer &t_renderer);
+	bool finish_upload(Renderer *t_renderer);
 
 	const Texture *get(Asset t_asset) const
 	{
@@ -68,8 +68,7 @@ class Assets {
 	}
 
 	static std::span<const u8> encoded_bytes(Asset t_asset);
-	static std::unique_ptr<Texture> create_texture(Renderer &t_renderer, const u8 *t_rgba_pixels, u32 t_width,
-												   u32 t_height);
+	static std::unique_ptr<Texture> create_texture(Renderer *t_renderer, const u8 *t_rgba_pixels, u32 t_width, u32 t_height);
 
   private:
 	struct MipLevel {
@@ -84,7 +83,7 @@ class Assets {
 	};
 
 	static DecodedImage with_mipmaps(const u8 *t_rgba_pixels, u32 t_width, u32 t_height);
-	static std::unique_ptr<Texture> upload(Renderer &t_renderer, const DecodedImage &t_image);
+	static std::unique_ptr<Texture> upload(Renderer *t_renderer, const DecodedImage &t_image);
 
 	std::unique_ptr<Texture> m_textures[asset_count];
 	std::thread m_decoder;

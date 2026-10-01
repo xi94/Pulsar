@@ -120,26 +120,25 @@ bool option_of(const installation::Options &t_options, u32 t_option)
 	}
 }
 
-void toggle_option(installation::Options &t_options, u32 t_option)
+void toggle_option(installation::Options *t_options, u32 t_option)
 {
 	switch (t_option) {
 		case 0:
-			t_options.desktop_shortcut = !t_options.desktop_shortcut;
+			t_options->desktop_shortcut = !t_options->desktop_shortcut;
 			break;
 		case 1:
-			t_options.start_menu_shortcut = !t_options.start_menu_shortcut;
+			t_options->start_menu_shortcut = !t_options->start_menu_shortcut;
 			break;
 		default:
-			t_options.start_with_windows = !t_options.start_with_windows;
+			t_options->start_with_windows = !t_options->start_with_windows;
 			break;
 	}
 }
 
 bool is_absolute(std::string_view t_path)
 {
-	const bool drive = t_path.size() >= 3 &&
-					   ((t_path[0] >= 'A' && t_path[0] <= 'Z') || (t_path[0] >= 'a' && t_path[0] <= 'z')) &&
-					   t_path[1] == ':' && (t_path[2] == '\\' || t_path[2] == '/');
+	const bool drive = t_path.size() >= 3 && ((t_path[0] >= 'A' && t_path[0] <= 'Z') || (t_path[0] >= 'a' && t_path[0] <= 'z')) && t_path[1] == ':' &&
+					   (t_path[2] == '\\' || t_path[2] == '/');
 
 	return drive || t_path.starts_with("\\\\");
 }
@@ -155,9 +154,8 @@ std::wstring trimmed_folder(std::string_view t_path)
 }
 }
 
-SetupScreen::SetupScreen(SetupMode t_mode, const Settings &t_settings, const Fonts &t_fonts,
-						 const Fonts &t_heading_fonts, const Fonts &t_title_fonts, const Assets &t_assets,
-						 Window &t_window)
+SetupScreen::SetupScreen(SetupMode t_mode, const Settings *t_settings, const Fonts *t_fonts, const Fonts *t_heading_fonts, const Fonts *t_title_fonts,
+						 const Assets *t_assets, Window *t_window)
 	: m_mode(t_mode)
 	, m_settings(t_settings)
 	, m_fonts(t_fonts)
@@ -305,9 +303,9 @@ void SetupScreen::activate(Hit t_hit)
 				start_install();
 			} else if (t_hit == Hit::Browse) {
 				m_location.set_focused(false);
-				m_picker.open(m_window.handle(), to_wide(m_location.value()));
+				m_picker.open(m_window->handle(), to_wide(m_location.value()));
 			} else if (is_option) {
-				toggle_option(m_options, option());
+				toggle_option(&m_options, option());
 			}
 
 			break;
@@ -325,7 +323,7 @@ void SetupScreen::activate(Hit t_hit)
 					finish(SetupOutcome::Closed);
 				}
 			} else if (is_option) {
-				toggle_option(m_options, option());
+				toggle_option(&m_options, option());
 			}
 
 			break;
@@ -396,12 +394,10 @@ void SetupScreen::update(float t_delta_seconds)
 	}
 
 	for (u32 i = 0; i < option_count; i += 1) {
-		m_check[i] =
-			animation::ease_toward(m_check[i], option_of(m_options, i) ? 1.0f : 0.0f, check_ease_rate, t_delta_seconds);
+		m_check[i] = animation::ease_toward(m_check[i], option_of(m_options, i) ? 1.0f : 0.0f, check_ease_rate, t_delta_seconds);
 	}
 
-	m_delete_check =
-		animation::ease_toward(m_delete_check, m_delete_data ? 1.0f : 0.0f, check_ease_rate, t_delta_seconds);
+	m_delete_check = animation::ease_toward(m_delete_check, m_delete_data ? 1.0f : 0.0f, check_ease_rate, t_delta_seconds);
 
 	if (m_saving) {
 		if (m_job.is_finished()) {
@@ -440,15 +436,14 @@ void SetupScreen::update(float t_delta_seconds)
 
 Rect SetupScreen::content_rect() const
 {
-	const Vec2 size = m_window.size();
+	const Vec2 size = m_window->size();
 
-	return Rect{content_inset, title_bar_height, std::max(0.0f, size.x - content_inset * 2.0f),
-				std::max(0.0f, size.y - title_bar_height)};
+	return Rect{content_inset, title_bar_height, std::max(0.0f, size.x - content_inset * 2.0f), std::max(0.0f, size.y - title_bar_height)};
 }
 
 Rect SetupScreen::footer_rect() const
 {
-	const Vec2 size = m_window.size();
+	const Vec2 size = m_window->size();
 
 	return Rect{0.0f, size.y - footer_height, size.x, footer_height};
 }
@@ -456,8 +451,7 @@ Rect SetupScreen::footer_rect() const
 Rect SetupScreen::footer_button(bool t_right, std::string_view t_label) const
 {
 	const Rect footer = footer_rect();
-	const float width =
-		std::max(footer_button_min_width, std::ceil(text_width(m_fonts.body, t_label)) + button_padding * 2.0f);
+	const float width = std::max(footer_button_min_width, std::ceil(text_width(m_fonts->body, t_label)) + button_padding * 2.0f);
 	const float x = t_right ? footer.right() - content_inset - width : footer.x + content_inset;
 
 	return Rect{x, snapped_to_pixel(footer.center().y - footer_button_height * 0.5f), width, footer_button_height};
@@ -513,9 +507,7 @@ Rect SetupScreen::choice_rect(u32 t_choice) const
 	const Rect content = content_rect();
 	const Rect header = header_icon_rect(Page::Choose);
 
-	return Rect{content.x,
-				header.bottom() + header_rows_gap + static_cast<float>(t_choice) * (choice_height + choice_gap),
-				content.w, choice_height};
+	return Rect{content.x, header.bottom() + header_rows_gap + static_cast<float>(t_choice) * (choice_height + choice_gap), content.w, choice_height};
 }
 
 float SetupScreen::location_heading_top() const
@@ -526,8 +518,7 @@ float SetupScreen::location_heading_top() const
 Rect SetupScreen::field_rect() const
 {
 	const Rect content = content_rect();
-	const float top = location_heading_top() + m_fonts.secondary.line_height() + caption_gap +
-					  m_heading_fonts.body.line_height() + field_gap;
+	const float top = location_heading_top() + m_fonts->secondary.line_height() + caption_gap + m_heading_fonts->body.line_height() + field_gap;
 
 	return Rect{content.x, snapped_to_pixel(top), content.w, field_height};
 }
@@ -536,8 +527,7 @@ Rect SetupScreen::browse_rect() const
 {
 	const Rect field = field_rect();
 
-	return Rect{field.right() - browse_inset - browse_size, field.center().y - browse_size * 0.5f, browse_size,
-				browse_size};
+	return Rect{field.right() - browse_inset - browse_size, field.center().y - browse_size * 0.5f, browse_size, browse_size};
 }
 
 Rect SetupScreen::field_text_rect() const
@@ -550,28 +540,25 @@ Rect SetupScreen::field_text_rect() const
 
 Rect SetupScreen::option_rect(Page t_page, u32 t_option) const
 {
-	const float top =
-		t_page == Page::Location ? field_rect().bottom() + options_gap : installed_box_rect().bottom() + options_gap;
-	const float width = check_size + check_label_gap + text_width(m_fonts.body, option_labels[t_option]) + option_reach;
+	const float top = t_page == Page::Location ? field_rect().bottom() + options_gap : installed_box_rect().bottom() + options_gap;
+	const float width = check_size + check_label_gap + text_width(m_fonts->body, option_labels[t_option]) + option_reach;
 
 	return Rect{content_rect().x, top + static_cast<float>(t_option) * option_height, width, option_height};
 }
 
 Rect SetupScreen::delete_data_rect() const
 {
-	const Font &secondary = m_fonts.secondary;
-	const float body_top =
-		location_heading_top() + secondary.line_height() + caption_gap + m_heading_fonts.body.line_height() + body_gap;
+	const Font &secondary = m_fonts->secondary;
+	const float body_top = location_heading_top() + secondary.line_height() + caption_gap + m_heading_fonts->body.line_height() + body_gap;
 	const float top = body_top + (secondary.line_height() + body_line_gap) * 2.0f + options_gap - body_line_gap;
-	const float width = check_size + check_label_gap + text_width(m_fonts.body, delete_data_label) + option_reach;
+	const float width = check_size + check_label_gap + text_width(m_fonts->body, delete_data_label) + option_reach;
 
 	return Rect{content_rect().x, top, width, option_height};
 }
 
 Rect SetupScreen::installed_box_rect() const
 {
-	const float top =
-		header_icon_rect(Page::Manage).bottom() + installed_gap + m_fonts.secondary.line_height() + caption_gap * 2.0f;
+	const float top = header_icon_rect(Page::Manage).bottom() + installed_gap + m_fonts->secondary.line_height() + caption_gap * 2.0f;
 
 	return Rect{content_rect().x, snapped_to_pixel(top), content_rect().w, field_height};
 }
@@ -580,8 +567,7 @@ Rect SetupScreen::open_folder_rect() const
 {
 	const Rect box = installed_box_rect();
 
-	return Rect{box.right() - browse_inset - browse_size, box.center().y - browse_size * 0.5f, browse_size,
-				browse_size};
+	return Rect{box.right() - browse_inset - browse_size, box.center().y - browse_size * 0.5f, browse_size, browse_size};
 }
 
 SetupScreen::Hit SetupScreen::hit_at(Vec2 t_point) const
@@ -638,7 +624,7 @@ bool SetupScreen::on_pointer_down(Vec2 t_point)
 	if (m_page == Page::Location) {
 		if (m_pressed == Hit::Field) {
 			m_location.set_focused(true);
-			m_location.on_pointer_down(m_fonts.body, field_text_rect(), t_point.x);
+			m_location.on_pointer_down(m_fonts->body, field_text_rect(), t_point.x);
 		} else if (m_pressed != Hit::Browse) {
 			m_location.set_focused(false);
 		}
@@ -650,7 +636,7 @@ bool SetupScreen::on_pointer_down(Vec2 t_point)
 bool SetupScreen::on_pointer_move(Vec2 t_point)
 {
 	if (m_location.is_selecting()) {
-		m_location.on_pointer_move(m_fonts.body, field_text_rect(), t_point.x);
+		m_location.on_pointer_move(m_fonts->body, field_text_rect(), t_point.x);
 	}
 
 	return true;
@@ -722,26 +708,25 @@ CursorKind SetupScreen::cursor() const
 
 SetupScreen::Reveal SetupScreen::reveal(float t_seconds, u32 t_order) const
 {
-	const float amount =
-		std::clamp((t_seconds - static_cast<float>(t_order) * stagger_seconds) / reveal_seconds, 0.0f, 1.0f);
+	const float amount = std::clamp((t_seconds - static_cast<float>(t_order) * stagger_seconds) / reveal_seconds, 0.0f, 1.0f);
 	const float eased = ease_out(amount);
 
 	return Reveal{eased, (1.0f - eased) * reveal_rise};
 }
 
-void SetupScreen::draw_app_icon(DrawList &t_draw_list, Rect t_rect, u8 t_alpha) const
+void SetupScreen::draw_app_icon(DrawList *t_draw_list, Rect t_rect, u8 t_alpha) const
 {
 	if (m_app_icon != nullptr) {
-		t_draw_list.add_image(t_rect, m_app_icon, faded(Color{255, 255, 255, 255}, t_alpha));
+		t_draw_list->add_image(t_rect, m_app_icon, faded(Color{255, 255, 255, 255}, t_alpha));
 	} else {
-		t_draw_list.add_image(t_rect, m_assets.get(Asset::IconApp), faded(theme().text_dim, t_alpha));
+		t_draw_list->add_image(t_rect, m_assets->get(Asset::IconApp), faded(theme().text_dim, t_alpha));
 	}
 }
 
-void SetupScreen::draw_header(DrawList &t_draw_list, Page t_page, const PageDraw &t_draw) const
+void SetupScreen::draw_header(DrawList *t_draw_list, Page t_page, const PageDraw &t_draw) const
 {
 	const Theme &colors = theme();
-	const Font &heading = m_title_fonts.body;
+	const Font &heading = m_title_fonts->body;
 	const Reveal shown = reveal(t_draw.seconds, 0);
 	const u8 alpha = to_alpha(t_draw.alpha * shown.alpha);
 	const Rect icon = header_icon_rect(t_page).moved(Vec2{t_draw.offset.x, t_draw.offset.y + shown.rise});
@@ -749,17 +734,16 @@ void SetupScreen::draw_header(DrawList &t_draw_list, Page t_page, const PageDraw
 
 	draw_app_icon(t_draw_list, icon, alpha);
 
-	draw_text(t_draw_list, heading, Vec2{text_x, heading.centered_baseline(icon)}, app_title,
-			  faded(colors.text, alpha));
+	draw_text(t_draw_list, heading, Vec2{text_x, heading.centered_baseline(icon)}, app_title, faded(colors.text, alpha));
 }
 
-void SetupScreen::draw_installed_location(DrawList &t_draw_list, const PageDraw &t_draw) const
+void SetupScreen::draw_installed_location(DrawList *t_draw_list, const PageDraw &t_draw) const
 {
 	if (!m_installed) return;
 
 	const Theme &colors = theme();
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
 	const Reveal shown = reveal(t_draw.seconds, 1);
 	const u8 alpha = to_alpha(t_draw.alpha * shown.alpha);
 	const Vec2 offset{t_draw.offset.x, t_draw.offset.y + shown.rise};
@@ -769,25 +753,22 @@ void SetupScreen::draw_installed_location(DrawList &t_draw_list, const PageDraw 
 	const float caption_y = box.y - caption_gap - secondary.line_height();
 	const float text_x = box.x + field_padding;
 
-	draw_text(t_draw_list, secondary, Vec2{box.x, caption_y + secondary.ascent}, "Installed in",
-			  faded(colors.text_faint, alpha));
-	t_draw_list.add_bordered_rect(box, rounded(field_radius), faded(colors.field, alpha),
-								  faded(colors.separator, alpha), 1.0f);
-	draw_text_truncated(t_draw_list, body, Vec2{text_x, body.centered_baseline(box)}, to_utf8(m_installed->location),
-						button.x - browse_inset - text_x, faded(colors.text_dim, alpha));
+	draw_text(t_draw_list, secondary, Vec2{box.x, caption_y + secondary.ascent}, "Installed in", faded(colors.text_faint, alpha));
+	t_draw_list->add_bordered_rect(box, rounded(field_radius), faded(colors.field, alpha), faded(colors.separator, alpha), 1.0f);
+	draw_text_truncated(t_draw_list, body, Vec2{text_x, body.centered_baseline(box)}, to_utf8(m_installed->location), button.x - browse_inset - text_x,
+						faded(colors.text_dim, alpha));
 
-	t_draw_list.add_rounded_rect(button, rounded(browse_radius),
-								 faded(mix(colors.control, colors.control_hover, hover), alpha));
-	t_draw_list.add_image(button.centered(browse_icon_size, browse_icon_size), m_assets.get(Asset::IconFolderOpen),
-						  faded(mix(colors.text_dim, colors.text, hover), alpha));
+	t_draw_list->add_rounded_rect(button, rounded(browse_radius), faded(mix(colors.control, colors.control_hover, hover), alpha));
+	t_draw_list->add_image(button.centered(browse_icon_size, browse_icon_size), m_assets->get(Asset::IconFolderOpen),
+						   faded(mix(colors.text_dim, colors.text, hover), alpha));
 }
 
-void SetupScreen::draw_choice(DrawList &t_draw_list, u32 t_choice, const PageDraw &t_draw) const
+void SetupScreen::draw_choice(DrawList *t_draw_list, u32 t_choice, const PageDraw &t_draw) const
 {
 	const Theme &colors = theme();
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
-	const Color accent = m_settings.accent;
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
+	const Color accent = m_settings->accent;
 	const bool install = t_choice == 0;
 	const float hover = m_hover[static_cast<u32>(install ? Hit::Install : Hit::Portable)];
 	const Reveal shown = reveal(t_draw.seconds, 1 + t_choice);
@@ -796,54 +777,48 @@ void SetupScreen::draw_choice(DrawList &t_draw_list, u32 t_choice, const PageDra
 
 	const Color fill = mix(colors.surface, hovered(colors.surface), hover);
 	const Color border = mix(colors.separator, mix(colors.border, accent, choice_border_accent), hover);
-	t_draw_list.add_bordered_rect(row, rounded(choice_radius), faded(fill, alpha), faded(border, alpha), 1.0f);
+	t_draw_list->add_bordered_rect(row, rounded(choice_radius), faded(fill, alpha), faded(border, alpha), 1.0f);
 
-	const Rect tile{row.x + choice_padding, snapped_to_pixel(row.center().y - choice_tile_size * 0.5f),
-					choice_tile_size, choice_tile_size};
+	const Rect tile{row.x + choice_padding, snapped_to_pixel(row.center().y - choice_tile_size * 0.5f), choice_tile_size, choice_tile_size};
 	const Color tile_fill = mix(colors.control, colors.control_hover, hover);
 	const Color icon_color = mix(colors.text_dim, colors.text, hover);
 
-	t_draw_list.add_rounded_rect(tile, rounded(choice_tile_radius), faded(tile_fill, alpha));
-	t_draw_list.add_image(tile.centered(choice_icon_size, choice_icon_size),
-						  m_assets.get(install ? Asset::IconDownload : Asset::IconFile), faded(icon_color, alpha));
+	t_draw_list->add_rounded_rect(tile, rounded(choice_tile_radius), faded(tile_fill, alpha));
+	t_draw_list->add_image(tile.centered(choice_icon_size, choice_icon_size), m_assets->get(install ? Asset::IconDownload : Asset::IconFile),
+						   faded(icon_color, alpha));
 
 	const float lines = body.line_height() + choice_line_gap + secondary.line_height();
 	const float top = row.center().y - lines * 0.5f;
 	const float text_x = tile.right() + choice_padding;
 
-	draw_text(t_draw_list, body, Vec2{text_x, top + body.ascent}, install ? "Install" : "Portable",
-			  faded(colors.text, alpha));
+	draw_text(t_draw_list, body, Vec2{text_x, top + body.ascent}, install ? "Install" : "Portable", faded(colors.text, alpha));
 	draw_text(t_draw_list, secondary, Vec2{text_x, top + body.line_height() + choice_line_gap + secondary.ascent},
-			  install ? "Adds shortcuts and an uninstaller" : "Nothing is added to your system",
-			  faded(colors.text_faint, alpha));
+			  install ? "Adds shortcuts and an uninstaller" : "Nothing is added to your system", faded(colors.text_faint, alpha));
 
 	const float chevron_x = row.right() - choice_padding - chevron_size.x - chevron_nudge + chevron_nudge * hover;
 	const float center_y = row.center().y;
 	const Color chevron = faded(mix(colors.text_faint, colors.text_dim, hover), alpha);
 
-	t_draw_list.add_line(Vec2{chevron_x, center_y - chevron_size.y * 0.5f}, Vec2{chevron_x + chevron_size.x, center_y},
-						 chevron_thickness, chevron);
-	t_draw_list.add_line(Vec2{chevron_x + chevron_size.x, center_y}, Vec2{chevron_x, center_y + chevron_size.y * 0.5f},
-						 chevron_thickness, chevron);
+	t_draw_list->add_line(Vec2{chevron_x, center_y - chevron_size.y * 0.5f}, Vec2{chevron_x + chevron_size.x, center_y}, chevron_thickness, chevron);
+	t_draw_list->add_line(Vec2{chevron_x + chevron_size.x, center_y}, Vec2{chevron_x, center_y + chevron_size.y * 0.5f}, chevron_thickness, chevron);
 }
 
-void SetupScreen::draw_location(DrawList &t_draw_list, const PageDraw &t_draw)
+void SetupScreen::draw_location(DrawList *t_draw_list, const PageDraw &t_draw)
 {
 	const Theme &colors = theme();
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
-	const Font &heading = m_heading_fonts.body;
-	const Color accent = m_settings.accent;
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
+	const Font &heading = m_heading_fonts->body;
+	const Color accent = m_settings->accent;
 	const float x = content_rect().x + t_draw.offset.x;
 
 	const Reveal title = reveal(t_draw.seconds, 0);
 	const u8 title_alpha = to_alpha(t_draw.alpha * title.alpha);
 	const float top = location_heading_top() + title.rise;
 
-	draw_text(t_draw_list, secondary, Vec2{x, top + secondary.ascent}, "Install",
-			  faded(colors.text_faint, title_alpha));
-	draw_text(t_draw_list, heading, Vec2{x, top + secondary.line_height() + caption_gap + heading.ascent},
-			  "Where should Pulsar go?", faded(colors.text, title_alpha));
+	draw_text(t_draw_list, secondary, Vec2{x, top + secondary.ascent}, "Install", faded(colors.text_faint, title_alpha));
+	draw_text(t_draw_list, heading, Vec2{x, top + secondary.line_height() + caption_gap + heading.ascent}, "Where should Pulsar go?",
+			  faded(colors.text, title_alpha));
 
 	const Reveal shown = reveal(t_draw.seconds, 1);
 	const u8 alpha = to_alpha(t_draw.alpha * shown.alpha);
@@ -861,77 +836,67 @@ void SetupScreen::draw_location(DrawList &t_draw_list, const PageDraw &t_draw)
 		border = accent;
 	}
 
-	t_draw_list.add_bordered_rect(field, rounded(field_radius), faded(colors.field, alpha), faded(border, alpha),
-								  focused ? field_focus_border : 1.0f);
-	m_location.draw(t_draw_list, body, field_text_rect().moved(offset), faded(colors.text, alpha), faded(accent, alpha),
-					std::nullopt);
+	t_draw_list->add_bordered_rect(field, rounded(field_radius), faded(colors.field, alpha), faded(border, alpha), focused ? field_focus_border : 1.0f);
+	m_location.draw(t_draw_list, body, field_text_rect().moved(offset), faded(colors.text, alpha), faded(accent, alpha), std::nullopt);
 
-	t_draw_list.add_rounded_rect(browse, rounded(browse_radius),
-								 faded(mix(colors.control, colors.control_hover, browse_hover), alpha));
-	t_draw_list.add_image(browse.centered(browse_icon_size, browse_icon_size), m_assets.get(Asset::IconFolder),
-						  faded(mix(colors.text_dim, colors.text, browse_hover), alpha));
+	t_draw_list->add_rounded_rect(browse, rounded(browse_radius), faded(mix(colors.control, colors.control_hover, browse_hover), alpha));
+	t_draw_list->add_image(browse.centered(browse_icon_size, browse_icon_size), m_assets->get(Asset::IconFolder),
+						   faded(mix(colors.text_dim, colors.text, browse_hover), alpha));
 
 	if (!m_field_error.empty()) {
-		draw_text(t_draw_list, secondary, Vec2{field.x + 2.0f, field.bottom() + error_gap + secondary.ascent},
-				  m_field_error, faded(colors.error, alpha));
+		draw_text(t_draw_list, secondary, Vec2{field.x + 2.0f, field.bottom() + error_gap + secondary.ascent}, m_field_error, faded(colors.error, alpha));
 	}
 }
 
-void SetupScreen::draw_check_row(DrawList &t_draw_list, Rect t_row, std::string_view t_label, float t_checked,
-								 float t_hover, float t_alpha, Color t_fill) const
+void SetupScreen::draw_check_row(DrawList *t_draw_list, Rect t_row, std::string_view t_label, float t_checked, float t_hover, float t_alpha, Color t_fill) const
 {
 	const Theme &colors = theme();
-	const Font &body = m_fonts.body;
+	const Font &body = m_fonts->body;
 	const u8 alpha = to_alpha(t_alpha);
 	const Rect box{t_row.x, snapped_to_pixel(t_row.center().y - check_size * 0.5f), check_size, check_size};
 	const Color frame = mix(colors.border, mix(colors.border, t_fill, check_hover_accent), t_hover);
 
-	t_draw_list.add_bordered_rect(box, rounded(check_radius), faded(colors.field, alpha), faded(frame, alpha),
-								  check_border);
+	t_draw_list->add_bordered_rect(box, rounded(check_radius), faded(colors.field, alpha), faded(frame, alpha), check_border);
 
 	if (t_checked > 0.001f) {
 		const u8 checked_alpha = to_alpha(t_alpha * t_checked);
 		const float scale = 1.0f - check_grow + check_grow * t_checked;
 
-		t_draw_list.add_rounded_rect(box, rounded(check_radius), faded(t_fill, checked_alpha));
-		controls::draw_check(t_draw_list, m_assets, box.centered(box.w * scale, box.h * scale).inset(check_inset),
-							 faded(foreground_on(t_fill), checked_alpha));
+		t_draw_list->add_rounded_rect(box, rounded(check_radius), faded(t_fill, checked_alpha));
+		controls::draw_check(t_draw_list, m_assets, box.centered(box.w * scale, box.h * scale).inset(check_inset), faded(foreground_on(t_fill), checked_alpha));
 	}
 
 	const Color label = mix(colors.text_dim, colors.text, std::max(t_hover, t_checked * 0.6f));
-	draw_text(t_draw_list, body, Vec2{box.right() + check_label_gap, body.centered_baseline(t_row)}, t_label,
-			  faded(label, alpha));
+	draw_text(t_draw_list, body, Vec2{box.right() + check_label_gap, body.centered_baseline(t_row)}, t_label, faded(label, alpha));
 }
 
-void SetupScreen::draw_options(DrawList &t_draw_list, Page t_page, const PageDraw &t_draw, u32 t_first_order) const
+void SetupScreen::draw_options(DrawList *t_draw_list, Page t_page, const PageDraw &t_draw, u32 t_first_order) const
 {
 	for (u32 i = 0; i < option_count; i += 1) {
 		const Reveal shown = reveal(t_draw.seconds, t_first_order + i);
 		const Rect row = option_rect(t_page, i).moved(Vec2{t_draw.offset.x, t_draw.offset.y + shown.rise});
 
-		draw_check_row(t_draw_list, row, option_labels[i], m_check[i], m_hover[static_cast<u32>(Hit::Option0) + i],
-					   t_draw.alpha * shown.alpha, m_settings.accent);
+		draw_check_row(t_draw_list, row, option_labels[i], m_check[i], m_hover[static_cast<u32>(Hit::Option0) + i], t_draw.alpha * shown.alpha,
+					   m_settings->accent);
 	}
 }
 
-void SetupScreen::draw_confirm(DrawList &t_draw_list, const PageDraw &t_draw) const
+void SetupScreen::draw_confirm(DrawList *t_draw_list, const PageDraw &t_draw) const
 {
 	const Theme &colors = theme();
-	const Font &secondary = m_fonts.secondary;
-	const Font &heading = m_heading_fonts.body;
+	const Font &secondary = m_fonts->secondary;
+	const Font &heading = m_heading_fonts->body;
 	const Rect content = content_rect();
 	const float x = content.x + t_draw.offset.x;
 	const Reveal title = reveal(t_draw.seconds, 0);
 	const u8 title_alpha = to_alpha(t_draw.alpha * title.alpha);
 	const float top = location_heading_top() + title.rise;
 
-	draw_text(t_draw_list, secondary, Vec2{x, top + secondary.ascent}, "Uninstall",
-			  faded(colors.text_faint, title_alpha));
-	draw_text(t_draw_list, heading, Vec2{x, top + secondary.line_height() + caption_gap + heading.ascent},
-			  "Uninstall Pulsar?", faded(colors.text, title_alpha));
+	draw_text(t_draw_list, secondary, Vec2{x, top + secondary.ascent}, "Uninstall", faded(colors.text_faint, title_alpha));
+	draw_text(t_draw_list, heading, Vec2{x, top + secondary.line_height() + caption_gap + heading.ascent}, "Uninstall Pulsar?",
+			  faded(colors.text, title_alpha));
 
-	const std::string_view data_line = m_delete_data ? "Your accounts and settings will be deleted too."
-													 : "Your accounts and settings stay on this PC.";
+	const std::string_view data_line = m_delete_data ? "Your accounts and settings will be deleted too." : "Your accounts and settings stay on this PC.";
 	const std::string_view lines[]{"Pulsar and its shortcuts will be removed.", data_line};
 	const Color line_colors[]{colors.text_dim, mix(colors.text_dim, colors.error, m_delete_check)};
 	float y = location_heading_top() + secondary.line_height() + caption_gap + heading.line_height() + body_gap;
@@ -944,18 +909,17 @@ void SetupScreen::draw_confirm(DrawList &t_draw_list, const PageDraw &t_draw) co
 	}
 
 	const Reveal shown = reveal(t_draw.seconds, 3);
-	draw_check_row(t_draw_list, delete_data_rect().moved(Vec2{t_draw.offset.x, t_draw.offset.y + shown.rise}),
-				   delete_data_label, m_delete_check, m_hover[static_cast<u32>(Hit::DeleteData)],
-				   t_draw.alpha * shown.alpha, colors.error);
+	draw_check_row(t_draw_list, delete_data_rect().moved(Vec2{t_draw.offset.x, t_draw.offset.y + shown.rise}), delete_data_label, m_delete_check,
+				   m_hover[static_cast<u32>(Hit::DeleteData)], t_draw.alpha * shown.alpha, colors.error);
 }
 
-void SetupScreen::draw_status(DrawList &t_draw_list, Page t_page, const PageDraw &t_draw) const
+void SetupScreen::draw_status(DrawList *t_draw_list, Page t_page, const PageDraw &t_draw) const
 {
 	const Theme &colors = theme();
-	const Font &heading = m_heading_fonts.body;
-	const Font &secondary = m_fonts.secondary;
-	const Color accent = m_settings.accent;
-	const Vec2 size = m_window.size();
+	const Font &heading = m_heading_fonts->body;
+	const Font &secondary = m_fonts->secondary;
+	const Color accent = m_settings->accent;
+	const Vec2 size = m_window->size();
 	const bool install = m_job.task() != installation::Task::Uninstall;
 	const float bottom = has_footer(t_page) ? footer_rect().y : size.y;
 	const Rect content = content_rect();
@@ -971,8 +935,7 @@ void SetupScreen::draw_status(DrawList &t_draw_list, Page t_page, const PageDraw
 		title = install ? "Pulsar is installed" : "Pulsar was uninstalled";
 
 		if (!install) {
-			detail = m_delete_data ? "Your accounts and settings were deleted too."
-								   : "Your accounts and settings are still on this PC.";
+			detail = m_delete_data ? "Your accounts and settings were deleted too." : "Your accounts and settings are still on this PC.";
 		} else if (m_options.start_menu_shortcut) {
 			detail = "Find it in the Start menu.";
 		} else if (m_options.desktop_shortcut) {
@@ -989,16 +952,15 @@ void SetupScreen::draw_status(DrawList &t_draw_list, Page t_page, const PageDraw
 		line_count = wrap_text(secondary, detail, content.w, lines);
 	}
 
-	const float body_height = t_page == Page::Working ? progress_height + status_text_gap + secondary.line_height()
-													  : static_cast<float>(line_count) * secondary.line_height();
+	const float body_height =
+		t_page == Page::Working ? progress_height + status_text_gap + secondary.line_height() : static_cast<float>(line_count) * secondary.line_height();
 	const float block = status_icon_size + status_icon_gap + heading.line_height() + status_text_gap + body_height;
 	const float top = title_bar_height + (bottom - title_bar_height - block) * 0.5f - status_bias;
 	const float center_x = size.x * 0.5f + t_draw.offset.x;
 
 	const Reveal icon_shown = reveal(t_draw.seconds, 0);
 	const float icon_dim = t_page == Page::Done && !install ? uninstalled_icon_dim : 1.0f;
-	const Rect icon{snapped_to_pixel(center_x - status_icon_size * 0.5f), snapped_to_pixel(top + icon_shown.rise),
-					status_icon_size, status_icon_size};
+	const Rect icon{snapped_to_pixel(center_x - status_icon_size * 0.5f), snapped_to_pixel(top + icon_shown.rise), status_icon_size, status_icon_size};
 	draw_app_icon(t_draw_list, icon, to_alpha(t_draw.alpha * icon_shown.alpha * icon_dim));
 
 	if (t_page == Page::Failed) {
@@ -1009,9 +971,8 @@ void SetupScreen::draw_status(DrawList &t_draw_list, Page t_page, const PageDraw
 		const Color fill = colors.error;
 		const u8 alpha = to_alpha(t_draw.alpha * badge_shown.alpha);
 
-		t_draw_list.add_rounded_rect(circle.inset(-badge_ring), rounded(badge * 0.5f + badge_ring),
-									 faded(colors.window, alpha));
-		t_draw_list.add_rounded_rect(circle, rounded(badge * 0.5f), faded(fill, alpha));
+		t_draw_list->add_rounded_rect(circle.inset(-badge_ring), rounded(badge * 0.5f + badge_ring), faded(colors.window, alpha));
+		t_draw_list->add_rounded_rect(circle, rounded(badge * 0.5f), faded(fill, alpha));
 
 		controls::draw_x(t_draw_list, circle.inset(badge * 0.3f), faded(foreground_on(fill), alpha));
 	}
@@ -1026,31 +987,28 @@ void SetupScreen::draw_status(DrawList &t_draw_list, Page t_page, const PageDraw
 	float y = title_y - title_shown.rise + heading.line_height() + status_text_gap + body_shown.rise;
 
 	if (t_page == Page::Working) {
-		const Rect track{snapped_to_pixel(center_x - progress_width * 0.5f), snapped_to_pixel(y), progress_width,
-						 progress_height};
+		const Rect track{snapped_to_pixel(center_x - progress_width * 0.5f), snapped_to_pixel(y), progress_width, progress_height};
 		const float filled = std::max(progress_height, progress_width * std::clamp(m_progress, 0.0f, 1.0f));
 
-		t_draw_list.add_rounded_rect(track, rounded(progress_height * 0.5f), faded(colors.track, body_alpha));
-		t_draw_list.add_rounded_rect(Rect{track.x, track.y, filled, progress_height}, rounded(progress_height * 0.5f),
-									 faded(accent, body_alpha));
+		t_draw_list->add_rounded_rect(track, rounded(progress_height * 0.5f), faded(colors.track, body_alpha));
+		t_draw_list->add_rounded_rect(Rect{track.x, track.y, filled, progress_height}, rounded(progress_height * 0.5f), faded(accent, body_alpha));
 
 		y = track.bottom() + status_text_gap;
-		draw_text_centered(t_draw_list, secondary, Rect{t_draw.offset.x, y, size.x, secondary.line_height()},
-						   m_job.step_label(), faded(colors.text_faint, body_alpha));
+		draw_text_centered(t_draw_list, secondary, Rect{t_draw.offset.x, y, size.x, secondary.line_height()}, m_job.step_label(),
+						   faded(colors.text_faint, body_alpha));
 		return;
 	}
 
 	for (const std::string_view line : std::span{lines, line_count}) {
-		draw_text_centered(t_draw_list, secondary, Rect{t_draw.offset.x, y, size.x, secondary.line_height()}, line,
-						   faded(colors.text_dim, body_alpha));
+		draw_text_centered(t_draw_list, secondary, Rect{t_draw.offset.x, y, size.x, secondary.line_height()}, line, faded(colors.text_dim, body_alpha));
 		y += secondary.line_height();
 	}
 }
 
-void SetupScreen::draw_footer(DrawList &t_draw_list, Page t_page, const PageDraw &t_draw) const
+void SetupScreen::draw_footer(DrawList *t_draw_list, Page t_page, const PageDraw &t_draw) const
 {
-	const Font &body = m_fonts.body;
-	const Color accent = m_settings.accent;
+	const Font &body = m_fonts->body;
+	const Color accent = m_settings->accent;
 	const u8 alpha = to_alpha(t_draw.alpha);
 	const bool live = t_page == m_page && m_transition >= 1.0f && !is_busy();
 	const Vec2 offset{t_draw.offset.x, 0.0f};
@@ -1060,22 +1018,19 @@ void SetupScreen::draw_footer(DrawList &t_draw_list, Page t_page, const PageDraw
 		const auto style = t_page == Page::Manage ? controls::ButtonStyle::Danger : controls::ButtonStyle::Ghost;
 		const bool hovered_button = live && m_hover[static_cast<u32>(Hit::Secondary)] > 0.5f;
 
-		controls::draw_button(t_draw_list, body, footer_button(false, secondary).moved(offset), secondary, style,
-							  accent, !m_saving, hovered_button, alpha);
+		controls::draw_button(t_draw_list, body, footer_button(false, secondary).moved(offset), secondary, style, accent, !m_saving, hovered_button, alpha);
 	}
 
 	const std::string_view primary = primary_label(t_page);
 	if (!primary.empty()) {
-		const auto style =
-			t_page == Page::ConfirmUninstall ? controls::ButtonStyle::DangerConfirm : controls::ButtonStyle::Accent;
+		const auto style = t_page == Page::ConfirmUninstall ? controls::ButtonStyle::DangerConfirm : controls::ButtonStyle::Accent;
 		const bool hovered_button = live && m_hover[static_cast<u32>(Hit::Primary)] > 0.5f;
 
-		controls::draw_button(t_draw_list, body, footer_button(true, primary).moved(offset), primary, style, accent,
-							  !m_saving, hovered_button, alpha);
+		controls::draw_button(t_draw_list, body, footer_button(true, primary).moved(offset), primary, style, accent, !m_saving, hovered_button, alpha);
 	}
 }
 
-void SetupScreen::draw_page(DrawList &t_draw_list, Page t_page, const PageDraw &t_draw)
+void SetupScreen::draw_page(DrawList *t_draw_list, Page t_page, const PageDraw &t_draw)
 {
 	switch (t_page) {
 		case Page::Choose:
@@ -1111,19 +1066,17 @@ void SetupScreen::draw_page(DrawList &t_draw_list, Page t_page, const PageDraw &
 	}
 }
 
-void SetupScreen::draw(DrawList &t_draw_list)
+void SetupScreen::draw(DrawList *t_draw_list)
 {
 	const Theme &colors = theme();
 	const float eased = ease_out(m_transition);
 	const Rect footer = footer_rect();
 
 	if (m_previous_page && m_transition < 1.0f) {
-		draw_page(t_draw_list, *m_previous_page,
-				  PageDraw{Vec2{-m_direction * slide_distance * eased, 0.0f}, 1.0f - eased, settled_page_seconds});
+		draw_page(t_draw_list, *m_previous_page, PageDraw{Vec2{-m_direction * slide_distance * eased, 0.0f}, 1.0f - eased, settled_page_seconds});
 	}
 
-	draw_page(t_draw_list, m_page,
-			  PageDraw{Vec2{m_direction * slide_distance * (1.0f - eased), 0.0f}, eased, m_page_seconds});
+	draw_page(t_draw_list, m_page, PageDraw{Vec2{m_direction * slide_distance * (1.0f - eased), 0.0f}, eased, m_page_seconds});
 
 	float footer_line = has_footer(m_page) ? eased : 0.0f;
 	if (m_previous_page && has_footer(*m_previous_page)) {
@@ -1131,6 +1084,6 @@ void SetupScreen::draw(DrawList &t_draw_list)
 	}
 
 	if (footer_line > 0.001f) {
-		t_draw_list.add_rect(Rect{0.0f, footer.y, footer.w, 1.0f}, faded(colors.separator, to_alpha(footer_line)));
+		t_draw_list->add_rect(Rect{0.0f, footer.y, footer.w, 1.0f}, faded(colors.separator, to_alpha(footer_line)));
 	}
 }

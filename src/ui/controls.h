@@ -22,37 +22,34 @@ enum class ButtonStyle : u8 {
 
 Color confirm_red();
 
-void draw_x(DrawList &t_draw_list, Rect t_rect, Color t_color);
-void draw_check(DrawList &t_draw_list, const Assets &t_assets, Rect t_rect, Color t_color);
-void draw_chevron(DrawList &t_draw_list, Rect t_rect, bool t_points_up, Color t_color);
-void draw_lock(DrawList &t_draw_list, Rect t_rect, Color t_color, Color t_backdrop, bool t_open = false);
+void draw_x(DrawList *t_draw_list, Rect t_rect, Color t_color);
+void draw_check(DrawList *t_draw_list, const Assets *t_assets, Rect t_rect, Color t_color);
+void draw_chevron(DrawList *t_draw_list, Rect t_rect, bool t_points_up, Color t_color);
+void draw_lock(DrawList *t_draw_list, Rect t_rect, Color t_color, Color t_backdrop, bool t_open = false);
 
 float keycap_width(const Font &t_font, std::string_view t_label);
 float keycap_height(const Font &t_font);
-void draw_keycap_frame(DrawList &t_draw_list, Rect t_cap, Color t_backdrop, u8 t_alpha);
-void draw_keycap(DrawList &t_draw_list, const Font &t_font, Rect t_cap, std::string_view t_label, Color t_backdrop,
-				 u8 t_alpha);
-void draw_mouse_keycap(DrawList &t_draw_list, Rect t_cap, Color t_backdrop, u8 t_alpha);
+void draw_keycap_frame(DrawList *t_draw_list, Rect t_cap, Color t_backdrop, u8 t_alpha);
+void draw_keycap(DrawList *t_draw_list, const Font &t_font, Rect t_cap, std::string_view t_label, Color t_backdrop, u8 t_alpha);
+void draw_mouse_keycap(DrawList *t_draw_list, Rect t_cap, Color t_backdrop, u8 t_alpha);
 Color keycap_label_color();
 float shortcut_width(const Font &t_font, std::string_view t_combo);
-void draw_shortcut(DrawList &t_draw_list, const Font &t_font, Vec2 t_right_center, std::string_view t_combo,
-				   Color t_backdrop, u8 t_alpha);
-void draw_magnifier(DrawList &t_draw_list, Rect t_rect, Color t_color);
-void draw_eye(DrawList &t_draw_list, const Assets &t_assets, Rect t_rect, bool t_revealed, Color t_color);
-void draw_favorite(DrawList &t_draw_list, const Assets &t_assets, Rect t_rect, bool t_filled, Color t_color);
+void draw_shortcut(DrawList *t_draw_list, const Font &t_font, Vec2 t_right_center, std::string_view t_combo, Color t_backdrop, u8 t_alpha);
+void draw_magnifier(DrawList *t_draw_list, Rect t_rect, Color t_color);
+void draw_eye(DrawList *t_draw_list, const Assets *t_assets, Rect t_rect, bool t_revealed, Color t_color);
+void draw_favorite(DrawList *t_draw_list, const Assets *t_assets, Rect t_rect, bool t_filled, Color t_color);
 
-void draw_lift(DrawList &t_draw_list, Rect t_rect, float t_radius, Color t_glow, u8 t_alpha);
-void draw_circular_hover(DrawList &t_draw_list, Rect t_rect, Color t_glow, Color t_fill, u8 t_alpha);
-void draw_panel_shadow(DrawList &t_draw_list, Rect t_panel, float t_radius, float t_amount);
-void draw_popup_shadow(DrawList &t_draw_list, Rect t_popup, float t_radius, float t_amount);
-void draw_field(DrawList &t_draw_list, Rect t_rect, float t_radius, Color t_border, Color t_fill, u8 t_alpha);
-void draw_circular_countdown(DrawList &t_draw_list, Rect t_circle, float t_remaining, Color t_color);
+void draw_lift(DrawList *t_draw_list, Rect t_rect, float t_radius, Color t_glow, u8 t_alpha);
+void draw_circular_hover(DrawList *t_draw_list, Rect t_rect, Color t_glow, Color t_fill, u8 t_alpha);
+void draw_panel_shadow(DrawList *t_draw_list, Rect t_panel, float t_radius, float t_amount);
+void draw_popup_shadow(DrawList *t_draw_list, Rect t_popup, float t_radius, float t_amount);
+void draw_field(DrawList *t_draw_list, Rect t_rect, float t_radius, Color t_border, Color t_fill, u8 t_alpha);
+void draw_circular_countdown(DrawList *t_draw_list, Rect t_circle, float t_remaining, Color t_color);
 
 Rect search_text_rect(Rect t_search, float t_inset);
 Rect search_clear_rect(Rect t_search);
-void draw_search_field(DrawList &t_draw_list, const Font &t_font, Rect t_search, float t_inset, TextInput &t_input,
-					   Vec2 t_mouse, Color t_accent, u8 t_alpha);
-void draw_button(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label, ButtonStyle t_style,
-				 Color t_accent, bool t_enabled, bool t_hovered, u8 t_alpha);
+void draw_search_field(DrawList *t_draw_list, const Font &t_font, Rect t_search, float t_inset, TextInput *t_input, Vec2 t_mouse, Color t_accent, u8 t_alpha);
+void draw_button(DrawList *t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label, ButtonStyle t_style, Color t_accent, bool t_enabled,
+				 bool t_hovered, u8 t_alpha);
 
 }

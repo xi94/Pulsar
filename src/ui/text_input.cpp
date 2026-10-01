@@ -293,14 +293,12 @@ void TextInput::update(float t_delta_seconds)
 
 	if (m_focused) {
 		const float half_period = caret_blink_period * 0.5f;
-		const float next_toggle = m_caret_blink_seconds < half_period ? half_period - m_caret_blink_seconds
-																	  : caret_blink_period - m_caret_blink_seconds;
+		const float next_toggle = m_caret_blink_seconds < half_period ? half_period - m_caret_blink_seconds : caret_blink_period - m_caret_blink_seconds;
 		animation::request_frame_after(next_toggle);
 	}
 }
 
-void TextInput::draw(DrawList &t_draw_list, const Font &t_font, Rect t_field, Color t_text_color, Color t_caret_color,
-					 std::optional<Rect> t_placeholder_box)
+void TextInput::draw(DrawList *t_draw_list, const Font &t_font, Rect t_field, Color t_text_color, Color t_caret_color, std::optional<Rect> t_placeholder_box)
 {
 	char mask[text_input_capacity];
 	const std::string_view shown = shown_text(mask);
@@ -316,33 +314,30 @@ void TextInput::draw(DrawList &t_draw_list, const Font &t_font, Rect t_field, Co
 	const float highlight_y = t_field.y + highlight_inset;
 	const float highlight_height = t_field.h - highlight_inset * 2.0f;
 
-	t_draw_list.push_clip(content);
+	t_draw_list->push_clip(content);
 
 	if (m_focused && has_selection()) {
 		const TextRange range = selection();
 		const float start_x = origin_x + text_width(t_font, shown.substr(0, range.start));
 		const float end_x = origin_x + text_width(t_font, shown.substr(0, range.end));
 
-		t_draw_list.add_rect(Rect{start_x, highlight_y, end_x - start_x, highlight_height},
-							 faded(t_caret_color, selection_alpha));
+		t_draw_list->add_rect(Rect{start_x, highlight_y, end_x - start_x, highlight_height}, faded(t_caret_color, selection_alpha));
 	}
 
 	const float baseline = t_font.centered_baseline(t_field);
 
 	if (m_length == 0) {
-		const float placeholder_x =
-			t_placeholder_box ? t_placeholder_box->center().x - text_width(t_font, m_placeholder) * 0.5f : content.x;
-		draw_text(t_draw_list, t_font, Vec2{placeholder_x, baseline}, m_placeholder,
-				  faded(theme().text_faint, t_text_color.a));
+		const float placeholder_x = t_placeholder_box ? t_placeholder_box->center().x - text_width(t_font, m_placeholder) * 0.5f : content.x;
+		draw_text(t_draw_list, t_font, Vec2{placeholder_x, baseline}, m_placeholder, faded(theme().text_faint, t_text_color.a));
 	}
 
 	draw_text(t_draw_list, t_font, Vec2{origin_x, baseline}, shown, t_text_color);
 
 	if (m_focused && m_caret_blink_seconds < caret_blink_period * 0.5f) {
-		t_draw_list.add_rect(Rect{origin_x + caret_offset, highlight_y, caret_width, highlight_height}, t_caret_color);
+		t_draw_list->add_rect(Rect{origin_x + caret_offset, highlight_y, caret_width, highlight_height}, t_caret_color);
 	}
 
-	t_draw_list.pop_clip();
+	t_draw_list->pop_clip();
 }
 
 TextRange TextInput::selection() const

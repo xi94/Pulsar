@@ -16,9 +16,8 @@
 namespace {
 constexpr usize max_notes_length = 1023;
 
-constexpr const char *usage =
-	"sign_release --exe <Pulsar.exe> [--notes <text> | --notes-file <path>] [--version <X.Y.Z>] "
-	"[--url <download-url>] [--out <update.json>] [--min-upgrade-version <X.Y.Z>] [--key-hex <128 hex chars>]";
+constexpr const char *usage = "sign_release --exe <Pulsar.exe> [--notes <text> | --notes-file <path>] [--version <X.Y.Z>] "
+							  "[--url <download-url>] [--out <update.json>] [--min-upgrade-version <X.Y.Z>] [--key-hex <128 hex chars>]";
 
 [[noreturn]] void fail(const char *t_message)
 {
@@ -30,9 +29,7 @@ bool from_hex(const std::string &t_hex, u8 *t_out, usize t_length)
 {
 	usize decoded = 0;
 
-	return t_hex.size() == t_length * 2 &&
-		   sodium_hex2bin(t_out, t_length, t_hex.c_str(), t_hex.size(), nullptr, &decoded, nullptr) == 0 &&
-		   decoded == t_length;
+	return t_hex.size() == t_length * 2 && sodium_hex2bin(t_out, t_length, t_hex.c_str(), t_hex.size(), nullptr, &decoded, nullptr) == 0 && decoded == t_length;
 }
 
 std::string to_hex(const u8 *t_data, usize t_length)
@@ -118,14 +115,12 @@ std::string exe_version(const std::string &t_exe_path)
 
 	VS_FIXEDFILEINFO *fixed = nullptr;
 	UINT fixed_size = 0;
-	if (!VerQueryValueA(info.data(), "\\", reinterpret_cast<void **>(&fixed), &fixed_size) || fixed == nullptr ||
-		fixed_size < sizeof(VS_FIXEDFILEINFO)) {
+	if (!VerQueryValueA(info.data(), "\\", reinterpret_cast<void **>(&fixed), &fixed_size) || fixed == nullptr || fixed_size < sizeof(VS_FIXEDFILEINFO)) {
 		return {};
 	}
 
 	char version[32];
-	std::snprintf(version, sizeof(version), "%u.%u.%u", HIWORD(fixed->dwFileVersionMS), LOWORD(fixed->dwFileVersionMS),
-				  HIWORD(fixed->dwFileVersionLS));
+	std::snprintf(version, sizeof(version), "%u.%u.%u", HIWORD(fixed->dwFileVersionMS), LOWORD(fixed->dwFileVersionMS), HIWORD(fixed->dwFileVersionLS));
 
 	return version;
 }
@@ -198,8 +193,7 @@ int main(int t_argc, char **t_argv)
 	std::erase(notes, '\r');
 
 	if (notes.size() > max_notes_length) {
-		std::fprintf(stderr, "sign_release: notes are %zu bytes but Pulsar shows at most %zu - shorten them\n",
-					 notes.size(), max_notes_length);
+		std::fprintf(stderr, "sign_release: notes are %zu bytes but Pulsar shows at most %zu - shorten them\n", notes.size(), max_notes_length);
 		return 1;
 	}
 
@@ -239,8 +233,7 @@ int main(int t_argc, char **t_argv)
 	sodium_memzero(secret_key, sizeof(secret_key));
 
 	char signature_base64[sodium_base64_ENCODED_LEN(crypto_sign_BYTES, sodium_base64_VARIANT_ORIGINAL)];
-	sodium_bin2base64(signature_base64, sizeof(signature_base64), signature, sizeof(signature),
-					  sodium_base64_VARIANT_ORIGINAL);
+	sodium_bin2base64(signature_base64, sizeof(signature_base64), signature, sizeof(signature), sodium_base64_VARIANT_ORIGINAL);
 
 	const std::string sha256_hex = to_hex(digest, sizeof(digest));
 

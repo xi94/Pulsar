@@ -18,15 +18,13 @@ HICON load_app_icon(AppIconSize t_size)
 {
 	const int pixels = app_icon_pixel_size(t_size);
 
-	return static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(PULSAR_APP_ICON_RESOURCE),
-										 IMAGE_ICON, pixels, pixels, 0));
+	return static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(PULSAR_APP_ICON_RESOURCE), IMAGE_ICON, pixels, pixels, 0));
 }
 
 std::vector<u8> app_icon_pixels(u32 t_size)
 {
 	const auto size = static_cast<int>(t_size);
-	const auto icon = static_cast<HICON>(
-		LoadImageW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(PULSAR_APP_ICON_RESOURCE), IMAGE_ICON, size, size, 0));
+	const auto icon = static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(PULSAR_APP_ICON_RESOURCE), IMAGE_ICON, size, size, 0));
 	if (icon == nullptr) return {};
 
 	ICONINFO info{};

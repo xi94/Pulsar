@@ -58,18 +58,17 @@ bool g_settings_writable = true;
 bool g_accounts_writable = true;
 u8 g_saved_accounts_digest[crypto_generichash_BYTES]{};
 
-void accounts_digest(std::span<const u8> t_plaintext, const MasterKey &t_master_key, u8 *t_out_digest)
+void accounts_digest(std::span<const u8> t_plaintext, const MasterKey *t_master_key, u8 *t_out_digest)
 {
-	crypto_generichash(t_out_digest, crypto_generichash_BYTES, t_plaintext.data(), t_plaintext.size(),
-					   t_master_key.data_key(), crypto::key_size);
+	crypto_generichash(t_out_digest, crypto_generichash_BYTES, t_plaintext.data(), t_plaintext.size(), t_master_key->data_key(), crypto::key_size);
 }
 
-void remember_saved_accounts(std::span<const u8> t_plaintext, const MasterKey &t_master_key)
+void remember_saved_accounts(std::span<const u8> t_plaintext, const MasterKey *t_master_key)
 {
 	accounts_digest(t_plaintext, t_master_key, g_saved_accounts_digest);
 }
 
-bool matches_saved_accounts(std::span<const u8> t_plaintext, const MasterKey &t_master_key)
+bool matches_saved_accounts(std::span<const u8> t_plaintext, const MasterKey *t_master_key)
 {
 	u8 digest[crypto_generichash_BYTES];
 	accounts_digest(t_plaintext, t_master_key, digest);
@@ -117,8 +116,7 @@ bool from_hex(const std::string &t_hex, std::span<u8> t_out)
 {
 	usize decoded = 0;
 
-	return t_hex.size() == t_out.size() * 2 &&
-		   sodium_hex2bin(t_out.data(), t_out.size(), t_hex.c_str(), t_hex.size(), nullptr, &decoded, nullptr) == 0 &&
+	return t_hex.size() == t_out.size() * 2 && sodium_hex2bin(t_out.data(), t_out.size(), t_hex.c_str(), t_hex.size(), nullptr, &decoded, nullptr) == 0 &&
 		   decoded == t_out.size();
 }
 
@@ -131,32 +129,31 @@ std::string to_base64(std::span<const u8> t_bytes)
 	return encoded;
 }
 
-bool from_base64(const std::string &t_text, std::vector<u8> &t_out)
+bool from_base64(const std::string &t_text, std::vector<u8> *t_out)
 {
-	t_out.resize(t_text.size());
+	t_out->resize(t_text.size());
 
 	usize decoded = 0;
-	if (sodium_base642bin(t_out.data(), t_out.size(), t_text.c_str(), t_text.size(), nullptr, &decoded, nullptr,
-						  sodium_base64_VARIANT_ORIGINAL) != 0) {
+	if (sodium_base642bin(t_out->data(), t_out->size(), t_text.c_str(), t_text.size(), nullptr, &decoded, nullptr, sodium_base64_VARIANT_ORIGINAL) != 0) {
 		return false;
 	}
 
-	t_out.resize(decoded);
+	t_out->resize(decoded);
 
 	return true;
 }
 
-bool parse_json_file(const std::string &t_path, json &t_out)
+bool parse_json_file(const std::string &t_path, json *t_out)
 {
 	std::vector<u8> bytes;
-	if (!read_whole_file(t_path.c_str(), bytes)) return false;
+	if (!read_whole_file(t_path.c_str(), &bytes)) return false;
 
-	t_out = json::parse(bytes.begin(), bytes.end(), nullptr, false);
+	*t_out = json::parse(bytes.begin(), bytes.end(), nullptr, false);
 
-	return t_out.is_object();
+	return t_out->is_object();
 }
 
-bool read_json_with_backup(const std::string &t_path, json &t_out)
+bool read_json_with_backup(const std::string &t_path, json *t_out)
 {
 	return parse_json_file(t_path, t_out) || parse_json_file(backup_path_for(t_path), t_out);
 }
@@ -166,12 +163,12 @@ storage::LoadResult missing_or_failed(const std::string &t_path)
 	return path_exists(t_path) ? storage::LoadResult::Failed : storage::LoadResult::NoFile;
 }
 
-json master_password_to_json(const Settings &t_settings)
+json master_password_to_json(const Settings *t_settings)
 {
-	const MasterKeyParams &key = t_settings.master_key;
+	const MasterKeyParams &key = t_settings->master_key;
 
 	return json{
-		{"enabled", t_settings.master_password_enabled},
+		{"enabled", t_settings->master_password_enabled},
 		{"salt_hex", to_hex(key.salt)},
 		{"ops_limit", key.ops_limit},
 		{"mem_limit", static_cast<u64>(key.mem_limit)},
@@ -180,80 +177,77 @@ json master_password_to_json(const Settings &t_settings)
 	};
 }
 
-void read_master_password(const json &t_json, Settings &t_settings)
+void read_master_password(const json &t_json, Settings *t_settings)
 {
-	t_settings.master_password_enabled = false;
+	t_settings->master_password_enabled = false;
 
 	const auto found = t_json.find("master_password");
 	if (found == t_json.end() || !found->is_object()) return;
 
-	const json &master_password = *found;
-	MasterKeyParams &key = t_settings.master_key;
+	MasterKeyParams *key = &t_settings->master_key;
 
-	t_settings.master_password_enabled = master_password.value("enabled", false);
-	key.ops_limit = master_password.value("ops_limit", u64{0});
-	key.mem_limit = static_cast<usize>(master_password.value("mem_limit", u64{0}));
-	from_hex(master_password.value("salt_hex", std::string{}), key.salt);
-	from_hex(master_password.value("wrap_nonce_hex", std::string{}), key.wrap_nonce);
-	from_hex(master_password.value("wrapped_dek_hex", std::string{}), key.wrapped_data_key);
+	t_settings->master_password_enabled = found->value("enabled", false);
+	key->ops_limit = found->value("ops_limit", u64{0});
+	key->mem_limit = static_cast<usize>(found->value("mem_limit", u64{0}));
+	from_hex(found->value("salt_hex", std::string{}), key->salt);
+	from_hex(found->value("wrap_nonce_hex", std::string{}), key->wrap_nonce);
+	from_hex(found->value("wrapped_dek_hex", std::string{}), key->wrapped_data_key);
 }
 
-void read_bool_and_float_settings(const json &t_json, Settings &t_settings)
+void read_bool_and_float_settings(const json &t_json, Settings *t_settings)
 {
-	t_settings.close_to_tray = t_json.value("minimize_to_tray", t_settings.close_to_tray);
+	t_settings->close_to_tray = t_json.value("minimize_to_tray", t_settings->close_to_tray);
 
 	for (const BoolSetting &setting : bool_settings) {
-		t_settings.*setting.value = t_json.value(setting.key, t_settings.*setting.value);
+		t_settings->*setting.value = t_json.value(setting.key, t_settings->*setting.value);
 	}
 
 	for (const FloatSetting &setting : float_settings) {
-		const float value = t_json.value(setting.key, t_settings.*setting.value);
-		t_settings.*setting.value = std::clamp(value, setting.min, setting.max);
+		const float value = t_json.value(setting.key, t_settings->*setting.value);
+		t_settings->*setting.value = std::clamp(value, setting.min, setting.max);
 	}
 
 	if (!t_json.value("rounded_corners_enabled", true)) {
-		t_settings.corner_roundness = 0.0f;
+		t_settings->corner_roundness = 0.0f;
 	}
 }
 
-void read_appearance(const json &t_json, Settings &t_settings)
+void read_appearance(const json &t_json, Settings *t_settings)
 {
 	const auto accent = t_json.find("accent_color");
 	if (accent != t_json.end() && accent->is_array() && accent->size() == 4) {
-		const json &channels = *accent;
-		t_settings.accent =
-			Color{channels[0].get<u8>(), channels[1].get<u8>(), channels[2].get<u8>(), channels[3].get<u8>()};
+		t_settings->accent = Color{accent->at(0).get<u8>(), accent->at(1).get<u8>(), accent->at(2).get<u8>(), accent->at(3).get<u8>()};
 	}
 
-	copy_to(t_json.value("font_name", std::string{t_settings.font_name}), t_settings.font_name);
+	copy_to(t_json.value("font_name", std::string{t_settings->font_name}), t_settings->font_name);
 
 	const std::string theme = t_json.value("theme", std::string{});
 	for (u32 i = 0; i < theme_count; i += 1) {
 		if (theme == theme_labels[i].id) {
-			t_settings.theme = static_cast<ThemeKind>(i);
+			t_settings->theme = static_cast<ThemeKind>(i);
 		}
 	}
 
 	const std::string background = t_json.value("background", std::string{});
 	for (u32 i = 0; i < background_count; i += 1) {
 		if (background == background_labels[i].id) {
-			t_settings.background_style = static_cast<BackgroundStyle>(i);
+			t_settings->background_style = static_cast<BackgroundStyle>(i);
 		}
 	}
 }
 
-void read_game_order(const json &t_json, Settings &t_settings)
+void read_game_order(const json &t_json, Settings *t_settings)
 {
 	const auto order = t_json.find("carousel_order");
 	if (order == t_json.end() || !order->is_array()) return;
 
-	t_settings.game_order_count = 0;
+	t_settings->game_order_count = 0;
 
 	for (const json &title : *order) {
-		if (!title.is_string() || t_settings.game_order_count == max_game_order) continue;
+		if (!title.is_string() || t_settings->game_order_count == max_game_order) continue;
 
-		copy_to(title.get<std::string>(), t_settings.game_order[t_settings.game_order_count]);
-		t_settings.game_order_count += 1;
+		copy_to(title.get<std::string>(), t_settings->game_order[t_settings->game_order_count]);
+		t_settings->game_order_count += 1;
 	}
 }
 
@@ -272,23 +266,23 @@ i32 read_zoom_stop(const json &t_json, i32 t_fallback)
 	return shelf_era - 2;
 }
 
-storage::LoadResult read_settings(Settings &t_settings)
+storage::LoadResult read_settings(Settings *t_settings)
 {
 	const std::string path = storage_path(settings_file_name);
 	if (path.empty()) return storage::LoadResult::Failed;
 
 	json settings;
-	if (!read_json_with_backup(path, settings)) return missing_or_failed(path);
+	if (!read_json_with_backup(path, &settings)) return missing_or_failed(path);
 
 	try {
-		t_settings.window_width = settings.value("window_width", t_settings.window_width);
-		t_settings.window_height = settings.value("window_height", t_settings.window_height);
-		t_settings.auto_lock_minutes = settings.value("auto_lock_minutes", t_settings.auto_lock_minutes);
-		t_settings.zoom_stop = read_zoom_stop(settings, t_settings.zoom_stop);
-		t_settings.selected_game = settings.value("carousel_selected_banner", t_settings.selected_game);
-		copy_to(settings.value("last_run_version", std::string{}), t_settings.last_run_version);
-		copy_to(settings.value("release_notes_version", std::string{}), t_settings.release_notes_version);
-		copy_to(settings.value("release_notes", std::string{}), t_settings.release_notes);
+		t_settings->window_width = settings.value("window_width", t_settings->window_width);
+		t_settings->window_height = settings.value("window_height", t_settings->window_height);
+		t_settings->auto_lock_minutes = settings.value("auto_lock_minutes", t_settings->auto_lock_minutes);
+		t_settings->zoom_stop = read_zoom_stop(settings, t_settings->zoom_stop);
+		t_settings->selected_game = settings.value("carousel_selected_banner", t_settings->selected_game);
+		copy_to(settings.value("last_run_version", std::string{}), t_settings->last_run_version);
+		copy_to(settings.value("release_notes_version", std::string{}), t_settings->release_notes_version);
+		copy_to(settings.value("release_notes", std::string{}), t_settings->release_notes);
 
 		read_bool_and_float_settings(settings, t_settings);
 		read_game_order(settings, t_settings);
@@ -301,20 +295,20 @@ storage::LoadResult read_settings(Settings &t_settings)
 	return storage::LoadResult::Ok;
 }
 
-json visible_titles(const Library &t_library, u16 t_mask)
+json visible_titles(const Library *t_library, u16 t_mask)
 {
 	json titles = json::array();
 
-	for (u32 game = 0; game < t_library.game_count; game += 1) {
+	for (u32 game = 0; game < t_library->game_count; game += 1) {
 		if ((t_mask & (1u << game)) != 0) {
-			titles.push_back(t_library.games[game].title);
+			titles.push_back(t_library->games[game].title);
 		}
 	}
 
 	return titles;
 }
 
-u16 visible_mask(const Library &t_library, const json &t_account)
+u16 visible_mask(const Library *t_library, const json &t_account)
 {
 	const auto titles = t_account.find("visible_in");
 	if (titles == t_account.end() || !titles->is_array()) return t_account.value("visible_mask", u16{0});
@@ -322,8 +316,8 @@ u16 visible_mask(const Library &t_library, const json &t_account)
 	u16 mask = 0;
 
 	for (const json &title : *titles) {
-		for (u32 game = 0; game < t_library.game_count && title.is_string(); game += 1) {
-			if (t_library.games[game].title == title.get_ref<const std::string &>()) {
+		for (u32 game = 0; game < t_library->game_count && title.is_string(); game += 1) {
+			if (t_library->games[game].title == title.get_ref<const std::string &>()) {
 				mask |= static_cast<u16>(1u << game);
 			}
 		}
@@ -332,15 +326,14 @@ u16 visible_mask(const Library &t_library, const json &t_account)
 	return mask;
 }
 
-json game_to_json(const Library &t_library, const Game &t_game)
+json game_to_json(const Library *t_library, const Game &t_game)
 {
 	json accounts = json::array();
 
 	for (const Account &account : std::span{t_game.accounts, t_game.account_count}) {
 		json entry{
-			{"username", account.username}, {"note", account.note},			{"region", account.region},
-			{"password", account.password}, {"favorite", account.favorite}, {"last_used", account.last_used},
-			{"order", account.order},
+			{"username", account.username}, {"note", account.note},			  {"region", account.region}, {"password", account.password},
+			{"favorite", account.favorite}, {"last_used", account.last_used}, {"order", account.order},
 		};
 
 		if (account.visible_game_mask != 0) {
@@ -353,32 +346,31 @@ json game_to_json(const Library &t_library, const Game &t_game)
 	return json{{"title", std::string{t_game.title}}, {"accounts", std::move(accounts)}};
 }
 
-void read_game_accounts(const json &t_json, const Library &t_library, Game &t_game)
+void read_game_accounts(const json &t_json, const Library *t_library, Game *t_game)
 {
-	t_game.account_count = 0;
+	t_game->account_count = 0;
 
 	const auto accounts = t_json.find("accounts");
 	if (accounts == t_json.end() || !accounts->is_array()) return;
 
 	for (const json &entry : *accounts) {
-		if (t_game.account_count >= max_accounts_per_game) break;
+		if (t_game->account_count >= max_accounts_per_game) break;
 
-		Account &account = t_game.accounts[t_game.account_count];
-		account.assign(entry.value("username", std::string{}), entry.value("note", std::string{}),
-					   entry.value("password", std::string{}));
-		copy_to(entry.value("region", std::string{}), account.region);
-		account.visible_game_mask = visible_mask(t_library, entry);
-		account.favorite = entry.value("favorite", false);
-		account.last_used = entry.value("last_used", i64{0});
-		account.order = entry.value("order", u32{0});
+		Account *account = &t_game->accounts[t_game->account_count];
+		account->assign(entry.value("username", std::string{}), entry.value("note", std::string{}), entry.value("password", std::string{}));
+		copy_to(entry.value("region", std::string{}), account->region);
+		account->visible_game_mask = visible_mask(t_library, entry);
+		account->favorite = entry.value("favorite", false);
+		account->last_used = entry.value("last_used", i64{0});
+		account->order = entry.value("order", u32{0});
 
-		t_game.account_count += 1;
+		t_game->account_count += 1;
 	}
 }
 
-Game *find_game(Library &t_library, std::string_view t_title)
+Game *find_game(Library *t_library, std::string_view t_title)
 {
-	for (Game &game : std::span{t_library.games, t_library.game_count}) {
+	for (Game &game : std::span{t_library->games, t_library->game_count}) {
 		if (game.title == t_title) return &game;
 	}
 
@@ -387,46 +379,45 @@ Game *find_game(Library &t_library, std::string_view t_title)
 
 template <typename Buffer>
 struct WipedOnExit {
-	Buffer &buffer;
+	Buffer *buffer;
 
 	~WipedOnExit()
 	{
-		sodium_memzero(buffer.data(), buffer.size());
+		sodium_memzero(buffer->data(), buffer->size());
 	}
 };
 
-bool decrypt_vault(const json &t_envelope, const MasterKey &t_master_key, std::vector<u8> &t_out_plaintext)
+bool decrypt_vault(const json &t_envelope, const MasterKey *t_master_key, std::vector<u8> *t_out_plaintext)
 {
 	u8 nonce[crypto::nonce_size];
 	u8 tag[crypto::tag_size];
 	std::vector<u8> ciphertext;
 
-	if (!from_hex(t_envelope.value("nonce_hex", std::string{}), nonce) ||
-		!from_hex(t_envelope.value("tag_hex", std::string{}), tag) ||
-		!from_base64(t_envelope.value("ciphertext_b64", std::string{}), ciphertext)) {
+	if (!from_hex(t_envelope.value("nonce_hex", std::string{}), nonce) || !from_hex(t_envelope.value("tag_hex", std::string{}), tag) ||
+		!from_base64(t_envelope.value("ciphertext_b64", std::string{}), &ciphertext)) {
 		return false;
 	}
 
-	t_out_plaintext.resize(ciphertext.size());
+	t_out_plaintext->resize(ciphertext.size());
 
-	return crypto::decrypt(t_master_key.data_key(), nonce, ciphertext, tag, t_out_plaintext.data());
+	return crypto::decrypt(t_master_key->data_key(), nonce, ciphertext, tag, t_out_plaintext->data());
 }
 
-storage::LoadResult read_accounts(Library &t_library, const MasterKey &t_master_key)
+storage::LoadResult read_accounts(Library *t_library, const MasterKey *t_master_key)
 {
-	if (!t_master_key.is_unlocked()) return storage::LoadResult::Locked;
+	if (!t_master_key->is_unlocked()) return storage::LoadResult::Locked;
 
 	const std::string path = storage_path(accounts_file_name);
 	if (path.empty()) return storage::LoadResult::Failed;
 
 	json envelope;
-	if (!read_json_with_backup(path, envelope)) return missing_or_failed(path);
+	if (!read_json_with_backup(path, &envelope)) return missing_or_failed(path);
 
 	try {
 		std::vector<u8> plaintext;
-		const WipedOnExit wipe_plaintext{plaintext};
+		const WipedOnExit wipe_plaintext{&plaintext};
 
-		if (!decrypt_vault(envelope, t_master_key, plaintext)) return storage::LoadResult::Failed;
+		if (!decrypt_vault(envelope, t_master_key, &plaintext)) return storage::LoadResult::Failed;
 
 		const json games = json::parse(plaintext.begin(), plaintext.end(), nullptr, false);
 		if (!games.is_array()) return storage::LoadResult::Failed;
@@ -437,15 +428,15 @@ storage::LoadResult read_accounts(Library &t_library, const MasterKey &t_master_
 
 		for (const json &entry : games) {
 			if (Game *game = find_game(t_library, entry.value("title", std::string{}))) {
-				read_game_accounts(entry, t_library, *game);
+				read_game_accounts(entry, t_library, game);
 			} else {
 				unlisted.push_back(entry);
 			}
 		}
 
-		t_library.unlisted_games = unlisted.empty() ? std::string{} : unlisted.dump();
+		t_library->unlisted_games = unlisted.empty() ? std::string{} : unlisted.dump();
 
-		t_library.number_unordered_accounts();
+		t_library->number_unordered_accounts();
 	} catch (const json::exception &) {
 		return storage::LoadResult::Failed;
 	}
@@ -468,7 +459,7 @@ std::string storage::data_directory()
 	return directory;
 }
 
-storage::LoadResult storage::load_settings(Settings &t_settings)
+storage::LoadResult storage::load_settings(Settings *t_settings)
 {
 	const LoadResult result = read_settings(t_settings);
 
@@ -483,7 +474,7 @@ storage::LoadResult storage::load_settings(Settings &t_settings)
 	return result;
 }
 
-bool storage::save_settings(const Settings &t_settings)
+bool storage::save_settings(const Settings *t_settings)
 {
 	if (!g_settings_writable) return false;
 
@@ -491,41 +482,41 @@ bool storage::save_settings(const Settings &t_settings)
 	if (path.empty()) return false;
 
 	json game_order = json::array();
-	for (u32 i = 0; i < t_settings.game_order_count; i += 1) {
-		game_order.push_back(t_settings.game_order[i]);
+	for (u32 i = 0; i < t_settings->game_order_count; i += 1) {
+		game_order.push_back(t_settings->game_order[i]);
 	}
 
-	const Color accent = t_settings.accent;
+	const Color accent = t_settings->accent;
 	json settings{
 		{"format_version", format_version},
-		{"window_width", t_settings.window_width},
-		{"window_height", t_settings.window_height},
-		{"background", background_labels[static_cast<u32>(t_settings.background_style)].id},
+		{"window_width", t_settings->window_width},
+		{"window_height", t_settings->window_height},
+		{"background", background_labels[static_cast<u32>(t_settings->background_style)].id},
 		{"accent_color", json::array({accent.r, accent.g, accent.b, accent.a})},
-		{"font_name", t_settings.font_name},
-		{"theme", theme_labels[static_cast<u32>(t_settings.theme)].id},
-		{"auto_lock_minutes", t_settings.auto_lock_minutes},
-		{"last_run_version", t_settings.last_run_version},
-		{"release_notes_version", t_settings.release_notes_version},
-		{"release_notes", t_settings.release_notes},
-		{"view_zoom", t_settings.zoom_stop},
-		{"carousel_selected_banner", t_settings.selected_game},
+		{"font_name", t_settings->font_name},
+		{"theme", theme_labels[static_cast<u32>(t_settings->theme)].id},
+		{"auto_lock_minutes", t_settings->auto_lock_minutes},
+		{"last_run_version", t_settings->last_run_version},
+		{"release_notes_version", t_settings->release_notes_version},
+		{"release_notes", t_settings->release_notes},
+		{"view_zoom", t_settings->zoom_stop},
+		{"carousel_selected_banner", t_settings->selected_game},
 		{"carousel_order", game_order},
 		{"master_password", master_password_to_json(t_settings)},
 	};
 
 	for (const BoolSetting &setting : bool_settings) {
-		settings[setting.key] = t_settings.*setting.value;
+		settings[setting.key] = t_settings->*setting.value;
 	}
 
 	for (const FloatSetting &setting : float_settings) {
-		settings[setting.key] = t_settings.*setting.value;
+		settings[setting.key] = t_settings->*setting.value;
 	}
 
 	return write_file_atomic(path, settings.dump(2));
 }
 
-storage::LoadResult storage::load_accounts(Library &t_library, const MasterKey &t_master_key)
+storage::LoadResult storage::load_accounts(Library *t_library, const MasterKey *t_master_key)
 {
 	const LoadResult result = read_accounts(t_library, t_master_key);
 
@@ -537,23 +528,23 @@ storage::LoadResult storage::load_accounts(Library &t_library, const MasterKey &
 	return result;
 }
 
-bool storage::save_accounts(const Library &t_library, const MasterKey &t_master_key)
+bool storage::save_accounts(const Library *t_library, const MasterKey *t_master_key)
 {
-	if (!t_master_key.is_unlocked() || !g_accounts_writable) return false;
+	if (!t_master_key->is_unlocked() || !g_accounts_writable) return false;
 
 	json games = json::array();
-	for (const Game &game : std::span{t_library.games, t_library.game_count}) {
+	for (const Game &game : std::span{t_library->games, t_library->game_count}) {
 		games.push_back(game_to_json(t_library, game));
 	}
 
-	if (!t_library.unlisted_games.empty()) {
-		for (json &entry : json::parse(t_library.unlisted_games)) {
+	if (!t_library->unlisted_games.empty()) {
+		for (json &entry : json::parse(t_library->unlisted_games)) {
 			games.push_back(std::move(entry));
 		}
 	}
 
 	std::string plaintext = games.dump();
-	const WipedOnExit wipe_plaintext{plaintext};
+	const WipedOnExit wipe_plaintext{&plaintext};
 
 	const std::span<const u8> plaintext_bytes{reinterpret_cast<const u8 *>(plaintext.data()), plaintext.size()};
 
@@ -565,7 +556,7 @@ bool storage::save_accounts(const Library &t_library, const MasterKey &t_master_
 
 	u8 tag[crypto::tag_size];
 	std::vector<u8> ciphertext(plaintext.size());
-	if (!crypto::encrypt(t_master_key.data_key(), nonce, plaintext_bytes, ciphertext.data(), tag)) return false;
+	if (!crypto::encrypt(t_master_key->data_key(), nonce, plaintext_bytes, ciphertext.data(), tag)) return false;
 
 	const json envelope{
 		{"format_version", format_version},

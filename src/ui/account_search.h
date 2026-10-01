@@ -15,8 +15,7 @@ class Window;
 
 class AccountSearch : public Widget {
   public:
-	AccountSearch(const Library &t_library, const Fonts &t_fonts, const Assets &t_assets, const Window &t_window,
-				  CommandQueue &t_commands);
+	AccountSearch(const Library *t_library, const Fonts *t_fonts, const Assets *t_assets, const Window *t_window, CommandQueue *t_commands);
 
 	void open();
 	void close();
@@ -27,7 +26,7 @@ class AccountSearch : public Widget {
 	}
 
 	void update(float t_delta_seconds) override;
-	void draw(DrawList &t_draw_list) override;
+	void draw(DrawList *t_draw_list) override;
 
 	bool on_pointer_down(Vec2 t_point) override;
 	bool on_pointer_move(Vec2 t_point) override;
@@ -84,16 +83,16 @@ class AccountSearch : public Widget {
 	Rect row_rect(const Layout &t_layout, u32 t_row) const;
 	std::optional<u32> row_at(const Layout &t_layout, Vec2 t_point) const;
 
-	void draw_header(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha);
-	void draw_result(DrawList &t_draw_list, Rect t_row, AccountRef t_account, bool t_highlighted, u8 t_alpha) const;
-	void draw_action(DrawList &t_draw_list, Rect t_row, const Action &t_action, bool t_highlighted, u8 t_alpha) const;
-	void draw_footer(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
+	void draw_header(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha);
+	void draw_result(DrawList *t_draw_list, Rect t_row, AccountRef t_account, bool t_highlighted, u8 t_alpha) const;
+	void draw_action(DrawList *t_draw_list, Rect t_row, const Action &t_action, bool t_highlighted, u8 t_alpha) const;
+	void draw_footer(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha) const;
 
-	const Library &m_library;
-	const Fonts &m_fonts;
-	const Assets &m_assets;
-	const Window &m_window;
-	CommandQueue &m_commands;
+	const Library *m_library;
+	const Fonts *m_fonts;
+	const Assets *m_assets;
+	const Window *m_window;
+	CommandQueue *m_commands;
 
 	bool m_open = false;
 	float m_open_amount = 0.0f;

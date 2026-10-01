@@ -27,8 +27,8 @@ enum class SetupOutcome : u8 {
 
 class SetupScreen : public Widget {
   public:
-	SetupScreen(SetupMode t_mode, const Settings &t_settings, const Fonts &t_fonts, const Fonts &t_heading_fonts,
-				const Fonts &t_title_fonts, const Assets &t_assets, Window &t_window);
+	SetupScreen(SetupMode t_mode, const Settings *t_settings, const Fonts *t_fonts, const Fonts *t_heading_fonts, const Fonts *t_title_fonts,
+				const Assets *t_assets, Window *t_window);
 
 	void set_app_icon(const Texture *t_icon)
 	{
@@ -41,7 +41,7 @@ class SetupScreen : public Widget {
 	}
 
 	void update(float t_delta_seconds) override;
-	void draw(DrawList &t_draw_list) override;
+	void draw(DrawList *t_draw_list) override;
 
 	bool on_pointer_down(Vec2 t_point) override;
 	bool on_pointer_move(Vec2 t_point) override;
@@ -121,26 +121,25 @@ class SetupScreen : public Widget {
 	Hit hit_at(Vec2 t_point) const;
 
 	Reveal reveal(float t_seconds, u32 t_order) const;
-	void draw_page(DrawList &t_draw_list, Page t_page, const PageDraw &t_draw);
-	void draw_header(DrawList &t_draw_list, Page t_page, const PageDraw &t_draw) const;
-	void draw_choice(DrawList &t_draw_list, u32 t_choice, const PageDraw &t_draw) const;
-	void draw_location(DrawList &t_draw_list, const PageDraw &t_draw);
-	void draw_check_row(DrawList &t_draw_list, Rect t_row, std::string_view t_label, float t_checked, float t_hover,
-						float t_alpha, Color t_fill) const;
-	void draw_options(DrawList &t_draw_list, Page t_page, const PageDraw &t_draw, u32 t_first_order) const;
-	void draw_confirm(DrawList &t_draw_list, const PageDraw &t_draw) const;
-	void draw_installed_location(DrawList &t_draw_list, const PageDraw &t_draw) const;
-	void draw_status(DrawList &t_draw_list, Page t_page, const PageDraw &t_draw) const;
-	void draw_footer(DrawList &t_draw_list, Page t_page, const PageDraw &t_draw) const;
-	void draw_app_icon(DrawList &t_draw_list, Rect t_rect, u8 t_alpha) const;
+	void draw_page(DrawList *t_draw_list, Page t_page, const PageDraw &t_draw);
+	void draw_header(DrawList *t_draw_list, Page t_page, const PageDraw &t_draw) const;
+	void draw_choice(DrawList *t_draw_list, u32 t_choice, const PageDraw &t_draw) const;
+	void draw_location(DrawList *t_draw_list, const PageDraw &t_draw);
+	void draw_check_row(DrawList *t_draw_list, Rect t_row, std::string_view t_label, float t_checked, float t_hover, float t_alpha, Color t_fill) const;
+	void draw_options(DrawList *t_draw_list, Page t_page, const PageDraw &t_draw, u32 t_first_order) const;
+	void draw_confirm(DrawList *t_draw_list, const PageDraw &t_draw) const;
+	void draw_installed_location(DrawList *t_draw_list, const PageDraw &t_draw) const;
+	void draw_status(DrawList *t_draw_list, Page t_page, const PageDraw &t_draw) const;
+	void draw_footer(DrawList *t_draw_list, Page t_page, const PageDraw &t_draw) const;
+	void draw_app_icon(DrawList *t_draw_list, Rect t_rect, u8 t_alpha) const;
 
 	SetupMode m_mode;
-	const Settings &m_settings;
-	const Fonts &m_fonts;
-	const Fonts &m_heading_fonts;
-	const Fonts &m_title_fonts;
-	const Assets &m_assets;
-	Window &m_window;
+	const Settings *m_settings;
+	const Fonts *m_fonts;
+	const Fonts *m_heading_fonts;
+	const Fonts *m_title_fonts;
+	const Assets *m_assets;
+	Window *m_window;
 	const Texture *m_app_icon = nullptr;
 
 	std::optional<installation::Installed> m_installed;

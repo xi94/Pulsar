@@ -63,8 +63,7 @@ std::vector<u8> sprite_pixels(std::span<const GradientStop> t_stops)
 
 	for (u32 y = 0; y < sprite_size; y += 1) {
 		for (u32 x = 0; x < sprite_size; x += 1) {
-			const float distance =
-				std::hypot(static_cast<float>(x) + 0.5f - half, static_cast<float>(y) + 0.5f - half) / half;
+			const float distance = std::hypot(static_cast<float>(x) + 0.5f - half, static_cast<float>(y) + 0.5f - half) / half;
 			u8 *pixel = pixels.data() + (static_cast<usize>(y) * sprite_size + x) * 4;
 
 			pixel[0] = 255;
@@ -90,7 +89,7 @@ Color snow_color()
 
 Snowfall::~Snowfall() = default;
 
-void Snowfall::create_textures(Renderer &t_renderer)
+void Snowfall::create_textures(Renderer *t_renderer)
 {
 	const std::span<const GradientStop> stops[layer_count]{far_stops, near_stops};
 
@@ -144,19 +143,19 @@ void Snowfall::update(float t_delta_seconds, Rect t_area, bool t_focused)
 	m_time += step;
 
 	for (u32 layer = 0; layer < layer_count; layer += 1) {
-		std::vector<Flake> &flakes = m_flakes[layer];
+		std::vector<Flake> *flakes = &m_flakes[layer];
 		const auto wanted = static_cast<usize>(std::lround(static_cast<float>(layer_flakes[layer]) * density));
-		const bool filling = flakes.empty();
+		const bool filling = flakes->empty();
 
-		while (flakes.size() < wanted) {
-			flakes.push_back(spawn(layer, filling));
+		while (flakes->size() < wanted) {
+			flakes->push_back(spawn(layer, filling));
 		}
 
-		flakes.resize(wanted);
+		flakes->resize(wanted);
 
 		const float drift = wind * (0.35f + depth_of(layer) * 0.8f);
 
-		for (Flake &flake : flakes) {
+		for (Flake &flake : *flakes) {
 			flake.y += flake.fall_speed * step;
 			flake.x += (drift + std::cos(m_time * flake.frequency + flake.phase) * flake.sway) * step;
 
@@ -179,21 +178,21 @@ void Snowfall::update(float t_delta_seconds, Rect t_area, bool t_focused)
 	}
 }
 
-void Snowfall::draw(DrawList &t_draw_list) const
+void Snowfall::draw(DrawList *t_draw_list) const
 {
 	if (m_flakes[0].empty()) return;
 
 	const Color color = snow_color();
 
-	t_draw_list.push_clip(m_area);
+	t_draw_list->push_clip(m_area);
 
 	for (u32 layer = 0; layer < layer_count; layer += 1) {
 		for (const Flake &flake : m_flakes[layer]) {
 			const float size = flake.radius * sprite_scale;
-			t_draw_list.add_image(Rect{flake.x - size, flake.y - size, size * 2.0f, size * 2.0f},
-								  m_sprites[layer].get(), with_alpha(color, to_alpha(flake.alpha)));
+			t_draw_list->add_image(Rect{flake.x - size, flake.y - size, size * 2.0f, size * 2.0f}, m_sprites[layer].get(),
+								   with_alpha(color, to_alpha(flake.alpha)));
 		}
 	}
 
-	t_draw_list.pop_clip();
+	t_draw_list->pop_clip();
 }

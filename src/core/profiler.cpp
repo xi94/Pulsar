@@ -59,13 +59,13 @@ Scope *find_or_add_scope(const char *t_name)
 
 	if (g_profiler.scope_count >= max_scopes) return nullptr;
 
-	Scope &scope = g_profiler.scopes[g_profiler.scope_count];
+	Scope *scope = &g_profiler.scopes[g_profiler.scope_count];
 	g_profiler.scope_count += 1;
 
-	scope.name = t_name;
-	scope.stats.name = t_name;
+	scope->name = t_name;
+	scope->stats.name = t_name;
 
-	return &scope;
+	return scope;
 }
 }
 
@@ -89,14 +89,14 @@ void profiler::end_frame()
 	g_profiler.in_frame = false;
 
 	for (u32 i = 0; i < g_profiler.scope_count; i += 1) {
-		Scope &scope = g_profiler.scopes[i];
-		const float last_ms = ticks_to_ms(scope.frame_ticks);
+		Scope *scope = &g_profiler.scopes[i];
+		const float last_ms = ticks_to_ms(scope->frame_ticks);
 
-		scope.stats.calls = scope.frame_calls;
-		scope.stats.depth = scope.depth;
-		scope.stats.last_ms = last_ms;
-		scope.stats.average_ms = scope.stats.average_ms * average_retention + last_ms * (1.0f - average_retention);
-		scope.stats.peak_ms = std::max(scope.stats.peak_ms, last_ms);
+		scope->stats.calls = scope->frame_calls;
+		scope->stats.depth = scope->depth;
+		scope->stats.last_ms = last_ms;
+		scope->stats.average_ms = scope->stats.average_ms * average_retention + last_ms * (1.0f - average_retention);
+		scope->stats.peak_ms = std::max(scope->stats.peak_ms, last_ms);
 	}
 }
 
@@ -119,8 +119,8 @@ void profiler::end_scope()
 
 	g_profiler.open_count -= 1;
 
-	Scope &scope = g_profiler.scopes[g_profiler.open_scopes[g_profiler.open_count]];
-	scope.frame_ticks += current_ticks() - scope.start_ticks;
+	Scope *scope = &g_profiler.scopes[g_profiler.open_scopes[g_profiler.open_count]];
+	scope->frame_ticks += current_ticks() - scope->start_ticks;
 }
 
 void profiler::reset()

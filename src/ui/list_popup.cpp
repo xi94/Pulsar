@@ -49,19 +49,18 @@ constexpr float open_ease_rate = 22.0f;
 constexpr float resize_ease_rate = 20.0f;
 constexpr float slide_distance = 6.0f;
 
-float search_height(const Fonts &t_fonts)
+float search_height(const Fonts *t_fonts)
 {
-	return std::max(40.0f, t_fonts.body.line_height() + 16.0f);
+	return std::max(40.0f, t_fonts->body.line_height() + 16.0f);
 }
 
-float row_height(const Fonts &t_fonts)
+float row_height(const Fonts *t_fonts)
 {
-	return std::max(30.0f, t_fonts.body.line_height() + 10.0f);
+	return std::max(30.0f, t_fonts->body.line_height() + 10.0f);
 }
 }
 
-ListPopup::ListPopup(const Fonts &t_fonts, const Assets &t_assets, const Settings &t_settings,
-					 ListPopupOptions t_options)
+ListPopup::ListPopup(const Fonts *t_fonts, const Assets *t_assets, const Settings *t_settings, ListPopupOptions t_options)
 	: m_fonts(t_fonts)
 	, m_assets(t_assets)
 	, m_settings(t_settings)
@@ -125,7 +124,7 @@ u32 ListPopup::hint_count() const
 
 float ListPopup::hint_width(u32 t_hint) const
 {
-	const Font &font = m_fonts.secondary;
+	const Font &font = m_fonts->secondary;
 	float keys = 0.0f;
 
 	if (t_hint == 0) {
@@ -163,8 +162,7 @@ float ListPopup::footer_height() const
 {
 	const auto lines = static_cast<float>(hint_lines());
 
-	return lines * controls::keycap_height(m_fonts.secondary) + (lines - 1.0f) * hint_line_gap +
-		   footer_padding_y * 2.0f;
+	return lines * controls::keycap_height(m_fonts->secondary) + (lines - 1.0f) * hint_line_gap + footer_padding_y * 2.0f;
 }
 
 float ListPopup::chrome_height() const
@@ -212,8 +210,7 @@ ListPopup::Layout ListPopup::layout() const
 	const float max_x = std::max(min_x, m_bounds.right() - bounds_margin - width);
 
 	Layout result{};
-	result.popup = Rect{std::clamp(m_anchor.right() - width, min_x, max_x),
-						snapped_to_pixel(std::max(y, m_bounds.y + bounds_margin)), width, height};
+	result.popup = Rect{std::clamp(m_anchor.right() - width, min_x, max_x), snapped_to_pixel(std::max(y, m_bounds.y + bounds_margin)), width, height};
 
 	Rect remaining = result.popup;
 	if (is_searchable()) {
@@ -249,8 +246,7 @@ Rect ListPopup::clear_button_rect(const Layout &t_layout) const
 {
 	const Rect &search = t_layout.search;
 
-	return Rect{search.right() - search_field_margin - clear_margin - clear_size, search.center().y - clear_size * 0.5f,
-				clear_size, clear_size};
+	return Rect{search.right() - search_field_margin - clear_margin - clear_size, search.center().y - clear_size * 0.5f, clear_size, clear_size};
 }
 
 Rect ListPopup::row_rect(const Layout &t_layout, u32 t_match) const
@@ -347,8 +343,8 @@ void ListPopup::update(float t_delta_seconds, Rect t_anchor, Rect t_bounds)
 	}
 
 	m_open_amount = animation::ease_toward(m_open_amount, m_open ? 1.0f : 0.0f, open_ease_rate, t_delta_seconds);
-	m_shown_rows = animation::ease_toward(m_shown_rows, static_cast<float>(shown_row_target()), resize_ease_rate,
-										  t_delta_seconds, animation::settled_pixels / row_height(m_fonts));
+	m_shown_rows = animation::ease_toward(m_shown_rows, static_cast<float>(shown_row_target()), resize_ease_rate, t_delta_seconds,
+										  animation::settled_pixels / row_height(m_fonts));
 	m_scroll.update(t_delta_seconds);
 	m_search.update(t_delta_seconds);
 }
@@ -368,7 +364,7 @@ void ListPopup::on_pointer_down(Vec2 t_point)
 		m_press = Press::Clear;
 	} else if (current.search.contains(t_point)) {
 		m_press = Press::Search;
-		m_search.on_pointer_down(m_fonts.body, search_field_rect(current), t_point.x);
+		m_search.on_pointer_down(m_fonts->body, search_field_rect(current), t_point.x);
 	} else {
 		m_press = Press::Row;
 		m_pressed_match = match_at(current, t_point);
@@ -383,7 +379,7 @@ void ListPopup::on_pointer_move(Vec2 t_point)
 	m_scroll.on_pointer_move(t_point.y, list_scroll(current));
 
 	if (m_search.is_selecting()) {
-		m_search.on_pointer_move(m_fonts.body, search_field_rect(current), t_point.x);
+		m_search.on_pointer_move(m_fonts->body, search_field_rect(current), t_point.x);
 	}
 
 	if (m_press == Press::None || m_press == Press::Row) {
@@ -442,7 +438,7 @@ TextInput *ListPopup::on_right_click(Vec2 t_point)
 	const Layout current = layout();
 	if (!current.search.contains(t_point)) return nullptr;
 
-	m_search.on_right_click(m_fonts.body, search_field_rect(current), t_point.x);
+	m_search.on_right_click(m_fonts->body, search_field_rect(current), t_point.x);
 
 	return &m_search;
 }
@@ -517,20 +513,18 @@ CursorKind ListPopup::cursor(Vec2 t_mouse) const
 	return match_at(current, t_mouse) ? CursorKind::Hand : CursorKind::Arrow;
 }
 
-void ListPopup::draw_search(DrawList &t_draw_list, const Layout &t_layout, Vec2 t_mouse, u8 t_alpha)
+void ListPopup::draw_search(DrawList *t_draw_list, const Layout &t_layout, Vec2 t_mouse, u8 t_alpha)
 {
 	const Theme &colors = theme();
 	const Rect &search = t_layout.search;
 	const bool has_query = !m_search.value().empty();
 	const Rect field = search.inset(search_field_margin);
-	const Rect icon{field.x + search_icon_inset, search.center().y - search_icon_size * 0.5f, search_icon_size,
-					search_icon_size};
+	const Rect icon{field.x + search_icon_inset, search.center().y - search_icon_size * 0.5f, search_icon_size, search_icon_size};
 
-	t_draw_list.add_bordered_rect(field, rounded(search_field_radius), faded(colors.field, t_alpha),
-								  faded(colors.separator, t_alpha), 1.0f);
+	t_draw_list->add_bordered_rect(field, rounded(search_field_radius), faded(colors.field, t_alpha), faded(colors.separator, t_alpha), 1.0f);
 	controls::draw_magnifier(t_draw_list, icon, faded(has_query ? colors.text_dim : colors.text_faint, t_alpha));
-	m_search.draw(t_draw_list, m_fonts.body, search_field_rect(t_layout), faded(colors.text, t_alpha),
-				  faded(m_settings.accent, t_alpha), search_field_rect(t_layout));
+	m_search.draw(t_draw_list, m_fonts->body, search_field_rect(t_layout), faded(colors.text, t_alpha), faded(m_settings->accent, t_alpha),
+				  search_field_rect(t_layout));
 
 	if (!has_query) return;
 
@@ -538,16 +532,15 @@ void ListPopup::draw_search(DrawList &t_draw_list, const Layout &t_layout, Vec2 
 	const bool hovered = clear.contains(t_mouse);
 
 	if (hovered) {
-		t_draw_list.add_rounded_rect(clear, rounded(clear.w * 0.5f), faded(colors.control_hover, t_alpha));
+		t_draw_list->add_rounded_rect(clear, rounded(clear.w * 0.5f), faded(colors.control_hover, t_alpha));
 	}
 
 	controls::draw_x(t_draw_list, clear.inset(2.0f), faded(hovered ? colors.text : colors.text_faint, t_alpha));
 }
 
-void ListPopup::draw_label(DrawList &t_draw_list, Rect t_row, float t_left, float t_max_width, std::string_view t_label,
-						   u8 t_alpha) const
+void ListPopup::draw_label(DrawList *t_draw_list, Rect t_row, float t_left, float t_max_width, std::string_view t_label, u8 t_alpha) const
 {
-	const Font &font = m_fonts.body;
+	const Font &font = m_fonts->body;
 	const Vec2 baseline{t_left, font.centered_baseline(t_row)};
 	const Color text = faded(theme().text, t_alpha);
 	const usize found = find_ignoring_case(t_label, m_matched_query);
@@ -562,19 +555,19 @@ void ListPopup::draw_label(DrawList &t_draw_list, Rect t_row, float t_left, floa
 	const std::string_view after = t_label.substr(found + matched.size());
 	const float matched_x = baseline.x + text_width(font, before);
 	const float after_x = matched_x + text_width(font, matched);
-	const Color match = faded(mix(m_settings.accent, theme().text, match_contrast), t_alpha);
+	const Color match = faded(mix(m_settings->accent, theme().text, match_contrast), t_alpha);
 
 	draw_text(t_draw_list, font, baseline, before, text);
 	draw_text(t_draw_list, font, Vec2{matched_x, baseline.y}, matched, match);
 	draw_text(t_draw_list, font, Vec2{after_x, baseline.y}, after, text);
 }
 
-void ListPopup::draw_row(DrawList &t_draw_list, Rect t_row, u32 t_item, bool t_highlighted, u8 t_alpha) const
+void ListPopup::draw_row(DrawList *t_draw_list, Rect t_row, u32 t_item, bool t_highlighted, u8 t_alpha) const
 {
 	const Color backdrop = t_highlighted ? hovered(theme().popup) : theme().popup;
 
 	if (t_highlighted) {
-		t_draw_list.add_rounded_rect(t_row, rounded(row_radius), faded(backdrop, t_alpha));
+		t_draw_list->add_rounded_rect(t_row, rounded(row_radius), faded(backdrop, t_alpha));
 	}
 
 	float left = t_row.x + row_inset;
@@ -587,41 +580,38 @@ void ListPopup::draw_row(DrawList &t_draw_list, Rect t_row, u32 t_item, bool t_h
 		left = preview.right() + row_gap;
 	}
 
-	const Rect check{t_row.right() - row_inset - check_size, t_row.center().y - check_size * 0.5f, check_size,
-					 check_size};
+	const Rect check{t_row.right() - row_inset - check_size, t_row.center().y - check_size * 0.5f, check_size, check_size};
 	if (m_selected == t_item) {
-		controls::draw_check(t_draw_list, m_assets, check, faded(m_settings.accent, t_alpha));
+		controls::draw_check(t_draw_list, m_assets, check, faded(m_settings->accent, t_alpha));
 	}
 
 	draw_label(t_draw_list, t_row, left, check.x - row_gap - left, m_items[t_item], t_alpha);
 }
 
-void ListPopup::draw_rows(DrawList &t_draw_list, const Layout &t_layout, Vec2 t_mouse, u8 t_alpha) const
+void ListPopup::draw_rows(DrawList *t_draw_list, const Layout &t_layout, Vec2 t_mouse, u8 t_alpha) const
 {
 	if (m_matches.empty()) {
-		draw_text_centered(t_draw_list, m_fonts.secondary, t_layout.list, m_options.empty_message,
-						   faded(theme().text_faint, t_alpha));
+		draw_text_centered(t_draw_list, m_fonts->secondary, t_layout.list, m_options.empty_message, faded(theme().text_faint, t_alpha));
 		return;
 	}
 
 	const float height = row_height(m_fonts);
 	const auto first = static_cast<u32>(std::max(0.0f, m_scroll.offset() / height));
-	const u32 last = std::min(static_cast<u32>(m_matches.size()),
-							  static_cast<u32>((m_scroll.offset() + t_layout.list.h) / height) + 1);
+	const u32 last = std::min(static_cast<u32>(m_matches.size()), static_cast<u32>((m_scroll.offset() + t_layout.list.h) / height) + 1);
 
-	t_draw_list.push_clip(t_layout.list);
+	t_draw_list->push_clip(t_layout.list);
 
 	for (u32 match = first; match < last; match += 1) {
 		draw_row(t_draw_list, row_rect(t_layout, match), m_matches[match], match == m_highlighted, t_alpha);
 	}
 
-	t_draw_list.pop_clip();
+	t_draw_list->pop_clip();
 
 	m_scroll.draw_edge_fade(t_draw_list, t_layout.list, list_scroll(t_layout), faded(theme().popup, t_alpha));
 	m_scroll.draw(t_draw_list, list_scroll(t_layout), t_mouse, t_alpha);
 }
 
-void ListPopup::draw(DrawList &t_draw_list, Vec2 t_mouse)
+void ListPopup::draw(DrawList *t_draw_list, Vec2 t_mouse)
 {
 	if (m_open_amount <= 0.01f) return;
 
@@ -630,8 +620,7 @@ void ListPopup::draw(DrawList &t_draw_list, Vec2 t_mouse)
 	const Theme &colors = theme();
 
 	controls::draw_popup_shadow(t_draw_list, current.popup, popup_radius, m_open_amount);
-	t_draw_list.add_bordered_rect(current.popup, rounded(popup_radius), faded(colors.popup, alpha),
-								  faded(colors.border, alpha), 1.0f);
+	t_draw_list->add_bordered_rect(current.popup, rounded(popup_radius), faded(colors.popup, alpha), faded(colors.border, alpha), 1.0f);
 
 	if (is_searchable()) {
 		draw_search(t_draw_list, current, t_mouse, alpha);
@@ -644,10 +633,10 @@ void ListPopup::draw(DrawList &t_draw_list, Vec2 t_mouse)
 	}
 }
 
-void ListPopup::draw_key_hints(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const
+void ListPopup::draw_key_hints(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha) const
 {
 	const Theme &colors = theme();
-	const Font &font = m_fonts.secondary;
+	const Font &font = m_fonts->secondary;
 	const Rect &footer = t_layout.footer;
 	const float radius = popup_radius - 1.0f;
 	const float cap = controls::keycap_height(font);
@@ -657,8 +646,8 @@ void ListPopup::draw_key_hints(DrawList &t_draw_list, const Layout &t_layout, u8
 	float x = start;
 	float y = footer.y + footer_padding_y;
 
-	t_draw_list.add_rect(Rect{footer.x, footer.y - 1.0f, footer.w, 1.0f}, faded(colors.separator, t_alpha));
-	t_draw_list.add_rounded_rect(footer, rounded(0.0f, 0.0f, radius, radius), faded(colors.field, t_alpha));
+	t_draw_list->add_rect(Rect{footer.x, footer.y - 1.0f, footer.w, 1.0f}, faded(colors.separator, t_alpha));
+	t_draw_list->add_rounded_rect(footer, rounded(0.0f, 0.0f, radius, radius), faded(colors.field, t_alpha));
 
 	for (u32 i = 0; i < hint_count(); i += 1) {
 		const float width = hint_width(i);
@@ -674,8 +663,7 @@ void ListPopup::draw_key_hints(DrawList &t_draw_list, const Layout &t_layout, u8
 		if (i == 0) {
 			for (const bool up : {true, false}) {
 				const Rect key{snapped_to_pixel(text_x), snapped_to_pixel(y), cap, cap};
-				const Rect chevron{key.center().x - hint_arrow_size.x * 0.5f,
-								   key.center().y - hint_arrow_size.y * 0.5f - 0.5f, hint_arrow_size.x,
+				const Rect chevron{key.center().x - hint_arrow_size.x * 0.5f, key.center().y - hint_arrow_size.y * 0.5f - 0.5f, hint_arrow_size.x,
 								   hint_arrow_size.y};
 
 				controls::draw_keycap_frame(t_draw_list, key, colors.field, t_alpha);
@@ -685,15 +673,12 @@ void ListPopup::draw_key_hints(DrawList &t_draw_list, const Layout &t_layout, u8
 
 			text_x += hint_key_gap - hint_arrow_gap;
 		} else if (i == hover_hint) {
-			controls::draw_mouse_keycap(t_draw_list, Rect{snapped_to_pixel(text_x), snapped_to_pixel(y), cap, cap},
-										colors.field, t_alpha);
+			controls::draw_mouse_keycap(t_draw_list, Rect{snapped_to_pixel(text_x), snapped_to_pixel(y), cap, cap}, colors.field, t_alpha);
 			text_x += cap + hint_key_gap;
 		} else if (!hint_keys[i].empty()) {
 			const float key_width = controls::keycap_width(font, hint_keys[i]);
 
-			controls::draw_keycap(t_draw_list, font,
-								  Rect{snapped_to_pixel(text_x), snapped_to_pixel(y), key_width, cap}, hint_keys[i],
-								  colors.field, t_alpha);
+			controls::draw_keycap(t_draw_list, font, Rect{snapped_to_pixel(text_x), snapped_to_pixel(y), key_width, cap}, hint_keys[i], colors.field, t_alpha);
 			text_x += key_width + hint_key_gap;
 		}
 

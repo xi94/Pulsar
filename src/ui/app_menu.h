@@ -10,7 +10,7 @@ struct Fonts;
 
 class AppMenu : public Widget {
   public:
-	AppMenu(const Fonts &t_fonts, const Assets &t_assets, CommandQueue &t_commands);
+	AppMenu(const Fonts *t_fonts, const Assets *t_assets, CommandQueue *t_commands);
 
 	void open(bool t_unlocked, std::string_view t_update_status);
 	void close();
@@ -21,7 +21,7 @@ class AppMenu : public Widget {
 	}
 
 	void update(float t_delta_seconds) override;
-	void draw(DrawList &t_draw_list) override;
+	void draw(DrawList *t_draw_list) override;
 
 	bool on_pointer_up(Vec2 t_point) override;
 
@@ -37,9 +37,9 @@ class AppMenu : public Widget {
 
 	bool is_enabled(u32 t_item) const;
 
-	const Fonts &m_fonts;
-	const Assets &m_assets;
-	CommandQueue &m_commands;
+	const Fonts *m_fonts;
+	const Assets *m_assets;
+	CommandQueue *m_commands;
 
 	bool m_open = false;
 	bool m_unlocked = false;

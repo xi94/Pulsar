@@ -19,8 +19,7 @@ float g_pixel_scale = 1.0f;
 
 u32 pack(Color t_color)
 {
-	return static_cast<u32>(t_color.r) | (static_cast<u32>(t_color.g) << 8) | (static_cast<u32>(t_color.b) << 16) |
-		   (static_cast<u32>(t_color.a) << 24);
+	return static_cast<u32>(t_color.r) | (static_cast<u32>(t_color.g) << 8) | (static_cast<u32>(t_color.b) << 16) | (static_cast<u32>(t_color.a) << 24);
 }
 
 const std::array<Vec2, rounded_point_count> &corner_arc_directions()
@@ -46,8 +45,7 @@ const std::array<Vec2, rounded_point_count> &corner_arc_directions()
 
 bool is_square(CornerRadii t_radii)
 {
-	return t_radii.top_left <= 0.0f && t_radii.top_right <= 0.0f && t_radii.bottom_right <= 0.0f &&
-		   t_radii.bottom_left <= 0.0f;
+	return t_radii.top_left <= 0.0f && t_radii.top_right <= 0.0f && t_radii.bottom_right <= 0.0f && t_radii.bottom_left <= 0.0f;
 }
 
 Vec2 rounded_path_point(Rect t_path, float t_radius, float t_distance)
@@ -85,8 +83,7 @@ Vec2 rounded_path_point(Rect t_path, float t_radius, float t_distance)
 		const float along = std::min(remaining, edges[i]);
 
 		if (remaining <= edges[i] || i == 3) {
-			return Vec2{centers[i].x + normal.x * t_radius - normal.y * along,
-						centers[i].y + normal.y * t_radius + normal.x * along};
+			return Vec2{centers[i].x + normal.x * t_radius - normal.y * along, centers[i].y + normal.y * t_radius + normal.x * along};
 		}
 
 		remaining -= edges[i];
@@ -102,8 +99,7 @@ bool uses_rounded_box(ShaderKind t_shader)
 
 Vec2 uv_at(Rect t_rect, UvRect t_uv, Vec2 t_point)
 {
-	return Vec2{t_uv.u0 + (t_uv.u1 - t_uv.u0) * (t_point.x - t_rect.x) / t_rect.w,
-				t_uv.v0 + (t_uv.v1 - t_uv.v0) * (t_point.y - t_rect.y) / t_rect.h};
+	return Vec2{t_uv.u0 + (t_uv.u1 - t_uv.u0) * (t_point.x - t_rect.x) / t_rect.w, t_uv.v0 + (t_uv.v1 - t_uv.v0) * (t_point.y - t_rect.y) / t_rect.h};
 }
 }
 
@@ -136,8 +132,7 @@ CornerRadii rounded(float t_radius)
 
 CornerRadii rounded(float t_top_left, float t_top_right, float t_bottom_right, float t_bottom_left)
 {
-	return CornerRadii{scaled_radius(t_top_left), scaled_radius(t_top_right), scaled_radius(t_bottom_right),
-					   scaled_radius(t_bottom_left)};
+	return CornerRadii{scaled_radius(t_top_left), scaled_radius(t_top_right), scaled_radius(t_bottom_right), scaled_radius(t_bottom_left)};
 }
 
 UvRect cover_uv(float t_box_aspect, float t_texture_aspect)
@@ -235,8 +230,7 @@ void DrawList::pop_scale()
 
 Vec2 DrawList::scaled(Vec2 t_point) const
 {
-	return Vec2{m_scale.origin.x + (t_point.x - m_scale.origin.x) * m_scale.factor,
-				m_scale.origin.y + (t_point.y - m_scale.origin.y) * m_scale.factor};
+	return Vec2{m_scale.origin.x + (t_point.x - m_scale.origin.x) * m_scale.factor, m_scale.origin.y + (t_point.y - m_scale.origin.y) * m_scale.factor};
 }
 
 Rect DrawList::scaled(Rect t_rect) const
@@ -246,14 +240,12 @@ Rect DrawList::scaled(Rect t_rect) const
 	return Rect{top_left.x, top_left.y, t_rect.w * m_scale.factor, t_rect.h * m_scale.factor};
 }
 
-void DrawList::target(ShaderKind t_shader, const Texture *t_texture, RoundedBoxParams t_box,
-					  OutlineCountdownParams t_outline)
+void DrawList::target(ShaderKind t_shader, const Texture *t_texture, RoundedBoxParams t_box, OutlineCountdownParams t_outline)
 {
 	const bool clipped = m_clip_depth > 0;
 	const Rect clip = clipped ? m_clip_stack[m_clip_depth - 1] : Rect{};
 
-	const bool continues_open_command = m_has_open_command && m_open.shader == t_shader &&
-										m_open.texture == t_texture && m_open.clipped == clipped &&
+	const bool continues_open_command = m_has_open_command && m_open.shader == t_shader && m_open.texture == t_texture && m_open.clipped == clipped &&
 										m_open.clip == clip && (!uses_rounded_box(t_shader) || m_open.box == t_box) &&
 										(t_shader != ShaderKind::OutlineCountdown || m_open.outline == t_outline);
 	if (continues_open_command) return;
@@ -351,8 +343,7 @@ void DrawList::push_rounded(Rect t_rect, CornerRadii t_radii, UvRect t_uv, u32 t
 	const auto &directions = corner_arc_directions();
 	for (u32 i = 0; i < rounded_point_count; i += 1) {
 		const u32 corner = i / points_per_corner;
-		const Vec2 point{corner_centers[corner].x + radius[corner] * directions[i].x,
-						 corner_centers[corner].y + radius[corner] * directions[i].y};
+		const Vec2 point{corner_centers[corner].x + radius[corner] * directions[i].x, corner_centers[corner].y + radius[corner] * directions[i].y};
 		const Vec2 uv = uv_at(t_rect, t_uv, point);
 
 		const Vec2 scaled_point = scaled(point);
@@ -425,8 +416,7 @@ void DrawList::add_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Co
 	push_backdrop(ShaderKind::Backdrop, t_rect, t_top_left, t_top_right, t_bottom_left, t_bottom_right);
 }
 
-void DrawList::add_plain_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left,
-								  Color t_bottom_right)
+void DrawList::add_plain_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right)
 {
 	push_backdrop(ShaderKind::BackdropPlain, t_rect, t_top_left, t_top_right, t_bottom_left, t_bottom_right);
 }
@@ -444,8 +434,7 @@ void DrawList::add_pattern_swatch(Rect t_rect, CornerRadii t_radii, Color t_colo
 	push_rounded(t_rect, t_radii, UvRect{u, v, u, v}, pack(t_color));
 }
 
-void DrawList::push_backdrop(ShaderKind t_shader, Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left,
-							 Color t_bottom_right)
+void DrawList::push_backdrop(ShaderKind t_shader, Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right)
 {
 	target(t_shader);
 
@@ -529,8 +518,7 @@ void DrawList::add_rotated_image(Rect t_rect, float t_radians, const Texture *t_
 	const u32 tint = pack(t_tint);
 
 	const auto corner = [&](float t_offset_x, float t_offset_y, float t_u, float t_v) {
-		return Vertex2D{center.x + t_offset_x * cos_angle - t_offset_y * sin_angle,
-						center.y + t_offset_x * sin_angle + t_offset_y * cos_angle, t_u, t_v, tint};
+		return Vertex2D{center.x + t_offset_x * cos_angle - t_offset_y * sin_angle, center.y + t_offset_x * sin_angle + t_offset_y * cos_angle, t_u, t_v, tint};
 	};
 
 	const Vertex2D corners[4]{
@@ -555,8 +543,7 @@ void DrawList::add_banner_glow(Rect t_card, float t_card_radius, float t_glow_si
 {
 	m_has_animated_effects = true;
 
-	const Rect quad{t_card.x - t_glow_size, t_card.y - t_glow_size, t_card.w + t_glow_size * 2.0f,
-					t_card.h + t_glow_size * 2.0f};
+	const Rect quad{t_card.x - t_glow_size, t_card.y - t_glow_size, t_card.w + t_glow_size * 2.0f, t_card.h + t_glow_size * 2.0f};
 
 	const RoundedBoxParams glow{
 		.quad_width = quad.w,
@@ -583,8 +570,7 @@ void DrawList::add_shadow(Rect t_rect, float t_corner_radius, float t_blur, Colo
 	push_quad(quad, full_uv, pack(t_color));
 }
 
-void DrawList::add_outline_countdown(Rect t_path, float t_corner_radius, float t_remaining, float t_thickness,
-									 Color t_color)
+void DrawList::add_outline_countdown(Rect t_path, float t_corner_radius, float t_remaining, float t_thickness, Color t_color)
 {
 	constexpr float glow_radius = 1.8f;
 	constexpr float glow_margin = 8.0f;
@@ -593,8 +579,7 @@ void DrawList::add_outline_countdown(Rect t_path, float t_corner_radius, float t
 	if (remaining <= 0.0f) return;
 
 	const float radius = std::clamp(t_corner_radius, 0.0f, std::min(t_path.w, t_path.h) * 0.5f);
-	const float perimeter = (t_path.w - radius * 2.0f) * 2.0f + (t_path.h - radius * 2.0f) * 2.0f +
-							std::numbers::pi_v<float> * 2.0f * radius;
+	const float perimeter = (t_path.w - radius * 2.0f) * 2.0f + (t_path.h - radius * 2.0f) * 2.0f + std::numbers::pi_v<float> * 2.0f * radius;
 	const float lit_length = perimeter * remaining;
 	const Vec2 end = rounded_path_point(t_path, radius, lit_length);
 	const Vec2 center = t_path.center();

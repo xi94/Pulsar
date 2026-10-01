@@ -74,8 +74,7 @@ bool is_outline_font(std::string_view t_file)
 
 	const std::string_view extension = t_file.substr(dot);
 
-	return equals_ignoring_case(extension, ".ttf") || equals_ignoring_case(extension, ".ttc") ||
-		   equals_ignoring_case(extension, ".otf");
+	return equals_ignoring_case(extension, ".ttf") || equals_ignoring_case(extension, ".ttc") || equals_ignoring_case(extension, ".otf");
 }
 
 std::string_view display_name(std::string_view t_registered_name)
@@ -88,15 +87,14 @@ std::string_view display_name(std::string_view t_registered_name)
 	return t_registered_name.substr(0, t_registered_name.find(" & "));
 }
 
-void add_registered_fonts(HKEY t_root, std::vector<FontEntry> &t_entries)
+void add_registered_fonts(HKEY t_root, std::vector<FontEntry> *t_entries)
 {
 	HKEY key = nullptr;
 	if (RegOpenKeyExW(t_root, registered_fonts_key, 0, KEY_READ, &key) != ERROR_SUCCESS) return;
 
 	DWORD longest_name = 0;
 	DWORD largest_file_bytes = 0;
-	RegQueryInfoKeyW(key, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &longest_name,
-					 &largest_file_bytes, nullptr, nullptr);
+	RegQueryInfoKeyW(key, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &longest_name, &largest_file_bytes, nullptr, nullptr);
 
 	std::vector<wchar_t> name(longest_name + 1);
 	std::vector<wchar_t> file(largest_file_bytes / sizeof(wchar_t) + 1);
@@ -106,8 +104,7 @@ void add_registered_fonts(HKEY t_root, std::vector<FontEntry> &t_entries)
 		DWORD file_bytes = static_cast<DWORD>(file.size() * sizeof(wchar_t));
 		DWORD type = 0;
 
-		const LSTATUS status = RegEnumValueW(key, index, name.data(), &name_length, nullptr, &type,
-											 reinterpret_cast<BYTE *>(file.data()), &file_bytes);
+		const LSTATUS status = RegEnumValueW(key, index, name.data(), &name_length, nullptr, &type, reinterpret_cast<BYTE *>(file.data()), &file_bytes);
 		if (status == ERROR_NO_MORE_ITEMS) break;
 		if (status != ERROR_SUCCESS || type != REG_SZ) continue;
 
@@ -120,7 +117,7 @@ void add_registered_fonts(HKEY t_root, std::vector<FontEntry> &t_entries)
 		if (!is_outline_font(file_utf8)) continue;
 
 		const std::string name_utf8 = to_utf8(std::wstring_view{name.data(), name_length});
-		t_entries.push_back(FontEntry{std::string{display_name(name_utf8)}, std::move(file_utf8)});
+		t_entries->push_back(FontEntry{std::string{display_name(name_utf8)}, std::move(file_utf8)});
 	}
 
 	RegCloseKey(key);
@@ -132,10 +129,10 @@ Font::~Font() = default;
 Font::Font(Font &&) noexcept = default;
 Font &Font::operator=(Font &&) noexcept = default;
 
-bool Font::load(Renderer &t_renderer, const char *t_path, float t_pixel_height, float t_dpi_scale)
+bool Font::load(Renderer *t_renderer, const char *t_path, float t_pixel_height, float t_dpi_scale)
 {
 	std::vector<u8> font_file;
-	if (!read_whole_file(t_path, font_file)) {
+	if (!read_whole_file(t_path, &font_file)) {
 		std::println("Failed to read font file: {}", t_path);
 		return false;
 	}
@@ -154,8 +151,7 @@ bool Font::load(Renderer &t_renderer, const char *t_path, float t_pixel_height, 
 	stbtt_pack_context pack;
 	stbtt_PackBegin(&pack, coverage.data(), static_cast<int>(size), static_cast<int>(size), 0, 1, nullptr);
 	stbtt_PackSetOversampling(&pack, 1, 1);
-	const bool packed =
-		stbtt_PackFontRange(&pack, font_file.data(), 0, baked_pixel_height, first_char, char_count, packed_chars) != 0;
+	const bool packed = stbtt_PackFontRange(&pack, font_file.data(), 0, baked_pixel_height, first_char, char_count, packed_chars) != 0;
 	stbtt_PackEnd(&pack);
 
 	if (!packed) {
@@ -198,15 +194,12 @@ InstalledFonts installed_fonts()
 	std::vector<FontEntry> entries;
 	entries.reserve(512);
 
-	add_registered_fonts(HKEY_LOCAL_MACHINE, entries);
-	add_registered_fonts(HKEY_CURRENT_USER, entries);
+	add_registered_fonts(HKEY_LOCAL_MACHINE, &entries);
+	add_registered_fonts(HKEY_CURRENT_USER, &entries);
 
-	std::ranges::stable_sort(entries, [](const FontEntry &t_a, const FontEntry &t_b) {
-		return _stricmp(t_a.name.c_str(), t_b.name.c_str()) < 0;
-	});
+	std::ranges::stable_sort(entries, [](const FontEntry &t_a, const FontEntry &t_b) { return _stricmp(t_a.name.c_str(), t_b.name.c_str()) < 0; });
 
-	const auto duplicates = std::ranges::unique(
-		entries, [](const FontEntry &t_a, const FontEntry &t_b) { return equals_ignoring_case(t_a.name, t_b.name); });
+	const auto duplicates = std::ranges::unique(entries, [](const FontEntry &t_a, const FontEntry &t_b) { return equals_ignoring_case(t_a.name, t_b.name); });
 	entries.erase(duplicates.begin(), duplicates.end());
 
 	InstalledFonts fonts;
@@ -221,8 +214,7 @@ InstalledFonts installed_fonts()
 	return fonts;
 }
 
-bool Fonts::load(Renderer &t_renderer, std::string_view t_file, float t_body_size, float t_secondary_size,
-				 float t_dpi_scale)
+bool Fonts::load(Renderer *t_renderer, std::string_view t_file, float t_body_size, float t_secondary_size, float t_dpi_scale)
 {
 	if (t_file.empty()) return false;
 
@@ -234,8 +226,7 @@ bool Fonts::load(Renderer &t_renderer, std::string_view t_file, float t_body_siz
 	Font loaded_caption;
 	if (!loaded_body.load(t_renderer, path.c_str(), t_body_size * setting_to_pixel_scale, t_dpi_scale) ||
 		!loaded_secondary.load(t_renderer, path.c_str(), t_secondary_size * setting_to_pixel_scale, t_dpi_scale) ||
-		!loaded_caption.load(t_renderer, path.c_str(), t_secondary_size * caption_size_ratio * setting_to_pixel_scale,
-							 t_dpi_scale)) {
+		!loaded_caption.load(t_renderer, path.c_str(), t_secondary_size * caption_size_ratio * setting_to_pixel_scale, t_dpi_scale)) {
 		return false;
 	}
 

@@ -22,8 +22,7 @@ struct Notification {
 
 class Toasts : public Widget {
   public:
-	Toasts(const Settings &t_settings, const Fonts &t_fonts, const Assets &t_assets, const Window &t_window,
-		   CommandQueue &t_commands);
+	Toasts(const Settings *t_settings, const Fonts *t_fonts, const Assets *t_assets, const Window *t_window, CommandQueue *t_commands);
 
 	void notify(const Notification &t_notification);
 	void notify_countdown(std::string_view t_message, float t_seconds);
@@ -31,7 +30,7 @@ class Toasts : public Widget {
 	void dismiss();
 
 	void update(float t_delta_seconds) override;
-	void draw(DrawList &t_draw_list) override;
+	void draw(DrawList *t_draw_list) override;
 
 	bool on_pointer_down(Vec2 t_point) override;
 	bool on_pointer_up(Vec2 t_point) override;
@@ -47,13 +46,13 @@ class Toasts : public Widget {
 	Rect card_rect() const;
 	Rect animated_card_rect() const;
 	bool is_clickable_at(Vec2 t_point) const;
-	void draw_time_left_bar(DrawList &t_draw_list, Rect t_card, u8 t_alpha) const;
+	void draw_time_left_bar(DrawList *t_draw_list, Rect t_card, u8 t_alpha) const;
 
-	const Settings &m_settings;
-	const Fonts &m_fonts;
-	const Assets &m_assets;
-	const Window &m_window;
-	CommandQueue &m_commands;
+	const Settings *m_settings;
+	const Fonts *m_fonts;
+	const Assets *m_assets;
+	const Window *m_window;
+	CommandQueue *m_commands;
 
 	char m_message[96]{};
 	std::optional<Asset> m_icon;

@@ -49,8 +49,7 @@ void log_startup_phase(const char *t_phase)
 	const Clock::time_point now = Clock::now();
 
 	if (previous_phase != nullptr) {
-		debug_log::write("startup", "%-20s %6.1f ms   (%6.1f ms in)", previous_phase,
-						 std::chrono::duration<float, std::milli>(now - phase_start).count(),
+		debug_log::write("startup", "%-20s %6.1f ms   (%6.1f ms in)", previous_phase, std::chrono::duration<float, std::milli>(now - phase_start).count(),
 						 std::chrono::duration<float, std::milli>(now - process_start).count());
 	}
 
@@ -112,19 +111,19 @@ void guard_against_overlays(bool t_block_injection)
 }
 
 App::App()
-	: m_carousel(m_library, m_settings, m_fonts, m_assets, m_commands)
-	, m_toasts(m_settings, m_fonts, m_assets, m_window, m_commands)
-	, m_account_modal(m_library, m_settings, m_fonts, m_assets, m_window, m_toasts, m_commands)
-	, m_settings_panel(m_settings, m_fonts, m_renderer, m_window, m_assets, m_commands)
-	, m_unlock_screen(m_settings, m_master_key, m_fonts, m_assets, m_window, m_commands)
-	, m_app_menu(m_fonts, m_assets, m_commands)
-	, m_update_overlay(m_updater, m_settings, m_fonts, m_assets, m_window)
-	, m_account_search(m_library, m_fonts, m_assets, m_window, m_commands)
-	, m_context_menu(m_fonts, m_commands)
-	, m_title_bar(m_window, m_updater, m_update_overlay, m_fonts, m_assets, m_commands)
-	, m_truncation_hint(m_fonts)
+	: m_carousel(&m_library, &m_settings, &m_fonts, &m_assets, &m_commands)
+	, m_toasts(&m_settings, &m_fonts, &m_assets, &m_window, &m_commands)
+	, m_account_modal(&m_library, &m_settings, &m_fonts, &m_assets, &m_window, &m_toasts, &m_commands)
+	, m_settings_panel(&m_settings, &m_fonts, &m_renderer, &m_window, &m_assets, &m_commands)
+	, m_unlock_screen(&m_settings, &m_master_key, &m_fonts, &m_assets, &m_window, &m_commands)
+	, m_app_menu(&m_fonts, &m_assets, &m_commands)
+	, m_update_overlay(&m_updater, &m_settings, &m_fonts, &m_assets, &m_window)
+	, m_account_search(&m_library, &m_fonts, &m_assets, &m_window, &m_commands)
+	, m_context_menu(&m_fonts, &m_commands)
+	, m_title_bar(&m_window, &m_updater, &m_update_overlay, &m_fonts, &m_assets, &m_commands)
+	, m_truncation_hint(&m_fonts)
 #ifdef PULSAR_PROFILING
-	, m_profiler_overlay(m_fonts)
+	, m_profiler_overlay(&m_fonts)
 #endif
 {
 }
@@ -133,8 +132,7 @@ App::StartResult App::start(bool t_from_startup)
 {
 	if (!m_instance_guard.is_first_instance()) {
 		const bool activated = Window::activate_existing_instance();
-		debug_log::write("app", "another instance is already running (%s) - exiting",
-						 activated ? "brought it to the front" : "it never answered");
+		debug_log::write("app", "another instance is already running (%s) - exiting", activated ? "brought it to the front" : "it never answered");
 
 		return StartResult::AlreadyRunning;
 	}
@@ -143,7 +141,7 @@ App::StartResult App::start(bool t_from_startup)
 	installation::refresh_registration();
 
 	log_startup_phase("LoadSettings");
-	const storage::LoadResult settings_result = storage::load_settings(m_settings);
+	const storage::LoadResult settings_result = storage::load_settings(&m_settings);
 
 	log_startup_phase("GuardAgainstOverlays");
 	guard_against_overlays(m_settings.block_overlay_injection);
@@ -207,17 +205,17 @@ bool App::create_graphics()
 		return false;
 	}
 
-	if (!m_renderer.init(m_window)) {
+	if (!m_renderer.init(&m_window)) {
 		std::println("Failed to initialize renderer.");
 		return false;
 	}
 
-	if (!m_assets.finish_upload(m_renderer)) {
+	if (!m_assets.finish_upload(&m_renderer)) {
 		std::println("Failed to load one or more embedded assets.");
 		return false;
 	}
 
-	m_snowfall.create_textures(m_renderer);
+	m_snowfall.create_textures(&m_renderer);
 
 	if (!reload_fonts()) {
 		std::println("Failed to load the UI font.");
@@ -242,24 +240,24 @@ void App::add_games()
 		m_library.game_count += 1;
 	}
 
-	m_tray.on_menu_open([this](TrayMenu &t_menu) { fill_tray_menu(t_menu); });
+	m_tray.on_menu_open([this](TrayMenu *t_menu) { fill_tray_menu(t_menu); });
 }
 
 void App::stack_widgets()
 {
-	m_widgets.push(m_carousel);
-	m_widgets.push(m_account_modal);
-	m_widgets.push(m_settings_panel);
-	m_widgets.push(m_unlock_screen);
-	m_widgets.push(m_app_menu);
-	m_widgets.push(m_update_overlay);
-	m_widgets.push(m_account_search);
-	m_widgets.push(m_context_menu);
+	m_widgets.push(&m_carousel);
+	m_widgets.push(&m_account_modal);
+	m_widgets.push(&m_settings_panel);
+	m_widgets.push(&m_unlock_screen);
+	m_widgets.push(&m_app_menu);
+	m_widgets.push(&m_update_overlay);
+	m_widgets.push(&m_account_search);
+	m_widgets.push(&m_context_menu);
 
-	m_widgets.push_overlay(m_toasts);
-	m_widgets.push_overlay(m_title_bar);
+	m_widgets.push_overlay(&m_toasts);
+	m_widgets.push_overlay(&m_title_bar);
 #ifdef PULSAR_PROFILING
-	m_widgets.push_overlay(m_profiler_overlay);
+	m_widgets.push_overlay(&m_profiler_overlay);
 #endif
 }
 
@@ -359,13 +357,13 @@ void App::save_settings()
 	}
 
 	Settings committed = m_settings;
-	m_settings_panel.restore_committed_previews(committed);
-	storage::save_settings(committed);
+	m_settings_panel.restore_committed_previews(&committed);
+	storage::save_settings(&committed);
 }
 
 void App::save_everything()
 {
-	storage::save_accounts(m_library, m_master_key);
+	storage::save_accounts(&m_library, &m_master_key);
 	save_settings();
 }
 
@@ -384,10 +382,10 @@ void App::save_if_due()
 
 void App::commit_new_vault_key()
 {
-	if (storage::save_accounts(m_library, m_master_key)) {
+	if (storage::save_accounts(&m_library, &m_master_key)) {
 		save_settings();
 	} else if (m_replaced_vault_key) {
-		m_master_key.swap(m_replaced_vault_key->key);
+		m_master_key.swap(&m_replaced_vault_key->key);
 		m_settings.master_key = m_replaced_vault_key->params;
 		m_toasts.notify(Notification{.message = "Your vault could not be saved, so the password was not changed."});
 	}
@@ -426,7 +424,7 @@ const Account *App::account_for(AccountRef t_account) const
 	if (t_account.game >= m_library.game_count) return nullptr;
 	if (t_account.index >= m_library.games[t_account.game].account_count) return nullptr;
 
-	return &m_library.account(t_account);
+	return m_library.account(t_account);
 }
 
 void App::clear_clipboard_secret()
@@ -437,34 +435,34 @@ void App::clear_clipboard_secret()
 	m_clipboard_secret.reset();
 }
 
-void App::fill_tray_menu(TrayMenu &t_menu) const
+void App::fill_tray_menu(TrayMenu *t_menu) const
 {
 	if (m_locked) return;
 
 	for (const u8 game : m_carousel.order()) {
-		if (t_menu.game_count == tray_max_games) break;
+		if (t_menu->game_count == tray_max_games) break;
 
 		const VisibleAccounts visible = m_library.visible_accounts(game);
 
-		TrayGame &entry = t_menu.games[t_menu.game_count];
-		t_menu.game_count += 1;
+		TrayGame *entry = &t_menu->games[t_menu->game_count];
+		t_menu->game_count += 1;
 
-		copy_to(m_library.games[game].title, entry.title);
-		entry.game = static_cast<i32>(game);
-		entry.first_account = t_menu.account_count;
-		entry.account_count = 0;
+		copy_to(m_library.games[game].title, entry->title);
+		entry->game = static_cast<i32>(game);
+		entry->first_account = t_menu->account_count;
+		entry->account_count = 0;
 
-		for (u32 row = 0; row < visible.count && t_menu.account_count < tray_max_accounts; row += 1) {
-			const Account &account = m_library.account(visible.refs[row]);
-			const std::string_view note = account.note;
+		for (u32 row = 0; row < visible.count && t_menu->account_count < tray_max_accounts; row += 1) {
+			const Account *account = m_library.account(visible.refs[row]);
+			const std::string_view note = account->note;
 
-			TrayAccount &item = t_menu.accounts[t_menu.account_count];
-			copy_to(note.empty() ? std::string_view{account.username} : note, item.label);
-			item.game = static_cast<i32>(game);
-			item.row = static_cast<i32>(row);
+			TrayAccount *item = &t_menu->accounts[t_menu->account_count];
+			copy_to(note.empty() ? std::string_view{account->username} : note, item->label);
+			item->game = static_cast<i32>(game);
+			item->row = static_cast<i32>(row);
 
-			t_menu.account_count += 1;
-			entry.account_count += 1;
+			t_menu->account_count += 1;
+			entry->account_count += 1;
 		}
 	}
 }
@@ -544,8 +542,7 @@ void App::handle_input(const InputEvent &t_event)
 		}
 	}
 
-	if (t_event.type == InputEventType::KeyDown && t_event.key == VK_OEM_COMMA && control_down && !m_locked &&
-		!m_settings_panel.is_blocking()) {
+	if (t_event.type == InputEventType::KeyDown && t_event.key == VK_OEM_COMMA && control_down && !m_locked && !m_settings_panel.is_blocking()) {
 		m_app_menu.close();
 		m_settings_panel.open();
 		return;
@@ -562,8 +559,7 @@ void App::handle_input(const InputEvent &t_event)
 	const bool consumed = m_widgets.dispatch(t_event);
 	process_commands();
 
-	const bool is_action = t_event.type == InputEventType::MouseUp || t_event.type == InputEventType::KeyDown ||
-						   t_event.type == InputEventType::RightClick;
+	const bool is_action = t_event.type == InputEventType::MouseUp || t_event.type == InputEventType::KeyDown || t_event.type == InputEventType::RightClick;
 	if (consumed && is_action) {
 		request_save();
 	}
@@ -637,14 +633,14 @@ void App::process(const Command &t_command)
 
 		case CommandType::RequestNewMasterPassword:
 			m_replaced_vault_key.emplace();
-			m_replaced_vault_key->key.swap(m_master_key);
+			m_replaced_vault_key->key.swap(&m_master_key);
 			m_replaced_vault_key->params = m_settings.master_key;
 			lock();
 			m_unlock_screen.show_setup();
 			break;
 
 		case CommandType::VaultUnlocked:
-			storage::load_accounts(m_library, m_master_key);
+			storage::load_accounts(&m_library, &m_master_key);
 			unlock();
 			break;
 
@@ -734,8 +730,7 @@ void App::open_account_menu(const Command &t_command)
 	if (account == nullptr) return;
 
 	const ContextMenuItem items[]{
-		{account->favorite ? "Unpin" : "Pin to top",
-		 Command{.type = CommandType::ToggleFavorite, .index = t_command.index}},
+		{account->favorite ? "Unpin" : "Pin to top", Command{.type = CommandType::ToggleFavorite, .index = t_command.index}},
 		{"Copy username", Command{.type = CommandType::CopyUsername, .index = t_command.index}},
 		{"Copy password", Command{.type = CommandType::CopyPassword, .index = t_command.index}},
 	};
@@ -745,12 +740,12 @@ void App::open_account_menu(const Command &t_command)
 
 void App::open_text_menu(const Command &t_command)
 {
-	TextInput &input = *t_command.text_input;
+	TextInput *input = t_command.text_input;
 
-	const auto item = [&input](std::string_view t_label, TextEdit t_edit, std::string_view t_shortcut) {
-		const Command edit{.type = CommandType::EditText, .text_input = &input, .text_edit = t_edit};
+	const auto item = [input](std::string_view t_label, TextEdit t_edit, std::string_view t_shortcut) {
+		const Command edit{.type = CommandType::EditText, .text_input = input, .text_edit = t_edit};
 
-		return ContextMenuItem{t_label, edit, input.can_apply(t_edit), t_shortcut};
+		return ContextMenuItem{t_label, edit, input->can_apply(t_edit), t_shortcut};
 	};
 
 	const ContextMenuItem items[]{
@@ -779,8 +774,7 @@ void App::announce_update_stage()
 		std::snprintf(message, sizeof(message), "Version %s available", m_updater.manifest().version);
 		m_toasts.notify(Notification{.message = message, .icon = Asset::IconDownload, .on_click = open_updates});
 	} else if (stage == UpdateStage::Error && !watching) {
-		m_toasts.notify(Notification{
-			.message = "The update could not be installed.", .icon = Asset::IconUpdate, .on_click = open_updates});
+		m_toasts.notify(Notification{.message = "The update could not be installed.", .icon = Asset::IconUpdate, .on_click = open_updates});
 	}
 }
 
@@ -831,15 +825,14 @@ void App::redraw_while_resizing()
 {
 	if (m_window.physical_width() == 0 || m_window.physical_height() == 0) return;
 
-	m_renderer.resize(m_window);
+	m_renderer.resize(&m_window);
 	frame();
 }
 
 bool App::reload_fonts()
 {
 	const auto load = [this] {
-		return m_fonts.load(m_renderer, m_settings.font_name, m_settings.font_size, m_settings.secondary_font_size,
-							m_window.dpi_scale());
+		return m_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size, m_settings.secondary_font_size, m_window.dpi_scale());
 	};
 
 	if (load()) return true;
@@ -916,13 +909,12 @@ void App::draw_status_bar()
 	m_draw_list.add_rect(Rect{0.0f, status_bar.y - 1.0f, window.x, 1.0f}, theme().chrome_seam);
 	m_draw_list.add_rect(status_bar, theme().chrome);
 
-	const Rect mark{status_padding, status_bar.y + (status_bar_height - status_mark_size) * 0.5f, status_mark_size,
-					status_mark_size};
+	const Rect mark{status_padding, status_bar.y + (status_bar_height - status_mark_size) * 0.5f, status_mark_size, status_mark_size};
 	const Font &font = m_fonts.secondary;
 	const float baseline = font.centered_baseline(status_bar) - status_baseline_nudge;
 	const bool protected_vault = m_settings.master_password_enabled;
 
-	controls::draw_lock(m_draw_list, mark, theme().text_dim, theme().chrome, !m_locked);
+	controls::draw_lock(&m_draw_list, mark, theme().text_dim, theme().chrome, !m_locked);
 
 	std::string_view state = "Vault unlocked";
 	if (m_locked) {
@@ -932,7 +924,7 @@ void App::draw_status_bar()
 	}
 
 	float x = mark.right() + status_mark_gap;
-	draw_text(m_draw_list, font, Vec2{x, baseline}, state, theme().text_dim);
+	draw_text(&m_draw_list, font, Vec2{x, baseline}, state, theme().text_dim);
 	x += text_width(font, state);
 
 	if (!m_locked && protected_vault && m_settings.auto_lock_minutes != 0) {
@@ -943,18 +935,17 @@ void App::draw_status_bar()
 
 		char countdown[48];
 		const int written = std::snprintf(countdown, sizeof(countdown), "auto-locks in %u min", minutes);
-		const Rect dot{x + status_dot_gap, baseline - font.ascent * 0.35f - status_dot_size * 0.5f, status_dot_size,
-					   status_dot_size};
+		const Rect dot{x + status_dot_gap, baseline - font.ascent * 0.35f - status_dot_size * 0.5f, status_dot_size, status_dot_size};
 
 		m_draw_list.add_rounded_rect(dot, rounded(status_dot_size * 0.5f), theme().text_faint);
-		draw_text(m_draw_list, font, Vec2{dot.right() + status_dot_gap, baseline},
-				  std::string_view{countdown, static_cast<usize>(std::max(written, 0))}, theme().text_faint);
+		draw_text(&m_draw_list, font, Vec2{dot.right() + status_dot_gap, baseline}, std::string_view{countdown, static_cast<usize>(std::max(written, 0))},
+				  theme().text_faint);
 		animation::request_frame_after(static_cast<float>(remaining.count() - (minutes - 1) * 60) + 0.05f);
 	}
 
 	const bool panel_open = m_account_modal.is_blocking() || m_settings_panel.is_blocking();
 	if (m_carousel.is_visible() && !panel_open) {
-		m_carousel.draw_status_bar(m_draw_list);
+		m_carousel.draw_status_bar(&m_draw_list);
 	}
 }
 
@@ -968,15 +959,15 @@ void App::render()
 	const Color backdrop = theme().window;
 	m_draw_list.add_backdrop(Rect{0.0f, 0.0f, window.x, window.y}, backdrop, backdrop, backdrop, backdrop);
 
-	begin_truncation_probe(m_draw_list, m_mouse);
+	begin_truncation_probe(&m_draw_list, m_mouse);
 	draw_status_bar();
-	m_snowfall.draw(m_draw_list);
+	m_snowfall.draw(&m_draw_list);
 
 	{
 		PULSAR_PROFILE_SCOPE("Render.BuildGeometry");
-		m_widgets.draw(m_draw_list);
-		m_truncation_hint.capture(m_draw_list);
-		m_truncation_hint.draw(m_draw_list, m_window.content_rect());
+		m_widgets.draw(&m_draw_list);
+		m_truncation_hint.capture(&m_draw_list);
+		m_truncation_hint.draw(&m_draw_list, m_window.content_rect());
 		m_draw_list.finish();
 	}
 
@@ -987,7 +978,7 @@ void App::render()
 	m_renderer.set_backdrop(static_cast<u32>(m_settings.background_style), m_settings.background_intensity,
 							m_settings.background_light ? m_settings.background_light_intensity : 0.0f,
 							m_settings.background_grain ? m_settings.background_grain_intensity : 0.0f);
-	m_renderer.render(m_draw_list, theme().window);
+	m_renderer.render(&m_draw_list, theme().window);
 }
 
 void App::run()

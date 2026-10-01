@@ -37,8 +37,7 @@ void put_text(std::string_view t_text, bool t_keep_out_of_history)
 		put_global(CF_UNICODETEXT, wide.c_str(), (wide.size() + 1) * sizeof(wchar_t));
 
 		if (t_keep_out_of_history) {
-			static const UINT exclude_from_monitors =
-				RegisterClipboardFormatW(L"ExcludeClipboardContentFromMonitorProcessing");
+			static const UINT exclude_from_monitors = RegisterClipboardFormatW(L"ExcludeClipboardContentFromMonitorProcessing");
 			static const UINT can_include_in_history = RegisterClipboardFormatW(L"CanIncludeInClipboardHistory");
 			static const UINT can_upload_to_cloud = RegisterClipboardFormatW(L"CanUploadToCloudClipboard");
 			const DWORD disallowed = 0;

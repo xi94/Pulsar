@@ -75,7 +75,7 @@ class TextInput {
 	void on_right_click(const Font &t_font, Rect t_field, float t_x);
 
 	void update(float t_delta_seconds);
-	void draw(DrawList &t_draw_list, const Font &t_font, Rect t_field, Color t_text_color, Color t_caret_color,
+	void draw(DrawList *t_draw_list, const Font &t_font, Rect t_field, Color t_text_color, Color t_caret_color,
 			  std::optional<Rect> t_placeholder_box = std::nullopt);
 
   private:

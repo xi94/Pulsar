@@ -32,7 +32,7 @@ class UiElement {
 
 class UiAutomation {
   public:
-	explicit UiAutomation(const std::atomic<bool> &t_cancel);
+	explicit UiAutomation(const std::atomic<bool> *t_cancel);
 	~UiAutomation();
 
 	UiAutomation(const UiAutomation &) = delete;
@@ -56,10 +56,9 @@ class UiAutomation {
 	bool is_cancelled() const;
 	bool can_search(const UiElement &t_root) const;
 
-	UiElement find_first(const UiElement &t_root, Microsoft::WRL::ComPtr<IUIAutomationCondition> t_condition,
-						 const char *t_label) const;
+	UiElement find_first(const UiElement &t_root, Microsoft::WRL::ComPtr<IUIAutomationCondition> t_condition, const char *t_label) const;
 
-	const std::atomic<bool> &m_cancel;
+	const std::atomic<bool> *m_cancel;
 	Microsoft::WRL::ComPtr<IUIAutomation> m_automation;
 	bool m_com_initialized = false;
 };

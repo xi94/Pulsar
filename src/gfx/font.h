@@ -31,7 +31,7 @@ struct Font {
 	Font(Font &&) noexcept;
 	Font &operator=(Font &&) noexcept;
 
-	bool load(Renderer &t_renderer, const char *t_path, float t_pixel_height, float t_dpi_scale);
+	bool load(Renderer *t_renderer, const char *t_path, float t_pixel_height, float t_dpi_scale);
 
 	float line_height() const
 	{
@@ -58,6 +58,5 @@ struct Fonts {
 	Font secondary;
 	Font caption;
 
-	bool load(Renderer &t_renderer, std::string_view t_file, float t_body_size, float t_secondary_size,
-			  float t_dpi_scale);
+	bool load(Renderer *t_renderer, std::string_view t_file, float t_body_size, float t_secondary_size, float t_dpi_scale);
 };

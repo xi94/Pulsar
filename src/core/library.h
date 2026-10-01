@@ -71,13 +71,13 @@ struct Library {
 	VisibleAccounts visible_accounts(u32 t_game) const;
 	std::optional<AccountRef> visible_account(u32 t_game, u32 t_row) const;
 
-	Account &account(AccountRef t_ref)
+	Account *account(AccountRef t_ref)
 	{
-		return games[t_ref.game].accounts[t_ref.index];
+		return &games[t_ref.game].accounts[t_ref.index];
 	}
 
-	const Account &account(AccountRef t_ref) const
+	const Account *account(AccountRef t_ref) const
 	{
-		return games[t_ref.game].accounts[t_ref.index];
+		return &games[t_ref.game].accounts[t_ref.index];
 	}
 };

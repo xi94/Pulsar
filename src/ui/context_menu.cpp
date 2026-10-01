@@ -20,13 +20,13 @@ constexpr float window_margin = 8.0f;
 constexpr float label_inset = 10.0f;
 constexpr float shortcut_gap = 24.0f;
 
-float item_height(const Fonts &t_fonts)
+float item_height(const Fonts *t_fonts)
 {
-	return std::max(28.0f, t_fonts.body.line_height() + 8.0f);
+	return std::max(28.0f, t_fonts->body.line_height() + 8.0f);
 }
 }
 
-ContextMenu::ContextMenu(const Fonts &t_fonts, CommandQueue &t_commands)
+ContextMenu::ContextMenu(const Fonts *t_fonts, CommandQueue *t_commands)
 	: m_fonts(t_fonts)
 	, m_commands(t_commands)
 {
@@ -39,18 +39,15 @@ void ContextMenu::open(Vec2 t_position, std::span<const ContextMenuItem> t_items
 
 	float content = 0.0f;
 	for (const ContextMenuItem &item : std::span{m_items, m_item_count}) {
-		const float shortcut =
-			item.shortcut.empty() ? 0.0f : shortcut_gap + controls::shortcut_width(m_fonts.secondary, item.shortcut);
-		content = std::max(content, text_width(m_fonts.body, item.label) + shortcut);
+		const float shortcut = item.shortcut.empty() ? 0.0f : shortcut_gap + controls::shortcut_width(m_fonts->secondary, item.shortcut);
+		content = std::max(content, text_width(m_fonts->body, item.label) + shortcut);
 	}
 
 	m_width = std::ceil(std::max(min_menu_width, content + (label_inset + menu_padding) * 2.0f));
 
 	const float height = menu_rect().h;
-	m_position.x =
-		std::clamp(t_position.x, window_margin, std::max(window_margin, t_window_size.x - window_margin - m_width));
-	m_position.y =
-		std::clamp(t_position.y, window_margin, std::max(window_margin, t_window_size.y - window_margin - height));
+	m_position.x = std::clamp(t_position.x, window_margin, std::max(window_margin, t_window_size.x - window_margin - m_width));
+	m_position.y = std::clamp(t_position.y, window_margin, std::max(window_margin, t_window_size.y - window_margin - height));
 	m_open = true;
 }
 
@@ -68,8 +65,7 @@ Rect ContextMenu::item_rect(u32 t_index) const
 {
 	const float height = item_height(m_fonts);
 
-	return Rect{m_position.x + menu_padding, m_position.y + menu_padding + height * t_index,
-				m_width - menu_padding * 2.0f, height};
+	return Rect{m_position.x + menu_padding, m_position.y + menu_padding + height * t_index, m_width - menu_padding * 2.0f, height};
 }
 
 i32 ContextMenu::item_at(Vec2 t_point) const
@@ -87,7 +83,7 @@ bool ContextMenu::on_pointer_up(Vec2 t_point)
 
 	const i32 chosen = item_at(t_point);
 	if (chosen >= 0) {
-		m_commands.push(m_items[chosen].command);
+		m_commands->push(m_items[chosen].command);
 	}
 
 	close();
@@ -118,15 +114,15 @@ CursorKind ContextMenu::cursor() const
 	return m_open && item_at(m_mouse) >= 0 ? CursorKind::Hand : CursorKind::Arrow;
 }
 
-void ContextMenu::draw(DrawList &t_draw_list)
+void ContextMenu::draw(DrawList *t_draw_list)
 {
 	if (!m_open) return;
 
 	const Theme &colors = theme();
-	const Font &font = m_fonts.body;
+	const Font &font = m_fonts->body;
 
 	controls::draw_popup_shadow(t_draw_list, menu_rect(), menu_radius, 1.0f);
-	t_draw_list.add_bordered_rect(menu_rect(), rounded(menu_radius), colors.popup, colors.border, 1.0f);
+	t_draw_list->add_bordered_rect(menu_rect(), rounded(menu_radius), colors.popup, colors.border, 1.0f);
 
 	for (u32 i = 0; i < m_item_count; i += 1) {
 		const Rect row = item_rect(i);
@@ -136,15 +132,14 @@ void ContextMenu::draw(DrawList &t_draw_list)
 		const Color backdrop = hovered_row ? hovered(colors.popup) : colors.popup;
 
 		if (hovered_row) {
-			t_draw_list.add_rounded_rect(row, rounded(item_radius), backdrop);
+			t_draw_list->add_rounded_rect(row, rounded(item_radius), backdrop);
 		}
 
-		draw_text(t_draw_list, font, Vec2{row.x + label_inset, font.centered_baseline(row)}, item.label,
-				  item.enabled ? colors.text : colors.text_faint);
+		draw_text(t_draw_list, font, Vec2{row.x + label_inset, font.centered_baseline(row)}, item.label, item.enabled ? colors.text : colors.text_faint);
 
 		if (!item.shortcut.empty()) {
-			controls::draw_shortcut(t_draw_list, m_fonts.secondary, Vec2{row.right() - label_inset, row.center().y},
-									item.shortcut, backdrop, item.enabled ? 255 : 128);
+			controls::draw_shortcut(t_draw_list, m_fonts->secondary, Vec2{row.right() - label_inset, row.center().y}, item.shortcut, backdrop,
+									item.enabled ? 255 : 128);
 		}
 	}
 }

@@ -11,7 +11,7 @@ class Tooltip {
   public:
 	void request(std::string_view t_text, Rect t_anchor);
 	void update(float t_delta_seconds);
-	void draw(DrawList &t_draw_list, const Fonts &t_fonts, Rect t_bounds, u8 t_alpha) const;
+	void draw(DrawList *t_draw_list, const Fonts *t_fonts, Rect t_bounds, u8 t_alpha) const;
 	void reset();
 
   private:

@@ -335,8 +335,7 @@ constexpr Theme rose_pine{
 };
 
 constexpr Theme presets[]{
-	dark, light,   forest,		ocean,	   pink, blossom, gruvbox, catppuccin_mocha, catppuccin_latte,
-	nord, dracula, tokyo_night, rose_pine,
+	dark, light, forest, ocean, pink, blossom, gruvbox, catppuccin_mocha, catppuccin_latte, nord, dracula, tokyo_night, rose_pine,
 };
 static_assert(std::size(presets) == theme_count);
 
@@ -360,8 +359,7 @@ u8 blend(u8 t_from, u8 t_to, float t_amount)
 
 Color blend(Color t_from, Color t_to, float t_amount)
 {
-	return Color{blend(t_from.r, t_to.r, t_amount), blend(t_from.g, t_to.g, t_amount),
-				 blend(t_from.b, t_to.b, t_amount), blend(t_from.a, t_to.a, t_amount)};
+	return Color{blend(t_from.r, t_to.r, t_amount), blend(t_from.g, t_to.g, t_amount), blend(t_from.b, t_to.b, t_amount), blend(t_from.a, t_to.a, t_amount)};
 }
 
 Theme blend(const Theme &t_from, const Theme &t_to, float t_amount)
@@ -394,8 +392,7 @@ Color hovered(Color t_base)
 	constexpr float darken = 0.06f;
 	constexpr float lighten = 0.08f;
 
-	return luminance(t_base) > light_surface ? mix(t_base, Color{0, 0, 0, 255}, darken)
-											 : mix(t_base, Color{255, 255, 255, 255}, lighten);
+	return luminance(t_base) > light_surface ? mix(t_base, Color{0, 0, 0, 255}, darken) : mix(t_base, Color{255, 255, 255, 255}, lighten);
 }
 
 void apply_theme(ThemeKind t_kind)

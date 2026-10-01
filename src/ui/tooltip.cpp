@@ -56,11 +56,11 @@ void Tooltip::reset()
 	*this = Tooltip{};
 }
 
-void Tooltip::draw(DrawList &t_draw_list, const Fonts &t_fonts, Rect t_bounds, u8 t_alpha) const
+void Tooltip::draw(DrawList *t_draw_list, const Fonts *t_fonts, Rect t_bounds, u8 t_alpha) const
 {
 	if (m_visible_amount <= 0.001f || m_length == 0) return;
 
-	const Font &font = t_fonts.secondary;
+	const Font &font = t_fonts->secondary;
 	const std::string_view text{m_text, m_length};
 
 	const float width = text_width(font, text) + padding_x * 2.0f;
@@ -78,8 +78,6 @@ void Tooltip::draw(DrawList &t_draw_list, const Fonts &t_fonts, Rect t_bounds, u
 
 	const auto alpha = static_cast<u8>(t_alpha * m_visible_amount);
 
-	t_draw_list.add_bordered_rect(bubble, rounded(corner_radius), faded(theme().popup, alpha),
-								  faded(theme().border, alpha), 1.0f);
-	draw_text(t_draw_list, font, Vec2{bubble.x + padding_x, font.centered_baseline(bubble)}, text,
-			  faded(theme().text, alpha));
+	t_draw_list->add_bordered_rect(bubble, rounded(corner_radius), faded(theme().popup, alpha), faded(theme().border, alpha), 1.0f);
+	draw_text(t_draw_list, font, Vec2{bubble.x + padding_x, font.centered_baseline(bubble)}, text, faded(theme().text, alpha));
 }

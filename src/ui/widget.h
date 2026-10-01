@@ -11,7 +11,7 @@ class Widget {
 
 	virtual void update(float) {}
 
-	virtual void draw(DrawList &t_draw_list) = 0;
+	virtual void draw(DrawList *t_draw_list) = 0;
 
 	virtual bool on_pointer_down(Vec2)
 	{
@@ -82,11 +82,11 @@ class Widget {
 
 class WidgetStack {
   public:
-	void push(Widget &t_widget);
-	void push_overlay(Widget &t_widget);
+	void push(Widget *t_widget);
+	void push_overlay(Widget *t_widget);
 
 	void update(Vec2 t_mouse, float t_delta_seconds);
-	void draw(DrawList &t_draw_list);
+	void draw(DrawList *t_draw_list);
 
 	bool dispatch(const InputEvent &t_event);
 	CursorKind cursor() const;

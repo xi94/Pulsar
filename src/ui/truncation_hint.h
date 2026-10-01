@@ -9,14 +9,14 @@ struct Fonts;
 
 class TruncationHint {
   public:
-	explicit TruncationHint(const Fonts &t_fonts);
+	explicit TruncationHint(const Fonts *t_fonts);
 
-	void capture(const DrawList &t_draw_list);
+	void capture(const DrawList *t_draw_list);
 	void update(float t_delta_seconds, bool t_suppressed);
-	void draw(DrawList &t_draw_list, Rect t_bounds) const;
+	void draw(DrawList *t_draw_list, Rect t_bounds) const;
 
   private:
-	const Fonts &m_fonts;
+	const Fonts *m_fonts;
 
 	char m_text[512]{};
 	usize m_length = 0;

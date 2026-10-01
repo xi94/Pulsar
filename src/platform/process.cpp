@@ -6,8 +6,7 @@
 
 namespace {
 constexpr const wchar_t *known_overlay_modules[]{
-	L"DiscordHook64.dll",		L"DiscordHook32.dll", L"GameOverlayRenderer64.dll",
-	L"GameOverlayRenderer.dll", L"RTSSHooks64.dll",
+	L"DiscordHook64.dll", L"DiscordHook32.dll", L"GameOverlayRenderer64.dll", L"GameOverlayRenderer.dll", L"RTSSHooks64.dll",
 };
 }
 
@@ -42,8 +41,8 @@ void launch_process(const std::wstring &t_executable, const wchar_t *t_arguments
 	STARTUPINFOW startup{.cb = sizeof(startup)};
 	PROCESS_INFORMATION process{};
 
-	if (CreateProcessW(t_executable.c_str(), command.data(), nullptr, nullptr, FALSE, 0, nullptr,
-					   folder.empty() ? nullptr : folder.c_str(), &startup, &process)) {
+	if (CreateProcessW(t_executable.c_str(), command.data(), nullptr, nullptr, FALSE, 0, nullptr, folder.empty() ? nullptr : folder.c_str(), &startup,
+					   &process)) {
 		CloseHandle(process.hProcess);
 		CloseHandle(process.hThread);
 	}
@@ -73,17 +72,13 @@ HookBlockResult block_hook_injection()
 	using SetMitigationPolicy = BOOL(WINAPI *)(PROCESS_MITIGATION_POLICY, PVOID, SIZE_T);
 
 	const HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
-	const auto set_policy =
-		kernel32 != nullptr
-			? reinterpret_cast<SetMitigationPolicy>(GetProcAddress(kernel32, "SetProcessMitigationPolicy"))
-			: nullptr;
+	const auto set_policy = kernel32 != nullptr ? reinterpret_cast<SetMitigationPolicy>(GetProcAddress(kernel32, "SetProcessMitigationPolicy")) : nullptr;
 	if (set_policy == nullptr) return HookBlockResult::Unsupported;
 
 	PROCESS_MITIGATION_EXTENSION_POINT_DISABLE_POLICY policy{};
 	policy.DisableExtensionPoints = 1;
 
-	return set_policy(ProcessExtensionPointDisablePolicy, &policy, sizeof(policy)) ? HookBlockResult::Blocked
-																				   : HookBlockResult::Refused;
+	return set_policy(ProcessExtensionPointDisablePolicy, &policy, sizeof(policy)) ? HookBlockResult::Blocked : HookBlockResult::Refused;
 }
 
 const wchar_t *injected_overlay_module()

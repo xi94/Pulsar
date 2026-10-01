@@ -26,15 +26,15 @@ constexpr float control_icon_size = 16.0f;
 
 SetupApp::SetupApp(SetupMode t_mode)
 	: m_mode(t_mode)
-	, m_screen(t_mode, m_settings, m_fonts, m_heading_fonts, m_title_fonts, m_assets, m_window)
-	, m_truncation_hint(m_fonts)
+	, m_screen(t_mode, &m_settings, &m_fonts, &m_heading_fonts, &m_title_fonts, &m_assets, &m_window)
+	, m_truncation_hint(&m_fonts)
 {
 }
 
 bool SetupApp::create()
 {
 	m_assets.begin_decode();
-	storage::load_settings(m_settings);
+	storage::load_settings(&m_settings);
 
 	apply_theme(m_settings.theme);
 	animation::set_enabled(m_settings.animations_enabled);
@@ -42,15 +42,15 @@ bool SetupApp::create()
 	set_corner_roundness(m_settings.corner_roundness);
 
 	if (!m_window.create(L"Pulsar setup", window_width, window_height, WindowKind::Dialog)) return false;
-	if (!m_renderer.init(m_window)) return false;
+	if (!m_renderer.init(&m_window)) return false;
 
-	m_assets.finish_upload(m_renderer);
+	m_assets.finish_upload(&m_renderer);
 
 	if (!reload_fonts()) return false;
 
 	const std::vector<u8> icon = app_icon_pixels(app_icon_texture_size);
 	if (!icon.empty()) {
-		m_app_icon = Assets::create_texture(m_renderer, icon.data(), app_icon_texture_size, app_icon_texture_size);
+		m_app_icon = Assets::create_texture(&m_renderer, icon.data(), app_icon_texture_size, app_icon_texture_size);
 		m_screen.set_app_icon(m_app_icon.get());
 	}
 
@@ -67,12 +67,9 @@ bool SetupApp::reload_fonts()
 	const auto load = [this] {
 		const float scale = m_window.dpi_scale();
 
-		return m_fonts.load(m_renderer, m_settings.font_name, m_settings.font_size, m_settings.secondary_font_size,
-							scale) &&
-			   m_heading_fonts.load(m_renderer, m_settings.font_name, m_settings.font_size * heading_font_scale,
-									m_settings.secondary_font_size, scale) &&
-			   m_title_fonts.load(m_renderer, m_settings.font_name, m_settings.font_size * title_font_scale,
-								  m_settings.secondary_font_size, scale);
+		return m_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size, m_settings.secondary_font_size, scale) &&
+			   m_heading_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size * heading_font_scale, m_settings.secondary_font_size, scale) &&
+			   m_title_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size * title_font_scale, m_settings.secondary_font_size, scale);
 	};
 
 	if (load()) return true;
@@ -173,7 +170,7 @@ void SetupApp::redraw_while_moving()
 {
 	if (m_window.physical_width() == 0 || m_window.physical_height() == 0) return;
 
-	m_renderer.resize(m_window);
+	m_renderer.resize(&m_window);
 	frame();
 }
 
@@ -208,20 +205,19 @@ void SetupApp::render()
 
 	m_draw_list.clear();
 	m_draw_list.add_rect(Rect{0.0f, 0.0f, size.x, size.y}, theme().window);
-	begin_truncation_probe(m_draw_list, m_mouse);
-	m_screen.draw(m_draw_list);
+	begin_truncation_probe(&m_draw_list, m_mouse);
+	m_screen.draw(&m_draw_list);
 	draw_window_controls();
-	m_truncation_hint.capture(m_draw_list);
-	m_truncation_hint.draw(m_draw_list, Rect{0.0f, title_bar_height, size.x, size.y - title_bar_height});
+	m_truncation_hint.capture(&m_draw_list);
+	m_truncation_hint.draw(&m_draw_list, Rect{0.0f, title_bar_height, size.x, size.y - title_bar_height});
 	m_draw_list.finish();
 
-	m_renderer.render(m_draw_list, theme().window);
+	m_renderer.render(&m_draw_list, theme().window);
 }
 
 void SetupApp::draw_window_controls()
 {
-	const TitleBarButton hovered_button =
-		m_pressed_button != TitleBarButton::None ? m_pressed_button : m_window.title_bar_button_at(m_mouse);
+	const TitleBarButton hovered_button = m_pressed_button != TitleBarButton::None ? m_pressed_button : m_window.title_bar_button_at(m_mouse);
 
 	for (const TitleBarButton button : {TitleBarButton::Minimize, TitleBarButton::Close}) {
 		const Rect rect = m_window.title_bar_button_rect(button);
@@ -237,7 +233,6 @@ void SetupApp::draw_window_controls()
 			glyph = close ? title_bar_close_glyph_hover : theme().text;
 		}
 
-		m_draw_list.add_image(rect.centered(control_icon_size, control_icon_size),
-							  m_assets.get(close ? Asset::IconClose : Asset::IconMinimize), glyph);
+		m_draw_list.add_image(rect.centered(control_icon_size, control_icon_size), m_assets.get(close ? Asset::IconClose : Asset::IconMinimize), glyph);
 	}
 }

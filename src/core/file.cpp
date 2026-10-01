@@ -12,28 +12,26 @@ namespace {
 bool file_already_holds(const std::string &t_path, std::string_view t_contents)
 {
 	std::vector<u8> existing;
-	if (!read_whole_file(t_path.c_str(), existing)) return false;
+	if (!read_whole_file(t_path.c_str(), &existing)) return false;
 
-	return existing.size() == t_contents.size() &&
-		   std::memcmp(existing.data(), t_contents.data(), existing.size()) == 0;
+	return existing.size() == t_contents.size() && std::memcmp(existing.data(), t_contents.data(), existing.size()) == 0;
 }
 
 bool write_and_flush(const std::string &t_path, std::string_view t_contents)
 {
-	const HANDLE file =
-		CreateFileA(t_path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+	const HANDLE file = CreateFileA(t_path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 	if (file == INVALID_HANDLE_VALUE) return false;
 
 	DWORD written = 0;
-	const bool ok = WriteFile(file, t_contents.data(), static_cast<DWORD>(t_contents.size()), &written, nullptr) &&
-					written == t_contents.size() && FlushFileBuffers(file);
+	const bool ok =
+		WriteFile(file, t_contents.data(), static_cast<DWORD>(t_contents.size()), &written, nullptr) && written == t_contents.size() && FlushFileBuffers(file);
 	CloseHandle(file);
 
 	return ok;
 }
 }
 
-bool read_whole_file(const char *t_path, std::vector<u8> &t_out_bytes)
+bool read_whole_file(const char *t_path, std::vector<u8> *t_out_bytes)
 {
 	FILE *file = nullptr;
 	if (fopen_s(&file, t_path, "rb") != 0 || file == nullptr) return false;
@@ -44,8 +42,8 @@ bool read_whole_file(const char *t_path, std::vector<u8> &t_out_bytes)
 
 	bool ok = false;
 	if (size > 0) {
-		t_out_bytes.resize(static_cast<usize>(size));
-		ok = std::fread(t_out_bytes.data(), 1, t_out_bytes.size(), file) == t_out_bytes.size();
+		t_out_bytes->resize(static_cast<usize>(size));
+		ok = std::fread(t_out_bytes->data(), 1, t_out_bytes->size(), file) == t_out_bytes->size();
 	}
 
 	std::fclose(file);

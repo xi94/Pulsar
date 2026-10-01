@@ -126,7 +126,7 @@ std::string_view heading_text(std::string_view t_line)
 	return trimmed(t_line.substr(std::min(t_line.find_first_not_of('#'), t_line.size())));
 }
 
-u32 layout_notes(const Font &t_font, std::string_view t_notes, std::span<NoteLine> t_out, float &t_out_height)
+u32 layout_notes(const Font &t_font, std::string_view t_notes, std::span<NoteLine> t_out, float *t_out_height)
 {
 	u32 count = 0;
 	float y = 0.0f;
@@ -177,7 +177,7 @@ u32 layout_notes(const Font &t_font, std::string_view t_notes, std::span<NoteLin
 		blank_gap = 0.0f;
 	}
 
-	t_out_height = count > 0 ? t_out[count - 1].baseline + t_font.descent : 0.0f;
+	*t_out_height = count > 0 ? t_out[count - 1].baseline + t_font.descent : 0.0f;
 
 	return count;
 }
@@ -187,17 +187,15 @@ std::string_view format_size(double t_bytes, const char *t_suffix, char (&t_buff
 	constexpr double kilobyte = 1024.0;
 	constexpr double megabyte = kilobyte * kilobyte;
 
-	const int written = t_bytes >= megabyte
-							? std::snprintf(t_buffer, sizeof(t_buffer), "%.1f MB%s", t_bytes / megabyte, t_suffix)
-							: std::snprintf(t_buffer, sizeof(t_buffer), "%.0f KB%s", t_bytes / kilobyte, t_suffix);
+	const int written = t_bytes >= megabyte ? std::snprintf(t_buffer, sizeof(t_buffer), "%.1f MB%s", t_bytes / megabyte, t_suffix)
+											: std::snprintf(t_buffer, sizeof(t_buffer), "%.0f KB%s", t_bytes / kilobyte, t_suffix);
 
 	return std::string_view{t_buffer, static_cast<usize>(std::max(written, 0))};
 }
 
 }
 
-UpdateOverlay::UpdateOverlay(Updater &t_updater, const Settings &t_settings, const Fonts &t_fonts,
-							 const Assets &t_assets, const Window &t_window)
+UpdateOverlay::UpdateOverlay(Updater *t_updater, const Settings *t_settings, const Fonts *t_fonts, const Assets *t_assets, const Window *t_window)
 	: m_updater(t_updater)
 	, m_settings(t_settings)
 	, m_fonts(t_fonts)
@@ -243,7 +241,7 @@ void UpdateOverlay::show_release_notes(std::string_view t_version, std::string_v
 
 std::string_view UpdateOverlay::shown_notes() const
 {
-	return m_showing_release ? std::string_view{m_release_notes} : std::string_view{m_updater.manifest().notes};
+	return m_showing_release ? std::string_view{m_release_notes} : std::string_view{m_updater->manifest().notes};
 }
 
 u32 UpdateOverlay::content_key() const
@@ -254,7 +252,7 @@ u32 UpdateOverlay::content_key() const
 UpdateOverlay::Content UpdateOverlay::describe() const
 {
 	const UpdateStage stage = m_shown_stage;
-	const char *version = m_updater.manifest().version;
+	const char *version = m_updater->manifest().version;
 	Content content;
 
 	const auto set = [&content](const char *t_title, const char *t_detail) {
@@ -279,13 +277,12 @@ UpdateOverlay::Content UpdateOverlay::describe() const
 
 		case UpdateStage::UpToDate:
 			set("You're up to date", "");
-			std::snprintf(content.detail, sizeof(content.detail), "%s %s is the latest version.", app_name,
-						  app_version);
+			std::snprintf(content.detail, sizeof(content.detail), "%s %s is the latest version.", app_name, app_version);
 			content.primary = Button{"Check again", Action::Check, controls::ButtonStyle::Neutral};
 			break;
 
 		case UpdateStage::CheckFailed:
-			set("Couldn't check for updates", m_updater.error_message());
+			set("Couldn't check for updates", m_updater->error_message());
 			content.detail_is_error = true;
 			content.primary = Button{"Try again", Action::Check, controls::ButtonStyle::Accent};
 			break;
@@ -300,8 +297,7 @@ UpdateOverlay::Content UpdateOverlay::describe() const
 
 		case UpdateStage::ManualUpgradeRequired:
 			copy_to("Update available", content.title);
-			std::snprintf(content.detail, sizeof(content.detail), "Version %s has to be downloaded from GitHub.",
-						  version);
+			std::snprintf(content.detail, sizeof(content.detail), "Version %s has to be downloaded from GitHub.", version);
 			content.secondary = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
 			content.primary = Button{"Open GitHub", Action::Releases, controls::ButtonStyle::Accent};
 			break;
@@ -333,7 +329,7 @@ UpdateOverlay::Content UpdateOverlay::describe() const
 			break;
 
 		case UpdateStage::Error:
-			set("Update failed", m_updater.error_message());
+			set("Update failed", m_updater->error_message());
 			content.detail_is_error = true;
 			content.secondary = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
 			content.primary = Button{"Try again", Action::Download, controls::ButtonStyle::Accent};
@@ -353,7 +349,7 @@ float UpdateOverlay::notes_content_height() const
 {
 	NoteLine lines[max_note_lines];
 	float height = 0.0f;
-	layout_notes(m_fonts.secondary, shown_notes(), lines, height);
+	layout_notes(m_fonts->secondary, shown_notes(), lines, &height);
 
 	return height + notes_padding * 2.0f;
 }
@@ -365,11 +361,10 @@ float UpdateOverlay::notes_box_height() const
 
 float UpdateOverlay::content_height(const Content &t_content) const
 {
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
 	std::string_view lines[max_detail_lines];
-	const u32 detail_lines =
-		t_content.detail[0] != '\0' ? wrap_text(secondary, t_content.detail, content_width, lines) : 0;
+	const u32 detail_lines = t_content.detail[0] != '\0' ? wrap_text(secondary, t_content.detail, content_width, lines) : 0;
 
 	float height = popover_padding + body.line_height();
 	height += detail_lines > 0 ? title_gap + static_cast<float>(detail_lines) * secondary.line_height() : 0.0f;
@@ -391,16 +386,15 @@ float UpdateOverlay::content_height(const Content &t_content) const
 
 Rect UpdateOverlay::anchor_rect() const
 {
-	return m_window.title_bar_button_rect(TitleBarButton::Update);
+	return m_window->title_bar_button_rect(TitleBarButton::Update);
 }
 
 UpdateOverlay::Layout UpdateOverlay::layout(const Content &t_content) const
 {
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
-	const Vec2 window = m_window.size();
-	const float x =
-		std::clamp(anchor_rect().x, window_margin, std::max(window_margin, window.x - window_margin - popover_width));
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
+	const Vec2 window = m_window->size();
+	const float x = std::clamp(anchor_rect().x, window_margin, std::max(window_margin, window.x - window_margin - popover_width));
 	const float y = title_bar_height + popover_offset - slide_distance * (1.0f - m_open_amount);
 
 	Layout result{};
@@ -408,8 +402,7 @@ UpdateOverlay::Layout UpdateOverlay::layout(const Content &t_content) const
 	result.title_top = result.popover.y + popover_padding;
 
 	std::string_view lines[max_detail_lines];
-	const u32 detail_lines =
-		t_content.detail[0] != '\0' ? wrap_text(secondary, t_content.detail, content_width, lines) : 0;
+	const u32 detail_lines = t_content.detail[0] != '\0' ? wrap_text(secondary, t_content.detail, content_width, lines) : 0;
 	result.detail_top = result.title_top + body.line_height() + (detail_lines > 0 ? title_gap : 0.0f);
 
 	float y_cursor = result.detail_top + static_cast<float>(detail_lines) * secondary.line_height();
@@ -458,7 +451,7 @@ ScrollGeometry UpdateOverlay::notes_scroll(const Layout &t_layout) const
 // A check that answers instantly would flash past, so the checking state stays up for a moment first.
 void UpdateOverlay::advance_shown_stage(float t_delta_seconds)
 {
-	const UpdateStage actual = m_updater.stage();
+	const UpdateStage actual = m_updater->stage();
 	m_shown_seconds += t_delta_seconds;
 
 	if (m_status_linger > 0.0f) {
@@ -516,20 +509,16 @@ void UpdateOverlay::update(float t_delta_seconds)
 
 	const Content content = describe();
 	const float target = content_height(content);
-	m_height = m_height <= 0.0f ? target
-								: animation::ease_toward(m_height, target, height_ease_rate, t_delta_seconds,
-														 animation::settled_pixels);
+	m_height = m_height <= 0.0f ? target : animation::ease_toward(m_height, target, height_ease_rate, t_delta_seconds, animation::settled_pixels);
 
 	const UpdateStage stage = m_shown_stage;
-	const u64 total = m_updater.total_bytes();
-	const float downloaded =
-		total > 0 ? static_cast<float>(m_updater.bytes_downloaded()) / static_cast<float>(total) : 0.0f;
+	const u64 total = m_updater->total_bytes();
+	const float downloaded = total > 0 ? static_cast<float>(m_updater->bytes_downloaded()) / static_cast<float>(total) : 0.0f;
 	const float progress = stage == UpdateStage::Downloading ? downloaded : 1.0f;
 	m_progress = animation::ease_toward(m_progress, progress, progress_ease_rate, t_delta_seconds);
 
 	if (content.spinning) {
-		m_spin = std::fmod(m_spin + t_delta_seconds * spin_turns_per_second * std::numbers::pi_v<float> * 2.0f,
-						   std::numbers::pi_v<float> * 2.0f);
+		m_spin = std::fmod(m_spin + t_delta_seconds * spin_turns_per_second * std::numbers::pi_v<float> * 2.0f, std::numbers::pi_v<float> * 2.0f);
 		animation::request_frame();
 	}
 
@@ -544,17 +533,17 @@ void UpdateOverlay::run(Action t_action)
 {
 	switch (t_action) {
 		case Action::Check:
-			m_updater.check_for_update();
+			m_updater->check_for_update();
 			close();
 			begin_check();
 			break;
 
 		case Action::Download:
-			m_updater.start_download();
+			m_updater->start_download();
 			break;
 
 		case Action::Cancel:
-			m_updater.request_cancel();
+			m_updater->request_cancel();
 			break;
 
 		case Action::Close:
@@ -660,15 +649,15 @@ CursorKind UpdateOverlay::cursor() const
 
 	const Content content = describe();
 	const Layout current = layout(content);
-	const bool over_button = (current.primary.w > 0.0f && current.primary.contains(m_mouse)) ||
-							 (current.secondary.w > 0.0f && current.secondary.contains(m_mouse));
+	const bool over_button =
+		(current.primary.w > 0.0f && current.primary.contains(m_mouse)) || (current.secondary.w > 0.0f && current.secondary.contains(m_mouse));
 
 	return over_button ? CursorKind::Hand : CursorKind::Arrow;
 }
 
-void UpdateOverlay::draw_title(DrawList &t_draw_list, const Content &t_content, Rect t_line, u8 t_alpha) const
+void UpdateOverlay::draw_title(DrawList *t_draw_list, const Content &t_content, Rect t_line, u8 t_alpha) const
 {
-	const Font &body = m_fonts.body;
+	const Font &body = m_fonts->body;
 	const Color color = faded(theme().text, t_alpha);
 
 	if (!t_content.spinning) {
@@ -680,30 +669,28 @@ void UpdateOverlay::draw_title(DrawList &t_draw_list, const Content &t_content, 
 	const float start = snapped_to_pixel(t_line.center().x - (title_icon_size + title_icon_gap + text) * 0.5f);
 	const Rect icon{start, t_line.center().y - title_icon_size * 0.5f, title_icon_size, title_icon_size};
 
-	t_draw_list.add_rotated_image(icon, m_spin, m_assets.get(Asset::IconUpdate), faded(theme().text_dim, t_alpha));
-	draw_text(t_draw_list, body, Vec2{icon.right() + title_icon_gap, body.centered_baseline(t_line)}, t_content.title,
-			  color);
+	t_draw_list->add_rotated_image(icon, m_spin, m_assets->get(Asset::IconUpdate), faded(theme().text_dim, t_alpha));
+	draw_text(t_draw_list, body, Vec2{icon.right() + title_icon_gap, body.centered_baseline(t_line)}, t_content.title, color);
 }
 
-void UpdateOverlay::draw_notes(DrawList &t_draw_list, Rect t_box, const ScrollGeometry &t_scroll, u8 t_alpha) const
+void UpdateOverlay::draw_notes(DrawList *t_draw_list, Rect t_box, const ScrollGeometry &t_scroll, u8 t_alpha) const
 {
-	const Font &font = m_fonts.secondary;
+	const Font &font = m_fonts->secondary;
 	const Theme &colors = theme();
-	const Color heading = faded(mix(colors.text, m_settings.accent, note_heading_accent_mix), t_alpha);
+	const Color heading = faded(mix(colors.text, m_settings->accent, note_heading_accent_mix), t_alpha);
 	const float line_height = font.line_height();
 	const float left = t_box.x + notes_padding;
 	const float right = left + notes_text_width;
 	const float mark_offset = font.ascent * note_x_height_share;
 
-	t_draw_list.add_bordered_rect(t_box, rounded(notes_radius), faded(colors.field, t_alpha),
-								  faded(colors.separator, t_alpha), 1.0f);
+	t_draw_list->add_bordered_rect(t_box, rounded(notes_radius), faded(colors.field, t_alpha), faded(colors.separator, t_alpha), 1.0f);
 
 	NoteLine lines[max_note_lines];
 	float height = 0.0f;
-	const u32 line_count = layout_notes(font, shown_notes(), lines, height);
+	const u32 line_count = layout_notes(font, shown_notes(), lines, &height);
 	const float top = t_box.y + notes_padding - m_notes_scroll.offset();
 
-	t_draw_list.push_clip(t_box);
+	t_draw_list->push_clip(t_box);
 
 	for (const NoteLine &line : std::span{lines, line_count}) {
 		const float baseline = top + line.baseline;
@@ -715,25 +702,21 @@ void UpdateOverlay::draw_notes(DrawList &t_draw_list, Rect t_box, const ScrollGe
 
 				const float rule_x = left + text_width(font, line.text) + note_heading_rule_gap;
 				if (rule_x < right) {
-					t_draw_list.add_rect(Rect{rule_x, snapped_to_pixel(baseline - mark_offset), right - rule_x, 1.0f},
-										 faded(colors.separator, t_alpha));
+					t_draw_list->add_rect(Rect{rule_x, snapped_to_pixel(baseline - mark_offset), right - rule_x, 1.0f}, faded(colors.separator, t_alpha));
 				}
 
 				break;
 			}
 
 			case NoteKind::Bullet: {
-				const Rect dot{left + note_bullet_offset, baseline - mark_offset - note_bullet_size * 0.5f,
-							   note_bullet_size, note_bullet_size};
-				t_draw_list.add_rounded_rect(dot, rounded(note_bullet_size * 0.5f), heading);
-				draw_text(t_draw_list, font, Vec2{left + note_bullet_indent, baseline}, line.text,
-						  faded(colors.text, t_alpha));
+				const Rect dot{left + note_bullet_offset, baseline - mark_offset - note_bullet_size * 0.5f, note_bullet_size, note_bullet_size};
+				t_draw_list->add_rounded_rect(dot, rounded(note_bullet_size * 0.5f), heading);
+				draw_text(t_draw_list, font, Vec2{left + note_bullet_indent, baseline}, line.text, faded(colors.text, t_alpha));
 				break;
 			}
 
 			case NoteKind::Continuation:
-				draw_text(t_draw_list, font, Vec2{left + note_bullet_indent, baseline}, line.text,
-						  faded(colors.text, t_alpha));
+				draw_text(t_draw_list, font, Vec2{left + note_bullet_indent, baseline}, line.text, faded(colors.text, t_alpha));
 				break;
 
 			case NoteKind::Text:
@@ -742,51 +725,46 @@ void UpdateOverlay::draw_notes(DrawList &t_draw_list, Rect t_box, const ScrollGe
 		}
 	}
 
-	t_draw_list.pop_clip();
+	t_draw_list->pop_clip();
 
 	m_notes_scroll.draw_edge_fade(t_draw_list, t_box, t_scroll, faded(colors.field, t_alpha));
 	m_notes_scroll.draw(t_draw_list, t_scroll, m_mouse, t_alpha);
 }
 
-void UpdateOverlay::draw_progress(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const
+void UpdateOverlay::draw_progress(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha) const
 {
 	const Theme &colors = theme();
-	const Font &secondary = m_fonts.secondary;
+	const Font &secondary = m_fonts->secondary;
 	const Rect &track = t_layout.progress;
 	const float filled = std::max(track.h, track.w * std::clamp(m_progress, 0.0f, 1.0f));
 
-	t_draw_list.add_rounded_rect(track, rounded(track.h * 0.5f), faded(colors.control, t_alpha));
-	t_draw_list.add_rounded_rect(Rect{track.x, track.y, filled, track.h}, rounded(track.h * 0.5f),
-								 faded(m_settings.accent, t_alpha));
+	t_draw_list->add_rounded_rect(track, rounded(track.h * 0.5f), faded(colors.control, t_alpha));
+	t_draw_list->add_rounded_rect(Rect{track.x, track.y, filled, track.h}, rounded(track.h * 0.5f), faded(m_settings->accent, t_alpha));
 
 	if (m_shown_stage != UpdateStage::Downloading) return;
 
 	char downloaded_text[32];
 	char total_text[32];
 	char speed_text[32];
-	const std::string_view downloaded =
-		format_size(static_cast<double>(m_updater.bytes_downloaded()), "", downloaded_text);
-	const std::string_view total = format_size(static_cast<double>(m_updater.total_bytes()), "", total_text);
-	const std::string_view speed = format_size(m_updater.bytes_per_second(), "/s", speed_text);
+	const std::string_view downloaded = format_size(static_cast<double>(m_updater->bytes_downloaded()), "", downloaded_text);
+	const std::string_view total = format_size(static_cast<double>(m_updater->total_bytes()), "", total_text);
+	const std::string_view speed = format_size(m_updater->bytes_per_second(), "/s", speed_text);
 
 	char caption[96];
-	const int written = std::snprintf(
-		caption, sizeof(caption), "%.*s of %.*s  \xC2\xB7  %.*s", static_cast<int>(downloaded.size()),
-		downloaded.data(), static_cast<int>(total.size()), total.data(), static_cast<int>(speed.size()), speed.data());
+	const int written = std::snprintf(caption, sizeof(caption), "%.*s of %.*s  \xC2\xB7  %.*s", static_cast<int>(downloaded.size()), downloaded.data(),
+									  static_cast<int>(total.size()), total.data(), static_cast<int>(speed.size()), speed.data());
 
-	draw_text_centered(t_draw_list, secondary,
-					   Rect{t_layout.popover.x, t_layout.caption_top, t_layout.popover.w, secondary.line_height()},
-					   std::string_view{caption, static_cast<usize>(std::max(written, 0))},
-					   faded(colors.text_faint, t_alpha));
+	draw_text_centered(t_draw_list, secondary, Rect{t_layout.popover.x, t_layout.caption_top, t_layout.popover.w, secondary.line_height()},
+					   std::string_view{caption, static_cast<usize>(std::max(written, 0))}, faded(colors.text_faint, t_alpha));
 }
 
-void UpdateOverlay::draw(DrawList &t_draw_list)
+void UpdateOverlay::draw(DrawList *t_draw_list)
 {
 	if (!is_shown() || m_height <= 0.0f) return;
 
 	const Theme &colors = theme();
-	const Font &body = m_fonts.body;
-	const Font &secondary = m_fonts.secondary;
+	const Font &body = m_fonts->body;
+	const Font &secondary = m_fonts->secondary;
 	const Content content = describe();
 	const Layout current = layout(content);
 	const u8 frame_alpha = to_alpha(m_open_amount);
@@ -794,12 +772,10 @@ void UpdateOverlay::draw(DrawList &t_draw_list)
 	const float rise = (1.0f - m_content_fade) * content_rise;
 
 	controls::draw_popup_shadow(t_draw_list, current.popover, popover_radius, m_open_amount);
-	t_draw_list.add_bordered_rect(current.popover, rounded(popover_radius), faded(colors.popup, frame_alpha),
-								  faded(colors.border, frame_alpha), 1.0f);
-	t_draw_list.push_clip(current.popover.inset(1.0f));
+	t_draw_list->add_bordered_rect(current.popover, rounded(popover_radius), faded(colors.popup, frame_alpha), faded(colors.border, frame_alpha), 1.0f);
+	t_draw_list->push_clip(current.popover.inset(1.0f));
 
-	draw_title(t_draw_list, content,
-			   Rect{current.popover.x, current.title_top + rise, current.popover.w, body.line_height()}, alpha);
+	draw_title(t_draw_list, content, Rect{current.popover.x, current.title_top + rise, current.popover.w, body.line_height()}, alpha);
 
 	std::string_view lines[max_detail_lines];
 	const u32 detail_lines = content.detail[0] != '\0' ? wrap_text(secondary, content.detail, content_width, lines) : 0;
@@ -807,8 +783,7 @@ void UpdateOverlay::draw(DrawList &t_draw_list)
 
 	for (u32 i = 0; i < detail_lines; i += 1) {
 		const float top = current.detail_top + rise + static_cast<float>(i) * secondary.line_height();
-		draw_text_centered(t_draw_list, secondary,
-						   Rect{current.popover.x, top, current.popover.w, secondary.line_height()}, lines[i],
+		draw_text_centered(t_draw_list, secondary, Rect{current.popover.x, top, current.popover.w, secondary.line_height()}, lines[i],
 						   faded(detail_color, alpha));
 	}
 
@@ -825,16 +800,14 @@ void UpdateOverlay::draw(DrawList &t_draw_list)
 
 	const bool live = m_open && !m_notes_scroll.is_dragging();
 	if (current.secondary.w > 0.0f) {
-		controls::draw_button(t_draw_list, body, current.secondary.moved(Vec2{0.0f, rise}), content.secondary.label,
-							  content.secondary.style, m_settings.accent, true,
-							  live && current.secondary.contains(m_mouse), alpha);
+		controls::draw_button(t_draw_list, body, current.secondary.moved(Vec2{0.0f, rise}), content.secondary.label, content.secondary.style,
+							  m_settings->accent, true, live && current.secondary.contains(m_mouse), alpha);
 	}
 
 	if (current.primary.w > 0.0f) {
-		controls::draw_button(t_draw_list, body, current.primary.moved(Vec2{0.0f, rise}), content.primary.label,
-							  content.primary.style, m_settings.accent, true, live && current.primary.contains(m_mouse),
-							  alpha);
+		controls::draw_button(t_draw_list, body, current.primary.moved(Vec2{0.0f, rise}), content.primary.label, content.primary.style, m_settings->accent,
+							  true, live && current.primary.contains(m_mouse), alpha);
 	}
 
-	t_draw_list.pop_clip();
+	t_draw_list->pop_clip();
 }

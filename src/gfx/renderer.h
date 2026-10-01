@@ -19,7 +19,7 @@ struct TextureLevel {
 
 class Texture {
   public:
-	Texture(Renderer &t_renderer, std::span<const TextureLevel> t_levels);
+	Texture(Renderer *t_renderer, std::span<const TextureLevel> t_levels);
 	~Texture();
 
 	Texture(const Texture &) = delete;
@@ -48,7 +48,7 @@ class Texture {
 	}
 
   private:
-	Renderer &m_renderer;
+	Renderer *m_renderer;
 	u32 m_slot;
 	u32 m_width;
 	u32 m_height;
@@ -63,8 +63,8 @@ class Renderer {
 	Renderer(const Renderer &) = delete;
 	Renderer &operator=(const Renderer &) = delete;
 
-	bool init(const Window &t_window);
-	void resize(const Window &t_window);
+	bool init(const Window *t_window);
+	void resize(const Window *t_window);
 
 	void set_effect_time(float t_seconds)
 	{
@@ -79,7 +79,7 @@ class Renderer {
 		m_backdrop_grain = t_grain;
 	}
 
-	void render(const DrawList &t_draw_list, Color t_clear_color);
+	void render(const DrawList *t_draw_list, Color t_clear_color);
 
 	u32 create_texture(std::span<const TextureLevel> t_levels);
 	void destroy_texture(u32 t_slot);
@@ -106,7 +106,7 @@ class Renderer {
 	bool create_index_buffer(u32 t_capacity);
 	void set_viewport(u32 t_width, u32 t_height, float t_logical_width, float t_logical_height);
 
-	void upload_geometry(const DrawList &t_draw_list);
+	void upload_geometry(const DrawList *t_draw_list);
 	void bind_shared_state();
 	void apply_clip(const DrawCommand &t_command);
 	void draw_command(const DrawCommand &t_command);

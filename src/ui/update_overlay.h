@@ -14,8 +14,7 @@ struct Settings;
 
 class UpdateOverlay : public Widget {
   public:
-	UpdateOverlay(Updater &t_updater, const Settings &t_settings, const Fonts &t_fonts, const Assets &t_assets,
-				  const Window &t_window);
+	UpdateOverlay(Updater *t_updater, const Settings *t_settings, const Fonts *t_fonts, const Assets *t_assets, const Window *t_window);
 
 	void open();
 	void begin_check();
@@ -48,7 +47,7 @@ class UpdateOverlay : public Widget {
 	}
 
 	void update(float t_delta_seconds) override;
-	void draw(DrawList &t_draw_list) override;
+	void draw(DrawList *t_draw_list) override;
 
 	bool on_pointer_down(Vec2 t_point) override;
 	bool on_pointer_move(Vec2 t_point) override;
@@ -113,15 +112,15 @@ class UpdateOverlay : public Widget {
 	void run(Action t_action);
 	void advance_shown_stage(float t_delta_seconds);
 
-	void draw_title(DrawList &t_draw_list, const Content &t_content, Rect t_line, u8 t_alpha) const;
-	void draw_notes(DrawList &t_draw_list, Rect t_box, const ScrollGeometry &t_scroll, u8 t_alpha) const;
-	void draw_progress(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
+	void draw_title(DrawList *t_draw_list, const Content &t_content, Rect t_line, u8 t_alpha) const;
+	void draw_notes(DrawList *t_draw_list, Rect t_box, const ScrollGeometry &t_scroll, u8 t_alpha) const;
+	void draw_progress(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha) const;
 
-	Updater &m_updater;
-	const Settings &m_settings;
-	const Fonts &m_fonts;
-	const Assets &m_assets;
-	const Window &m_window;
+	Updater *m_updater;
+	const Settings *m_settings;
+	const Fonts *m_fonts;
+	const Assets *m_assets;
+	const Window *m_window;
 
 	bool m_open = false;
 	float m_open_amount = 0.0f;

@@ -42,8 +42,7 @@ struct Rect {
 
 	Rect inset(float t_horizontal, float t_vertical) const
 	{
-		return Rect{x + t_horizontal, y + t_vertical, std::max(0.0f, w - t_horizontal * 2.0f),
-					std::max(0.0f, h - t_vertical * 2.0f)};
+		return Rect{x + t_horizontal, y + t_vertical, std::max(0.0f, w - t_horizontal * 2.0f), std::max(0.0f, h - t_vertical * 2.0f)};
 	}
 
 	Rect inset(float t_amount) const
@@ -56,8 +55,7 @@ struct Rect {
 		const float left = std::max(x, t_other.x);
 		const float top = std::max(y, t_other.y);
 
-		return Rect{left, top, std::max(0.0f, std::min(right(), t_other.right()) - left),
-					std::max(0.0f, std::min(bottom(), t_other.bottom()) - top)};
+		return Rect{left, top, std::max(0.0f, std::min(right(), t_other.right()) - left), std::max(0.0f, std::min(bottom(), t_other.bottom()) - top)};
 	}
 
 	Rect moved(Vec2 t_offset) const
@@ -119,8 +117,7 @@ inline float lerp(float t_from, float t_to, float t_amount)
 
 inline Rect lerp(Rect t_from, Rect t_to, float t_amount)
 {
-	return Rect{lerp(t_from.x, t_to.x, t_amount), lerp(t_from.y, t_to.y, t_amount), lerp(t_from.w, t_to.w, t_amount),
-				lerp(t_from.h, t_to.h, t_amount)};
+	return Rect{lerp(t_from.x, t_to.x, t_amount), lerp(t_from.y, t_to.y, t_amount), lerp(t_from.w, t_to.w, t_amount), lerp(t_from.h, t_to.h, t_amount)};
 }
 
 inline u8 to_alpha(float t_amount)

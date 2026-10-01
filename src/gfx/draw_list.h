@@ -130,16 +130,14 @@ class DrawList {
 	void add_rect_outline(Rect t_rect, float t_thickness, Color t_color);
 	void add_gradient(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right);
 	void add_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right);
-	void add_plain_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left,
-							Color t_bottom_right);
+	void add_plain_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right);
 	void add_pattern_swatch(Rect t_rect, CornerRadii t_radii, Color t_color, u32 t_style);
 	void add_line(Vec2 t_from, Vec2 t_to, float t_thickness, Color t_color);
 
 	void add_rounded_rect(Rect t_rect, CornerRadii t_radii, Color t_color);
 	void add_bordered_rect(Rect t_rect, CornerRadii t_radii, Color t_fill, Color t_border, float t_thickness);
 
-	void add_image(Rect t_rect, const Texture *t_texture, Color t_tint, CornerRadii t_radii = square_corners,
-				   UvRect t_uv = full_uv);
+	void add_image(Rect t_rect, const Texture *t_texture, Color t_tint, CornerRadii t_radii = square_corners, UvRect t_uv = full_uv);
 	void add_rotated_image(Rect t_rect, float t_radians, const Texture *t_texture, Color t_tint);
 
 	void add_color_picker_square(Rect t_rect, float t_hue_degrees);
@@ -153,15 +151,13 @@ class DrawList {
 	static constexpr u32 max_commands = 256;
 	static constexpr u32 max_clip_depth = 8;
 
-	void target(ShaderKind t_shader, const Texture *t_texture = nullptr, RoundedBoxParams t_box = {},
-				OutlineCountdownParams t_outline = {});
+	void target(ShaderKind t_shader, const Texture *t_texture = nullptr, RoundedBoxParams t_box = {}, OutlineCountdownParams t_outline = {});
 	void close_command();
 
 	Vec2 scaled(Vec2 t_point) const;
 	Rect scaled(Rect t_rect) const;
 
-	void push_backdrop(ShaderKind t_shader, Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left,
-					   Color t_bottom_right);
+	void push_backdrop(ShaderKind t_shader, Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right);
 	void push_quad(Rect t_rect, UvRect t_uv, u32 t_color);
 	void push_quad(const Vertex2D (&t_corners)[4]);
 	void push_rounded(Rect t_rect, CornerRadii t_radii, UvRect t_uv, u32 t_color);

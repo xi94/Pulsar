@@ -64,7 +64,7 @@ class Tray {
 
 	bool create(const wchar_t *t_tooltip);
 
-	void on_menu_open(std::function<void(TrayMenu &)> t_fill_menu);
+	void on_menu_open(std::function<void(TrayMenu *)> t_fill_menu);
 	void set_game_icon(u32 t_game, std::span<const u8> t_png);
 	void set_colors(const TrayColors &t_colors);
 	void set_locked(bool t_locked);
@@ -107,8 +107,8 @@ class Tray {
 
 	void append_row(HMENU t_menu, UINT t_flags, UINT_PTR t_id, const MenuRow &t_row);
 
-	void measure_row(MEASUREITEMSTRUCT &t_measure) const;
-	void draw_row(const DRAWITEMSTRUCT &t_draw) const;
+	void measure_row(MEASUREITEMSTRUCT *t_measure) const;
+	void draw_row(const DRAWITEMSTRUCT *t_draw) const;
 
 	HWND m_window = nullptr;
 	HICON m_icon = nullptr;
@@ -135,7 +135,7 @@ class Tray {
 
 	TrayEvent m_pending_event{};
 
-	std::function<void(TrayMenu &)> m_fill_menu;
+	std::function<void(TrayMenu *)> m_fill_menu;
 	TrayMenu m_menu{};
 	MenuRow m_rows[max_menu_rows]{};
 	u32 m_row_count = 0;

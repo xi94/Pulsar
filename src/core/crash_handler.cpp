@@ -18,8 +18,7 @@ constexpr int open_folder_button_id = 1001;
 constexpr int close_button_id = 1002;
 
 // Never MiniDumpWithFullMemory: it would write the vault key and every decrypted password to disk.
-constexpr auto dump_type =
-	static_cast<MINIDUMP_TYPE>(MiniDumpWithThreadInfo | MiniDumpWithHandleData | MiniDumpWithUnloadedModules);
+constexpr auto dump_type = static_cast<MINIDUMP_TYPE>(MiniDumpWithThreadInfo | MiniDumpWithHandleData | MiniDumpWithUnloadedModules);
 
 std::atomic<bool> g_handling_crash{false};
 
@@ -34,8 +33,7 @@ std::wstring timestamp()
 	GetLocalTime(&time);
 
 	wchar_t buffer[32];
-	swprintf_s(buffer, L"%04u%02u%02u_%02u%02u%02u", time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute,
-			   time.wSecond);
+	swprintf_s(buffer, L"%04u%02u%02u_%02u%02u%02u", time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond);
 
 	return buffer;
 }
@@ -63,14 +61,12 @@ std::wstring module_relative_address(void *t_address)
 	return buffer;
 }
 
-std::wstring write_minidump(EXCEPTION_POINTERS *t_exception, const std::wstring &t_directory, const wchar_t *t_tag,
-							MINIDUMP_TYPE t_type)
+std::wstring write_minidump(EXCEPTION_POINTERS *t_exception, const std::wstring &t_directory, const wchar_t *t_tag, MINIDUMP_TYPE t_type)
 {
 	if (t_directory.empty()) return {};
 
 	const std::wstring path = t_directory + L"\\" + app_name_wide + L"_" + t_tag + L"_" + timestamp() + L".dmp";
-	const HANDLE file =
-		CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+	const HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 	if (file == INVALID_HANDLE_VALUE) return {};
 
 	MINIDUMP_EXCEPTION_INFORMATION exception_info{
@@ -79,15 +75,14 @@ std::wstring write_minidump(EXCEPTION_POINTERS *t_exception, const std::wstring 
 		.ClientPointers = FALSE,
 	};
 
-	const BOOL written = MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file, t_type,
-										   t_exception != nullptr ? &exception_info : nullptr, nullptr, nullptr);
+	const BOOL written =
+		MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file, t_type, t_exception != nullptr ? &exception_info : nullptr, nullptr, nullptr);
 	CloseHandle(file);
 
 	return written ? path : std::wstring{};
 }
 
-HRESULT CALLBACK crash_dialog_callback(HWND t_window, UINT t_notification, WPARAM t_button, LPARAM,
-									   LONG_PTR t_dump_directory)
+HRESULT CALLBACK crash_dialog_callback(HWND t_window, UINT t_notification, WPARAM t_button, LPARAM, LONG_PTR t_dump_directory)
 {
 	if (t_notification != TDN_BUTTON_CLICKED || t_button != open_folder_button_id) return S_OK;
 
@@ -99,14 +94,12 @@ HRESULT CALLBACK crash_dialog_callback(HWND t_window, UINT t_notification, WPARA
 	return S_FALSE;
 }
 
-void show_crash_dialog(const std::wstring &t_reason, const std::wstring &t_location, const std::wstring &t_dump_path,
-					   const std::wstring &t_dump_directory)
+void show_crash_dialog(const std::wstring &t_reason, const std::wstring &t_location, const std::wstring &t_dump_path, const std::wstring &t_dump_directory)
 {
 	std::wstring content = L"An unexpected error occurred and the app needs to close. A crash report has been saved "
 						   L"locally.\n\nError: " +
 						   t_reason + L"\nLocation: " + t_location;
-	content +=
-		t_dump_path.empty() ? L"\n\nThe crash report itself could not be saved." : L"\n\nSaved to:\n" + t_dump_path;
+	content += t_dump_path.empty() ? L"\n\nThe crash report itself could not be saved." : L"\n\nSaved to:\n" + t_dump_path;
 
 	const std::wstring instruction = std::wstring{app_name_wide} + L" has stopped working";
 

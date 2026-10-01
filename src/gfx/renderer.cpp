@@ -57,13 +57,12 @@ struct BackdropConstants {
 static_assert(sizeof(BackdropConstants) == 32);
 
 constexpr const char *pixel_shader_entry_points[]{
-	"ps_solid",	 "ps_textured",			 "ps_banner_glow", "ps_color_picker",
-	"ps_shadow", "ps_outline_countdown", "ps_backdrop",	   "ps_backdrop_plain",
+	"ps_solid", "ps_textured", "ps_banner_glow", "ps_color_picker", "ps_shadow", "ps_outline_countdown", "ps_backdrop", "ps_backdrop_plain",
 };
 
 static_assert(std::size(pixel_shader_entry_points) == shader_kind_count);
 
-bool compile_shader(const char *t_entry_point, const char *t_target, Microsoft::WRL::ComPtr<ID3DBlob> &t_out_blob)
+bool compile_shader(const char *t_entry_point, const char *t_target, Microsoft::WRL::ComPtr<ID3DBlob> *t_out_blob)
 {
 	UINT flags = 0;
 #ifndef NDEBUG
@@ -71,8 +70,8 @@ bool compile_shader(const char *t_entry_point, const char *t_target, Microsoft::
 #endif
 
 	Microsoft::WRL::ComPtr<ID3DBlob> errors;
-	const HRESULT result = D3DCompile(shader_source, std::strlen(shader_source), nullptr, nullptr, nullptr,
-									  t_entry_point, t_target, flags, 0, &t_out_blob, &errors);
+	const HRESULT result = D3DCompile(shader_source, std::strlen(shader_source), nullptr, nullptr, nullptr, t_entry_point, t_target, flags, 0,
+									  t_out_blob->ReleaseAndGetAddressOf(), &errors);
 
 	if (FAILED(result) && errors != nullptr) {
 		OutputDebugStringA(static_cast<const char *>(errors->GetBufferPointer()));
@@ -82,7 +81,7 @@ bool compile_shader(const char *t_entry_point, const char *t_target, Microsoft::
 }
 
 template <typename Constants>
-bool create_constant_buffer(ID3D11Device &t_device, Microsoft::WRL::ComPtr<ID3D11Buffer> &t_out_buffer)
+bool create_constant_buffer(ID3D11Device *t_device, Microsoft::WRL::ComPtr<ID3D11Buffer> *t_out_buffer)
 {
 	const D3D11_BUFFER_DESC desc{
 		.ByteWidth = sizeof(Constants),
@@ -90,11 +89,10 @@ bool create_constant_buffer(ID3D11Device &t_device, Microsoft::WRL::ComPtr<ID3D1
 		.BindFlags = D3D11_BIND_CONSTANT_BUFFER,
 	};
 
-	return SUCCEEDED(t_device.CreateBuffer(&desc, nullptr, &t_out_buffer));
+	return SUCCEEDED(t_device->CreateBuffer(&desc, nullptr, t_out_buffer->ReleaseAndGetAddressOf()));
 }
 
-bool create_dynamic_buffer(ID3D11Device &t_device, UINT t_byte_width, UINT t_bind_flags,
-						   Microsoft::WRL::ComPtr<ID3D11Buffer> &t_out_buffer)
+bool create_dynamic_buffer(ID3D11Device *t_device, UINT t_byte_width, UINT t_bind_flags, Microsoft::WRL::ComPtr<ID3D11Buffer> *t_out_buffer)
 {
 	const D3D11_BUFFER_DESC desc{
 		.ByteWidth = t_byte_width,
@@ -103,22 +101,22 @@ bool create_dynamic_buffer(ID3D11Device &t_device, UINT t_byte_width, UINT t_bin
 		.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE,
 	};
 
-	return SUCCEEDED(t_device.CreateBuffer(&desc, nullptr, &t_out_buffer));
+	return SUCCEEDED(t_device->CreateBuffer(&desc, nullptr, t_out_buffer->ReleaseAndGetAddressOf()));
 }
 
-void upload(ID3D11DeviceContext &t_context, ID3D11Buffer *t_buffer, const void *t_data, usize t_bytes)
+void upload(ID3D11DeviceContext *t_context, ID3D11Buffer *t_buffer, const void *t_data, usize t_bytes)
 {
 	D3D11_MAPPED_SUBRESOURCE mapped{};
-	if (FAILED(t_context.Map(t_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return;
+	if (FAILED(t_context->Map(t_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return;
 
 	std::memcpy(mapped.pData, t_data, t_bytes);
-	t_context.Unmap(t_buffer, 0);
+	t_context->Unmap(t_buffer, 0);
 }
 }
 
-Texture::Texture(Renderer &t_renderer, std::span<const TextureLevel> t_levels)
+Texture::Texture(Renderer *t_renderer, std::span<const TextureLevel> t_levels)
 	: m_renderer(t_renderer)
-	, m_slot(t_renderer.create_texture(t_levels))
+	, m_slot(t_renderer->create_texture(t_levels))
 	, m_width(t_levels.front().width)
 	, m_height(t_levels.front().height)
 {
@@ -127,7 +125,7 @@ Texture::Texture(Renderer &t_renderer, std::span<const TextureLevel> t_levels)
 Texture::~Texture()
 {
 	if (is_valid()) {
-		m_renderer.destroy_texture(m_slot);
+		m_renderer->destroy_texture(m_slot);
 	}
 }
 
@@ -136,20 +134,20 @@ bool Texture::is_valid() const
 	return m_slot != Renderer::invalid_texture_slot;
 }
 
-bool Renderer::init(const Window &t_window)
+bool Renderer::init(const Window *t_window)
 {
 	DXGI_SWAP_CHAIN_DESC swap_chain_desc{
 		.BufferDesc =
 			{
-				.Width = t_window.physical_width(),
-				.Height = t_window.physical_height(),
+				.Width = t_window->physical_width(),
+				.Height = t_window->physical_height(),
 				.RefreshRate = {.Numerator = 0, .Denominator = 1},
 				.Format = DXGI_FORMAT_R8G8B8A8_UNORM,
 			},
 		.SampleDesc = {.Count = msaa_sample_count, .Quality = 0},
 		.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
 		.BufferCount = 2,
-		.OutputWindow = t_window.handle(),
+		.OutputWindow = t_window->handle(),
 		.Windowed = TRUE,
 		.SwapEffect = DXGI_SWAP_EFFECT_DISCARD,
 	};
@@ -165,41 +163,36 @@ bool Renderer::init(const Window &t_window)
 	const D3D_FEATURE_LEVEL feature_level = D3D_FEATURE_LEVEL_11_0;
 	const auto device_start = std::chrono::steady_clock::now();
 
-	if (FAILED(D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, device_flags, &feature_level,
-											 1, D3D11_SDK_VERSION, &swap_chain_desc, &m_swap_chain, &m_device, nullptr,
-											 &m_context))) {
+	if (FAILED(D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, device_flags, &feature_level, 1, D3D11_SDK_VERSION, &swap_chain_desc,
+											 &m_swap_chain, &m_device, nullptr, &m_context))) {
 		return false;
 	}
 
 	const auto pipeline_start = std::chrono::steady_clock::now();
 
-	const bool ready = create_render_target_view() && create_shaders() && create_constant_buffers() &&
-					   create_pipeline_states() && create_vertex_buffer(initial_vertex_capacity) &&
-					   create_index_buffer(initial_index_capacity);
+	const bool ready = create_render_target_view() && create_shaders() && create_constant_buffers() && create_pipeline_states() &&
+					   create_vertex_buffer(initial_vertex_capacity) && create_index_buffer(initial_index_capacity);
 	if (!ready) return false;
 
-	debug_log::write(
-		log_category, "device %.1f ms, pipeline %.1f ms",
-		std::chrono::duration<float, std::milli>(pipeline_start - device_start).count(),
-		std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - pipeline_start).count());
+	debug_log::write(log_category, "device %.1f ms, pipeline %.1f ms", std::chrono::duration<float, std::milli>(pipeline_start - device_start).count(),
+					 std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - pipeline_start).count());
 
-	set_viewport(t_window.physical_width(), t_window.physical_height(), static_cast<float>(t_window.width()),
-				 static_cast<float>(t_window.height()));
+	set_viewport(t_window->physical_width(), t_window->physical_height(), static_cast<float>(t_window->width()), static_cast<float>(t_window->height()));
 
 	return true;
 }
 
-void Renderer::resize(const Window &t_window)
+void Renderer::resize(const Window *t_window)
 {
-	const u32 width = t_window.physical_width();
-	const u32 height = t_window.physical_height();
+	const u32 width = t_window->physical_width();
+	const u32 height = t_window->physical_height();
 	if (width == 0 || height == 0 || (width == m_physical_width && height == m_physical_height)) return;
 
 	m_render_target_view.Reset();
 	m_swap_chain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
 	create_render_target_view();
 
-	set_viewport(width, height, static_cast<float>(t_window.width()), static_cast<float>(t_window.height()));
+	set_viewport(width, height, static_cast<float>(t_window->width()), static_cast<float>(t_window->height()));
 }
 
 void Renderer::set_viewport(u32 t_width, u32 t_height, float t_logical_width, float t_logical_height)
@@ -242,14 +235,13 @@ bool Renderer::create_shaders()
 	}
 
 	std::vector<std::thread> compilers;
-	const auto compile = [&compilers](CompileJob &t_job) {
-		compilers.emplace_back(
-			[&t_job]() { t_job.compiled = compile_shader(t_job.entry_point, t_job.target, t_job.blob); });
+	const auto compile = [&compilers](CompileJob *t_job) {
+		compilers.emplace_back([t_job]() { t_job->compiled = compile_shader(t_job->entry_point, t_job->target, &t_job->blob); });
 	};
 
-	compile(vertex_job);
+	compile(&vertex_job);
 	for (CompileJob &job : pixel_jobs) {
-		compile(job);
+		compile(&job);
 	}
 
 	for (std::thread &compiler : compilers) {
@@ -258,17 +250,15 @@ bool Renderer::create_shaders()
 
 	if (!vertex_job.compiled || !std::ranges::all_of(pixel_jobs, &CompileJob::compiled)) return false;
 
-	ID3DBlob &vertex_blob = *vertex_job.blob.Get();
-	if (FAILED(m_device->CreateVertexShader(vertex_blob.GetBufferPointer(), vertex_blob.GetBufferSize(), nullptr,
-											&m_vertex_shader))) {
+	ID3DBlob *vertex_blob = vertex_job.blob.Get();
+	if (FAILED(m_device->CreateVertexShader(vertex_blob->GetBufferPointer(), vertex_blob->GetBufferSize(), nullptr, &m_vertex_shader))) {
 		return false;
 	}
 
 	for (u32 i = 0; i < shader_kind_count; i += 1) {
-		ID3DBlob &blob = *pixel_jobs[i].blob.Get();
+		ID3DBlob *blob = pixel_jobs[i].blob.Get();
 
-		if (FAILED(m_device->CreatePixelShader(blob.GetBufferPointer(), blob.GetBufferSize(), nullptr,
-											   &m_pixel_shaders[i]))) {
+		if (FAILED(m_device->CreatePixelShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &m_pixel_shaders[i]))) {
 			return false;
 		}
 	}
@@ -279,18 +269,17 @@ bool Renderer::create_shaders()
 		{"COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, offsetof(Vertex2D, color), D3D11_INPUT_PER_VERTEX_DATA, 0},
 	};
 
-	return SUCCEEDED(m_device->CreateInputLayout(vertex_layout, ARRAYSIZE(vertex_layout),
-												 vertex_blob.GetBufferPointer(), vertex_blob.GetBufferSize(),
-												 &m_input_layout));
+	return SUCCEEDED(
+		m_device->CreateInputLayout(vertex_layout, ARRAYSIZE(vertex_layout), vertex_blob->GetBufferPointer(), vertex_blob->GetBufferSize(), &m_input_layout));
 }
 
 bool Renderer::create_constant_buffers()
 {
-	return create_constant_buffer<ViewportConstants>(*m_device.Get(), m_viewport_constants) &&
-		   create_constant_buffer<BannerGlowConstants>(*m_device.Get(), m_banner_glow_constants) &&
-		   create_constant_buffer<ShadowConstants>(*m_device.Get(), m_shadow_constants) &&
-		   create_constant_buffer<OutlineCountdownConstants>(*m_device.Get(), m_outline_countdown_constants) &&
-		   create_constant_buffer<BackdropConstants>(*m_device.Get(), m_backdrop_constants);
+	return create_constant_buffer<ViewportConstants>(m_device.Get(), &m_viewport_constants) &&
+		   create_constant_buffer<BannerGlowConstants>(m_device.Get(), &m_banner_glow_constants) &&
+		   create_constant_buffer<ShadowConstants>(m_device.Get(), &m_shadow_constants) &&
+		   create_constant_buffer<OutlineCountdownConstants>(m_device.Get(), &m_outline_countdown_constants) &&
+		   create_constant_buffer<BackdropConstants>(m_device.Get(), &m_backdrop_constants);
 }
 
 bool Renderer::create_pipeline_states()
@@ -329,8 +318,7 @@ bool Renderer::create_pipeline_states()
 
 bool Renderer::create_vertex_buffer(u32 t_capacity)
 {
-	if (!create_dynamic_buffer(*m_device.Get(), t_capacity * sizeof(Vertex2D), D3D11_BIND_VERTEX_BUFFER,
-							   m_vertex_buffer)) {
+	if (!create_dynamic_buffer(m_device.Get(), t_capacity * sizeof(Vertex2D), D3D11_BIND_VERTEX_BUFFER, &m_vertex_buffer)) {
 		return false;
 	}
 
@@ -341,7 +329,7 @@ bool Renderer::create_vertex_buffer(u32 t_capacity)
 
 bool Renderer::create_index_buffer(u32 t_capacity)
 {
-	if (!create_dynamic_buffer(*m_device.Get(), t_capacity * sizeof(u32), D3D11_BIND_INDEX_BUFFER, m_index_buffer)) {
+	if (!create_dynamic_buffer(m_device.Get(), t_capacity * sizeof(u32), D3D11_BIND_INDEX_BUFFER, &m_index_buffer)) {
 		return false;
 	}
 
@@ -350,10 +338,10 @@ bool Renderer::create_index_buffer(u32 t_capacity)
 	return true;
 }
 
-void Renderer::upload_geometry(const DrawList &t_draw_list)
+void Renderer::upload_geometry(const DrawList *t_draw_list)
 {
-	const auto vertices = t_draw_list.vertices();
-	const auto indices = t_draw_list.indices();
+	const auto vertices = t_draw_list->vertices();
+	const auto indices = t_draw_list->indices();
 
 	if (vertices.size() > m_vertex_capacity) {
 		create_vertex_buffer(static_cast<u32>(vertices.size()) * 2);
@@ -363,8 +351,8 @@ void Renderer::upload_geometry(const DrawList &t_draw_list)
 		create_index_buffer(static_cast<u32>(indices.size()) * 2);
 	}
 
-	upload(*m_context.Get(), m_vertex_buffer.Get(), vertices.data(), vertices.size_bytes());
-	upload(*m_context.Get(), m_index_buffer.Get(), indices.data(), indices.size_bytes());
+	upload(m_context.Get(), m_vertex_buffer.Get(), vertices.data(), vertices.size_bytes());
+	upload(m_context.Get(), m_index_buffer.Get(), indices.data(), indices.size_bytes());
 }
 
 void Renderer::bind_shared_state()
@@ -446,8 +434,7 @@ void Renderer::draw_command(const DrawCommand &t_command)
 
 		case ShaderKind::Backdrop:
 		case ShaderKind::BackdropPlain: {
-			const float pixel_scale =
-				m_logical_width > 0.0f ? static_cast<float>(m_physical_width) / m_logical_width : 1.0f;
+			const float pixel_scale = m_logical_width > 0.0f ? static_cast<float>(m_physical_width) / m_logical_width : 1.0f;
 			const BackdropConstants constants{.target_width = static_cast<float>(m_physical_width),
 											  .target_height = static_cast<float>(m_physical_height),
 											  .intensity = m_backdrop_intensity,
@@ -472,23 +459,22 @@ void Renderer::draw_command(const DrawCommand &t_command)
 	m_context->DrawIndexed(t_command.index_count, t_command.index_offset, 0);
 }
 
-void Renderer::render(const DrawList &t_draw_list, Color t_clear_color)
+void Renderer::render(const DrawList *t_draw_list, Color t_clear_color)
 {
 	ID3D11RenderTargetView *const render_target = m_render_target_view.Get();
 	m_context->OMSetRenderTargets(1, &render_target, nullptr);
 
-	const float clear_color[4]{t_clear_color.r / 255.0f, t_clear_color.g / 255.0f, t_clear_color.b / 255.0f,
-							   t_clear_color.a / 255.0f};
+	const float clear_color[4]{t_clear_color.r / 255.0f, t_clear_color.g / 255.0f, t_clear_color.b / 255.0f, t_clear_color.a / 255.0f};
 	m_context->ClearRenderTargetView(render_target, clear_color);
 
 	{
 		PULSAR_PROFILE_SCOPE("Render.Submit");
 
-		if (!t_draw_list.commands().empty()) {
+		if (!t_draw_list->commands().empty()) {
 			upload_geometry(t_draw_list);
 			bind_shared_state();
 
-			for (const DrawCommand &command : t_draw_list.commands()) {
+			for (const DrawCommand &command : t_draw_list->commands()) {
 				draw_command(command);
 			}
 		}
@@ -532,9 +518,9 @@ u32 Renderer::create_texture(std::span<const TextureLevel> t_levels)
 		pixels.push_back(D3D11_SUBRESOURCE_DATA{.pSysMem = level.rgba_pixels, .SysMemPitch = level.width * 4});
 	}
 
-	TextureSlot &texture = m_textures[slot];
-	if (FAILED(m_device->CreateTexture2D(&desc, pixels.data(), &texture.texture)) ||
-		FAILED(m_device->CreateShaderResourceView(texture.texture.Get(), nullptr, &texture.view))) {
+	TextureSlot *texture = &m_textures[slot];
+	if (FAILED(m_device->CreateTexture2D(&desc, pixels.data(), &texture->texture)) ||
+		FAILED(m_device->CreateShaderResourceView(texture->texture.Get(), nullptr, &texture->view))) {
 		destroy_texture(slot);
 		return invalid_texture_slot;
 	}

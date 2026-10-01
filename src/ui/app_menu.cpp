@@ -50,17 +50,17 @@ constexpr MenuItem menu_items[]{
 
 constexpr u32 item_count = static_cast<u32>(std::size(menu_items));
 
-float item_height(const Fonts &t_fonts)
+float item_height(const Fonts *t_fonts)
 {
-	return std::max(28.0f, t_fonts.body.line_height() + 8.0f);
+	return std::max(28.0f, t_fonts->body.line_height() + 8.0f);
 }
 
-float footer_height(const Fonts &t_fonts)
+float footer_height(const Fonts *t_fonts)
 {
-	return t_fonts.secondary.line_height() + footer_padding * 2.0f;
+	return t_fonts->secondary.line_height() + footer_padding * 2.0f;
 }
 
-float item_offset(const Fonts &t_fonts, u32 t_item)
+float item_offset(const Fonts *t_fonts, u32 t_item)
 {
 	float offset = 0.0f;
 
@@ -71,7 +71,7 @@ float item_offset(const Fonts &t_fonts, u32 t_item)
 	return offset;
 }
 
-Rect menu_rect(const Fonts &t_fonts, float t_open_amount)
+Rect menu_rect(const Fonts *t_fonts, float t_open_amount)
 {
 	const float items = item_offset(t_fonts, item_count - 1) + item_height(t_fonts);
 	const float height = menu_padding * 2.0f + items + separator_block + footer_height(t_fonts);
@@ -80,14 +80,13 @@ Rect menu_rect(const Fonts &t_fonts, float t_open_amount)
 	return Rect{menu_x, title_bar_height + 4.0f + slide, menu_width, height};
 }
 
-Rect item_rect(const Fonts &t_fonts, Rect t_menu, u32 t_item)
+Rect item_rect(const Fonts *t_fonts, Rect t_menu, u32 t_item)
 {
-	return Rect{t_menu.x + menu_padding, t_menu.y + menu_padding + item_offset(t_fonts, t_item),
-				t_menu.w - menu_padding * 2.0f, item_height(t_fonts)};
+	return Rect{t_menu.x + menu_padding, t_menu.y + menu_padding + item_offset(t_fonts, t_item), t_menu.w - menu_padding * 2.0f, item_height(t_fonts)};
 }
 }
 
-AppMenu::AppMenu(const Fonts &t_fonts, const Assets &t_assets, CommandQueue &t_commands)
+AppMenu::AppMenu(const Fonts *t_fonts, const Assets *t_assets, CommandQueue *t_commands)
 	: m_fonts(t_fonts)
 	, m_assets(t_assets)
 	, m_commands(t_commands)
@@ -120,8 +119,7 @@ void AppMenu::update(float t_delta_seconds)
 
 	for (u32 i = 0; i < item_count; i += 1) {
 		const bool hovered = is_blocking() && is_enabled(i) && item_rect(m_fonts, menu, i).contains(m_mouse);
-		m_item_hover[i] =
-			animation::ease_toward(m_item_hover[i], hovered ? 1.0f : 0.0f, hover_ease_rate, t_delta_seconds);
+		m_item_hover[i] = animation::ease_toward(m_item_hover[i], hovered ? 1.0f : 0.0f, hover_ease_rate, t_delta_seconds);
 	}
 }
 
@@ -133,7 +131,7 @@ bool AppMenu::on_pointer_up(Vec2 t_point)
 
 	for (u32 i = 0; i < item_count; i += 1) {
 		if (is_enabled(i) && item_rect(m_fonts, menu, i).contains(t_point)) {
-			m_commands.push(Command{.type = menu_items[i].command});
+			m_commands->push(Command{.type = menu_items[i].command});
 			break;
 		}
 	}
@@ -156,23 +154,21 @@ CursorKind AppMenu::cursor() const
 	return CursorKind::Arrow;
 }
 
-void AppMenu::draw(DrawList &t_draw_list)
+void AppMenu::draw(DrawList *t_draw_list)
 {
 	if (m_open_amount <= 0.001f) return;
 
 	const Theme &colors = theme();
 	const auto alpha = to_alpha(m_open_amount);
 	const Rect menu = menu_rect(m_fonts, m_open_amount);
-	const Font &font = m_fonts.body;
-	const Font &hint_font = m_fonts.secondary;
+	const Font &font = m_fonts->body;
+	const Font &hint_font = m_fonts->secondary;
 
 	controls::draw_popup_shadow(t_draw_list, menu, menu_radius, m_open_amount);
-	t_draw_list.add_bordered_rect(menu, rounded(menu_radius), faded(colors.popup, alpha), faded(colors.border, alpha),
-								  1.0f);
+	t_draw_list->add_bordered_rect(menu, rounded(menu_radius), faded(colors.popup, alpha), faded(colors.border, alpha), 1.0f);
 
 	const auto separator_above = [&](float t_y) {
-		t_draw_list.add_rect(Rect{menu.x + 1.0f, t_y - separator_gap - 1.0f, menu.w - 2.0f, 1.0f},
-							 faded(colors.separator, alpha));
+		t_draw_list->add_rect(Rect{menu.x + 1.0f, t_y - separator_gap - 1.0f, menu.w - 2.0f, 1.0f}, faded(colors.separator, alpha));
 	};
 
 	for (u32 i = 0; i < item_count; i += 1) {
@@ -186,21 +182,19 @@ void AppMenu::draw(DrawList &t_draw_list)
 		}
 
 		if (m_item_hover[i] > 0.001f) {
-			t_draw_list.add_rounded_rect(item, rounded(item_radius), faded(backdrop, alpha));
+			t_draw_list->add_rounded_rect(item, rounded(item_radius), faded(backdrop, alpha));
 		}
 
 		const Color label = faded(enabled ? colors.text : colors.text_faint, alpha);
 		const Color icon_color = faded(enabled ? colors.text_dim : colors.text_faint, alpha);
 		const Rect icon{item.x + content_x, item.y + (item.h - icon_size) * 0.5f, icon_size, icon_size};
 
-		t_draw_list.add_image(icon, m_assets.get(entry.icon), icon_color);
+		t_draw_list->add_image(icon, m_assets->get(entry.icon), icon_color);
 
-		draw_text(t_draw_list, font, Vec2{icon.right() + icon_text_gap, font.centered_baseline(item)}, entry.label,
-				  label);
+		draw_text(t_draw_list, font, Vec2{icon.right() + icon_text_gap, font.centered_baseline(item)}, entry.label, label);
 
 		if (*entry.shortcut != '\0') {
-			controls::draw_shortcut(t_draw_list, hint_font, Vec2{item.right() - content_x, item.center().y},
-									entry.shortcut, faded(backdrop, alpha),
+			controls::draw_shortcut(t_draw_list, hint_font, Vec2{item.right() - content_x, item.center().y}, entry.shortcut, faded(backdrop, alpha),
 									static_cast<u8>(alpha * (enabled ? 1.0f : 0.5f)));
 		}
 	}
@@ -214,8 +208,8 @@ void AppMenu::draw(DrawList &t_draw_list)
 	const float baseline = hint_font.centered_baseline(footer);
 	const float inset = menu_padding + content_x;
 
-	draw_text(t_draw_list, hint_font, Vec2{footer.x + inset, baseline},
-			  std::string_view{version, static_cast<usize>(std::max(written, 0))}, faded(colors.text_faint, alpha));
-	draw_text(t_draw_list, hint_font, Vec2{footer.right() - inset - text_width(hint_font, m_update_status), baseline},
-			  m_update_status, faded(colors.text_faint, alpha));
+	draw_text(t_draw_list, hint_font, Vec2{footer.x + inset, baseline}, std::string_view{version, static_cast<usize>(std::max(written, 0))},
+			  faded(colors.text_faint, alpha));
+	draw_text(t_draw_list, hint_font, Vec2{footer.right() - inset - text_width(hint_font, m_update_status), baseline}, m_update_status,
+			  faded(colors.text_faint, alpha));
 }

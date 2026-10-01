@@ -12,15 +12,14 @@ struct Settings;
 
 class UnlockScreen : public Widget {
   public:
-	UnlockScreen(Settings &t_settings, MasterKey &t_master_key, const Fonts &t_fonts, const Assets &t_assets,
-				 const Window &t_window, CommandQueue &t_commands);
+	UnlockScreen(Settings *t_settings, MasterKey *t_master_key, const Fonts *t_fonts, const Assets *t_assets, const Window *t_window, CommandQueue *t_commands);
 
 	void show_unlock();
 	void show_setup();
 	void hide();
 
 	void update(float t_delta_seconds) override;
-	void draw(DrawList &t_draw_list) override;
+	void draw(DrawList *t_draw_list) override;
 
 	bool on_pointer_down(Vec2 t_point) override;
 	bool on_pointer_move(Vec2 t_point) override;
@@ -59,15 +58,15 @@ class UnlockScreen : public Widget {
 	void attempt_unlock();
 	void attempt_setup();
 
-	void draw_field(DrawList &t_draw_list, u32 t_field);
-	void draw_submit_button(DrawList &t_draw_list, std::string_view t_label) const;
+	void draw_field(DrawList *t_draw_list, u32 t_field);
+	void draw_submit_button(DrawList *t_draw_list, std::string_view t_label) const;
 
-	Settings &m_settings;
-	MasterKey &m_master_key;
-	const Fonts &m_fonts;
-	const Assets &m_assets;
-	const Window &m_window;
-	CommandQueue &m_commands;
+	Settings *m_settings;
+	MasterKey *m_master_key;
+	const Fonts *m_fonts;
+	const Assets *m_assets;
+	const Window *m_window;
+	CommandQueue *m_commands;
 
 	bool m_active = false;
 	bool m_setup = false;

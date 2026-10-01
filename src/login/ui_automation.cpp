@@ -95,24 +95,24 @@ struct WindowSearch {
 
 BOOL CALLBACK find_top_level_window_proc(HWND t_window, LPARAM t_search)
 {
-	auto &search = *reinterpret_cast<WindowSearch *>(t_search);
+	auto *search = reinterpret_cast<WindowSearch *>(t_search);
 
 	DWORD process_id = 0;
 	GetWindowThreadProcessId(t_window, &process_id);
 
-	if (std::ranges::find(*search.process_ids, process_id) == search.process_ids->end()) return TRUE;
+	if (std::ranges::find(*search->process_ids, process_id) == search->process_ids->end()) return TRUE;
 	if (GetWindow(t_window, GW_OWNER) != nullptr || !IsWindowVisible(t_window)) return TRUE;
 
 	RECT rect;
 	if (GetWindowRect(t_window, &rect) && rect.right - rect.left < min_real_window_width) return TRUE;
 
-	search.found = t_window;
+	search->found = t_window;
 
 	return FALSE;
 }
 
 template <typename Lookup>
-ComPtr<IUIAutomationElement> run_lookup(const char *t_label, Lookup t_lookup, const std::atomic<bool> &t_cancel)
+ComPtr<IUIAutomationElement> run_lookup(const char *t_label, Lookup t_lookup, const std::atomic<bool> *t_cancel)
 {
 	auto result = std::make_shared<ComPtr<IUIAutomationElement>>();
 	const debug_log::Scope scope(log_category, "%s", t_label);
@@ -121,7 +121,7 @@ ComPtr<IUIAutomationElement> run_lookup(const char *t_label, Lookup t_lookup, co
 	const bool finished = run_unless_cancelled(
 		[result, t_lookup]() {
 			const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-			t_lookup(*result);
+			t_lookup(result.get());
 
 			if (com_result == S_OK || com_result == S_FALSE) {
 				CoUninitialize();
@@ -214,7 +214,7 @@ bool UiElement::has_keyboard_focus() const
 	return is_valid() && SUCCEEDED(m_element->get_CurrentHasKeyboardFocus(&focused)) && focused;
 }
 
-UiAutomation::UiAutomation(const std::atomic<bool> &t_cancel)
+UiAutomation::UiAutomation(const std::atomic<bool> *t_cancel)
 	: m_cancel(t_cancel)
 {
 }
@@ -230,8 +230,7 @@ void UiAutomation::keep_process_mta_alive()
 	if (cookie != nullptr) return;
 
 	const HRESULT result = CoIncrementMTAUsage(&cookie);
-	debug_log::write(log_category, "CoIncrementMTAUsage hr=0x%08lX (process-wide MTA %s)",
-					 static_cast<unsigned long>(result),
+	debug_log::write(log_category, "CoIncrementMTAUsage hr=0x%08lX (process-wide MTA %s)", static_cast<unsigned long>(result),
 					 SUCCEEDED(result) ? "held open" : "NOT held - apartment will be torn down between attempts");
 }
 
@@ -249,11 +248,9 @@ bool UiAutomation::init()
 	}
 
 	const debug_log::Scope scope(log_category, "CoCreateInstance(CLSID_CUIAutomation)");
-	const HRESULT result =
-		CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&m_automation));
+	const HRESULT result = CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&m_automation));
 
-	debug_log::write(log_category, "CoCreateInstance(CLSID_CUIAutomation) hr=0x%08lX after %llums",
-					 static_cast<unsigned long>(result), scope.elapsed_ms());
+	debug_log::write(log_category, "CoCreateInstance(CLSID_CUIAutomation) hr=0x%08lX after %llums", static_cast<unsigned long>(result), scope.elapsed_ms());
 
 	return SUCCEEDED(result);
 }
@@ -291,8 +288,8 @@ UiElement UiAutomation::element_from_window(HWND t_window) const
 
 	return UiElement{run_lookup(
 		label,
-		[automation = m_automation, t_window](ComPtr<IUIAutomationElement> &t_out) {
-			automation->ElementFromHandle(t_window, &t_out);
+		[automation = m_automation, t_window](ComPtr<IUIAutomationElement> *t_out) {
+			automation->ElementFromHandle(t_window, t_out->ReleaseAndGetAddressOf());
 		},
 		m_cancel)};
 }
@@ -312,8 +309,7 @@ UiElement UiAutomation::find_descendant(const UiElement &t_root, const wchar_t *
 	return find_first(t_root, std::move(condition), label);
 }
 
-UiElement UiAutomation::find_descendant(const UiElement &t_root, const wchar_t *t_name,
-										CONTROLTYPEID t_control_type) const
+UiElement UiAutomation::find_descendant(const UiElement &t_root, const wchar_t *t_name, CONTROLTYPEID t_control_type) const
 {
 	if (!can_search(t_root)) return {};
 
@@ -324,8 +320,7 @@ UiElement UiAutomation::find_descendant(const UiElement &t_root, const wchar_t *
 	ComPtr<IUIAutomationCondition> both;
 
 	if (FAILED(m_automation->CreatePropertyCondition(UIA_NamePropertyId, name.get(), &name_condition)) ||
-		FAILED(m_automation->CreatePropertyCondition(UIA_ControlTypePropertyId,
-													 variant_from_control_type(t_control_type), &type_condition)) ||
+		FAILED(m_automation->CreatePropertyCondition(UIA_ControlTypePropertyId, variant_from_control_type(t_control_type), &type_condition)) ||
 		FAILED(m_automation->CreateAndCondition(name_condition.Get(), type_condition.Get(), &both))) {
 		return {};
 	}
@@ -376,7 +371,7 @@ void UiAutomation::press_key(WORD t_virtual_key) const
 
 bool UiAutomation::is_cancelled() const
 {
-	return m_cancel.load(std::memory_order_relaxed);
+	return m_cancel->load(std::memory_order_relaxed);
 }
 
 bool UiAutomation::can_search(const UiElement &t_root) const
@@ -384,13 +379,12 @@ bool UiAutomation::can_search(const UiElement &t_root) const
 	return m_automation != nullptr && t_root.is_valid() && !is_cancelled();
 }
 
-UiElement UiAutomation::find_first(const UiElement &t_root, ComPtr<IUIAutomationCondition> t_condition,
-								   const char *t_label) const
+UiElement UiAutomation::find_first(const UiElement &t_root, ComPtr<IUIAutomationCondition> t_condition, const char *t_label) const
 {
 	return UiElement{run_lookup(
 		t_label,
-		[root = t_root.com(), t_condition](ComPtr<IUIAutomationElement> &t_out) {
-			root->FindFirst(TreeScope_Descendants, t_condition.Get(), &t_out);
+		[root = t_root.com(), t_condition](ComPtr<IUIAutomationElement> *t_out) {
+			root->FindFirst(TreeScope_Descendants, t_condition.Get(), t_out->ReleaseAndGetAddressOf());
 		},
 		m_cancel)};
 }

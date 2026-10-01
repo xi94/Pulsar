@@ -84,22 +84,19 @@ class RegistryKey {
 
 	bool create(const wchar_t *t_path)
 	{
-		return RegCreateKeyExW(HKEY_CURRENT_USER, t_path, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &m_handle, nullptr) ==
-			   ERROR_SUCCESS;
+		return RegCreateKeyExW(HKEY_CURRENT_USER, t_path, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &m_handle, nullptr) == ERROR_SUCCESS;
 	}
 
 	bool set(const wchar_t *t_name, const std::wstring &t_value) const
 	{
 		const auto bytes = static_cast<DWORD>((t_value.size() + 1) * sizeof(wchar_t));
 
-		return RegSetValueExW(m_handle, t_name, 0, REG_SZ, reinterpret_cast<const BYTE *>(t_value.c_str()), bytes) ==
-			   ERROR_SUCCESS;
+		return RegSetValueExW(m_handle, t_name, 0, REG_SZ, reinterpret_cast<const BYTE *>(t_value.c_str()), bytes) == ERROR_SUCCESS;
 	}
 
 	bool set(const wchar_t *t_name, DWORD t_value) const
 	{
-		return RegSetValueExW(m_handle, t_name, 0, REG_DWORD, reinterpret_cast<const BYTE *>(&t_value),
-							  sizeof(t_value)) == ERROR_SUCCESS;
+		return RegSetValueExW(m_handle, t_name, 0, REG_DWORD, reinterpret_cast<const BYTE *>(&t_value), sizeof(t_value)) == ERROR_SUCCESS;
 	}
 
   private:
@@ -177,8 +174,7 @@ bool same_path(const std::wstring &t_left, const std::wstring &t_right)
 	const std::wstring left = full_path(t_left);
 	const std::wstring right = full_path(t_right);
 
-	return CompareStringOrdinal(left.c_str(), static_cast<int>(left.size()), right.c_str(),
-								static_cast<int>(right.size()), TRUE) == CSTR_EQUAL;
+	return CompareStringOrdinal(left.c_str(), static_cast<int>(left.size()), right.c_str(), static_cast<int>(right.size()), TRUE) == CSTR_EQUAL;
 }
 
 std::optional<std::wstring> read_string(const wchar_t *t_key, const wchar_t *t_value)
@@ -209,9 +205,7 @@ bool is_setup_complete()
 	DWORD value = 0;
 	DWORD bytes = sizeof(value);
 
-	return RegGetValueW(HKEY_CURRENT_USER, app_key, setup_complete_value, RRF_RT_REG_DWORD, nullptr, &value, &bytes) ==
-			   ERROR_SUCCESS &&
-		   value != 0;
+	return RegGetValueW(HKEY_CURRENT_USER, app_key, setup_complete_value, RRF_RT_REG_DWORD, nullptr, &value, &bytes) == ERROR_SUCCESS && value != 0;
 }
 
 DWORD file_kilobytes(const std::wstring &t_path)
@@ -290,8 +284,7 @@ void set_start_with_windows(bool t_wanted, const std::wstring &t_executable)
 	}
 }
 
-void apply_options(const std::wstring &t_location, const std::wstring &t_executable,
-				   const installation::Options &t_options)
+void apply_options(const std::wstring &t_location, const std::wstring &t_executable, const installation::Options &t_options)
 {
 	set_shortcut(shortcut_in(FOLDERID_Desktop), t_options.desktop_shortcut, t_executable, t_location);
 	set_shortcut(shortcut_in(FOLDERID_Programs), t_options.start_menu_shortcut, t_executable, t_location);
@@ -304,12 +297,10 @@ bool register_uninstall(const std::wstring &t_location, const std::wstring &t_ex
 	if (!key.create(uninstall_key)) return false;
 
 	return key.set(L"DisplayName", std::wstring{app_name_wide}) && key.set(L"DisplayVersion", to_wide(app_version)) &&
-		   key.set(L"DisplayIcon", t_executable + L",0") && key.set(L"Publisher", std::wstring{app_name_wide}) &&
-		   key.set(L"InstallLocation", t_location) && key.set(L"InstallDate", today()) &&
-		   key.set(L"UninstallString", quoted(t_executable) + L" --uninstall") &&
-		   key.set(L"ModifyPath", quoted(t_executable) + L" --setup") &&
-		   key.set(L"URLInfoAbout", std::wstring{L"" PULSAR_RELEASE_REPO}) && key.set(L"NoRepair", 1) &&
-		   key.set(L"EstimatedSize", file_kilobytes(t_executable));
+		   key.set(L"DisplayIcon", t_executable + L",0") && key.set(L"Publisher", std::wstring{app_name_wide}) && key.set(L"InstallLocation", t_location) &&
+		   key.set(L"InstallDate", today()) && key.set(L"UninstallString", quoted(t_executable) + L" --uninstall") &&
+		   key.set(L"ModifyPath", quoted(t_executable) + L" --setup") && key.set(L"URLInfoAbout", std::wstring{L"" PULSAR_RELEASE_REPO}) &&
+		   key.set(L"NoRepair", 1) && key.set(L"EstimatedSize", file_kilobytes(t_executable));
 }
 
 std::string copy_error(DWORD t_error)
@@ -329,8 +320,7 @@ std::string copy_error(DWORD t_error)
 	}
 
 	char message[96];
-	std::snprintf(message, sizeof(message), "Pulsar couldn't be copied there (error %lu).",
-				  static_cast<unsigned long>(t_error));
+	std::snprintf(message, sizeof(message), "Pulsar couldn't be copied there (error %lu).", static_cast<unsigned long>(t_error));
 
 	return message;
 }
@@ -359,16 +349,14 @@ void remove_after_exit(const installation::Installed &t_installed)
 
 	const std::wstring folder{system, length};
 	const std::wstring shell = folder + L"\\cmd.exe";
-	std::wstring command = quoted(shell) +
-						   L" /d /c ping 127.0.0.1 -n 4 >nul & del /f /q \"%PULSAR_REMOVE_EXECUTABLE%\" "
-						   L"\"%PULSAR_REMOVE_EXECUTABLE%.old\" \"%PULSAR_REMOVE_EXECUTABLE%.update\" & rmdir "
-						   L"\"%PULSAR_REMOVE_FOLDER%\"";
+	std::wstring command = quoted(shell) + L" /d /c ping 127.0.0.1 -n 4 >nul & del /f /q \"%PULSAR_REMOVE_EXECUTABLE%\" "
+										   L"\"%PULSAR_REMOVE_EXECUTABLE%.old\" \"%PULSAR_REMOVE_EXECUTABLE%.update\" & rmdir "
+										   L"\"%PULSAR_REMOVE_FOLDER%\"";
 
 	STARTUPINFOW startup{.cb = sizeof(startup)};
 	PROCESS_INFORMATION process{};
 
-	if (CreateProcessW(shell.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr,
-					   folder.c_str(), &startup, &process)) {
+	if (CreateProcessW(shell.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, folder.c_str(), &startup, &process)) {
 		CloseHandle(process.hProcess);
 		CloseHandle(process.hThread);
 	}
@@ -381,8 +369,7 @@ void delete_data_folder(const std::wstring &t_folder)
 	const std::wstring name = folder.filename().wstring();
 	const std::wstring_view expected{data_folder_name};
 
-	if (CompareStringOrdinal(name.c_str(), static_cast<int>(name.size()), expected.data(),
-							 static_cast<int>(expected.size()), TRUE) != CSTR_EQUAL) {
+	if (CompareStringOrdinal(name.c_str(), static_cast<int>(name.size()), expected.data(), static_cast<int>(expected.size()), TRUE) != CSTR_EQUAL) {
 		return;
 	}
 
@@ -441,12 +428,10 @@ std::wstring with_app_folder(std::wstring_view t_folder)
 	if (folder.empty()) return folder;
 
 	const usize slash = folder.find_last_of(L"\\/");
-	const std::wstring_view last =
-		slash == std::wstring::npos ? std::wstring_view{folder} : std::wstring_view{folder}.substr(slash + 1);
+	const std::wstring_view last = slash == std::wstring::npos ? std::wstring_view{folder} : std::wstring_view{folder}.substr(slash + 1);
 	const std::wstring_view name{app_folder_name};
 
-	if (CompareStringOrdinal(last.data(), static_cast<int>(last.size()), name.data(), static_cast<int>(name.size()),
-							 TRUE) == CSTR_EQUAL) {
+	if (CompareStringOrdinal(last.data(), static_cast<int>(last.size()), name.data(), static_cast<int>(name.size()), TRUE) == CSTR_EQUAL) {
 		return folder;
 	}
 
@@ -526,8 +511,7 @@ bool close_running_app(std::wstring_view t_only_executable)
 
 	const HANDLE process = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
 
-	if (!t_only_executable.empty() && process != nullptr &&
-		!same_path(process_executable(process), std::wstring{t_only_executable})) {
+	if (!t_only_executable.empty() && process != nullptr && !same_path(process_executable(process), std::wstring{t_only_executable})) {
 		CloseHandle(process);
 		return true;
 	}
@@ -744,8 +728,7 @@ FolderPicker::~FolderPicker()
 
 	// The dialog blocks its thread until it closes, so it is closed rather than waited on.
 	if (!m_finished.load(std::memory_order_acquire)) {
-		for (int attempt = 0; attempt < delete_attempts && m_thread_id.load(std::memory_order_acquire) == 0;
-			 attempt += 1) {
+		for (int attempt = 0; attempt < delete_attempts && m_thread_id.load(std::memory_order_acquire) == 0; attempt += 1) {
 			Sleep(10);
 		}
 
@@ -782,16 +765,14 @@ void FolderPicker::open(HWND t_owner, std::wstring t_initial_folder)
 
 			const std::wstring start = nearest_existing_folder(initial);
 			ComPtr<IShellItem> start_item;
-			if (!start.empty() &&
-				SUCCEEDED(SHCreateItemFromParsingName(start.c_str(), nullptr, IID_PPV_ARGS(&start_item)))) {
+			if (!start.empty() && SUCCEEDED(SHCreateItemFromParsingName(start.c_str(), nullptr, IID_PPV_ARGS(&start_item)))) {
 				dialog->SetFolder(start_item.Get());
 			}
 
 			ComPtr<IShellItem> picked;
 			PWSTR path = nullptr;
 
-			if (SUCCEEDED(dialog->Show(t_owner)) && SUCCEEDED(dialog->GetResult(&picked)) &&
-				SUCCEEDED(picked->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
+			if (SUCCEEDED(dialog->Show(t_owner)) && SUCCEEDED(dialog->GetResult(&picked)) && SUCCEEDED(picked->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
 				m_result = with_app_folder(path);
 			}
 

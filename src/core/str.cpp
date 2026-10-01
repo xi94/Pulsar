@@ -14,8 +14,8 @@ usize find_ignoring_case(std::string_view t_text, std::string_view t_query)
 	if (t_query.size() > t_text.size()) return std::string_view::npos;
 
 	for (usize start = 0; start + t_query.size() <= t_text.size(); start += 1) {
-		const bool matches = std::equal(t_query.begin(), t_query.end(), t_text.begin() + start,
-										[](char t_a, char t_b) { return lowered(t_a) == lowered(t_b); });
+		const bool matches =
+			std::equal(t_query.begin(), t_query.end(), t_text.begin() + start, [](char t_a, char t_b) { return lowered(t_a) == lowered(t_b); });
 		if (matches) return start;
 	}
 
