@@ -1006,7 +1006,7 @@ void App::run()
 			clear_clipboard_secret();
 		}
 
-		m_window.set_excluded_from_capture(m_settings.hide_accounts_from_capture && m_account_modal.is_blocking());
+		m_window.set_excluded_from_capture(m_settings.hide_from_capture);
 
 		const float requested_wait = animation::take_idle_wait(idle_poll_seconds);
 		const float wait = m_window.is_hidden() || m_window.is_minimized() ? idle_poll_seconds : requested_wait;

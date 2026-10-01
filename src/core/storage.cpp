@@ -260,8 +260,8 @@ storage::LoadResult read_settings(Settings &t_settings)
 	try {
 		t_settings.window_width = settings.value("window_width", t_settings.window_width);
 		t_settings.window_height = settings.value("window_height", t_settings.window_height);
-		t_settings.hide_accounts_from_capture =
-			settings.value("exclude_account_list_from_capture", t_settings.hide_accounts_from_capture);
+		t_settings.hide_from_capture =
+			settings.value("exclude_account_list_from_capture", t_settings.hide_from_capture);
 
 		const bool legacy_minimize_to_tray = settings.value("minimize_to_tray", t_settings.close_to_tray);
 		t_settings.close_to_tray = settings.value("close_to_tray", legacy_minimize_to_tray);
@@ -461,7 +461,7 @@ bool storage::save_settings(const Settings &t_settings)
 		{"accent_color", json::array({accent.r, accent.g, accent.b, accent.a})},
 		{"font_name", t_settings.font_name},
 		{"theme", theme_labels[static_cast<u32>(t_settings.theme)].id},
-		{"exclude_account_list_from_capture", t_settings.hide_accounts_from_capture},
+		{"exclude_account_list_from_capture", t_settings.hide_from_capture},
 		{"close_to_tray", t_settings.close_to_tray},
 		{"block_overlay_injection", t_settings.block_overlay_injection},
 		{"show_notifications", t_settings.show_notifications},

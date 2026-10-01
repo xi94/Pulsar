@@ -562,7 +562,7 @@ const SettingsPanel::RowSpec SettingsPanel::row_specs[row_spec_count]{
 	{&Rows::close_to_tray, SettingsTab::behavior, 4, "When closing", "",
 	 "close to tray minimize quit exit background system tray hide"},
 	{&Rows::hide_from_capture, SettingsTab::privacy, 5, "Hide from screen capture",
-	 "Hide accounts from screenshares, recordings and screenshots.", "stream record share obs discord"},
+	 "Hide Pulsar from screenshares, recordings and screenshots.", "stream record share obs discord"},
 	{&Rows::block_overlay_injection, SettingsTab::privacy, 5, "Block overlay injection",
 	 "Block overlays and keyloggers. Restart to apply.", "security inject dll"},
 	{&Rows::auto_lock, SettingsTab::security, 6, "Auto-lock", "Lock the vault after being idle.",
@@ -583,7 +583,7 @@ const SettingsPanel::PercentSlider SettingsPanel::percent_sliders[percent_slider
 const SettingsPanel::Toggle SettingsPanel::toggles[toggle_count]{
 	{&Settings::show_notifications, &Rows::notifications},
 	{&Settings::animations_enabled, &Rows::animations},
-	{&Settings::hide_accounts_from_capture, &Rows::hide_from_capture},
+	{&Settings::hide_from_capture, &Rows::hide_from_capture},
 	{&Settings::block_overlay_injection, &Rows::block_overlay_injection},
 	{&Settings::background_light, &Rows::background_light},
 	{&Settings::background_grain, &Rows::background_grain},
@@ -1339,7 +1339,7 @@ bool SettingsPanel::is_default(ResettableSetting t_setting) const
 		case ResettableSetting::notifications:
 			return m_settings.show_notifications == defaults.show_notifications;
 		case ResettableSetting::hide_from_capture:
-			return m_settings.hide_accounts_from_capture == defaults.hide_accounts_from_capture;
+			return m_settings.hide_from_capture == defaults.hide_from_capture;
 		case ResettableSetting::block_overlay_injection:
 			return m_settings.block_overlay_injection == defaults.block_overlay_injection;
 		case ResettableSetting::close_to_tray:
@@ -1412,7 +1412,7 @@ void SettingsPanel::reset(ResettableSetting t_setting)
 			m_settings.show_notifications = defaults.show_notifications;
 			break;
 		case ResettableSetting::hide_from_capture:
-			m_settings.hide_accounts_from_capture = defaults.hide_accounts_from_capture;
+			m_settings.hide_from_capture = defaults.hide_from_capture;
 			break;
 		case ResettableSetting::block_overlay_injection:
 			m_settings.block_overlay_injection = defaults.block_overlay_injection;

@@ -89,7 +89,7 @@ struct Settings {
 	Color accent{203, 166, 247, 255};
 
 	bool show_notifications = true;
-	bool hide_accounts_from_capture = true;
+	bool hide_from_capture = true;
 	bool block_overlay_injection = true;
 	bool close_to_tray = false;
 	u32 auto_lock_minutes = 0;
