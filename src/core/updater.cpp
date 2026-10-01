@@ -18,6 +18,7 @@
 #include "core/app_identity.h"
 #include "core/str.h"
 #include "core/thread_util.h"
+#include "platform/process.h"
 
 namespace {
 constexpr wchar_t user_agent[] = L"Pulsar-Updater/1.0";
@@ -35,9 +36,9 @@ constexpr auto shutdown_join_timeout = std::chrono::milliseconds(3000);
 constexpr usize max_download_bytes = 64ull * 1024 * 1024;
 
 enum class HttpResult : u8 {
-	ok,
-	cancelled,
-	failed,
+	Ok,
+	Cancelled,
+	Failed,
 };
 
 struct DownloadProgress {
@@ -173,7 +174,7 @@ HttpResult read_body(HINTERNET t_request, std::vector<u8> &t_out_body, const Dow
 	if (query_number_header(t_request, WINHTTP_QUERY_CONTENT_LENGTH, content_length)) {
 		if (content_length > max_download_bytes) {
 			t_out_error = "the server offered a file far larger than any Pulsar build";
-			return HttpResult::failed;
+			return HttpResult::Failed;
 		}
 
 		t_out_body.reserve(content_length);
@@ -187,20 +188,20 @@ HttpResult read_body(HINTERNET t_request, std::vector<u8> &t_out_body, const Dow
 
 	for (;;) {
 		if (t_progress.cancel_requested != nullptr && t_progress.cancel_requested->load(std::memory_order_relaxed)) {
-			return HttpResult::cancelled;
+			return HttpResult::Cancelled;
 		}
 
 		DWORD available = 0;
 		if (!WinHttpQueryDataAvailable(t_request, &available)) {
 			t_out_error = "the connection was interrupted while reading";
-			return HttpResult::failed;
+			return HttpResult::Failed;
 		}
 
-		if (available == 0) return HttpResult::ok;
+		if (available == 0) return HttpResult::Ok;
 
 		if (t_out_body.size() + available > max_download_bytes) {
 			t_out_error = "the download grew far larger than any Pulsar build";
-			return HttpResult::failed;
+			return HttpResult::Failed;
 		}
 
 		const usize previous_size = t_out_body.size();
@@ -209,7 +210,7 @@ HttpResult read_body(HINTERNET t_request, std::vector<u8> &t_out_body, const Dow
 		DWORD read = 0;
 		if (!WinHttpReadData(t_request, t_out_body.data() + previous_size, available, &read)) {
 			t_out_error = "the connection was interrupted while reading";
-			return HttpResult::failed;
+			return HttpResult::Failed;
 		}
 
 		t_out_body.resize(previous_size + read);
@@ -245,14 +246,14 @@ HttpResult http_get(const std::wstring &t_url, std::vector<u8> &t_out_body, cons
 
 	if (!WinHttpCrackUrl(t_url.c_str(), 0, 0, &url)) {
 		t_out_error = "could not parse the update URL";
-		return HttpResult::failed;
+		return HttpResult::Failed;
 	}
 
 	const InternetHandle session{WinHttpOpen(user_agent, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
 											 WINHTTP_NO_PROXY_BYPASS, 0)};
 	if (session == nullptr) {
 		t_out_error = "could not open an HTTP session";
-		return HttpResult::failed;
+		return HttpResult::Failed;
 	}
 
 	WinHttpSetTimeouts(session, resolve_timeout_ms, connect_timeout_ms, send_timeout_ms, receive_timeout_ms);
@@ -260,31 +261,31 @@ HttpResult http_get(const std::wstring &t_url, std::vector<u8> &t_out_body, cons
 	const InternetHandle connection{WinHttpConnect(session, host, url.nPort, 0)};
 	if (connection == nullptr) {
 		t_out_error = "could not connect to " + to_utf8(host);
-		return HttpResult::failed;
+		return HttpResult::Failed;
 	}
 
 	const InternetHandle request{
 		open_request(connection, std::wstring{path} + query, url.nScheme == INTERNET_SCHEME_HTTPS)};
 	if (request == nullptr) {
 		t_out_error = "could not open an HTTP request";
-		return HttpResult::failed;
+		return HttpResult::Failed;
 	}
 
 	if (!WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
 		t_out_error = "the request failed to send";
-		return HttpResult::failed;
+		return HttpResult::Failed;
 	}
 
 	if (!WinHttpReceiveResponse(request, nullptr)) {
 		t_out_error = "no response was received";
-		return HttpResult::failed;
+		return HttpResult::Failed;
 	}
 
 	DWORD status = 0;
 	query_number_header(request, WINHTTP_QUERY_STATUS_CODE, status);
 	if (status < 200 || status >= 300) {
 		t_out_error = "server returned HTTP " + std::to_string(status);
-		return HttpResult::failed;
+		return HttpResult::Failed;
 	}
 
 	return read_body(request, t_out_body, t_progress, t_out_error);
@@ -345,14 +346,6 @@ bool is_newer_than_running(const std::wstring &t_executable)
 	parse_version(app_version, running);
 
 	return downloaded > running;
-}
-
-std::wstring executable_path()
-{
-	wchar_t path[MAX_PATH];
-	const DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
-
-	return length > 0 && length < MAX_PATH ? std::wstring{path, length} : std::wstring{};
 }
 
 bool write_bytes(const std::wstring &t_path, const std::vector<u8> &t_bytes)
@@ -423,18 +416,6 @@ void delete_stale_backup(const std::wstring &t_backup_path)
 		Sleep(50);
 	}
 }
-
-void launch_process(const std::wstring &t_path)
-{
-	STARTUPINFOW startup_info{.cb = sizeof(startup_info)};
-	PROCESS_INFORMATION process_info{};
-
-	if (CreateProcessW(t_path.c_str(), nullptr, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup_info,
-					   &process_info)) {
-		CloseHandle(process_info.hProcess);
-		CloseHandle(process_info.hThread);
-	}
-}
 }
 
 Updater::~Updater()
@@ -468,11 +449,11 @@ void Updater::check_for_update()
 {
 	const UpdateStage current = stage();
 	const bool nothing_pending =
-		current == UpdateStage::idle || current == UpdateStage::up_to_date || current == UpdateStage::check_failed;
+		current == UpdateStage::Idle || current == UpdateStage::UpToDate || current == UpdateStage::CheckFailed;
 	if (m_worker_active || !nothing_pending) return;
 
 	prepare_new_worker();
-	m_stage.store(UpdateStage::checking, std::memory_order_relaxed);
+	m_stage.store(UpdateStage::Checking, std::memory_order_relaxed);
 	m_worker = std::thread([this]() { check_for_update_on_worker(); });
 }
 
@@ -480,7 +461,7 @@ void Updater::start_download()
 {
 	const UpdateStage current = stage();
 	const bool have_manifest =
-		current == UpdateStage::available || current == UpdateStage::error || current == UpdateStage::cancelled;
+		current == UpdateStage::Available || current == UpdateStage::Error || current == UpdateStage::Cancelled;
 	if (m_worker_active || !have_manifest) return;
 
 	prepare_new_worker();
@@ -496,7 +477,7 @@ void Updater::update()
 	}
 
 	m_worker_active = false;
-	m_ready_to_relaunch = stage() == UpdateStage::ready_to_relaunch;
+	m_ready_to_relaunch = stage() == UpdateStage::ReadyToRelaunch;
 }
 
 bool Updater::consume_ready_to_relaunch()
@@ -534,20 +515,20 @@ void Updater::check_for_update_on_worker()
 	std::vector<u8> body;
 	std::string error;
 
-	if (http_get(update_manifest_url, body, DownloadProgress{}, error) != HttpResult::ok) {
-		fail_worker(UpdateStage::check_failed, prefix, error.c_str());
+	if (http_get(update_manifest_url, body, DownloadProgress{}, error) != HttpResult::Ok) {
+		fail_worker(UpdateStage::CheckFailed, prefix, error.c_str());
 		return;
 	}
 
 	UpdateManifest manifest{};
 	if (!parse_manifest(body, manifest)) {
-		fail_worker(UpdateStage::check_failed, prefix, "malformed manifest");
+		fail_worker(UpdateStage::CheckFailed, prefix, "malformed manifest");
 		return;
 	}
 
 	SemVer latest{};
 	if (!parse_version(manifest.version, latest)) {
-		fail_worker(UpdateStage::check_failed, prefix, "manifest has an unparseable version");
+		fail_worker(UpdateStage::CheckFailed, prefix, "manifest has an unparseable version");
 		return;
 	}
 
@@ -559,11 +540,11 @@ void Updater::check_for_update_on_worker()
 	m_manifest = manifest;
 
 	if (latest <= current) {
-		finish_worker(UpdateStage::up_to_date);
+		finish_worker(UpdateStage::UpToDate);
 	} else if (current < minimum_for_auto_update) {
-		finish_worker(UpdateStage::manual_upgrade_required);
+		finish_worker(UpdateStage::ManualUpgradeRequired);
 	} else {
-		finish_worker(UpdateStage::available);
+		finish_worker(UpdateStage::Available);
 	}
 }
 
@@ -572,7 +553,7 @@ void Updater::download_and_install_on_worker(UpdateManifest t_manifest)
 	m_bytes_downloaded.store(0, std::memory_order_relaxed);
 	m_total_bytes.store(0, std::memory_order_relaxed);
 	m_bytes_per_second.store(0.0, std::memory_order_relaxed);
-	m_stage.store(UpdateStage::downloading, std::memory_order_release);
+	m_stage.store(UpdateStage::Downloading, std::memory_order_release);
 
 	const DownloadProgress progress{&m_cancel_requested, &m_bytes_downloaded, &m_total_bytes, &m_bytes_per_second};
 
@@ -580,32 +561,32 @@ void Updater::download_and_install_on_worker(UpdateManifest t_manifest)
 	std::string error;
 	const HttpResult result = http_get(to_wide(t_manifest.url), body, progress, error);
 
-	if (result == HttpResult::cancelled) {
-		finish_worker(UpdateStage::cancelled);
+	if (result == HttpResult::Cancelled) {
+		finish_worker(UpdateStage::Cancelled);
 		return;
 	}
 
-	if (result != HttpResult::ok) {
-		fail_worker(UpdateStage::error, "Download failed: ", error.c_str());
+	if (result != HttpResult::Ok) {
+		fail_worker(UpdateStage::Error, "Download failed: ", error.c_str());
 		return;
 	}
 
-	m_stage.store(UpdateStage::verifying, std::memory_order_release);
+	m_stage.store(UpdateStage::Verifying, std::memory_order_release);
 	if (!verify_download(body, t_manifest, error)) {
-		fail_worker(UpdateStage::error, "", error.c_str());
+		fail_worker(UpdateStage::Error, "", error.c_str());
 		return;
 	}
 
 	if (m_cancel_requested.load(std::memory_order_relaxed)) {
-		finish_worker(UpdateStage::cancelled);
+		finish_worker(UpdateStage::Cancelled);
 		return;
 	}
 
-	m_stage.store(UpdateStage::installing, std::memory_order_release);
+	m_stage.store(UpdateStage::Installing, std::memory_order_release);
 	if (!replace_running_executable(body, error)) {
-		fail_worker(UpdateStage::error, "", error.c_str());
+		fail_worker(UpdateStage::Error, "", error.c_str());
 		return;
 	}
 
-	finish_worker(UpdateStage::ready_to_relaunch);
+	finish_worker(UpdateStage::ReadyToRelaunch);
 }

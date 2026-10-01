@@ -9,15 +9,15 @@
 #include "ui/widget.h"
 
 class Assets;
-class Fonts;
+struct Fonts;
 struct Game;
 struct Settings;
 
 enum class ViewMode : u8 {
-	carousel,
-	grid,
-	list,
-	icons,
+	Carousel,
+	Grid,
+	List,
+	Icons,
 };
 
 class Carousel : public Widget {
@@ -42,7 +42,7 @@ class Carousel : public Widget {
 
 	std::span<const u8> order() const
 	{
-		return {m_order, game_count()};
+		return {m_order, m_library.game_count};
 	}
 
 	ArtSource art_source(u32 t_game) const;
@@ -83,11 +83,6 @@ class Carousel : public Widget {
 		Vec2 origin{};
 		float seconds = 0.0f;
 	};
-
-	u32 game_count() const
-	{
-		return m_library.game_count();
-	}
 
 	float clamp_scroll(float t_offset) const;
 	float wrap_content_height() const;
@@ -191,8 +186,8 @@ class Carousel : public Widget {
 
 	i32 m_zoom_stop = 0;
 	float m_zoom_percent = 0.0f;
-	ViewMode m_mode = ViewMode::carousel;
-	ViewMode m_previous_mode = ViewMode::carousel;
+	ViewMode m_mode = ViewMode::Carousel;
+	ViewMode m_previous_mode = ViewMode::Carousel;
 	float m_mode_transition = 0.0f;
 	Rect m_morph_from_art[max_games]{};
 	Rect m_morph_from_frame[max_games]{};

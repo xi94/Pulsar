@@ -96,7 +96,7 @@ float Toasts::icon_column_width() const
 
 Rect Toasts::card_rect() const
 {
-	const Font &font = m_fonts.secondary();
+	const Font &font = m_fonts.secondary;
 	const float chrome = padding_x * 2.0f + icon_column_width();
 	const float width =
 		std::clamp(chrome + text_width(font, m_message) + breathing_width, min_card_width, max_card_width);
@@ -163,7 +163,7 @@ bool Toasts::on_pointer_up(Vec2 t_point)
 
 CursorKind Toasts::cursor() const
 {
-	return is_clickable_at(m_mouse) ? CursorKind::hand : CursorKind::arrow;
+	return is_clickable_at(m_mouse) ? CursorKind::Hand : CursorKind::Arrow;
 }
 
 void Toasts::draw(DrawList &t_draw_list)
@@ -172,9 +172,9 @@ void Toasts::draw(DrawList &t_draw_list)
 
 	if (m_presence < 0.01f) return;
 
-	const Font &font = m_fonts.secondary();
+	const Font &font = m_fonts.secondary;
 	const Rect card = animated_card_rect();
-	const auto alpha = static_cast<u8>(std::clamp(m_presence, 0.0f, 1.0f) * 255.0f);
+	const auto alpha = to_alpha(m_presence);
 
 	const float corner_radius = std::min(card.h * 0.5f, max_corner_radius);
 	controls::draw_popup_shadow(t_draw_list, card, corner_radius, m_presence);
@@ -191,7 +191,7 @@ void Toasts::draw(DrawList &t_draw_list)
 	}
 
 	const float text_x = card.x + padding_x + icon_column_width();
-	draw_wrapped_text(t_draw_list, font, Vec2{text_x, card.y + padding_y + font.ascent()},
+	draw_wrapped_text(t_draw_list, font, Vec2{text_x, card.y + padding_y + font.ascent},
 					  card.right() - padding_x - text_x, m_message, faded(theme().text, alpha), max_lines);
 
 	draw_time_left_bar(t_draw_list, card, alpha);

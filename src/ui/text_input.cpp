@@ -12,6 +12,7 @@
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "platform/clipboard.h"
+#include "platform/window.h"
 #include "ui/text.h"
 #include "ui/theme.h"
 
@@ -25,17 +26,17 @@ constexpr float multi_click_slop = 4.0f;
 constexpr u32 clicks_per_cycle = 3;
 
 enum class CharClass : u8 {
-	space,
-	word,
-	symbol,
+	Space,
+	Word,
+	Symbol,
 };
 
 CharClass class_of(char t_character)
 {
-	if (t_character == ' ') return CharClass::space;
-	if (std::isalnum(static_cast<unsigned char>(t_character)) || t_character == '_') return CharClass::word;
+	if (t_character == ' ') return CharClass::Space;
+	if (std::isalnum(static_cast<unsigned char>(t_character)) || t_character == '_') return CharClass::Word;
 
-	return CharClass::symbol;
+	return CharClass::Symbol;
 }
 
 bool is_printable(u32 t_character)
@@ -43,22 +44,17 @@ bool is_printable(u32 t_character)
 	return t_character >= 0x20 && t_character <= 0x7E;
 }
 
-bool is_key_down(int t_virtual_key)
-{
-	return (GetKeyState(t_virtual_key) & 0x8000) != 0;
-}
-
 std::optional<TextEdit> shortcut_for(u32 t_key)
 {
 	switch (t_key) {
 		case 'A':
-			return TextEdit::select_all;
+			return TextEdit::SelectAll;
 		case 'C':
-			return TextEdit::copy;
+			return TextEdit::Copy;
 		case 'X':
-			return TextEdit::cut;
+			return TextEdit::Cut;
 		case 'V':
-			return TextEdit::paste;
+			return TextEdit::Paste;
 		default:
 			return std::nullopt;
 	}
@@ -66,11 +62,11 @@ std::optional<TextEdit> shortcut_for(u32 t_key)
 
 u32 previous_word_start(std::string_view t_text, u32 t_index)
 {
-	while (t_index > 0 && class_of(t_text[t_index - 1]) == CharClass::space) {
+	while (t_index > 0 && class_of(t_text[t_index - 1]) == CharClass::Space) {
 		t_index -= 1;
 	}
 
-	const CharClass word = t_index > 0 ? class_of(t_text[t_index - 1]) : CharClass::space;
+	const CharClass word = t_index > 0 ? class_of(t_text[t_index - 1]) : CharClass::Space;
 	while (t_index > 0 && class_of(t_text[t_index - 1]) == word) {
 		t_index -= 1;
 	}
@@ -82,12 +78,12 @@ u32 next_word_start(std::string_view t_text, u32 t_index)
 {
 	const auto length = static_cast<u32>(t_text.size());
 
-	const CharClass word = t_index < length ? class_of(t_text[t_index]) : CharClass::space;
+	const CharClass word = t_index < length ? class_of(t_text[t_index]) : CharClass::Space;
 	while (t_index < length && class_of(t_text[t_index]) == word) {
 		t_index += 1;
 	}
 
-	while (t_index < length && class_of(t_text[t_index]) == CharClass::space) {
+	while (t_index < length && class_of(t_text[t_index]) == CharClass::Space) {
 		t_index += 1;
 	}
 
@@ -135,12 +131,12 @@ void TextInput::set_max_length(u32 t_max_length)
 bool TextInput::can_apply(TextEdit t_edit) const
 {
 	switch (t_edit) {
-		case TextEdit::cut:
-		case TextEdit::copy:
+		case TextEdit::Cut:
+		case TextEdit::Copy:
 			return has_selection() && !m_masked;
-		case TextEdit::paste:
+		case TextEdit::Paste:
 			return clipboard_has_text();
-		case TextEdit::select_all:
+		case TextEdit::SelectAll:
 			return m_length > 0;
 	}
 
@@ -155,20 +151,20 @@ void TextInput::apply(TextEdit t_edit)
 	const std::string_view selected{m_text + range.start, range.end - range.start};
 
 	switch (t_edit) {
-		case TextEdit::cut:
+		case TextEdit::Cut:
 			set_clipboard_text(selected);
 			erase(range);
 			break;
 
-		case TextEdit::copy:
+		case TextEdit::Copy:
 			set_clipboard_text(selected);
 			break;
 
-		case TextEdit::paste:
+		case TextEdit::Paste:
 			insert(clipboard_text());
 			break;
 
-		case TextEdit::select_all:
+		case TextEdit::SelectAll:
 			select(TextRange{0, m_length});
 			break;
 	}

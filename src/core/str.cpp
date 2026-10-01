@@ -22,6 +22,16 @@ usize find_ignoring_case(std::string_view t_text, std::string_view t_query)
 	return std::string_view::npos;
 }
 
+std::string_view trimmed(std::string_view t_text)
+{
+	constexpr std::string_view blank = " \t\r\n\v\f";
+
+	const usize first = t_text.find_first_not_of(blank);
+	if (first == std::string_view::npos) return {};
+
+	return t_text.substr(first, t_text.find_last_not_of(blank) - first + 1);
+}
+
 std::string to_utf8(std::wstring_view t_wide)
 {
 	const auto wide_length = static_cast<int>(t_wide.size());

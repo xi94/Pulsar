@@ -44,7 +44,6 @@ class UiAutomation {
 	void shutdown();
 
 	static HWND find_top_level_window(u32 t_process_id);
-	static HWND find_window_by_title(const wchar_t *t_title);
 
 	UiElement element_from_window(HWND t_window) const;
 	UiElement find_descendant(const UiElement &t_root, const wchar_t *t_name) const;

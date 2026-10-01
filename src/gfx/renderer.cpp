@@ -56,6 +56,13 @@ struct BackdropConstants {
 
 static_assert(sizeof(BackdropConstants) == 32);
 
+constexpr const char *pixel_shader_entry_points[]{
+	"ps_solid",	 "ps_textured",			 "ps_banner_glow", "ps_color_picker",
+	"ps_shadow", "ps_outline_countdown", "ps_backdrop",	   "ps_backdrop_plain",
+};
+
+static_assert(std::size(pixel_shader_entry_points) == shader_kind_count);
+
 bool compile_shader(const char *t_entry_point, const char *t_target, Microsoft::WRL::ComPtr<ID3DBlob> &t_out_blob)
 {
 	UINT flags = 0;
@@ -186,7 +193,7 @@ void Renderer::resize(const Window &t_window)
 {
 	const u32 width = t_window.physical_width();
 	const u32 height = t_window.physical_height();
-	if (width == 0 || height == 0) return;
+	if (width == 0 || height == 0 || (width == m_physical_width && height == m_physical_height)) return;
 
 	m_render_target_view.Reset();
 	m_swap_chain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
@@ -228,45 +235,40 @@ bool Renderer::create_shaders()
 		bool compiled = false;
 	};
 
-	CompileJob jobs[]{
-		{"vs_main", "vs_5_0"},
-		{"ps_solid", "ps_5_0"},
-		{"ps_textured", "ps_5_0"},
-		{"ps_banner_glow", "ps_5_0"},
-		{"ps_color_picker", "ps_5_0"},
-		{"ps_shadow", "ps_5_0"},
-		{"ps_outline_countdown", "ps_5_0"},
-		{"ps_backdrop", "ps_5_0"},
-		{"ps_backdrop_plain", "ps_5_0"},
-	};
+	CompileJob vertex_job{"vs_main", "vs_5_0"};
+	CompileJob pixel_jobs[shader_kind_count];
+	for (u32 i = 0; i < shader_kind_count; i += 1) {
+		pixel_jobs[i] = CompileJob{pixel_shader_entry_points[i], "ps_5_0"};
+	}
 
 	std::vector<std::thread> compilers;
-	for (CompileJob &job : jobs) {
-		compilers.emplace_back([&job]() { job.compiled = compile_shader(job.entry_point, job.target, job.blob); });
+	const auto compile = [&compilers](CompileJob &t_job) {
+		compilers.emplace_back(
+			[&t_job]() { t_job.compiled = compile_shader(t_job.entry_point, t_job.target, t_job.blob); });
+	};
+
+	compile(vertex_job);
+	for (CompileJob &job : pixel_jobs) {
+		compile(job);
 	}
 
 	for (std::thread &compiler : compilers) {
 		compiler.join();
 	}
 
-	if (!std::ranges::all_of(jobs, &CompileJob::compiled)) return false;
+	if (!vertex_job.compiled || !std::ranges::all_of(pixel_jobs, &CompileJob::compiled)) return false;
 
-	ID3DBlob &vertex_blob = *jobs[0].blob.Get();
+	ID3DBlob &vertex_blob = *vertex_job.blob.Get();
 	if (FAILED(m_device->CreateVertexShader(vertex_blob.GetBufferPointer(), vertex_blob.GetBufferSize(), nullptr,
 											&m_vertex_shader))) {
 		return false;
 	}
 
-	ComPtr<ID3D11PixelShader> *const pixel_shaders[]{
-		&m_solid_shader,  &m_textured_shader,		   &m_banner_glow_shader, &m_color_picker_shader,
-		&m_shadow_shader, &m_outline_countdown_shader, &m_backdrop_shader,	  &m_backdrop_plain_shader,
-	};
-
-	for (usize i = 0; i < std::size(pixel_shaders); i += 1) {
-		ID3DBlob &blob = *jobs[i + 1].blob.Get();
+	for (u32 i = 0; i < shader_kind_count; i += 1) {
+		ID3DBlob &blob = *pixel_jobs[i].blob.Get();
 
 		if (FAILED(m_device->CreatePixelShader(blob.GetBufferPointer(), blob.GetBufferSize(), nullptr,
-											   pixel_shaders[i]->GetAddressOf()))) {
+											   &m_pixel_shaders[i]))) {
 			return false;
 		}
 	}
@@ -406,51 +408,44 @@ void Renderer::apply_clip(const DrawCommand &t_command)
 
 void Renderer::draw_command(const DrawCommand &t_command)
 {
-	ID3D11PixelShader *shader = m_solid_shader.Get();
 	ID3D11ShaderResourceView *image = nullptr;
 	ID3D11Buffer *extra_constants = nullptr;
 
 	switch (t_command.shader) {
-		case ShaderKind::solid:
+		case ShaderKind::Solid:
+		case ShaderKind::ColorPicker:
+		case ShaderKind::Count:
 			break;
 
-		case ShaderKind::textured:
+		case ShaderKind::Textured:
 			if (!t_command.texture->is_valid()) return;
 
-			shader = m_textured_shader.Get();
 			image = m_textures[t_command.texture->slot()].view.Get();
 			break;
 
-		case ShaderKind::banner_glow: {
+		case ShaderKind::BannerGlow: {
 			const BannerGlowConstants constants{.time_seconds = m_effect_time_seconds, .params = t_command.box};
 			m_context->UpdateSubresource(m_banner_glow_constants.Get(), 0, nullptr, &constants, 0, 0);
-			shader = m_banner_glow_shader.Get();
 			extra_constants = m_banner_glow_constants.Get();
 			break;
 		}
 
-		case ShaderKind::color_picker:
-			shader = m_color_picker_shader.Get();
-			break;
-
-		case ShaderKind::shadow: {
+		case ShaderKind::Shadow: {
 			const ShadowConstants constants{.params = t_command.box};
 			m_context->UpdateSubresource(m_shadow_constants.Get(), 0, nullptr, &constants, 0, 0);
-			shader = m_shadow_shader.Get();
 			extra_constants = m_shadow_constants.Get();
 			break;
 		}
 
-		case ShaderKind::outline_countdown: {
+		case ShaderKind::OutlineCountdown: {
 			const OutlineCountdownConstants constants{.params = t_command.outline};
 			m_context->UpdateSubresource(m_outline_countdown_constants.Get(), 0, nullptr, &constants, 0, 0);
-			shader = m_outline_countdown_shader.Get();
 			extra_constants = m_outline_countdown_constants.Get();
 			break;
 		}
 
-		case ShaderKind::backdrop:
-		case ShaderKind::backdrop_plain: {
+		case ShaderKind::Backdrop:
+		case ShaderKind::BackdropPlain: {
 			const float pixel_scale =
 				m_logical_width > 0.0f ? static_cast<float>(m_physical_width) / m_logical_width : 1.0f;
 			const BackdropConstants constants{.target_width = static_cast<float>(m_physical_width),
@@ -461,13 +456,12 @@ void Renderer::draw_command(const DrawCommand &t_command)
 											  .light = m_backdrop_light,
 											  .grain = m_backdrop_grain};
 			m_context->UpdateSubresource(m_backdrop_constants.Get(), 0, nullptr, &constants, 0, 0);
-			shader = t_command.shader == ShaderKind::backdrop ? m_backdrop_shader.Get() : m_backdrop_plain_shader.Get();
 			extra_constants = m_backdrop_constants.Get();
 			break;
 		}
 	}
 
-	m_context->PSSetShader(shader, nullptr, 0);
+	m_context->PSSetShader(m_pixel_shaders[static_cast<u32>(t_command.shader)].Get(), nullptr, 0);
 	m_context->PSSetShaderResources(0, 1, &image);
 
 	if (extra_constants != nullptr) {

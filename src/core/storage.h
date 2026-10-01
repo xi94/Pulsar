@@ -2,17 +2,17 @@
 
 #include <string>
 
+#include "core/crypto.h"
 #include "core/library.h"
-#include "core/master_key.h"
 #include "core/settings.h"
 
 namespace storage {
 
 enum class LoadResult : u8 {
-	no_file,
-	failed,
-	ok,
-	locked,
+	NoFile,
+	Failed,
+	Ok,
+	Locked,
 };
 
 std::string data_directory();

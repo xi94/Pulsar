@@ -44,10 +44,8 @@ class SetupApp {
 	TruncationHint m_truncation_hint;
 
 	Vec2 m_mouse{-1.0f, -1.0f};
-	TitleBarButton m_pressed_button = TitleBarButton::none;
+	TitleBarButton m_pressed_button = TitleBarButton::None;
 	bool m_pointer_down = false;
-	u32 m_swap_chain_width = 0;
-	u32 m_swap_chain_height = 0;
 	std::chrono::steady_clock::time_point m_last_frame_time;
 	bool m_in_frame = false;
 };

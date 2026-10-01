@@ -1,10 +1,8 @@
 #include "app.h"
 
-#include "platform/installation.h"
-
 #include <cstdio>
-#include <utility>
 #include <print>
+#include <utility>
 
 #include <Windows.h>
 #include <shellapi.h>
@@ -15,9 +13,10 @@
 #include "core/debug_log.h"
 #include "core/profiler.h"
 #include "core/str.h"
-#include "core/ui_automation.h"
+#include "games.h"
+#include "login/ui_automation.h"
 #include "platform/clipboard.h"
-#include "platform/overlay_guard.h"
+#include "platform/installation.h"
 #include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
@@ -37,23 +36,6 @@ constexpr float status_dot_size = 3.0f;
 constexpr float status_dot_gap = 7.0f;
 constexpr float status_baseline_nudge = 2.0f;
 
-struct GameInfo {
-	const char *title;
-	const char *short_title;
-	Asset banner;
-	Asset icon;
-	Color accent;
-};
-
-constexpr GameInfo games[]{
-	{"League of Legends", "LoL", Asset::banner_league_of_legends, Asset::icon_league_of_legends, {210, 175, 55, 255}},
-	{"Teamfight Tactics", "TFT", Asset::banner_teamfight_tactics, Asset::icon_teamfight_tactics, {70, 140, 190, 255}},
-	{"Valorant", "Valorant", Asset::banner_valorant, Asset::icon_valorant, {210, 55, 60, 255}},
-	{"2XKO", "2XKO", Asset::banner_two_xko, Asset::icon_two_xko, {45, 205, 210, 255}},
-	{"Legends of Runeterra", "LoR", Asset::banner_runeterra, Asset::icon_runeterra, {140, 90, 200, 255}},
-};
-
-static_assert(std::size(games) <= max_games);
 static_assert(tray_max_games >= max_games);
 
 void log_startup_phase(const char *t_phase)
@@ -79,23 +61,23 @@ void log_startup_phase(const char *t_phase)
 std::string_view update_status(UpdateStage t_stage)
 {
 	switch (t_stage) {
-		case UpdateStage::up_to_date:
+		case UpdateStage::UpToDate:
 			return "Up to date";
-		case UpdateStage::available:
-		case UpdateStage::manual_upgrade_required:
+		case UpdateStage::Available:
+		case UpdateStage::ManualUpgradeRequired:
 			return "Update available";
-		case UpdateStage::checking:
+		case UpdateStage::Checking:
 			return "Checking...";
-		case UpdateStage::downloading:
-		case UpdateStage::verifying:
-		case UpdateStage::installing:
+		case UpdateStage::Downloading:
+		case UpdateStage::Verifying:
+		case UpdateStage::Installing:
 			return "Updating...";
-		case UpdateStage::ready_to_relaunch:
+		case UpdateStage::ReadyToRelaunch:
 			return "Restart to update";
-		case UpdateStage::idle:
-		case UpdateStage::check_failed:
-		case UpdateStage::error:
-		case UpdateStage::cancelled:
+		case UpdateStage::Idle:
+		case UpdateStage::CheckFailed:
+		case UpdateStage::Error:
+		case UpdateStage::Cancelled:
 			break;
 	}
 
@@ -104,41 +86,27 @@ std::string_view update_status(UpdateStage t_stage)
 
 void guard_against_overlays(bool t_block_injection)
 {
-	overlay_guard::apply_process_identity();
+	set_app_user_model_id();
 
 	if (!t_block_injection) {
 		debug_log::write("app", "overlay injection guard disabled by setting");
 		return;
 	}
 
-	switch (overlay_guard::block_hook_injection()) {
-		case overlay_guard::BlockResult::blocked:
+	switch (block_hook_injection()) {
+		case HookBlockResult::Blocked:
 			debug_log::write("app", "extension-point DLL injection blocked");
 			break;
-		case overlay_guard::BlockResult::refused:
+		case HookBlockResult::Refused:
 			debug_log::write("app", "extension-point block refused, err=%lu", GetLastError());
 			break;
-		case overlay_guard::BlockResult::unsupported:
+		case HookBlockResult::Unsupported:
 			debug_log::write("app", "extension-point block unsupported on this Windows build");
 			break;
 	}
 
-	if (const wchar_t *module = overlay_guard::injected_overlay_module()) {
+	if (const wchar_t *module = injected_overlay_module()) {
 		debug_log::write("app", "an overlay module was already loaded before the guard ran: %ls", module);
-	}
-}
-
-void launch_self()
-{
-	wchar_t path[MAX_PATH];
-	if (GetModuleFileNameW(nullptr, path, MAX_PATH) == 0) return;
-
-	STARTUPINFOW startup_info{.cb = sizeof(startup_info)};
-	PROCESS_INFORMATION process_info{};
-
-	if (CreateProcessW(path, nullptr, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup_info, &process_info)) {
-		CloseHandle(process_info.hProcess);
-		CloseHandle(process_info.hThread);
 	}
 }
 }
@@ -168,7 +136,7 @@ App::StartResult App::start(bool t_from_startup)
 		debug_log::write("app", "another instance is already running (%s) - exiting",
 						 activated ? "brought it to the front" : "it never answered");
 
-		return StartResult::already_running;
+		return StartResult::AlreadyRunning;
 	}
 
 	m_assets.begin_decode();
@@ -183,11 +151,11 @@ App::StartResult App::start(bool t_from_startup)
 
 	if (sodium_init() < 0) {
 		std::println("Failed to initialize libsodium.");
-		return StartResult::failed;
+		return StartResult::Failed;
 	}
 
 	log_startup_phase("CreateGraphics");
-	if (!create_graphics()) return StartResult::failed;
+	if (!create_graphics()) return StartResult::Failed;
 
 	log_startup_phase("CreateTray");
 	m_tray.create(app_name_wide);
@@ -226,7 +194,7 @@ App::StartResult App::start(bool t_from_startup)
 
 	log_startup_phase("Done");
 
-	return StartResult::ok;
+	return StartResult::Ok;
 }
 
 bool App::create_graphics()
@@ -244,13 +212,12 @@ bool App::create_graphics()
 		return false;
 	}
 
-	m_swap_chain_width = m_window.physical_width();
-	m_swap_chain_height = m_window.physical_height();
-
 	if (!m_assets.finish_upload(m_renderer)) {
 		std::println("Failed to load one or more embedded assets.");
 		return false;
 	}
+
+	m_snowfall.create_textures(m_renderer);
 
 	if (!reload_fonts()) {
 		std::println("Failed to load the UI font.");
@@ -262,12 +229,17 @@ bool App::create_graphics()
 
 void App::add_games()
 {
-	for (u32 i = 0; i < std::size(games); i += 1) {
-		const GameInfo &game = games[i];
-
-		m_library.add_game(game.title, game.short_title, m_assets.get(game.banner), m_assets.get(game.icon),
-						   game.accent);
-		m_tray.set_game_icon(i, Assets::encoded_bytes(game.icon));
+	for (const GameInfo &info : game_infos) {
+		m_tray.set_game_icon(m_library.game_count, Assets::encoded_bytes(info.icon));
+		m_library.games[m_library.game_count] = Game{
+			.title = info.title,
+			.short_title = info.short_title,
+			.launch_product = info.launch_product,
+			.accent = info.accent,
+			.banner = m_assets.get(info.banner),
+			.icon = m_assets.get(info.icon),
+		};
+		m_library.game_count += 1;
 	}
 
 	m_tray.on_menu_open([this](TrayMenu &t_menu) { fill_tray_menu(t_menu); });
@@ -297,7 +269,7 @@ void App::apply_settings(storage::LoadResult t_load_result)
 	apply_game_order();
 	m_carousel.restore(m_settings.zoom_stop, m_settings.selected_game);
 
-	if (t_load_result == storage::LoadResult::failed) return;
+	if (t_load_result == storage::LoadResult::Failed) return;
 
 	animation::set_enabled(m_settings.animations_enabled);
 	animation::set_speed(m_settings.animation_speed);
@@ -363,8 +335,8 @@ void App::apply_game_order()
 	u32 count = 0;
 
 	for (u32 i = 0; i < m_settings.game_order_count; i += 1) {
-		for (u32 game = 0; game < m_library.game_count(); game += 1) {
-			if (m_library.game(game).title == m_settings.game_order[i]) {
+		for (u32 game = 0; game < m_library.game_count; game += 1) {
+			if (m_library.games[game].title == m_settings.game_order[i]) {
 				order[count] = static_cast<u8>(game);
 				count += 1;
 				break;
@@ -382,7 +354,7 @@ void App::save_settings()
 
 	m_settings.game_order_count = 0;
 	for (const u8 game : m_carousel.order()) {
-		copy_to(m_library.game(game).title, m_settings.game_order[m_settings.game_order_count]);
+		copy_to(m_library.games[game].title, m_settings.game_order[m_settings.game_order_count]);
 		m_settings.game_order_count += 1;
 	}
 
@@ -434,18 +406,9 @@ void App::copy_password(std::string_view t_password)
 
 void App::open_setup()
 {
-	const HWND existing = FindWindowW(setup_window_class_name, nullptr);
-
-	if (existing != nullptr) {
-		if (IsIconic(existing)) {
-			ShowWindow(existing, SW_RESTORE);
-		}
-
-		SetForegroundWindow(existing);
-		return;
+	if (!bring_window_to_front(setup_window_class_name)) {
+		launch_process(executable_path(), L"--setup");
 	}
-
-	installation::launch(installation::executable_path(), L"--setup");
 }
 
 void App::open_account_search()
@@ -460,8 +423,8 @@ void App::open_account_search()
 
 const Account *App::account_for(AccountRef t_account) const
 {
-	if (t_account.game >= m_library.game_count()) return nullptr;
-	if (t_account.index >= m_library.game(t_account.game).account_count) return nullptr;
+	if (t_account.game >= m_library.game_count) return nullptr;
+	if (t_account.index >= m_library.games[t_account.game].account_count) return nullptr;
 
 	return &m_library.account(t_account);
 }
@@ -486,7 +449,7 @@ void App::fill_tray_menu(TrayMenu &t_menu) const
 		TrayGame &entry = t_menu.games[t_menu.game_count];
 		t_menu.game_count += 1;
 
-		copy_to(m_library.game(game).title, entry.title);
+		copy_to(m_library.games[game].title, entry.title);
 		entry.game = static_cast<i32>(game);
 		entry.first_account = t_menu.account_count;
 		entry.account_count = 0;
@@ -530,20 +493,20 @@ void App::pump_input()
 void App::handle_tray_event()
 {
 	const TrayEvent event = m_tray.take_event();
-	if (event.type != TrayEventType::none) {
+	if (event.type != TrayEventType::None) {
 		m_last_activity = Clock::now();
 	}
 
 	switch (event.type) {
-		case TrayEventType::exit:
+		case TrayEventType::Exit:
 			m_window.request_close();
 			break;
 
-		case TrayEventType::show_window:
+		case TrayEventType::ShowWindow:
 			m_window.restore();
 			break;
 
-		case TrayEventType::quick_login: {
+		case TrayEventType::QuickLogin: {
 			if (m_locked || event.game < 0 || event.row < 0) break;
 
 			const auto game = static_cast<u32>(event.game);
@@ -554,7 +517,7 @@ void App::handle_tray_event()
 			break;
 		}
 
-		case TrayEventType::none:
+		case TrayEventType::None:
 			break;
 	}
 }
@@ -563,13 +526,13 @@ void App::handle_input(const InputEvent &t_event)
 {
 	m_last_activity = Clock::now();
 
-	const bool control_down = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
-	if (t_event.type == InputEventType::key_down && t_event.key == 'L' && control_down && !m_locked) {
+	const bool control_down = is_key_down(VK_CONTROL);
+	if (t_event.type == InputEventType::KeyDown && t_event.key == 'L' && control_down && !m_locked) {
 		lock_vault();
 		return;
 	}
 
-	if (t_event.type == InputEventType::key_down && t_event.key == 'F' && control_down && !m_locked) {
+	if (t_event.type == InputEventType::KeyDown && t_event.key == 'F' && control_down && !m_locked) {
 		if (m_account_search.is_open()) {
 			m_account_search.close();
 			return;
@@ -581,26 +544,26 @@ void App::handle_input(const InputEvent &t_event)
 		}
 	}
 
-	if (t_event.type == InputEventType::key_down && t_event.key == VK_OEM_COMMA && control_down && !m_locked &&
+	if (t_event.type == InputEventType::KeyDown && t_event.key == VK_OEM_COMMA && control_down && !m_locked &&
 		!m_settings_panel.is_blocking()) {
 		m_app_menu.close();
 		m_settings_panel.open();
 		return;
 	}
 
-	if (t_event.type == InputEventType::mouse_move) {
+	if (t_event.type == InputEventType::MouseMove) {
 		m_mouse = t_event.position;
-	} else if (t_event.type == InputEventType::mouse_down) {
+	} else if (t_event.type == InputEventType::MouseDown) {
 		m_pointer_down = true;
-	} else if (t_event.type == InputEventType::mouse_up) {
+	} else if (t_event.type == InputEventType::MouseUp) {
 		m_pointer_down = false;
 	}
 
 	const bool consumed = m_widgets.dispatch(t_event);
 	process_commands();
 
-	const bool is_action = t_event.type == InputEventType::mouse_up || t_event.type == InputEventType::key_down ||
-						   t_event.type == InputEventType::right_click;
+	const bool is_action = t_event.type == InputEventType::MouseUp || t_event.type == InputEventType::KeyDown ||
+						   t_event.type == InputEventType::RightClick;
 	if (consumed && is_action) {
 		request_save();
 	}
@@ -618,7 +581,7 @@ void App::process(const Command &t_command)
 	animation::request_frame();
 
 	switch (t_command.type) {
-		case CommandType::toggle_app_menu:
+		case CommandType::ToggleAppMenu:
 			if (m_app_menu.is_open()) {
 				m_app_menu.close();
 			} else {
@@ -628,7 +591,7 @@ void App::process(const Command &t_command)
 
 			break;
 
-		case CommandType::toggle_update_overlay:
+		case CommandType::ToggleUpdateOverlay:
 			if (m_update_overlay.is_open()) {
 				m_update_overlay.close();
 			} else {
@@ -637,19 +600,19 @@ void App::process(const Command &t_command)
 
 			break;
 
-		case CommandType::open_update_overlay:
+		case CommandType::OpenUpdateOverlay:
 			m_update_overlay.open();
 			break;
 
-		case CommandType::open_settings:
+		case CommandType::OpenSettings:
 			m_settings_panel.open();
 			break;
 
-		case CommandType::open_setup:
+		case CommandType::OpenSetup:
 			open_setup();
 			break;
 
-		case CommandType::open_data_folder: {
+		case CommandType::OpenDataFolder: {
 			const std::string directory = storage::data_directory();
 			if (!directory.empty()) {
 				ShellExecuteA(nullptr, "open", directory.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
@@ -658,21 +621,21 @@ void App::process(const Command &t_command)
 			break;
 		}
 
-		case CommandType::check_for_updates:
+		case CommandType::CheckForUpdates:
 			m_updater.check_for_update();
 			m_update_overlay.begin_check();
 			break;
 
-		case CommandType::open_game:
+		case CommandType::OpenGame:
 			m_account_modal.open(t_command.index);
 			m_account_modal.set_art_source(m_carousel.art_source(static_cast<u32>(t_command.index)));
 			break;
 
-		case CommandType::save_changes:
+		case CommandType::SaveChanges:
 			request_save();
 			break;
 
-		case CommandType::request_new_master_password:
+		case CommandType::RequestNewMasterPassword:
 			m_replaced_vault_key.emplace();
 			m_replaced_vault_key->key.swap(m_master_key);
 			m_replaced_vault_key->params = m_settings.master_key;
@@ -680,59 +643,59 @@ void App::process(const Command &t_command)
 			m_unlock_screen.show_setup();
 			break;
 
-		case CommandType::vault_unlocked:
+		case CommandType::VaultUnlocked:
 			storage::load_accounts(m_library, m_master_key);
 			unlock();
 			break;
 
-		case CommandType::vault_created:
+		case CommandType::VaultCreated:
 			commit_new_vault_key();
 			unlock();
 			break;
 
-		case CommandType::show_account_menu:
+		case CommandType::ShowAccountMenu:
 			open_account_menu(t_command);
 			break;
 
-		case CommandType::show_text_menu:
+		case CommandType::ShowTextMenu:
 			open_text_menu(t_command);
 			break;
 
-		case CommandType::copy_username:
+		case CommandType::CopyUsername:
 			if (const Account *account = m_account_modal.account_at_row(t_command.index)) {
 				set_clipboard_text(account->username);
 			}
 
 			break;
 
-		case CommandType::copy_password:
+		case CommandType::CopyPassword:
 			if (const Account *account = m_account_modal.account_at_row(t_command.index)) {
 				copy_password(account->password);
 			}
 
 			break;
 
-		case CommandType::edit_text:
+		case CommandType::EditText:
 			t_command.text_input->apply(t_command.text_edit);
 			break;
 
-		case CommandType::undo_delete:
+		case CommandType::UndoDelete:
 			m_account_modal.undo_delete();
 			break;
 
-		case CommandType::toggle_favorite:
+		case CommandType::ToggleFavorite:
 			m_account_modal.toggle_favorite(t_command.index);
 			break;
 
-		case CommandType::lock_vault:
+		case CommandType::LockVault:
 			lock_vault();
 			break;
 
-		case CommandType::open_account_search:
+		case CommandType::OpenAccountSearch:
 			open_account_search();
 			break;
 
-		case CommandType::edit_account:
+		case CommandType::EditAccount:
 			if (account_for(t_command.account) != nullptr) {
 				m_settings_panel.close();
 				m_account_modal.edit_account(t_command.account);
@@ -740,7 +703,7 @@ void App::process(const Command &t_command)
 
 			break;
 
-		case CommandType::login_account:
+		case CommandType::LoginAccount:
 			if (account_for(t_command.account) != nullptr && t_command.index >= 0) {
 				m_settings_panel.close();
 				m_account_modal.quick_login(static_cast<u32>(t_command.index), t_command.account);
@@ -748,7 +711,7 @@ void App::process(const Command &t_command)
 
 			break;
 
-		case CommandType::copy_account_username:
+		case CommandType::CopyAccountUsername:
 			if (const Account *account = account_for(t_command.account)) {
 				set_clipboard_text(account->username);
 				m_toasts.notify(Notification{.message = "Username copied."});
@@ -756,7 +719,7 @@ void App::process(const Command &t_command)
 
 			break;
 
-		case CommandType::copy_account_password:
+		case CommandType::CopyAccountPassword:
 			if (const Account *account = account_for(t_command.account)) {
 				copy_password(account->password);
 			}
@@ -772,9 +735,9 @@ void App::open_account_menu(const Command &t_command)
 
 	const ContextMenuItem items[]{
 		{account->favorite ? "Unpin" : "Pin to top",
-		 Command{.type = CommandType::toggle_favorite, .index = t_command.index}},
-		{"Copy username", Command{.type = CommandType::copy_username, .index = t_command.index}},
-		{"Copy password", Command{.type = CommandType::copy_password, .index = t_command.index}},
+		 Command{.type = CommandType::ToggleFavorite, .index = t_command.index}},
+		{"Copy username", Command{.type = CommandType::CopyUsername, .index = t_command.index}},
+		{"Copy password", Command{.type = CommandType::CopyPassword, .index = t_command.index}},
 	};
 
 	m_context_menu.open(t_command.position, items, m_window.size());
@@ -785,16 +748,16 @@ void App::open_text_menu(const Command &t_command)
 	TextInput &input = *t_command.text_input;
 
 	const auto item = [&input](std::string_view t_label, TextEdit t_edit, std::string_view t_shortcut) {
-		const Command edit{.type = CommandType::edit_text, .text_input = &input, .text_edit = t_edit};
+		const Command edit{.type = CommandType::EditText, .text_input = &input, .text_edit = t_edit};
 
 		return ContextMenuItem{t_label, edit, input.can_apply(t_edit), t_shortcut};
 	};
 
 	const ContextMenuItem items[]{
-		item("Cut", TextEdit::cut, "Ctrl+X"),
-		item("Copy", TextEdit::copy, "Ctrl+C"),
-		item("Paste", TextEdit::paste, "Ctrl+V"),
-		item("Select all", TextEdit::select_all, "Ctrl+A"),
+		item("Cut", TextEdit::Cut, "Ctrl+X"),
+		item("Copy", TextEdit::Copy, "Ctrl+C"),
+		item("Paste", TextEdit::Paste, "Ctrl+V"),
+		item("Select all", TextEdit::SelectAll, "Ctrl+A"),
 	};
 
 	m_context_menu.open(t_command.position, items, m_window.size());
@@ -807,17 +770,17 @@ void App::announce_update_stage()
 
 	m_announced_update_stage = stage;
 
-	const Command open_updates{.type = CommandType::open_update_overlay};
+	const Command open_updates{.type = CommandType::OpenUpdateOverlay};
 
 	const bool watching = m_update_overlay.is_open() || m_update_overlay.wants_status();
 
-	if ((stage == UpdateStage::available || stage == UpdateStage::manual_upgrade_required) && !watching) {
+	if ((stage == UpdateStage::Available || stage == UpdateStage::ManualUpgradeRequired) && !watching) {
 		char message[96];
 		std::snprintf(message, sizeof(message), "Version %s available", m_updater.manifest().version);
-		m_toasts.notify(Notification{.message = message, .icon = Asset::icon_download, .on_click = open_updates});
-	} else if (stage == UpdateStage::error && !watching) {
+		m_toasts.notify(Notification{.message = message, .icon = Asset::IconDownload, .on_click = open_updates});
+	} else if (stage == UpdateStage::Error && !watching) {
 		m_toasts.notify(Notification{
-			.message = "The update could not be installed.", .icon = Asset::icon_update, .on_click = open_updates});
+			.message = "The update could not be installed.", .icon = Asset::IconUpdate, .on_click = open_updates});
 	}
 }
 
@@ -838,7 +801,7 @@ void App::announce_first_run_after_update()
 
 	char message[96];
 	std::snprintf(message, sizeof(message), "Updated to %s", app_version);
-	m_toasts.notify(Notification{.message = message, .icon = Asset::icon_update});
+	m_toasts.notify(Notification{.message = message, .icon = Asset::IconUpdate});
 }
 
 void App::announce_unreadable_storage()
@@ -860,7 +823,7 @@ void App::relaunch_if_update_installed()
 	// The replacement build would otherwise find this process's mutex and exit as a duplicate.
 	m_instance_guard.release();
 
-	launch_self();
+	launch_process(executable_path());
 	m_window.request_close();
 }
 
@@ -868,12 +831,7 @@ void App::redraw_while_resizing()
 {
 	if (m_window.physical_width() == 0 || m_window.physical_height() == 0) return;
 
-	if (m_window.physical_width() != m_swap_chain_width || m_window.physical_height() != m_swap_chain_height) {
-		m_renderer.resize(m_window);
-		m_swap_chain_width = m_window.physical_width();
-		m_swap_chain_height = m_window.physical_height();
-	}
-
+	m_renderer.resize(m_window);
 	frame();
 }
 
@@ -902,7 +860,6 @@ void App::frame()
 	const float delta_seconds = std::chrono::duration<float>(now - m_last_frame_time).count();
 	m_last_frame_time = now;
 
-	const Vec2 window = m_window.size();
 	const Vec2 restored = m_window.restored_size();
 	if (restored.x >= min_window_width && restored.y >= min_window_height) {
 		m_settings.window_width = static_cast<u32>(std::lround(restored.x));
@@ -934,7 +891,15 @@ void App::frame()
 	m_effect_seconds += delta_seconds;
 	m_renderer.set_effect_time(m_effect_seconds);
 
-	if (!m_window.is_minimized() && !m_window.is_hidden()) {
+	const bool shown = !m_window.is_minimized() && !m_window.is_hidden();
+
+	if (!m_settings.snow || !m_settings.animations_enabled) {
+		m_snowfall.clear();
+	} else if (shown) {
+		m_snowfall.update(delta_seconds, m_window.content_rect(), m_window.is_focused());
+	}
+
+	if (shown) {
 		render();
 	}
 
@@ -953,7 +918,7 @@ void App::draw_status_bar()
 
 	const Rect mark{status_padding, status_bar.y + (status_bar_height - status_mark_size) * 0.5f, status_mark_size,
 					status_mark_size};
-	const Font &font = m_fonts.secondary();
+	const Font &font = m_fonts.secondary;
 	const float baseline = font.centered_baseline(status_bar) - status_baseline_nudge;
 	const bool protected_vault = m_settings.master_password_enabled;
 
@@ -978,7 +943,7 @@ void App::draw_status_bar()
 
 		char countdown[48];
 		const int written = std::snprintf(countdown, sizeof(countdown), "auto-locks in %u min", minutes);
-		const Rect dot{x + status_dot_gap, baseline - font.ascent() * 0.35f - status_dot_size * 0.5f, status_dot_size,
+		const Rect dot{x + status_dot_gap, baseline - font.ascent * 0.35f - status_dot_size * 0.5f, status_dot_size,
 					   status_dot_size};
 
 		m_draw_list.add_rounded_rect(dot, rounded(status_dot_size * 0.5f), theme().text_faint);
@@ -1005,6 +970,7 @@ void App::render()
 
 	begin_truncation_probe(m_draw_list, m_mouse);
 	draw_status_bar();
+	m_snowfall.draw(m_draw_list);
 
 	{
 		PULSAR_PROFILE_SCOPE("Render.BuildGeometry");

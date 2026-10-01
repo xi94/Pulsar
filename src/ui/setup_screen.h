@@ -8,21 +8,21 @@
 #include "ui/widget.h"
 
 class Assets;
-class Fonts;
+struct Fonts;
 class Texture;
 class Window;
 struct Settings;
 
 enum class SetupMode : u8 {
-	first_run,
-	manage,
-	uninstall,
+	FirstRun,
+	Manage,
+	Uninstall,
 };
 
 enum class SetupOutcome : u8 {
-	closed,
-	portable,
-	quit,
+	Closed,
+	Portable,
+	Quit,
 };
 
 class SetupScreen : public Widget {
@@ -53,33 +53,33 @@ class SetupScreen : public Widget {
 
   private:
 	enum class Page : u8 {
-		choose,
-		location,
-		working,
-		done,
-		failed,
-		manage,
-		confirm_uninstall,
+		Choose,
+		Location,
+		Working,
+		Done,
+		Failed,
+		Manage,
+		ConfirmUninstall,
 	};
 
 	enum class Hit : u8 {
-		none,
-		install,
-		portable,
-		field,
-		browse,
-		option_0,
-		option_1,
-		option_2,
-		delete_data,
-		open_folder,
-		secondary,
-		primary,
-		count,
+		None,
+		Install,
+		Portable,
+		Field,
+		Browse,
+		Option0,
+		Option1,
+		Option2,
+		DeleteData,
+		OpenFolder,
+		Secondary,
+		Primary,
+		Count,
 	};
 
 	static constexpr u32 option_count = 3;
-	static constexpr u32 hit_count = static_cast<u32>(Hit::count);
+	static constexpr u32 hit_count = static_cast<u32>(Hit::Count);
 
 	struct Reveal {
 		float alpha;
@@ -150,9 +150,9 @@ class SetupScreen : public Widget {
 	TextInput m_location;
 	std::string_view m_field_error;
 
-	Page m_page = Page::choose;
+	Page m_page = Page::Choose;
 	std::optional<Page> m_previous_page;
-	Page m_return_page = Page::choose;
+	Page m_return_page = Page::Choose;
 	float m_transition = 1.0f;
 	float m_direction = 1.0f;
 	float m_page_seconds = 0.0f;
@@ -164,6 +164,6 @@ class SetupScreen : public Widget {
 
 	float m_hover[hit_count]{};
 	float m_check[option_count]{};
-	Hit m_pressed = Hit::none;
+	Hit m_pressed = Hit::None;
 	std::optional<SetupOutcome> m_outcome;
 };

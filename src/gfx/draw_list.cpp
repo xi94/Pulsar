@@ -97,7 +97,7 @@ Vec2 rounded_path_point(Rect t_path, float t_radius, float t_distance)
 
 bool uses_rounded_box(ShaderKind t_shader)
 {
-	return t_shader == ShaderKind::banner_glow || t_shader == ShaderKind::shadow;
+	return t_shader == ShaderKind::BannerGlow || t_shader == ShaderKind::Shadow;
 }
 
 Vec2 uv_at(Rect t_rect, UvRect t_uv, Vec2 t_point)
@@ -255,7 +255,7 @@ void DrawList::target(ShaderKind t_shader, const Texture *t_texture, RoundedBoxP
 	const bool continues_open_command = m_has_open_command && m_open.shader == t_shader &&
 										m_open.texture == t_texture && m_open.clipped == clipped &&
 										m_open.clip == clip && (!uses_rounded_box(t_shader) || m_open.box == t_box) &&
-										(t_shader != ShaderKind::outline_countdown || m_open.outline == t_outline);
+										(t_shader != ShaderKind::OutlineCountdown || m_open.outline == t_outline);
 	if (continues_open_command) return;
 
 	close_command();
@@ -372,13 +372,13 @@ void DrawList::push_rounded(Rect t_rect, CornerRadii t_radii, UvRect t_uv, u32 t
 void DrawList::add_rect(Rect t_rect, Color t_color)
 {
 	note_cover(t_rect, t_color);
-	target(ShaderKind::solid);
+	target(ShaderKind::Solid);
 	push_quad(t_rect, full_uv, pack(t_color));
 }
 
 void DrawList::add_triangle(Vec2 t_a, Vec2 t_b, Vec2 t_c, Color t_color)
 {
-	target(ShaderKind::solid);
+	target(ShaderKind::Solid);
 
 	assert(m_vertex_count + 3 <= m_vertex_capacity);
 	assert(m_index_count + 3 <= m_index_capacity);
@@ -408,7 +408,7 @@ void DrawList::add_rect_outline(Rect t_rect, float t_thickness, Color t_color)
 
 void DrawList::add_gradient(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right)
 {
-	target(ShaderKind::solid);
+	target(ShaderKind::Solid);
 
 	const Vertex2D corners[4]{
 		{t_rect.x, t_rect.y, 0.0f, 0.0f, pack(t_top_left)},
@@ -422,13 +422,13 @@ void DrawList::add_gradient(Rect t_rect, Color t_top_left, Color t_top_right, Co
 
 void DrawList::add_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right)
 {
-	push_backdrop(ShaderKind::backdrop, t_rect, t_top_left, t_top_right, t_bottom_left, t_bottom_right);
+	push_backdrop(ShaderKind::Backdrop, t_rect, t_top_left, t_top_right, t_bottom_left, t_bottom_right);
 }
 
 void DrawList::add_plain_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left,
 								  Color t_bottom_right)
 {
-	push_backdrop(ShaderKind::backdrop_plain, t_rect, t_top_left, t_top_right, t_bottom_left, t_bottom_right);
+	push_backdrop(ShaderKind::BackdropPlain, t_rect, t_top_left, t_top_right, t_bottom_left, t_bottom_right);
 }
 
 void DrawList::add_pattern_swatch(Rect t_rect, CornerRadii t_radii, Color t_color, u32 t_style)
@@ -440,7 +440,7 @@ void DrawList::add_pattern_swatch(Rect t_rect, CornerRadii t_radii, Color t_colo
 	const float v = std::round(center.y * g_pixel_scale);
 
 	note_cover(t_rect, t_color);
-	target(ShaderKind::backdrop);
+	target(ShaderKind::Backdrop);
 	push_rounded(t_rect, t_radii, UvRect{u, v, u, v}, pack(t_color));
 }
 
@@ -469,7 +469,7 @@ void DrawList::add_line(Vec2 t_from, Vec2 t_to, float t_thickness, Color t_color
 	const float length = std::sqrt(dx * dx + dy * dy);
 	if (length < 0.0001f) return;
 
-	target(ShaderKind::solid);
+	target(ShaderKind::Solid);
 
 	const float half_thickness = t_thickness * 0.5f;
 	const float normal_x = -dy / length * half_thickness;
@@ -489,7 +489,7 @@ void DrawList::add_line(Vec2 t_from, Vec2 t_to, float t_thickness, Color t_color
 void DrawList::add_rounded_rect(Rect t_rect, CornerRadii t_radii, Color t_color)
 {
 	note_cover(t_rect, t_color);
-	target(ShaderKind::solid);
+	target(ShaderKind::Solid);
 	push_rounded(t_rect, t_radii, full_uv, pack(t_color));
 }
 
@@ -511,7 +511,7 @@ void DrawList::add_image(Rect t_rect, const Texture *t_texture, Color t_tint, Co
 {
 	if (t_texture == nullptr) return;
 
-	target(ShaderKind::textured, t_texture);
+	target(ShaderKind::Textured, t_texture);
 	push_rounded(t_rect, t_radii, t_uv, pack(t_tint));
 }
 
@@ -519,7 +519,7 @@ void DrawList::add_rotated_image(Rect t_rect, float t_radians, const Texture *t_
 {
 	if (t_texture == nullptr) return;
 
-	target(ShaderKind::textured, t_texture);
+	target(ShaderKind::Textured, t_texture);
 
 	const Vec2 center = t_rect.center();
 	const float cos_angle = std::cos(t_radians);
@@ -545,7 +545,7 @@ void DrawList::add_rotated_image(Rect t_rect, float t_radians, const Texture *t_
 
 void DrawList::add_color_picker_square(Rect t_rect, float t_hue_degrees)
 {
-	target(ShaderKind::color_picker);
+	target(ShaderKind::ColorPicker);
 
 	const auto hue = static_cast<u8>(std::clamp(t_hue_degrees / 360.0f, 0.0f, 1.0f) * 255.0f);
 	push_quad(t_rect, full_uv, pack(Color{hue, 0, 0, 255}));
@@ -565,7 +565,7 @@ void DrawList::add_banner_glow(Rect t_card, float t_card_radius, float t_glow_si
 		.edge_width = t_glow_size,
 	};
 
-	target(ShaderKind::banner_glow, nullptr, glow);
+	target(ShaderKind::BannerGlow, nullptr, glow);
 	push_rounded(quad, rounded(t_card_radius + t_glow_size), full_uv, pack(t_color));
 }
 
@@ -579,7 +579,7 @@ void DrawList::add_shadow(Rect t_rect, float t_corner_radius, float t_blur, Colo
 		.edge_width = t_blur,
 	};
 
-	target(ShaderKind::shadow, nullptr, shadow);
+	target(ShaderKind::Shadow, nullptr, shadow);
 	push_quad(quad, full_uv, pack(t_color));
 }
 
@@ -614,6 +614,6 @@ void DrawList::add_outline_countdown(Rect t_path, float t_corner_radius, float t
 		.padding = {},
 	};
 
-	target(ShaderKind::outline_countdown, nullptr, {}, outline);
+	target(ShaderKind::OutlineCountdown, nullptr, {}, outline);
 	push_quad(quad, full_uv, pack(t_color));
 }

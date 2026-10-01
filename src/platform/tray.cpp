@@ -37,7 +37,7 @@ constexpr float locked_icon_opacity = 0.55f;
 
 int menu_icon_size()
 {
-	return app_icon_pixel_size(AppIconSize::small_icon) * 3 / 2;
+	return app_icon_pixel_size(AppIconSize::SmallIcon) * 3 / 2;
 }
 
 UINT taskbar_created_message()
@@ -231,7 +231,7 @@ bool Tray::create(const wchar_t *t_tooltip)
 
 	wcsncpy_s(m_tooltip, t_tooltip, _TRUNCATE);
 
-	m_icon = load_app_icon(AppIconSize::small_icon);
+	m_icon = load_app_icon(AppIconSize::SmallIcon);
 	if (m_icon == nullptr) {
 		m_icon = LoadIconW(nullptr, IDI_APPLICATION);
 	}
@@ -570,12 +570,12 @@ void Tray::remove_icon()
 void Tray::handle_command(UINT t_command)
 {
 	if (t_command == show_command) {
-		m_pending_event = TrayEvent{.type = TrayEventType::show_window};
+		m_pending_event = TrayEvent{.type = TrayEventType::ShowWindow};
 		return;
 	}
 
 	if (t_command == exit_command) {
-		m_pending_event = TrayEvent{.type = TrayEventType::exit};
+		m_pending_event = TrayEvent{.type = TrayEventType::Exit};
 		return;
 	}
 
@@ -583,7 +583,7 @@ void Tray::handle_command(UINT t_command)
 	if (t_command < first_quick_login_command || account >= m_menu.account_count || m_locked) return;
 
 	m_pending_event = TrayEvent{
-		.type = TrayEventType::quick_login,
+		.type = TrayEventType::QuickLogin,
 		.game = m_menu.accounts[account].game,
 		.row = m_menu.accounts[account].row,
 	};
@@ -602,7 +602,7 @@ LRESULT Tray::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 	switch (t_message) {
 		case tray_callback_message:
 			if (LOWORD(t_lparam) == WM_LBUTTONUP) {
-				m_pending_event = TrayEvent{.type = TrayEventType::show_window};
+				m_pending_event = TrayEvent{.type = TrayEventType::ShowWindow};
 			} else if (LOWORD(t_lparam) == WM_RBUTTONUP || LOWORD(t_lparam) == WM_CONTEXTMENU) {
 				show_menu();
 			}

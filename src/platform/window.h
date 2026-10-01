@@ -8,13 +8,13 @@
 #include "core/types.h"
 
 enum class InputEventType : u8 {
-	mouse_down,
-	mouse_up,
-	mouse_move,
-	mouse_wheel,
-	right_click,
-	key_down,
-	character,
+	MouseDown,
+	MouseUp,
+	MouseMove,
+	MouseWheel,
+	RightClick,
+	KeyDown,
+	Character,
 };
 
 struct InputEvent {
@@ -25,18 +25,18 @@ struct InputEvent {
 };
 
 enum class TitleBarButton : u8 {
-	none,
-	menu,
-	search,
-	update,
-	minimize,
-	maximize,
-	close,
+	None,
+	Menu,
+	Search,
+	Update,
+	Minimize,
+	Maximize,
+	Close,
 };
 
 enum class WindowKind : u8 {
-	main,
-	dialog,
+	Main,
+	Dialog,
 };
 
 constexpr float title_bar_height = 40.0f;
@@ -47,8 +47,16 @@ constexpr float search_button_min_width = 150.0f;
 constexpr float search_button_side_room = 120.0f;
 constexpr float search_button_margin = 16.0f;
 constexpr float status_bar_height = 26.0f;
+constexpr Color title_bar_close_hover{232, 17, 35, 255};
+constexpr Color title_bar_close_glyph_hover{255, 255, 255, 255};
+constexpr u8 title_bar_hover_alpha = 18;
 constexpr float min_window_width = 640.0f;
 constexpr float min_window_height = 440.0f;
+
+inline bool is_key_down(int t_virtual_key)
+{
+	return (GetKeyState(t_virtual_key) & 0x8000) != 0;
+}
 
 class Window {
   public:
@@ -60,7 +68,7 @@ class Window {
 
 	static bool activate_existing_instance();
 
-	bool create(const wchar_t *t_title, u32 t_width, u32 t_height, WindowKind t_kind = WindowKind::main);
+	bool create(const wchar_t *t_title, u32 t_width, u32 t_height, WindowKind t_kind = WindowKind::Main);
 	void minimize();
 	void show();
 	void restore();
@@ -140,6 +148,11 @@ class Window {
 		return !IsWindowVisible(m_window);
 	}
 
+	bool is_focused() const
+	{
+		return GetForegroundWindow() == m_window;
+	}
+
 	bool is_minimized() const
 	{
 		return IsIconic(m_window);
@@ -163,11 +176,6 @@ class Window {
 	void set_update_button_visible(bool t_visible)
 	{
 		m_update_button_visible = t_visible;
-	}
-
-	bool is_update_button_visible() const
-	{
-		return m_update_button_visible;
 	}
 
 	void set_update_button_width(float t_width)
@@ -210,7 +218,7 @@ class Window {
 	void push_mouse(InputEventType t_type, LPARAM t_lparam);
 	void redraw();
 
-	WindowKind m_kind = WindowKind::main;
+	WindowKind m_kind = WindowKind::Main;
 	HWND m_window = nullptr;
 
 	u32 m_width = 0;
@@ -229,7 +237,7 @@ class Window {
 	bool m_mouse_captured = false;
 	Vec2 m_last_mouse{};
 
-	CursorKind m_cursor = CursorKind::arrow;
+	CursorKind m_cursor = CursorKind::Arrow;
 
 	std::function<void()> m_redraw;
 	std::function<void()> m_dpi_changed;

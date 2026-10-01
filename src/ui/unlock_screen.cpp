@@ -2,7 +2,7 @@
 
 #include <Windows.h>
 
-#include "core/master_key.h"
+#include "core/crypto.h"
 #include "core/settings.h"
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
@@ -160,7 +160,7 @@ void UnlockScreen::attempt_unlock()
 	m_wrong_password = !unlocked;
 
 	if (unlocked) {
-		m_commands.push(Command{.type = CommandType::vault_unlocked});
+		m_commands.push(Command{.type = CommandType::VaultUnlocked});
 	}
 }
 
@@ -191,7 +191,7 @@ void UnlockScreen::attempt_setup()
 		field.set_value("");
 	}
 
-	m_commands.push(Command{.type = CommandType::vault_created});
+	m_commands.push(Command{.type = CommandType::VaultCreated});
 }
 
 void UnlockScreen::update(float t_delta_seconds)
@@ -238,7 +238,7 @@ bool UnlockScreen::on_pointer_down(Vec2 t_point)
 	const i32 pressed = field_at(t_point);
 	if (pressed >= 0) {
 		focus_field(static_cast<u32>(pressed));
-		m_fields[pressed].on_pointer_down(m_fonts.body(), field_text_rect(static_cast<u32>(pressed)), t_point.x);
+		m_fields[pressed].on_pointer_down(m_fonts.body, field_text_rect(static_cast<u32>(pressed)), t_point.x);
 	}
 
 	return true;
@@ -250,7 +250,7 @@ bool UnlockScreen::on_pointer_move(Vec2 t_point)
 
 	for (u32 i = 0; i < field_count(); i += 1) {
 		if (m_fields[i].is_selecting()) {
-			m_fields[i].on_pointer_move(m_fonts.body(), field_text_rect(i), t_point.x);
+			m_fields[i].on_pointer_move(m_fonts.body, field_text_rect(i), t_point.x);
 		}
 	}
 
@@ -291,9 +291,9 @@ bool UnlockScreen::on_right_click(Vec2 t_point)
 		const auto field = static_cast<u32>(clicked);
 
 		focus_field(field);
-		m_fields[field].on_right_click(m_fonts.body(), field_text_rect(field), t_point.x);
+		m_fields[field].on_right_click(m_fonts.body, field_text_rect(field), t_point.x);
 		m_commands.push(
-			Command{.type = CommandType::show_text_menu, .position = t_point, .text_input = &m_fields[field]});
+			Command{.type = CommandType::ShowTextMenu, .position = t_point, .text_input = &m_fields[field]});
 	}
 
 	return true;
@@ -301,15 +301,15 @@ bool UnlockScreen::on_right_click(Vec2 t_point)
 
 CursorKind UnlockScreen::cursor() const
 {
-	if (!m_active) return CursorKind::arrow;
+	if (!m_active) return CursorKind::Arrow;
 
 	for (const TextInput &field : m_fields) {
-		if (field.is_selecting()) return CursorKind::ibeam;
+		if (field.is_selecting()) return CursorKind::IBeam;
 	}
 
-	if (is_reveal_hit(m_mouse) || submit_rect().contains(m_mouse)) return CursorKind::hand;
+	if (is_reveal_hit(m_mouse) || submit_rect().contains(m_mouse)) return CursorKind::Hand;
 
-	return field_at(m_mouse) >= 0 ? CursorKind::ibeam : CursorKind::arrow;
+	return field_at(m_mouse) >= 0 ? CursorKind::IBeam : CursorKind::Arrow;
 }
 
 void UnlockScreen::draw_field(DrawList &t_draw_list, u32 t_field)
@@ -320,7 +320,7 @@ void UnlockScreen::draw_field(DrawList &t_draw_list, u32 t_field)
 
 	controls::draw_field(t_draw_list, field_rect(t_field), field_radius, field.is_focused() ? accent : theme().control,
 						 theme().field, 255);
-	field.draw(t_draw_list, m_fonts.body(), field_text_rect(t_field), theme().text, accent);
+	field.draw(t_draw_list, m_fonts.body, field_text_rect(t_field), theme().text, accent);
 	controls::draw_eye(t_draw_list, m_assets, reveal, !field.is_masked(),
 					   reveal.contains(m_mouse) ? theme().text : theme().text_dim);
 }
@@ -329,8 +329,8 @@ void UnlockScreen::draw_submit_button(DrawList &t_draw_list, std::string_view t_
 {
 	const Rect button = submit_rect();
 
-	controls::draw_button(t_draw_list, m_fonts.body(), button, t_label, controls::ButtonStyle::accent,
-						  m_settings.accent, true, button.contains(m_mouse), 255);
+	controls::draw_button(t_draw_list, m_fonts.body, button, t_label, controls::ButtonStyle::Accent, m_settings.accent,
+						  true, button.contains(m_mouse), 255);
 }
 
 void UnlockScreen::draw(DrawList &t_draw_list)
@@ -338,8 +338,8 @@ void UnlockScreen::draw(DrawList &t_draw_list)
 	if (!m_active) return;
 
 	const Vec2 window = m_window.size();
-	const Font &body = m_fonts.body();
-	const Font &secondary = m_fonts.secondary();
+	const Font &body = m_fonts.body;
+	const Font &secondary = m_fonts.secondary;
 	const Color accent = m_settings.accent;
 	const Rect card = card_rect();
 
@@ -354,9 +354,9 @@ void UnlockScreen::draw(DrawList &t_draw_list)
 	t_draw_list.add_shadow(card, card_radius, halo_blur, with_alpha(accent, halo_alpha));
 	t_draw_list.add_bordered_rect(card, rounded(card_radius), theme().surface, theme().border, 1.0f);
 
-	const float title_baseline = card.y + card_padding + body.ascent();
-	const float description_baseline = card.y + card_padding + body.line_height() + 4.0f + secondary.ascent();
-	const float error_baseline = submit_rect().bottom() + gap + secondary.ascent();
+	const float title_baseline = card.y + card_padding + body.ascent;
+	const float description_baseline = card.y + card_padding + body.line_height() + 4.0f + secondary.ascent;
+	const float error_baseline = submit_rect().bottom() + gap + secondary.ascent;
 
 	if (m_setup) {
 		draw_centered(body, title_baseline, "Create a master password", theme().text);

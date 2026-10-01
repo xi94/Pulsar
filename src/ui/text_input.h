@@ -6,16 +6,16 @@
 #include "core/types.h"
 
 class DrawList;
-class Font;
+struct Font;
 
 constexpr u32 text_input_capacity = 512;
 constexpr u32 default_text_input_length = 128;
 
 enum class TextEdit : u8 {
-	cut,
-	copy,
-	paste,
-	select_all,
+	Cut,
+	Copy,
+	Paste,
+	SelectAll,
 };
 
 struct TextRange {

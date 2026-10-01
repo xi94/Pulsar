@@ -8,48 +8,48 @@
 #include "gfx/renderer.h"
 
 enum class Asset : u8 {
-	icon_arrow_back,
-	icon_close,
-	icon_minimize,
-	icon_settings,
-	icon_menu,
-	icon_add,
-	icon_edit,
-	icon_folder_open,
-	icon_grid,
-	icon_list,
-	icon_carousel,
-	icon_shelf,
-	icon_icons,
-	icon_list_arrow,
-	icon_eye_visible,
-	icon_eye_hidden,
-	icon_favorite,
-	icon_update,
-	icon_reset,
-	icon_account,
-	icon_image,
-	icon_username,
-	icon_lock,
-	icon_folder,
-	icon_file,
-	icon_download,
-	icon_check,
-	icon_app,
-	icon_league_of_legends,
-	icon_valorant,
-	icon_two_xko,
-	icon_runeterra,
-	icon_teamfight_tactics,
-	banner_league_of_legends,
-	banner_valorant,
-	banner_two_xko,
-	banner_runeterra,
-	banner_teamfight_tactics,
-	count,
+	IconArrowBack,
+	IconClose,
+	IconMinimize,
+	IconSettings,
+	IconMenu,
+	IconAdd,
+	IconEdit,
+	IconFolderOpen,
+	IconGrid,
+	IconList,
+	IconCarousel,
+	IconShelf,
+	IconIcons,
+	IconListArrow,
+	IconEyeVisible,
+	IconEyeHidden,
+	IconFavorite,
+	IconUpdate,
+	IconReset,
+	IconAccount,
+	IconImage,
+	IconUsername,
+	IconLock,
+	IconFolder,
+	IconFile,
+	IconDownload,
+	IconCheck,
+	IconApp,
+	IconLeagueOfLegends,
+	IconValorant,
+	IconTwoXko,
+	IconRuneterra,
+	IconTeamfightTactics,
+	BannerLeagueOfLegends,
+	BannerValorant,
+	BannerTwoXko,
+	BannerRuneterra,
+	BannerTeamfightTactics,
+	Count,
 };
 
-constexpr usize asset_count = static_cast<usize>(Asset::count);
+constexpr usize asset_count = static_cast<usize>(Asset::Count);
 
 class Assets {
   public:
@@ -84,6 +84,7 @@ class Assets {
 	};
 
 	static DecodedImage with_mipmaps(const u8 *t_rgba_pixels, u32 t_width, u32 t_height);
+	static std::unique_ptr<Texture> upload(Renderer &t_renderer, const DecodedImage &t_image);
 
 	std::unique_ptr<Texture> m_textures[asset_count];
 	std::thread m_decoder;

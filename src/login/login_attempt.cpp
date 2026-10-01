@@ -1,4 +1,4 @@
-#include "core/login_attempt.h"
+#include "login/login_attempt.h"
 
 #include <string>
 #include <utility>
@@ -8,7 +8,7 @@
 #include "core/debug_log.h"
 #include "core/str.h"
 #include "core/thread_util.h"
-#include "core/ui_automation.h"
+#include "login/ui_automation.h"
 
 namespace {
 constexpr const char *log_category = "login";
@@ -30,21 +30,21 @@ constexpr const char *automation_failed_message = "Couldn't start Windows UI Aut
 const char *stage_name(LoginStage t_stage)
 {
 	switch (t_stage) {
-		case LoginStage::idle:
+		case LoginStage::Idle:
 			return "IDLE";
-		case LoginStage::waiting_for_process:
+		case LoginStage::WaitingForProcess:
 			return "WAITING_FOR_PROCESS";
-		case LoginStage::connecting:
+		case LoginStage::Connecting:
 			return "CONNECTING";
-		case LoginStage::authenticating:
+		case LoginStage::Authenticating:
 			return "AUTHENTICATING";
-		case LoginStage::launching:
+		case LoginStage::Launching:
 			return "LAUNCHING";
-		case LoginStage::success:
+		case LoginStage::Success:
 			return "SUCCESS";
-		case LoginStage::error:
+		case LoginStage::Error:
 			return "ERROR";
-		case LoginStage::cancelled:
+		case LoginStage::Cancelled:
 			return "CANCELLED";
 	}
 
@@ -61,14 +61,14 @@ void set_stage(LoginWork &t_work, LoginStage t_stage)
 void fail(LoginWork &t_work, const char *t_message)
 {
 	copy_to(t_message, t_work.message);
-	set_stage(t_work, LoginStage::error);
+	set_stage(t_work, LoginStage::Error);
 }
 
 bool stop_if_cancelled(LoginWork &t_work)
 {
 	if (!t_work.cancel_requested.load(std::memory_order_relaxed)) return false;
 
-	set_stage(t_work, LoginStage::cancelled);
+	set_stage(t_work, LoginStage::Cancelled);
 
 	return true;
 }
@@ -106,19 +106,19 @@ bool start_fresh_client(LoginWork &t_work)
 		return false;
 	}
 
-	if (!t_work.riot_client.launch(RiotClient::launch_product_for(t_work.game_title))) {
+	if (!t_work.riot_client.launch(t_work.launch_product)) {
 		fail(t_work, launch_failed_message);
 		return false;
 	}
 
-	t_work.riot_client.wait_for_window(t_work.cancel_requested);
+	t_work.riot_client.wait_for_responsive_window(t_work.cancel_requested);
 
 	return !stop_if_cancelled(t_work);
 }
 
 bool focus_client(LoginWork &t_work)
 {
-	set_stage(t_work, LoginStage::connecting);
+	set_stage(t_work, LoginStage::Connecting);
 
 	t_work.riot_client.bring_to_foreground(t_work.cancel_requested);
 	t_work.riot_client.take_keyboard_focus(t_work.cancel_requested);
@@ -128,7 +128,7 @@ bool focus_client(LoginWork &t_work)
 
 bool authenticate(LoginWork &t_work, const UiAutomation &t_automation)
 {
-	set_stage(t_work, LoginStage::authenticating);
+	set_stage(t_work, LoginStage::Authenticating);
 
 	std::wstring error;
 	bool error_shown = submit_and_wait_for_error(t_work, t_automation, error);
@@ -138,7 +138,7 @@ bool authenticate(LoginWork &t_work, const UiAutomation &t_automation)
 	if (error_shown && !is_invalid_credentials(error)) {
 		if (!focus_client(t_work)) return false;
 
-		set_stage(t_work, LoginStage::authenticating);
+		set_stage(t_work, LoginStage::Authenticating);
 
 		const std::wstring previous_error = error;
 		error_shown = submit_and_wait_for_error(t_work, t_automation, error, &previous_error);
@@ -157,7 +157,7 @@ bool authenticate(LoginWork &t_work, const UiAutomation &t_automation)
 void run_login(LoginWork &t_work)
 {
 	t_work.message[0] = '\0';
-	set_stage(t_work, LoginStage::waiting_for_process);
+	set_stage(t_work, LoginStage::WaitingForProcess);
 
 	if (!start_fresh_client(t_work) || !focus_client(t_work)) return;
 
@@ -170,7 +170,7 @@ void run_login(LoginWork &t_work)
 
 	if (!authenticate(t_work, automation)) return;
 
-	set_stage(t_work, LoginStage::launching);
+	set_stage(t_work, LoginStage::Launching);
 
 	std::wstring late_error;
 	const PlayResult play = t_work.riot_client.click_play_when_ready(automation, play_button_timeout_ms,
@@ -178,12 +178,12 @@ void run_login(LoginWork &t_work)
 
 	if (stop_if_cancelled(t_work)) return;
 
-	if (play == PlayResult::login_error) {
+	if (play == PlayResult::LoginError) {
 		fail(t_work, is_invalid_credentials(late_error) ? invalid_credentials_message : server_error_message);
 		return;
 	}
 
-	set_stage(t_work, LoginStage::success);
+	set_stage(t_work, LoginStage::Success);
 }
 
 void worker_main(std::shared_ptr<LoginWork> t_work)
@@ -215,10 +215,10 @@ LoginAttempt::~LoginAttempt()
 
 bool LoginAttempt::is_terminal(LoginStage t_stage)
 {
-	return t_stage == LoginStage::success || t_stage == LoginStage::error || t_stage == LoginStage::cancelled;
+	return t_stage == LoginStage::Success || t_stage == LoginStage::Error || t_stage == LoginStage::Cancelled;
 }
 
-void LoginAttempt::start(std::string_view t_username, std::string_view t_password, std::string_view t_game_title)
+void LoginAttempt::start(std::string_view t_username, std::string_view t_password, std::string_view t_launch_product)
 {
 	if (m_active && !is_terminal(stage())) {
 		debug_log::write(log_category, "start refused - the previous attempt is still active (stage %s)",
@@ -231,14 +231,14 @@ void LoginAttempt::start(std::string_view t_username, std::string_view t_passwor
 	auto work = std::make_shared<LoginWork>();
 	copy_to(t_username, work->username);
 	copy_to(t_password, work->password);
-	copy_to(t_game_title, work->game_title);
-	work->stage.store(LoginStage::waiting_for_process, std::memory_order_relaxed);
+	copy_to(t_launch_product, work->launch_product);
+	work->stage.store(LoginStage::WaitingForProcess, std::memory_order_relaxed);
 
 	m_work = work;
 	m_worker = std::thread(worker_main, std::move(work));
 	m_active = true;
 
-	debug_log::write(log_category, "attempt started for game \"%s\"", m_work->game_title);
+	debug_log::write(log_category, "attempt started for \"%s\"", m_work->launch_product);
 }
 
 void LoginAttempt::cancel()
@@ -252,7 +252,7 @@ void LoginAttempt::cancel()
 
 LoginStage LoginAttempt::stage() const
 {
-	return m_work != nullptr ? m_work->stage.load(std::memory_order_acquire) : LoginStage::idle;
+	return m_work != nullptr ? m_work->stage.load(std::memory_order_acquire) : LoginStage::Idle;
 }
 
 std::string_view LoginAttempt::terminal_message() const
@@ -294,10 +294,10 @@ void LoginAttempt::abandon_worker()
 
 	auto abandoned = std::make_shared<LoginWork>();
 	if (user_cancelled) {
-		abandoned->stage.store(LoginStage::cancelled, std::memory_order_relaxed);
+		abandoned->stage.store(LoginStage::Cancelled, std::memory_order_relaxed);
 	} else {
 		copy_to(unresponsive_client_message, abandoned->message);
-		abandoned->stage.store(LoginStage::error, std::memory_order_relaxed);
+		abandoned->stage.store(LoginStage::Error, std::memory_order_relaxed);
 	}
 
 	abandoned->worker_finished.store(true, std::memory_order_relaxed);

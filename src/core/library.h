@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 
 #include "core/types.h"
@@ -29,6 +30,7 @@ struct Account {
 struct Game {
 	std::string_view title;
 	std::string_view short_title;
+	std::string_view launch_product;
 	Color accent{};
 	const Texture *banner = nullptr;
 	const Texture *icon = nullptr;
@@ -53,10 +55,11 @@ struct VisibleAccounts {
 	}
 };
 
-class Library {
-  public:
-	void add_game(std::string_view t_title, std::string_view t_short_title, const Texture *t_banner,
-				  const Texture *t_icon, Color t_accent);
+struct Library {
+	Game games[max_games];
+	u32 game_count = 0;
+	u32 next_order = 1;
+	std::string unlisted_games;
 
 	std::optional<AccountRef> add_account(u32 t_game, const Account &t_account);
 	std::optional<AccountRef> insert_account(AccountRef t_where, const Account &t_account);
@@ -70,41 +73,11 @@ class Library {
 
 	Account &account(AccountRef t_ref)
 	{
-		return m_games[t_ref.game].accounts[t_ref.index];
+		return games[t_ref.game].accounts[t_ref.index];
 	}
 
 	const Account &account(AccountRef t_ref) const
 	{
-		return m_games[t_ref.game].accounts[t_ref.index];
+		return games[t_ref.game].accounts[t_ref.index];
 	}
-
-	Game &game(u32 t_index)
-	{
-		return m_games[t_index];
-	}
-
-	const Game &game(u32 t_index) const
-	{
-		return m_games[t_index];
-	}
-
-	u32 game_count() const
-	{
-		return m_game_count;
-	}
-
-	std::span<Game> games()
-	{
-		return {m_games, m_game_count};
-	}
-
-	std::span<const Game> games() const
-	{
-		return {m_games, m_game_count};
-	}
-
-  private:
-	Game m_games[max_games];
-	u32 m_game_count = 0;
-	u32 m_next_order = 1;
 };

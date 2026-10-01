@@ -16,6 +16,7 @@
 
 #include "core/app_identity.h"
 #include "core/str.h"
+#include "platform/process.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -422,23 +423,6 @@ std::wstring nearest_existing_folder(std::wstring t_path)
 
 namespace installation {
 
-std::wstring executable_path()
-{
-	std::wstring path(MAX_PATH, L'\0');
-
-	for (;;) {
-		const DWORD length = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
-		if (length == 0) return {};
-
-		if (length < path.size()) {
-			path.resize(length);
-			return path;
-		}
-
-		path.resize(path.size() * 2);
-	}
-}
-
 std::wstring default_location()
 {
 	const std::wstring programs = known_folder(FOLDERID_UserProgramFiles);
@@ -574,27 +558,6 @@ void finish_pending_removal()
 	}
 }
 
-void launch(const std::wstring &t_executable, const wchar_t *t_arguments)
-{
-	std::wstring command = quoted(t_executable);
-	if (t_arguments != nullptr && *t_arguments != L'\0') {
-		command += L' ';
-		command += t_arguments;
-	}
-
-	const usize slash = t_executable.find_last_of(L"\\/");
-	const std::wstring folder = slash == std::wstring::npos ? std::wstring{} : t_executable.substr(0, slash);
-
-	STARTUPINFOW startup{.cb = sizeof(startup)};
-	PROCESS_INFORMATION process{};
-
-	if (CreateProcessW(t_executable.c_str(), command.data(), nullptr, nullptr, FALSE, 0, nullptr,
-					   folder.empty() ? nullptr : folder.c_str(), &startup, &process)) {
-		CloseHandle(process.hProcess);
-		CloseHandle(process.hThread);
-	}
-}
-
 Job::~Job()
 {
 	if (m_thread.joinable()) {
@@ -631,11 +594,11 @@ void Job::finish(bool t_succeeded, std::string t_error)
 u32 Job::step_count() const
 {
 	switch (m_task) {
-		case Task::install:
+		case Task::Install:
 			return static_cast<u32>(std::size(install_steps));
-		case Task::apply:
+		case Task::Apply:
 			return static_cast<u32>(std::size(apply_steps));
-		case Task::uninstall:
+		case Task::Uninstall:
 			return static_cast<u32>(std::size(uninstall_steps));
 	}
 
@@ -647,11 +610,11 @@ std::string_view Job::step_label() const
 	const u32 index = std::min(step(), step_count() - 1);
 
 	switch (m_task) {
-		case Task::install:
+		case Task::Install:
 			return install_steps[index];
-		case Task::apply:
+		case Task::Apply:
 			return apply_steps[index];
-		case Task::uninstall:
+		case Task::Uninstall:
 			return uninstall_steps[index];
 	}
 
@@ -660,7 +623,7 @@ std::string_view Job::step_label() const
 
 void Job::start_install(std::wstring t_location, Options t_options)
 {
-	begin(Task::install);
+	begin(Task::Install);
 
 	m_thread = std::thread([this, location = std::move(t_location), options = t_options]() {
 		const ComScope com;
@@ -711,7 +674,7 @@ void Job::start_install(std::wstring t_location, Options t_options)
 
 void Job::start_apply(Installed t_installed, Options t_options)
 {
-	begin(Task::apply);
+	begin(Task::Apply);
 
 	m_thread = std::thread([this, installed = std::move(t_installed), options = t_options]() {
 		const ComScope com;
@@ -727,7 +690,7 @@ void Job::start_apply(Installed t_installed, Options t_options)
 
 void Job::start_uninstall(Installed t_installed, std::optional<std::wstring> t_data_folder)
 {
-	begin(Task::uninstall);
+	begin(Task::Uninstall);
 
 	m_thread = std::thread([this, installed = std::move(t_installed), data_folder = std::move(t_data_folder)]() {
 		const ComScope com;

@@ -1,4 +1,4 @@
-#include "core/riot_client.h"
+#include "login/riot_client.h"
 
 #include <algorithm>
 #include <fstream>
@@ -281,16 +281,6 @@ void RiotClient::kill_all_client_processes(const std::atomic<bool> &t_cancel)
 	debug_log::write(log_category, "killed client processes gone after %llums", scope.elapsed_ms());
 }
 
-std::string_view RiotClient::launch_product_for(std::string_view t_game_title)
-{
-	if (t_game_title == "League of Legends" || t_game_title == "Teamfight Tactics") return "league_of_legends";
-	if (t_game_title == "Valorant") return "valorant";
-	if (t_game_title == "Legends of Runeterra") return "bacon";
-	if (t_game_title == "2XKO") return "lion";
-
-	return "";
-}
-
 bool RiotClient::resolve_executable_path()
 {
 	m_executable_path.clear();
@@ -347,7 +337,7 @@ bool RiotClient::launch(std::string_view t_launch_product)
 
 HWND RiotClient::find_client_window() const
 {
-	const HWND window = UiAutomation::find_window_by_title(client_window_title);
+	const HWND window = FindWindowW(nullptr, client_window_title);
 	if (window != nullptr || m_process_id == 0) return window;
 
 	return UiAutomation::find_top_level_window(m_process_id);
@@ -404,11 +394,6 @@ HWND RiotClient::wait_for_responsive_window(const std::atomic<bool> &t_cancel) c
 
 		std::this_thread::sleep_for(poll_interval);
 	}
-}
-
-void RiotClient::wait_for_window(const std::atomic<bool> &t_cancel) const
-{
-	wait_for_responsive_window(t_cancel);
 }
 
 bool RiotClient::bring_to_foreground(const std::atomic<bool> &t_cancel) const
@@ -532,7 +517,7 @@ PlayResult RiotClient::click_play_when_ready(const UiAutomation &t_automation, u
 		if (window.is_valid() && t_automation.find_descendant(window, login_error_tooltip_name).is_valid()) {
 			t_out_error = login_error_reason(t_automation, window);
 			debug_log::write(log_category, "login error shown while waiting for Play: \"%ls\"", t_out_error.c_str());
-			return PlayResult::login_error;
+			return PlayResult::LoginError;
 		}
 
 		const UiElement play_button =
@@ -542,13 +527,13 @@ PlayResult RiotClient::click_play_when_ready(const UiAutomation &t_automation, u
 		if (play_button.is_valid()) {
 			debug_log::write(log_category, "Play button found - invoking it");
 			play_button.invoke();
-			return PlayResult::clicked;
+			return PlayResult::Clicked;
 		}
 
 		if (is_cancelled(t_cancel) || is_past(deadline)) {
 			debug_log::write(log_category, "Play button not found (%s) - leaving the game unlaunched",
 							 is_cancelled(t_cancel) ? "cancelled" : "timed out");
-			return PlayResult::not_found;
+			return PlayResult::NotFound;
 		}
 
 		std::this_thread::sleep_for(poll_interval);

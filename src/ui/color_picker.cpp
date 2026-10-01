@@ -10,10 +10,11 @@
 #include <Windows.h>
 
 #include "core/animation.h"
+#include "core/str.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
-#include "core/str.h"
 #include "platform/clipboard.h"
+#include "platform/window.h"
 #include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
@@ -127,25 +128,12 @@ Hsv rgb_to_hsv(Color t_color)
 
 float row_height(const Fonts &t_fonts)
 {
-	return std::max(28.0f, t_fonts.secondary().line_height() + 10.0f);
+	return std::max(28.0f, t_fonts.secondary.line_height() + 10.0f);
 }
 
 float fraction_along(float t_position, float t_start, float t_length)
 {
 	return std::clamp((t_position - t_start) / t_length, 0.0f, 1.0f);
-}
-
-std::string_view trimmed(std::string_view t_text)
-{
-	while (!t_text.empty() && std::isspace(static_cast<unsigned char>(t_text.front()))) {
-		t_text.remove_prefix(1);
-	}
-
-	while (!t_text.empty() && std::isspace(static_cast<unsigned char>(t_text.back()))) {
-		t_text.remove_suffix(1);
-	}
-
-	return t_text;
 }
 
 std::optional<Color> parse_hex(std::string_view t_digits, u8 t_alpha)
@@ -336,7 +324,7 @@ Rect ColorPicker::field_text_rect(const Layout &t_layout, u32 t_field) const
 {
 	const Rect field = t_layout.fields[t_field];
 	const float text_x =
-		field.x + label_inset + text_width(m_fonts.secondary(), field_labels[t_field]) - label_text_overlap;
+		field.x + label_inset + text_width(m_fonts.secondary, field_labels[t_field]) - label_text_overlap;
 
 	return Rect{text_x, field.y, field.right() - text_x, field.h};
 }
@@ -514,7 +502,7 @@ void ColorPicker::open(Color t_initial, Rect t_anchor, Rect t_bounds)
 	m_anchor = t_anchor;
 	m_bounds = t_bounds;
 	m_open = true;
-	m_press = Press::none;
+	m_press = Press::None;
 	m_copied_seconds = 0.0f;
 	m_paste_failed_seconds = 0.0f;
 
@@ -527,7 +515,7 @@ void ColorPicker::close()
 {
 	focus_field(-1);
 	m_open = false;
-	m_press = Press::none;
+	m_press = Press::None;
 	end_drags();
 }
 
@@ -558,14 +546,14 @@ bool ColorPicker::on_pointer_down(Vec2 t_point)
 	const Layout current = layout();
 	if (!current.popup.contains(t_point)) return false;
 
-	m_press = Press::none;
+	m_press = Press::None;
 	const i32 field = field_at(current, t_point);
 
 	if (field >= 0) {
 		focus_field(field);
-		m_fields[field].on_pointer_down(m_fonts.secondary(), field_text_rect(current, static_cast<u32>(field)),
+		m_fields[field].on_pointer_down(m_fonts.secondary, field_text_rect(current, static_cast<u32>(field)),
 										t_point.x);
-		m_press = Press::field;
+		m_press = Press::Field;
 		return true;
 	}
 
@@ -578,11 +566,11 @@ bool ColorPicker::on_pointer_down(Vec2 t_point)
 	} else if (current.alpha.contains(t_point)) {
 		m_alpha_drag.begin(t_point);
 	} else if (current.swatch.contains(t_point) && t_point.x < current.swatch.center().x) {
-		m_press = Press::revert;
+		m_press = Press::Revert;
 	} else if (current.copy.contains(t_point)) {
-		m_press = Press::copy;
+		m_press = Press::Copy;
 	} else if (current.paste.contains(t_point)) {
-		m_press = Press::paste;
+		m_press = Press::Paste;
 	}
 
 	on_pointer_move(t_point);
@@ -598,7 +586,7 @@ void ColorPicker::on_pointer_move(Vec2 t_point)
 
 	for (u32 i = 0; i < field_count; i += 1) {
 		if (m_fields[i].is_selecting()) {
-			m_fields[i].on_pointer_move(m_fonts.secondary(), field_text_rect(current, i), t_point.x);
+			m_fields[i].on_pointer_move(m_fonts.secondary, field_text_rect(current, i), t_point.x);
 		}
 	}
 
@@ -625,8 +613,8 @@ void ColorPicker::on_pointer_move(Vec2 t_point)
 
 bool ColorPicker::on_pointer_up(Vec2 t_point)
 {
-	const bool was_pressed = m_press != Press::none || is_dragging();
-	const Press press = std::exchange(m_press, Press::none);
+	const bool was_pressed = m_press != Press::None || is_dragging();
+	const Press press = std::exchange(m_press, Press::None);
 
 	for (TextInput &field : m_fields) {
 		field.on_pointer_up();
@@ -639,27 +627,27 @@ bool ColorPicker::on_pointer_up(Vec2 t_point)
 	const Layout current = layout();
 
 	switch (press) {
-		case Press::revert:
+		case Press::Revert:
 			if (current.swatch.contains(t_point) && t_point.x < current.swatch.center().x) {
 				set_color(m_initial);
 				sync_fields(-1);
 			}
 			break;
 
-		case Press::copy:
+		case Press::Copy:
 			if (current.copy.contains(t_point)) {
 				copy_hex();
 			}
 			break;
 
-		case Press::paste:
+		case Press::Paste:
 			if (current.paste.contains(t_point)) {
 				paste_color();
 			}
 			break;
 
-		case Press::none:
-		case Press::field:
+		case Press::None:
+		case Press::Field:
 			break;
 	}
 
@@ -675,7 +663,7 @@ TextInput *ColorPicker::on_right_click(Vec2 t_point)
 	if (field < 0) return nullptr;
 
 	focus_field(field);
-	m_fields[field].on_right_click(m_fonts.secondary(), field_text_rect(current, static_cast<u32>(field)), t_point.x);
+	m_fields[field].on_right_click(m_fonts.secondary, field_text_rect(current, static_cast<u32>(field)), t_point.x);
 
 	return &m_fields[field];
 }
@@ -685,7 +673,7 @@ bool ColorPicker::on_key_down(u32 t_key)
 	if (!m_open) return false;
 
 	const i32 focused = focused_field();
-	const bool control = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+	const bool control = is_key_down(VK_CONTROL);
 
 	if (focused < 0) {
 		if (t_key == VK_ESCAPE) {
@@ -714,11 +702,11 @@ bool ColorPicker::on_key_down(u32 t_key)
 
 		case VK_TAB: {
 			const auto count = static_cast<i32>(field_count);
-			const i32 step = (GetKeyState(VK_SHIFT) & 0x8000) != 0 ? count - 1 : 1;
+			const i32 step = is_key_down(VK_SHIFT) ? count - 1 : 1;
 			const i32 next = (focused + step) % count;
 
 			focus_field(next);
-			m_fields[next].apply(TextEdit::select_all);
+			m_fields[next].apply(TextEdit::SelectAll);
 			return true;
 		}
 
@@ -763,22 +751,22 @@ std::optional<ColorPickerHint> ColorPicker::hint(Vec2 t_mouse) const
 
 CursorKind ColorPicker::cursor(Vec2 t_mouse) const
 {
-	if (!m_open) return CursorKind::arrow;
-	if (is_dragging()) return CursorKind::drag;
+	if (!m_open) return CursorKind::Arrow;
+	if (is_dragging()) return CursorKind::Drag;
 
 	for (const TextInput &field : m_fields) {
-		if (field.is_selecting()) return CursorKind::ibeam;
+		if (field.is_selecting()) return CursorKind::IBeam;
 	}
 
 	const Layout current = layout();
-	if (field_at(current, t_mouse) >= 0) return CursorKind::ibeam;
+	if (field_at(current, t_mouse) >= 0) return CursorKind::IBeam;
 
 	const bool over_control = current.square.contains(t_mouse) || current.hue.contains(t_mouse) ||
 							  current.alpha.contains(t_mouse) || current.copy.contains(t_mouse) ||
 							  current.paste.contains(t_mouse) ||
 							  (current.swatch.contains(t_mouse) && t_mouse.x < current.swatch.center().x);
 
-	return over_control ? CursorKind::hand : CursorKind::arrow;
+	return over_control ? CursorKind::Hand : CursorKind::Arrow;
 }
 
 void ColorPicker::draw(DrawList &t_draw_list, Vec2 t_mouse)
@@ -788,7 +776,7 @@ void ColorPicker::draw(DrawList &t_draw_list, Vec2 t_mouse)
 	const Theme &colors = theme();
 	const Layout current = layout();
 	const Rect popup = current.popup;
-	const Font &font = m_fonts.secondary();
+	const Font &font = m_fonts.secondary;
 	const Color picked = with_alpha(m_color, 255);
 
 	controls::draw_popup_shadow(t_draw_list, popup.inset(-1.0f), popup_radius, 1.0f);

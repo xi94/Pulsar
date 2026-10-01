@@ -8,6 +8,7 @@
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "ui/text.h"
+#include "ui/text_input.h"
 #include "ui/theme.h"
 
 namespace {
@@ -22,6 +23,9 @@ constexpr float keycap_padding = 5.0f;
 constexpr float keycap_radius = 4.0f;
 constexpr float keycap_lip = 1.0f;
 constexpr float keycap_gap = 3.0f;
+constexpr float search_icon_size = 13.0f;
+constexpr float search_icon_gap = 7.0f;
+constexpr float search_clear_margin = 8.0f;
 
 struct ButtonLook {
 	Color fill;
@@ -34,21 +38,21 @@ ButtonLook button_look(controls::ButtonStyle t_style, Color t_accent)
 	const Theme &colors = theme();
 
 	switch (t_style) {
-		case controls::ButtonStyle::neutral:
+		case controls::ButtonStyle::Neutral:
 			return ButtonLook{colors.control, colors.control_hover, colors.text};
 
-		case controls::ButtonStyle::accent:
+		case controls::ButtonStyle::Accent:
 			return ButtonLook{t_accent, lightened(t_accent, 20), foreground_on(t_accent)};
 
-		case controls::ButtonStyle::danger:
+		case controls::ButtonStyle::Danger:
 			return ButtonLook{mix(colors.control, colors.error, danger_fill_strength),
 							  mix(colors.control, colors.error, danger_hover_strength),
 							  mix(colors.error, colors.text, danger_label_softening)};
 
-		case controls::ButtonStyle::ghost:
+		case controls::ButtonStyle::Ghost:
 			return ButtonLook{with_alpha(colors.control, 0), colors.control_hover, colors.text_dim};
 
-		case controls::ButtonStyle::danger_confirm:
+		case controls::ButtonStyle::DangerConfirm:
 			return ButtonLook{colors.error, lightened(colors.error, 15), foreground_on(colors.error)};
 	}
 
@@ -77,11 +81,6 @@ Color controls::confirm_red()
 				 static_cast<u8>(cool * 0.85f), 255};
 }
 
-void controls::draw_icon(DrawList &t_draw_list, Rect t_rect, const Texture *t_icon, Color t_tint)
-{
-	t_draw_list.add_image(t_rect, t_icon, t_tint);
-}
-
 void controls::draw_x(DrawList &t_draw_list, Rect t_rect, Color t_color)
 {
 	const Vec2 center = t_rect.center();
@@ -98,7 +97,7 @@ void controls::draw_check(DrawList &t_draw_list, const Assets &t_assets, Rect t_
 	constexpr float icon_scale = 1.4f;
 
 	const float size = std::min(t_rect.w, t_rect.h) * icon_scale;
-	draw_icon(t_draw_list, t_rect.centered(size, size), t_assets.get(Asset::icon_check), t_color);
+	t_draw_list.add_image(t_rect.centered(size, size), t_assets.get(Asset::IconCheck), t_color);
 }
 
 void controls::draw_chevron(DrawList &t_draw_list, Rect t_rect, bool t_points_up, Color t_color)
@@ -241,8 +240,7 @@ void controls::draw_magnifier(DrawList &t_draw_list, Rect t_rect, Color t_color)
 
 void controls::draw_eye(DrawList &t_draw_list, const Assets &t_assets, Rect t_rect, bool t_revealed, Color t_color)
 {
-	draw_icon(t_draw_list, t_rect, t_assets.get(t_revealed ? Asset::icon_eye_visible : Asset::icon_eye_hidden),
-			  t_color);
+	t_draw_list.add_image(t_rect, t_assets.get(t_revealed ? Asset::IconEyeVisible : Asset::IconEyeHidden), t_color);
 }
 
 void controls::draw_favorite(DrawList &t_draw_list, const Assets &t_assets, Rect t_rect, bool t_filled, Color t_color)
@@ -269,7 +267,7 @@ void controls::draw_favorite(DrawList &t_draw_list, const Assets &t_assets, Rect
 		}
 	}
 
-	draw_icon(t_draw_list, t_rect, t_assets.get(Asset::icon_favorite), t_color);
+	t_draw_list.add_image(t_rect, t_assets.get(Asset::IconFavorite), t_color);
 }
 
 void controls::draw_lift(DrawList &t_draw_list, Rect t_rect, float t_radius, Color t_glow, u8 t_alpha)
@@ -322,7 +320,7 @@ void controls::draw_button(DrawList &t_draw_list, const Font &t_font, Rect t_rec
 {
 	const ButtonLook look = t_enabled ? button_look(t_style, t_accent) : disabled_button_look();
 	const bool lifted = t_enabled && t_hovered;
-	const bool ghost = t_style == ButtonStyle::ghost;
+	const bool ghost = t_style == ButtonStyle::Ghost;
 
 	if (lifted && !ghost) {
 		draw_lift(t_draw_list, t_rect, button_radius, look.fill, t_alpha);
@@ -334,41 +332,38 @@ void controls::draw_button(DrawList &t_draw_list, const Font &t_font, Rect t_rec
 	draw_text_centered(t_draw_list, t_font, t_rect, t_label, faded(label, t_alpha));
 }
 
-void controls::draw_dropdown(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label,
-							 bool t_open, bool t_hovered, Color t_accent, u8 t_alpha)
+Rect controls::search_text_rect(Rect t_search, float t_inset)
 {
-	constexpr float padding = 12.0f;
-	constexpr Vec2 chevron_size{9.0f, 5.0f};
+	const float left = t_search.x + t_inset + search_icon_size + search_icon_gap;
+	const float right = search_clear_rect(t_search).x - search_icon_gap * 0.5f;
 
-	const Theme &colors = theme();
-	const Rect chevron{t_rect.right() - padding - chevron_size.x, t_rect.center().y - chevron_size.y * 0.5f,
-					   chevron_size.x, chevron_size.y};
-	const float label_x = t_rect.x + padding;
-
-	t_draw_list.add_bordered_rect(t_rect, rounded(button_radius),
-								  faded(t_open || t_hovered ? colors.control_hover : colors.control, t_alpha),
-								  faded(t_open ? t_accent : colors.border, t_alpha), 1.0f);
-	draw_text_truncated(t_draw_list, t_font, Vec2{label_x, t_font.centered_baseline(t_rect)}, t_label,
-						chevron.x - padding - label_x, faded(colors.text, t_alpha));
-	draw_chevron(t_draw_list, chevron, t_open, faded(t_open ? colors.text : colors.text_dim, t_alpha));
+	return Rect{left, t_search.y, std::max(0.0f, right - left), t_search.h};
 }
 
-void controls::draw_checkbox(DrawList &t_draw_list, const Assets &t_assets, Rect t_box, bool t_checked, bool t_enabled,
-							 Color t_accent)
+Rect controls::search_clear_rect(Rect t_search)
 {
-	constexpr float radius = 4.0f;
-	constexpr float border = 1.5f;
-	constexpr float check_inset = 2.0f;
-	constexpr float disabled_strength = 0.55f;
+	return Rect{t_search.right() - search_clear_margin - search_icon_size,
+				t_search.center().y - search_icon_size * 0.5f, search_icon_size, search_icon_size};
+}
 
+void controls::draw_search_field(DrawList &t_draw_list, const Font &t_font, Rect t_search, float t_inset,
+								 TextInput &t_input, Vec2 t_mouse, Color t_accent, u8 t_alpha)
+{
 	const Theme &colors = theme();
+	const bool focused = t_input.is_focused();
+	const bool has_query = !t_input.value().empty();
 
-	if (!t_checked) {
-		t_draw_list.add_bordered_rect(t_box, rounded(radius), colors.field, colors.border, border);
-		return;
-	}
+	draw_field(t_draw_list, t_search, t_search.h * 0.5f, focused ? colors.text_dim : colors.control,
+			   focused ? colors.row_hover : colors.field, t_alpha);
 
-	const Color fill = t_enabled ? t_accent : mix(colors.popup, t_accent, disabled_strength);
-	t_draw_list.add_rounded_rect(t_box, rounded(radius), fill);
-	draw_check(t_draw_list, t_assets, t_box.inset(check_inset), foreground_on(fill));
+	const Rect icon{t_search.x + t_inset, t_search.center().y - search_icon_size * 0.5f, search_icon_size,
+					search_icon_size};
+	draw_magnifier(t_draw_list, icon, faded(focused || has_query ? colors.text_dim : colors.text_faint, t_alpha));
+	t_input.draw(t_draw_list, t_font, search_text_rect(t_search, t_inset), faded(colors.text, t_alpha),
+				 faded(t_accent, t_alpha), t_search);
+
+	if (!has_query) return;
+
+	const Rect clear = search_clear_rect(t_search);
+	draw_x(t_draw_list, clear.inset(1.5f), faded(clear.contains(t_mouse) ? colors.text : colors.text_faint, t_alpha));
 }

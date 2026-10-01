@@ -8,7 +8,7 @@
 #include "ui/widget.h"
 
 class Assets;
-class Fonts;
+struct Fonts;
 class Window;
 struct Settings;
 
@@ -65,18 +65,18 @@ class UpdateOverlay : public Widget {
 
   private:
 	enum class Action : u8 {
-		none,
-		check,
-		download,
-		cancel,
-		close,
-		releases,
+		None,
+		Check,
+		Download,
+		Cancel,
+		Close,
+		Releases,
 	};
 
 	struct Button {
 		std::string_view label;
-		Action action = Action::none;
-		controls::ButtonStyle style = controls::ButtonStyle::neutral;
+		Action action = Action::None;
+		controls::ButtonStyle style = controls::ButtonStyle::Neutral;
 	};
 
 	struct Content {
@@ -130,7 +130,7 @@ class UpdateOverlay : public Widget {
 	float m_progress = 0.0f;
 	float m_spin = 0.0f;
 	u32 m_content_key = 0;
-	UpdateStage m_shown_stage = UpdateStage::idle;
+	UpdateStage m_shown_stage = UpdateStage::Idle;
 	float m_shown_seconds = 0.0f;
 	bool m_check_requested = false;
 	float m_status_linger = 0.0f;

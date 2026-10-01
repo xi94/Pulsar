@@ -26,7 +26,6 @@ struct Installed {
 	Options options;
 };
 
-std::wstring executable_path();
 std::wstring default_location();
 std::wstring with_app_folder(std::wstring_view t_folder);
 std::optional<Installed> find_installation();
@@ -38,12 +37,11 @@ bool is_main_window_open();
 bool close_running_app(std::wstring_view t_only_executable = {});
 void open_folder(const std::wstring &t_folder);
 void finish_pending_removal();
-void launch(const std::wstring &t_executable, const wchar_t *t_arguments);
 
 enum class Task : u8 {
-	install,
-	apply,
-	uninstall,
+	Install,
+	Apply,
+	Uninstall,
 };
 
 class Job {
@@ -57,11 +55,6 @@ class Job {
 	void start_install(std::wstring t_location, Options t_options);
 	void start_apply(Installed t_installed, Options t_options);
 	void start_uninstall(Installed t_installed, std::optional<std::wstring> t_data_folder);
-
-	bool is_running() const
-	{
-		return m_thread.joinable() && !m_finished.load(std::memory_order_acquire);
-	}
 
 	bool is_finished() const
 	{
@@ -102,7 +95,7 @@ class Job {
 	void begin(Task t_task);
 	void finish(bool t_succeeded, std::string t_error);
 
-	Task m_task = Task::install;
+	Task m_task = Task::Install;
 	std::thread m_thread;
 	std::atomic<u32> m_step{0};
 	std::atomic<bool> m_finished{false};

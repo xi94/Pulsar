@@ -5,7 +5,7 @@
 #include "ui/widget.h"
 
 class Assets;
-class Fonts;
+struct Fonts;
 class MasterKey;
 class Window;
 struct Settings;

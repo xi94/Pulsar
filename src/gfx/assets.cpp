@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstring>
 #include <print>
+#include <ranges>
 
 #include "embeds/banners/2XKO.hpp"
 #include "embeds/banners/LeagueOfLegends.hpp"
@@ -11,18 +12,18 @@
 #include "embeds/banners/TeamfightTactics.hpp"
 #include "embeds/banners/Valorant.hpp"
 #include "embeds/icons/2XKOIcon.hpp"
-#include "embeds/icons/AddIcon.hpp"
 #include "embeds/icons/AccountIcon.hpp"
+#include "embeds/icons/AddIcon.hpp"
 #include "embeds/icons/AppMark.hpp"
 #include "embeds/icons/ArrowBack.hpp"
 #include "embeds/icons/CarouselIcon.hpp"
 #include "embeds/icons/CheckedIcon.hpp"
 #include "embeds/icons/Close.hpp"
+#include "embeds/icons/DownloadIcon.hpp"
 #include "embeds/icons/EditIcon.hpp"
 #include "embeds/icons/EyeHiddenIcon.hpp"
 #include "embeds/icons/EyeVisible.hpp"
 #include "embeds/icons/FavoriteIcon.hpp"
-#include "embeds/icons/DownloadIcon.hpp"
 #include "embeds/icons/FileIcon.hpp"
 #include "embeds/icons/FolderBlankIcon.hpp"
 #include "embeds/icons/FolderOpenIcon.hpp"
@@ -50,6 +51,7 @@ namespace {
 using namespace pulsar::embed;
 
 struct EncodedAsset {
+	Asset asset;
 	std::span<const u8> bytes;
 	const char *name;
 };
@@ -86,46 +88,51 @@ void shrink_by_half(const u8 *t_source, u32 t_source_width, u32 t_source_height,
 	}
 }
 
-const EncodedAsset encoded_assets[asset_count]{
-	{icon::arrow_back_icon, "ArrowBack"},
-	{icon::close_icon, "Close"},
-	{icon::minimize_icon, "Minimize"},
-	{icon::settings_icon, "Settings"},
-	{icon::menu_icon, "MenuIcon"},
-	{icon::add_icon, "AddIcon"},
-	{icon::edit_icon, "EditIcon"},
-	{icon::folder_open_icon, "FolderOpenIcon"},
-	{icon::grid_icon, "GridIcon"},
-	{icon::list_icon, "ListIcon"},
-	{icon::carousel_icon, "CarouselIcon"},
-	{icon::shelf_icon, "ShelfIcon"},
-	{icon::icons_icon, "IconsIcon"},
-	{icon::list_arrow, "ListArrow"},
-	{icon::eye_visible_icon, "EyeVisible"},
-	{icon::eye_hidden_icon, "EyeHiddenIcon"},
-	{icon::favorite_icon, "FavoriteIcon"},
-	{icon::update_icon, "UpdateIcon"},
-	{icon::reset_icon, "ResetIcon"},
-	{icon::account_icon, "AccountIcon"},
-	{icon::image_icon, "ImageIcon"},
-	{icon::username_icon, "UsernameIcon"},
-	{icon::lock_icon, "LockIcon"},
-	{icon::folder_icon, "FolderBlankIcon"},
-	{icon::file_icon, "FileIcon"},
-	{icon::download_icon, "DownloadIcon"},
-	{icon::check_icon, "CheckedIcon"},
-	{icon::app_mark, "AppMark"},
-	{icon::league_of_legends_icon, "LeagueIcon"},
-	{icon::valorant_icon, "ValorantIcon"},
-	{icon::two_xko_icon, "2XKOIcon"},
-	{icon::runeterra_icon, "RuneterraIcon"},
-	{icon::teamfight_tactics_icon, "TFTIcon"},
-	{banner::league_of_legends, "LeagueOfLegends"},
-	{banner::valorant, "Valorant"},
-	{banner::two_xko, "2XKO"},
-	{banner::runeterra, "Runeterra"},
-	{banner::teamfight_tactics, "TeamfightTactics"},
+constexpr EncodedAsset encoded_assets[]{
+	{Asset::IconArrowBack, icon::arrow_back_icon, "ArrowBack"},
+	{Asset::IconClose, icon::close_icon, "Close"},
+	{Asset::IconMinimize, icon::minimize_icon, "Minimize"},
+	{Asset::IconSettings, icon::settings_icon, "Settings"},
+	{Asset::IconMenu, icon::menu_icon, "MenuIcon"},
+	{Asset::IconAdd, icon::add_icon, "AddIcon"},
+	{Asset::IconEdit, icon::edit_icon, "EditIcon"},
+	{Asset::IconFolderOpen, icon::folder_open_icon, "FolderOpenIcon"},
+	{Asset::IconGrid, icon::grid_icon, "GridIcon"},
+	{Asset::IconList, icon::list_icon, "ListIcon"},
+	{Asset::IconCarousel, icon::carousel_icon, "CarouselIcon"},
+	{Asset::IconShelf, icon::shelf_icon, "ShelfIcon"},
+	{Asset::IconIcons, icon::icons_icon, "IconsIcon"},
+	{Asset::IconListArrow, icon::list_arrow, "ListArrow"},
+	{Asset::IconEyeVisible, icon::eye_visible_icon, "EyeVisible"},
+	{Asset::IconEyeHidden, icon::eye_hidden_icon, "EyeHiddenIcon"},
+	{Asset::IconFavorite, icon::favorite_icon, "FavoriteIcon"},
+	{Asset::IconUpdate, icon::update_icon, "UpdateIcon"},
+	{Asset::IconReset, icon::reset_icon, "ResetIcon"},
+	{Asset::IconAccount, icon::account_icon, "AccountIcon"},
+	{Asset::IconImage, icon::image_icon, "ImageIcon"},
+	{Asset::IconUsername, icon::username_icon, "UsernameIcon"},
+	{Asset::IconLock, icon::lock_icon, "LockIcon"},
+	{Asset::IconFolder, icon::folder_icon, "FolderBlankIcon"},
+	{Asset::IconFile, icon::file_icon, "FileIcon"},
+	{Asset::IconDownload, icon::download_icon, "DownloadIcon"},
+	{Asset::IconCheck, icon::check_icon, "CheckedIcon"},
+	{Asset::IconApp, icon::app_mark, "AppMark"},
+	{Asset::IconLeagueOfLegends, icon::league_of_legends_icon, "LeagueIcon"},
+	{Asset::IconValorant, icon::valorant_icon, "ValorantIcon"},
+	{Asset::IconTwoXko, icon::two_xko_icon, "2XKOIcon"},
+	{Asset::IconRuneterra, icon::runeterra_icon, "RuneterraIcon"},
+	{Asset::IconTeamfightTactics, icon::teamfight_tactics_icon, "TFTIcon"},
+	{Asset::BannerLeagueOfLegends, banner::league_of_legends, "LeagueOfLegends"},
+	{Asset::BannerValorant, banner::valorant, "Valorant"},
+	{Asset::BannerTwoXko, banner::two_xko, "2XKO"},
+	{Asset::BannerRuneterra, banner::runeterra, "Runeterra"},
+	{Asset::BannerTeamfightTactics, banner::teamfight_tactics, "TeamfightTactics"},
 };
+
+static_assert(std::size(encoded_assets) == asset_count);
+static_assert(std::ranges::all_of(std::views::iota(usize{0}, asset_count), [](usize t_index) {
+	return encoded_assets[t_index].asset == static_cast<Asset>(t_index);
+}));
 }
 
 Assets::~Assets()
@@ -143,17 +150,21 @@ std::span<const u8> Assets::encoded_bytes(Asset t_asset)
 std::unique_ptr<Texture> Assets::create_texture(Renderer &t_renderer, const u8 *t_rgba_pixels, u32 t_width,
 												u32 t_height)
 {
-	const DecodedImage image = with_mipmaps(t_rgba_pixels, t_width, t_height);
-	std::vector<TextureLevel> levels;
-	levels.reserve(image.levels.size());
-
-	for (const MipLevel &level : image.levels) {
-		levels.push_back(TextureLevel{image.pixels.data() + level.offset, level.width, level.height});
-	}
-
-	auto texture = std::make_unique<Texture>(t_renderer, levels);
+	std::unique_ptr<Texture> texture = upload(t_renderer, with_mipmaps(t_rgba_pixels, t_width, t_height));
 
 	return texture->is_valid() ? std::move(texture) : nullptr;
+}
+
+std::unique_ptr<Texture> Assets::upload(Renderer &t_renderer, const DecodedImage &t_image)
+{
+	std::vector<TextureLevel> levels;
+	levels.reserve(t_image.levels.size());
+
+	for (const MipLevel &level : t_image.levels) {
+		levels.push_back(TextureLevel{t_image.pixels.data() + level.offset, level.width, level.height});
+	}
+
+	return std::make_unique<Texture>(t_renderer, levels);
 }
 
 Assets::DecodedImage Assets::with_mipmaps(const u8 *t_rgba_pixels, u32 t_width, u32 t_height)
@@ -234,14 +245,7 @@ bool Assets::finish_upload(Renderer &t_renderer)
 		const DecodedImage &image = m_decoded[i];
 
 		if (!image.levels.empty()) {
-			std::vector<TextureLevel> levels;
-			levels.reserve(image.levels.size());
-
-			for (const MipLevel &level : image.levels) {
-				levels.push_back(TextureLevel{image.pixels.data() + level.offset, level.width, level.height});
-			}
-
-			m_textures[i] = std::make_unique<Texture>(t_renderer, levels);
+			m_textures[i] = upload(t_renderer, image);
 		}
 
 		all_uploaded = all_uploaded && m_textures[i] != nullptr && m_textures[i]->is_valid();

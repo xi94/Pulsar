@@ -6,11 +6,10 @@
 #include <wrl/client.h>
 
 #include "core/types.h"
+#include "gfx/draw_list.h"
 
-class DrawList;
 class Renderer;
 class Window;
-struct DrawCommand;
 
 struct TextureLevel {
 	const u8 *rgba_pixels;
@@ -118,14 +117,7 @@ class Renderer {
 	ComPtr<ID3D11RenderTargetView> m_render_target_view;
 
 	ComPtr<ID3D11VertexShader> m_vertex_shader;
-	ComPtr<ID3D11PixelShader> m_solid_shader;
-	ComPtr<ID3D11PixelShader> m_textured_shader;
-	ComPtr<ID3D11PixelShader> m_banner_glow_shader;
-	ComPtr<ID3D11PixelShader> m_color_picker_shader;
-	ComPtr<ID3D11PixelShader> m_shadow_shader;
-	ComPtr<ID3D11PixelShader> m_outline_countdown_shader;
-	ComPtr<ID3D11PixelShader> m_backdrop_shader;
-	ComPtr<ID3D11PixelShader> m_backdrop_plain_shader;
+	ComPtr<ID3D11PixelShader> m_pixel_shaders[shader_kind_count];
 	ComPtr<ID3D11InputLayout> m_input_layout;
 
 	ComPtr<ID3D11Buffer> m_viewport_constants;

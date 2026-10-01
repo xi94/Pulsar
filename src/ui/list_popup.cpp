@@ -51,12 +51,12 @@ constexpr float slide_distance = 6.0f;
 
 float search_height(const Fonts &t_fonts)
 {
-	return std::max(40.0f, t_fonts.body().line_height() + 16.0f);
+	return std::max(40.0f, t_fonts.body.line_height() + 16.0f);
 }
 
 float row_height(const Fonts &t_fonts)
 {
-	return std::max(30.0f, t_fonts.body().line_height() + 10.0f);
+	return std::max(30.0f, t_fonts.body.line_height() + 10.0f);
 }
 }
 
@@ -83,7 +83,7 @@ void ListPopup::open(std::span<const std::string_view> t_items, std::optional<u3
 	m_previewed_item = t_selected;
 	m_hover_seconds = 0.0f;
 	m_shown_rows = static_cast<float>(shown_row_target());
-	m_press = Press::none;
+	m_press = Press::None;
 	m_open = true;
 
 	const Layout current = layout();
@@ -94,7 +94,7 @@ void ListPopup::open(std::span<const std::string_view> t_items, std::optional<u3
 void ListPopup::close()
 {
 	m_open = false;
-	m_press = Press::none;
+	m_press = Press::None;
 	m_search.set_focused(false);
 	m_search.on_pointer_up();
 	m_scroll.on_pointer_up();
@@ -125,7 +125,7 @@ u32 ListPopup::hint_count() const
 
 float ListPopup::hint_width(u32 t_hint) const
 {
-	const Font &font = m_fonts.secondary();
+	const Font &font = m_fonts.secondary;
 	float keys = 0.0f;
 
 	if (t_hint == 0) {
@@ -163,7 +163,7 @@ float ListPopup::footer_height() const
 {
 	const auto lines = static_cast<float>(hint_lines());
 
-	return lines * controls::keycap_height(m_fonts.secondary()) + (lines - 1.0f) * hint_line_gap +
+	return lines * controls::keycap_height(m_fonts.secondary) + (lines - 1.0f) * hint_line_gap +
 		   footer_padding_y * 2.0f;
 }
 
@@ -361,16 +361,16 @@ void ListPopup::on_pointer_down(Vec2 t_point)
 	m_pressed_match.reset();
 
 	if (!current.popup.contains(t_point)) {
-		m_press = Press::outside;
+		m_press = Press::Outside;
 	} else if (m_scroll.on_pointer_down(t_point, list_scroll(current))) {
-		m_press = Press::scrollbar;
+		m_press = Press::Scrollbar;
 	} else if (!m_search.value().empty() && clear_button_rect(current).contains(t_point)) {
-		m_press = Press::clear;
+		m_press = Press::Clear;
 	} else if (current.search.contains(t_point)) {
-		m_press = Press::search;
-		m_search.on_pointer_down(m_fonts.body(), search_field_rect(current), t_point.x);
+		m_press = Press::Search;
+		m_search.on_pointer_down(m_fonts.body, search_field_rect(current), t_point.x);
 	} else {
-		m_press = Press::row;
+		m_press = Press::Row;
 		m_pressed_match = match_at(current, t_point);
 	}
 }
@@ -383,10 +383,10 @@ void ListPopup::on_pointer_move(Vec2 t_point)
 	m_scroll.on_pointer_move(t_point.y, list_scroll(current));
 
 	if (m_search.is_selecting()) {
-		m_search.on_pointer_move(m_fonts.body(), search_field_rect(current), t_point.x);
+		m_search.on_pointer_move(m_fonts.body, search_field_rect(current), t_point.x);
 	}
 
-	if (m_press == Press::none || m_press == Press::row) {
+	if (m_press == Press::None || m_press == Press::Row) {
 		const std::optional<u32> hovered = match_at(current, t_point);
 		if (hovered && *hovered != m_highlighted) {
 			m_highlighted = *hovered;
@@ -397,7 +397,7 @@ void ListPopup::on_pointer_move(Vec2 t_point)
 
 std::optional<u32> ListPopup::on_pointer_up(Vec2 t_point)
 {
-	const Press press = std::exchange(m_press, Press::none);
+	const Press press = std::exchange(m_press, Press::None);
 	m_scroll.on_pointer_up();
 	m_search.on_pointer_up();
 
@@ -406,29 +406,29 @@ std::optional<u32> ListPopup::on_pointer_up(Vec2 t_point)
 	const Layout current = layout();
 
 	switch (press) {
-		case Press::outside:
+		case Press::Outside:
 			if (!current.popup.contains(t_point)) {
 				close();
 			}
 			break;
 
-		case Press::clear:
+		case Press::Clear:
 			if (clear_button_rect(current).contains(t_point)) {
 				m_search.set_value("");
 				refresh_matches();
 			}
 			break;
 
-		case Press::row:
+		case Press::Row:
 			if (m_pressed_match && match_at(current, t_point) == m_pressed_match) {
 				m_highlighted = *m_pressed_match;
 				return choose_highlighted();
 			}
 			break;
 
-		case Press::none:
-		case Press::search:
-		case Press::scrollbar:
+		case Press::None:
+		case Press::Search:
+		case Press::Scrollbar:
 			break;
 	}
 
@@ -442,7 +442,7 @@ TextInput *ListPopup::on_right_click(Vec2 t_point)
 	const Layout current = layout();
 	if (!current.search.contains(t_point)) return nullptr;
 
-	m_search.on_right_click(m_fonts.body(), search_field_rect(current), t_point.x);
+	m_search.on_right_click(m_fonts.body, search_field_rect(current), t_point.x);
 
 	return &m_search;
 }
@@ -504,17 +504,17 @@ void ListPopup::on_char(u32 t_character)
 
 CursorKind ListPopup::cursor(Vec2 t_mouse) const
 {
-	if (!m_open) return CursorKind::arrow;
-	if (m_scroll.is_dragging()) return CursorKind::drag;
-	if (m_search.is_selecting()) return CursorKind::ibeam;
+	if (!m_open) return CursorKind::Arrow;
+	if (m_scroll.is_dragging()) return CursorKind::Drag;
+	if (m_search.is_selecting()) return CursorKind::IBeam;
 
 	const Layout current = layout();
-	if (!current.popup.contains(t_mouse)) return CursorKind::arrow;
-	if (!m_search.value().empty() && clear_button_rect(current).contains(t_mouse)) return CursorKind::hand;
-	if (current.search.contains(t_mouse)) return CursorKind::ibeam;
-	if (m_scroll.is_over_track(t_mouse, list_scroll(current))) return CursorKind::hand;
+	if (!current.popup.contains(t_mouse)) return CursorKind::Arrow;
+	if (!m_search.value().empty() && clear_button_rect(current).contains(t_mouse)) return CursorKind::Hand;
+	if (current.search.contains(t_mouse)) return CursorKind::IBeam;
+	if (m_scroll.is_over_track(t_mouse, list_scroll(current))) return CursorKind::Hand;
 
-	return match_at(current, t_mouse) ? CursorKind::hand : CursorKind::arrow;
+	return match_at(current, t_mouse) ? CursorKind::Hand : CursorKind::Arrow;
 }
 
 void ListPopup::draw_search(DrawList &t_draw_list, const Layout &t_layout, Vec2 t_mouse, u8 t_alpha)
@@ -529,7 +529,7 @@ void ListPopup::draw_search(DrawList &t_draw_list, const Layout &t_layout, Vec2 
 	t_draw_list.add_bordered_rect(field, rounded(search_field_radius), faded(colors.field, t_alpha),
 								  faded(colors.separator, t_alpha), 1.0f);
 	controls::draw_magnifier(t_draw_list, icon, faded(has_query ? colors.text_dim : colors.text_faint, t_alpha));
-	m_search.draw(t_draw_list, m_fonts.body(), search_field_rect(t_layout), faded(colors.text, t_alpha),
+	m_search.draw(t_draw_list, m_fonts.body, search_field_rect(t_layout), faded(colors.text, t_alpha),
 				  faded(m_settings.accent, t_alpha), search_field_rect(t_layout));
 
 	if (!has_query) return;
@@ -547,7 +547,7 @@ void ListPopup::draw_search(DrawList &t_draw_list, const Layout &t_layout, Vec2 
 void ListPopup::draw_label(DrawList &t_draw_list, Rect t_row, float t_left, float t_max_width, std::string_view t_label,
 						   u8 t_alpha) const
 {
-	const Font &font = m_fonts.body();
+	const Font &font = m_fonts.body;
 	const Vec2 baseline{t_left, font.centered_baseline(t_row)};
 	const Color text = faded(theme().text, t_alpha);
 	const usize found = find_ignoring_case(t_label, m_matched_query);
@@ -599,7 +599,7 @@ void ListPopup::draw_row(DrawList &t_draw_list, Rect t_row, u32 t_item, bool t_h
 void ListPopup::draw_rows(DrawList &t_draw_list, const Layout &t_layout, Vec2 t_mouse, u8 t_alpha) const
 {
 	if (m_matches.empty()) {
-		draw_text_centered(t_draw_list, m_fonts.secondary(), t_layout.list, m_options.empty_message,
+		draw_text_centered(t_draw_list, m_fonts.secondary, t_layout.list, m_options.empty_message,
 						   faded(theme().text_faint, t_alpha));
 		return;
 	}
@@ -625,7 +625,7 @@ void ListPopup::draw(DrawList &t_draw_list, Vec2 t_mouse)
 {
 	if (m_open_amount <= 0.01f) return;
 
-	const auto alpha = static_cast<u8>(255.0f * m_open_amount);
+	const auto alpha = to_alpha(m_open_amount);
 	const Layout current = layout();
 	const Theme &colors = theme();
 
@@ -647,7 +647,7 @@ void ListPopup::draw(DrawList &t_draw_list, Vec2 t_mouse)
 void ListPopup::draw_key_hints(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const
 {
 	const Theme &colors = theme();
-	const Font &font = m_fonts.secondary();
+	const Font &font = m_fonts.secondary;
 	const Rect &footer = t_layout.footer;
 	const float radius = popup_radius - 1.0f;
 	const float cap = controls::keycap_height(font);

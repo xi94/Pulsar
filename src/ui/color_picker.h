@@ -9,7 +9,7 @@
 
 class Assets;
 class DrawList;
-class Fonts;
+struct Fonts;
 
 struct ColorPickerHint {
 	std::string_view text;
@@ -61,11 +61,11 @@ class ColorPicker {
 	static constexpr u32 channel_count = 3;
 
 	enum class Press : u8 {
-		none,
-		revert,
-		copy,
-		paste,
-		field,
+		None,
+		Revert,
+		Copy,
+		Paste,
+		Field,
 	};
 
 	struct Layout {
@@ -115,7 +115,7 @@ class ColorPicker {
 	TextInput m_fields[field_count];
 	char m_synced_text[field_count][text_input_capacity]{};
 
-	Press m_press = Press::none;
+	Press m_press = Press::None;
 	float m_copied_seconds = 0.0f;
 	float m_paste_failed_seconds = 0.0f;
 };

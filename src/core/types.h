@@ -60,6 +60,16 @@ struct Rect {
 					std::max(0.0f, std::min(bottom(), t_other.bottom()) - top)};
 	}
 
+	Rect moved(Vec2 t_offset) const
+	{
+		return Rect{x + t_offset.x, y + t_offset.y, w, h};
+	}
+
+	Rect scaled_from_center(float t_scale) const
+	{
+		return inset(w * (1.0f - t_scale) * 0.5f, h * (1.0f - t_scale) * 0.5f);
+	}
+
 	Rect centered(float t_width, float t_height) const
 	{
 		return Rect{x + (w - t_width) * 0.5f, y + (h - t_height) * 0.5f, t_width, t_height};
@@ -101,6 +111,22 @@ struct CornerRadii {
 };
 
 constexpr CornerRadii square_corners{0.0f, 0.0f, 0.0f, 0.0f};
+
+inline float lerp(float t_from, float t_to, float t_amount)
+{
+	return t_from + (t_to - t_from) * t_amount;
+}
+
+inline Rect lerp(Rect t_from, Rect t_to, float t_amount)
+{
+	return Rect{lerp(t_from.x, t_to.x, t_amount), lerp(t_from.y, t_to.y, t_amount), lerp(t_from.w, t_to.w, t_amount),
+				lerp(t_from.h, t_to.h, t_amount)};
+}
+
+inline u8 to_alpha(float t_amount)
+{
+	return static_cast<u8>(std::clamp(t_amount, 0.0f, 1.0f) * 255.0f + 0.5f);
+}
 
 inline Color with_alpha(Color t_color, u8 t_alpha)
 {
@@ -152,9 +178,9 @@ inline Color outline_on(Color t_fill)
 }
 
 enum class CursorKind : u8 {
-	arrow,
-	hand,
-	ibeam,
-	drag,
-	move,
+	Arrow,
+	Hand,
+	IBeam,
+	Drag,
+	Move,
 };

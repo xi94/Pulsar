@@ -30,11 +30,11 @@ bool has_glyph(char t_character)
 
 stbtt_aligned_quad advance_glyph(const Font &t_font, char t_character, float &t_pen_x, float &t_pen_y)
 {
-	const auto atlas_size = static_cast<int>(t_font.atlas_size());
+	const auto atlas_size = static_cast<int>(t_font.atlas_size);
 	const int glyph = static_cast<unsigned char>(t_character) - static_cast<int>(Font::first_char);
 
 	stbtt_aligned_quad quad;
-	stbtt_GetPackedQuad(t_font.packed_chars(), atlas_size, atlas_size, glyph, &t_pen_x, &t_pen_y, &quad, 1);
+	stbtt_GetPackedQuad(t_font.packed_chars, atlas_size, atlas_size, glyph, &t_pen_x, &t_pen_y, &quad, 1);
 
 	return quad;
 }
@@ -115,12 +115,12 @@ float text_width(const Font &t_font, std::string_view t_text)
 		}
 	}
 
-	return pen_x / t_font.bake_scale();
+	return pen_x / t_font.bake_scale;
 }
 
 u32 text_index_at(const Font &t_font, std::string_view t_text, float t_x)
 {
-	const float baked_x = t_x * t_font.bake_scale();
+	const float baked_x = t_x * t_font.bake_scale;
 	float pen_x = 0.0f;
 	float pen_y = 0.0f;
 
@@ -138,10 +138,10 @@ u32 text_index_at(const Font &t_font, std::string_view t_text, float t_x)
 
 void draw_text(DrawList &t_draw_list, const Font &t_font, Vec2 t_baseline, std::string_view t_text, Color t_color)
 {
-	if (t_font.atlas() == nullptr) return;
+	if (t_font.atlas == nullptr) return;
 
 	// The atlas is baked at physical resolution, so glyphs only stay crisp on whole physical pixels.
-	const float bake_scale = t_font.bake_scale();
+	const float bake_scale = t_font.bake_scale;
 	float pen_x = std::round(t_baseline.x * bake_scale);
 	float pen_y = std::round(t_baseline.y * bake_scale);
 
@@ -152,7 +152,7 @@ void draw_text(DrawList &t_draw_list, const Font &t_font, Vec2 t_baseline, std::
 		const Rect glyph{quad.x0 / bake_scale, quad.y0 / bake_scale, (quad.x1 - quad.x0) / bake_scale,
 						 (quad.y1 - quad.y0) / bake_scale};
 
-		t_draw_list.add_image(glyph, t_font.atlas(), t_color, square_corners,
+		t_draw_list.add_image(glyph, t_font.atlas.get(), t_color, square_corners,
 							  UvRect{quad.s0, quad.t0, quad.s1, quad.t1});
 	}
 }
@@ -188,7 +188,7 @@ void draw_text_truncated(DrawList &t_draw_list, const Font &t_font, Vec2 t_basel
 	draw_text(t_draw_list, t_font, Vec2{t_baseline.x + head_width, t_baseline.y}, ellipsis, t_color);
 
 	TruncationProbe &probe = g_truncation_probe;
-	const Rect shown{t_baseline.x, t_baseline.y - t_font.ascent(), head_width + ellipsis_width, t_font.line_height()};
+	const Rect shown{t_baseline.x, t_baseline.y - t_font.ascent, head_width + ellipsis_width, t_font.line_height()};
 	const Rect visible = t_draw_list.visible_rect(shown);
 	if (!visible.contains(probe.point)) return;
 

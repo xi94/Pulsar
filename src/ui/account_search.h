@@ -10,7 +10,7 @@
 #include "ui/widget.h"
 
 class Assets;
-class Fonts;
+struct Fonts;
 class Window;
 
 class AccountSearch : public Widget {
@@ -46,10 +46,10 @@ class AccountSearch : public Widget {
 
   private:
 	enum class ActionKind : u8 {
-		edit,
-		copy_username,
-		copy_password,
-		login,
+		Edit,
+		CopyUsername,
+		CopyPassword,
+		Login,
 	};
 
 	struct Action {

@@ -21,6 +21,39 @@ constexpr int format_version = 1;
 constexpr const char *accounts_file_name = "accounts.vault";
 constexpr const char *settings_file_name = "settings.json";
 
+struct BoolSetting {
+	const char *key;
+	bool Settings::*value;
+};
+
+struct FloatSetting {
+	const char *key;
+	float Settings::*value;
+	float min;
+	float max;
+};
+
+constexpr BoolSetting bool_settings[]{
+	{"animations_enabled", &Settings::animations_enabled},
+	{"background_light", &Settings::background_light},
+	{"background_grain", &Settings::background_grain},
+	{"snow", &Settings::snow},
+	{"show_notifications", &Settings::show_notifications},
+	{"exclude_account_list_from_capture", &Settings::hide_from_capture},
+	{"block_overlay_injection", &Settings::block_overlay_injection},
+	{"close_to_tray", &Settings::close_to_tray},
+};
+
+constexpr FloatSetting float_settings[]{
+	{"animation_speed", &Settings::animation_speed, animation_speed_min, animation_speed_max},
+	{"corner_roundness", &Settings::corner_roundness, corner_roundness_min, corner_roundness_max},
+	{"font_pixel_size", &Settings::font_size, font_size_min, font_size_max},
+	{"secondary_font_pixel_size", &Settings::secondary_font_size, secondary_font_size_min, secondary_font_size_max},
+	{"background_intensity", &Settings::background_intensity, 0.0f, 1.0f},
+	{"background_light_intensity", &Settings::background_light_intensity, 0.0f, 1.0f},
+	{"background_grain_intensity", &Settings::background_grain_intensity, 0.0f, 1.0f},
+};
+
 bool g_settings_writable = true;
 bool g_accounts_writable = true;
 u8 g_saved_accounts_digest[crypto_generichash_BYTES]{};
@@ -47,14 +80,6 @@ bool matches_saved_accounts(std::span<const u8> t_plaintext, const MasterKey &t_
 bool path_exists(const std::string &t_path)
 {
 	return GetFileAttributesA(t_path.c_str()) != INVALID_FILE_ATTRIBUTES;
-}
-
-std::string local_app_data_root()
-{
-	char buffer[MAX_PATH];
-	const DWORD length = GetEnvironmentVariableA("LOCALAPPDATA", buffer, sizeof(buffer));
-
-	return length > 0 && length < sizeof(buffer) ? std::string{buffer, length} : std::string{};
 }
 
 void migrate_legacy_file(const std::string &t_root, const std::string &t_directory, const char *t_file_name)
@@ -138,7 +163,7 @@ bool read_json_with_backup(const std::string &t_path, json &t_out)
 
 storage::LoadResult missing_or_failed(const std::string &t_path)
 {
-	return path_exists(t_path) ? storage::LoadResult::failed : storage::LoadResult::no_file;
+	return path_exists(t_path) ? storage::LoadResult::Failed : storage::LoadResult::NoFile;
 }
 
 json master_password_to_json(const Settings &t_settings)
@@ -173,19 +198,26 @@ void read_master_password(const json &t_json, Settings &t_settings)
 	from_hex(master_password.value("wrapped_dek_hex", std::string{}), key.wrapped_data_key);
 }
 
-void read_appearance(const json &t_json, Settings &t_settings)
+void read_bool_and_float_settings(const json &t_json, Settings &t_settings)
 {
-	t_settings.animations_enabled = t_json.value("animations_enabled", t_settings.animations_enabled);
-	t_settings.animation_speed = t_json.value("animation_speed", t_settings.animation_speed);
-	t_settings.font_size = t_json.value("font_pixel_size", t_settings.font_size);
-	t_settings.secondary_font_size = t_json.value("secondary_font_pixel_size", t_settings.secondary_font_size);
-	t_settings.corner_roundness = t_json.value("corner_roundness", t_settings.corner_roundness);
+	t_settings.close_to_tray = t_json.value("minimize_to_tray", t_settings.close_to_tray);
 
-	const bool legacy_rounded_corners = t_json.value("rounded_corners_enabled", true);
-	if (!legacy_rounded_corners) {
-		t_settings.corner_roundness = 0.0f;
+	for (const BoolSetting &setting : bool_settings) {
+		t_settings.*setting.value = t_json.value(setting.key, t_settings.*setting.value);
 	}
 
+	for (const FloatSetting &setting : float_settings) {
+		const float value = t_json.value(setting.key, t_settings.*setting.value);
+		t_settings.*setting.value = std::clamp(value, setting.min, setting.max);
+	}
+
+	if (!t_json.value("rounded_corners_enabled", true)) {
+		t_settings.corner_roundness = 0.0f;
+	}
+}
+
+void read_appearance(const json &t_json, Settings &t_settings)
+{
 	const auto accent = t_json.find("accent_color");
 	if (accent != t_json.end() && accent->is_array() && accent->size() == 4) {
 		const json &channels = *accent;
@@ -208,15 +240,6 @@ void read_appearance(const json &t_json, Settings &t_settings)
 			t_settings.background_style = static_cast<BackgroundStyle>(i);
 		}
 	}
-
-	t_settings.background_light = t_json.value("background_light", t_settings.background_light);
-	t_settings.background_grain = t_json.value("background_grain", t_settings.background_grain);
-	t_settings.background_light_intensity =
-		std::clamp(t_json.value("background_light_intensity", t_settings.background_light_intensity), 0.0f, 1.0f);
-	t_settings.background_grain_intensity =
-		std::clamp(t_json.value("background_grain_intensity", t_settings.background_grain_intensity), 0.0f, 1.0f);
-	t_settings.background_intensity =
-		std::clamp(t_json.value("background_intensity", t_settings.background_intensity), 0.0f, 1.0f);
 }
 
 void read_game_order(const json &t_json, Settings &t_settings)
@@ -252,7 +275,7 @@ i32 read_zoom_stop(const json &t_json, i32 t_fallback)
 storage::LoadResult read_settings(Settings &t_settings)
 {
 	const std::string path = storage_path(settings_file_name);
-	if (path.empty()) return storage::LoadResult::failed;
+	if (path.empty()) return storage::LoadResult::Failed;
 
 	json settings;
 	if (!read_json_with_backup(path, settings)) return missing_or_failed(path);
@@ -260,15 +283,6 @@ storage::LoadResult read_settings(Settings &t_settings)
 	try {
 		t_settings.window_width = settings.value("window_width", t_settings.window_width);
 		t_settings.window_height = settings.value("window_height", t_settings.window_height);
-		t_settings.hide_from_capture =
-			settings.value("exclude_account_list_from_capture", t_settings.hide_from_capture);
-
-		const bool legacy_minimize_to_tray = settings.value("minimize_to_tray", t_settings.close_to_tray);
-		t_settings.close_to_tray = settings.value("close_to_tray", legacy_minimize_to_tray);
-
-		t_settings.block_overlay_injection =
-			settings.value("block_overlay_injection", t_settings.block_overlay_injection);
-		t_settings.show_notifications = settings.value("show_notifications", t_settings.show_notifications);
 		t_settings.auto_lock_minutes = settings.value("auto_lock_minutes", t_settings.auto_lock_minutes);
 		t_settings.zoom_stop = read_zoom_stop(settings, t_settings.zoom_stop);
 		t_settings.selected_game = settings.value("carousel_selected_banner", t_settings.selected_game);
@@ -276,37 +290,70 @@ storage::LoadResult read_settings(Settings &t_settings)
 		copy_to(settings.value("release_notes_version", std::string{}), t_settings.release_notes_version);
 		copy_to(settings.value("release_notes", std::string{}), t_settings.release_notes);
 
+		read_bool_and_float_settings(settings, t_settings);
 		read_game_order(settings, t_settings);
 		read_appearance(settings, t_settings);
 		read_master_password(settings, t_settings);
 	} catch (const json::exception &) {
-		return storage::LoadResult::failed;
+		return storage::LoadResult::Failed;
 	}
 
-	return storage::LoadResult::ok;
+	return storage::LoadResult::Ok;
 }
 
-json game_to_json(const Game &t_game)
+json visible_titles(const Library &t_library, u16 t_mask)
+{
+	json titles = json::array();
+
+	for (u32 game = 0; game < t_library.game_count; game += 1) {
+		if ((t_mask & (1u << game)) != 0) {
+			titles.push_back(t_library.games[game].title);
+		}
+	}
+
+	return titles;
+}
+
+u16 visible_mask(const Library &t_library, const json &t_account)
+{
+	const auto titles = t_account.find("visible_in");
+	if (titles == t_account.end() || !titles->is_array()) return t_account.value("visible_mask", u16{0});
+
+	u16 mask = 0;
+
+	for (const json &title : *titles) {
+		for (u32 game = 0; game < t_library.game_count && title.is_string(); game += 1) {
+			if (t_library.games[game].title == title.get_ref<const std::string &>()) {
+				mask |= static_cast<u16>(1u << game);
+			}
+		}
+	}
+
+	return mask;
+}
+
+json game_to_json(const Library &t_library, const Game &t_game)
 {
 	json accounts = json::array();
 
 	for (const Account &account : std::span{t_game.accounts, t_game.account_count}) {
-		accounts.push_back(json{
-			{"username", account.username},
-			{"note", account.note},
-			{"region", account.region},
-			{"password", account.password},
-			{"visible_mask", account.visible_game_mask},
-			{"favorite", account.favorite},
-			{"last_used", account.last_used},
+		json entry{
+			{"username", account.username}, {"note", account.note},			{"region", account.region},
+			{"password", account.password}, {"favorite", account.favorite}, {"last_used", account.last_used},
 			{"order", account.order},
-		});
+		};
+
+		if (account.visible_game_mask != 0) {
+			entry["visible_in"] = visible_titles(t_library, account.visible_game_mask);
+		}
+
+		accounts.push_back(std::move(entry));
 	}
 
 	return json{{"title", std::string{t_game.title}}, {"accounts", std::move(accounts)}};
 }
 
-void read_game_accounts(const json &t_json, Game &t_game)
+void read_game_accounts(const json &t_json, const Library &t_library, Game &t_game)
 {
 	t_game.account_count = 0;
 
@@ -320,7 +367,7 @@ void read_game_accounts(const json &t_json, Game &t_game)
 		account.assign(entry.value("username", std::string{}), entry.value("note", std::string{}),
 					   entry.value("password", std::string{}));
 		copy_to(entry.value("region", std::string{}), account.region);
-		account.visible_game_mask = entry.value("visible_mask", u16{0});
+		account.visible_game_mask = visible_mask(t_library, entry);
 		account.favorite = entry.value("favorite", false);
 		account.last_used = entry.value("last_used", i64{0});
 		account.order = entry.value("order", u32{0});
@@ -331,7 +378,7 @@ void read_game_accounts(const json &t_json, Game &t_game)
 
 Game *find_game(Library &t_library, std::string_view t_title)
 {
-	for (Game &game : t_library.games()) {
+	for (Game &game : std::span{t_library.games, t_library.game_count}) {
 		if (game.title == t_title) return &game;
 	}
 
@@ -367,10 +414,10 @@ bool decrypt_vault(const json &t_envelope, const MasterKey &t_master_key, std::v
 
 storage::LoadResult read_accounts(Library &t_library, const MasterKey &t_master_key)
 {
-	if (!t_master_key.is_unlocked()) return storage::LoadResult::locked;
+	if (!t_master_key.is_unlocked()) return storage::LoadResult::Locked;
 
 	const std::string path = storage_path(accounts_file_name);
-	if (path.empty()) return storage::LoadResult::failed;
+	if (path.empty()) return storage::LoadResult::Failed;
 
 	json envelope;
 	if (!read_json_with_backup(path, envelope)) return missing_or_failed(path);
@@ -379,31 +426,37 @@ storage::LoadResult read_accounts(Library &t_library, const MasterKey &t_master_
 		std::vector<u8> plaintext;
 		const WipedOnExit wipe_plaintext{plaintext};
 
-		if (!decrypt_vault(envelope, t_master_key, plaintext)) return storage::LoadResult::failed;
+		if (!decrypt_vault(envelope, t_master_key, plaintext)) return storage::LoadResult::Failed;
 
 		const json games = json::parse(plaintext.begin(), plaintext.end(), nullptr, false);
-		if (!games.is_array()) return storage::LoadResult::failed;
+		if (!games.is_array()) return storage::LoadResult::Failed;
 
 		remember_saved_accounts(plaintext, t_master_key);
 
+		json unlisted = json::array();
+
 		for (const json &entry : games) {
 			if (Game *game = find_game(t_library, entry.value("title", std::string{}))) {
-				read_game_accounts(entry, *game);
+				read_game_accounts(entry, t_library, *game);
+			} else {
+				unlisted.push_back(entry);
 			}
 		}
 
+		t_library.unlisted_games = unlisted.empty() ? std::string{} : unlisted.dump();
+
 		t_library.number_unordered_accounts();
 	} catch (const json::exception &) {
-		return storage::LoadResult::failed;
+		return storage::LoadResult::Failed;
 	}
 
-	return storage::LoadResult::ok;
+	return storage::LoadResult::Ok;
 }
 }
 
 std::string storage::data_directory()
 {
-	const std::string root = local_app_data_root();
+	const std::string root = to_utf8(local_app_data_folder());
 	if (root.empty()) return {};
 
 	const std::string directory = root + "\\" + app_data_folder_name;
@@ -419,7 +472,7 @@ storage::LoadResult storage::load_settings(Settings &t_settings)
 {
 	const LoadResult result = read_settings(t_settings);
 
-	if (result == LoadResult::failed) {
+	if (result == LoadResult::Failed) {
 		// accounts.vault can only be decrypted with the key parameters in settings.json. Without them the app offers
 		// a fresh master password, and saving under that would overwrite the real vault.
 		g_settings_writable = false;
@@ -443,28 +496,14 @@ bool storage::save_settings(const Settings &t_settings)
 	}
 
 	const Color accent = t_settings.accent;
-	const json settings{
+	json settings{
 		{"format_version", format_version},
 		{"window_width", t_settings.window_width},
 		{"window_height", t_settings.window_height},
-		{"animations_enabled", t_settings.animations_enabled},
-		{"animation_speed", t_settings.animation_speed},
-		{"corner_roundness", t_settings.corner_roundness},
 		{"background", background_labels[static_cast<u32>(t_settings.background_style)].id},
-		{"background_light", t_settings.background_light},
-		{"background_grain", t_settings.background_grain},
-		{"background_intensity", t_settings.background_intensity},
-		{"background_light_intensity", t_settings.background_light_intensity},
-		{"background_grain_intensity", t_settings.background_grain_intensity},
-		{"font_pixel_size", t_settings.font_size},
-		{"secondary_font_pixel_size", t_settings.secondary_font_size},
 		{"accent_color", json::array({accent.r, accent.g, accent.b, accent.a})},
 		{"font_name", t_settings.font_name},
 		{"theme", theme_labels[static_cast<u32>(t_settings.theme)].id},
-		{"exclude_account_list_from_capture", t_settings.hide_from_capture},
-		{"close_to_tray", t_settings.close_to_tray},
-		{"block_overlay_injection", t_settings.block_overlay_injection},
-		{"show_notifications", t_settings.show_notifications},
 		{"auto_lock_minutes", t_settings.auto_lock_minutes},
 		{"last_run_version", t_settings.last_run_version},
 		{"release_notes_version", t_settings.release_notes_version},
@@ -475,6 +514,14 @@ bool storage::save_settings(const Settings &t_settings)
 		{"master_password", master_password_to_json(t_settings)},
 	};
 
+	for (const BoolSetting &setting : bool_settings) {
+		settings[setting.key] = t_settings.*setting.value;
+	}
+
+	for (const FloatSetting &setting : float_settings) {
+		settings[setting.key] = t_settings.*setting.value;
+	}
+
 	return write_file_atomic(path, settings.dump(2));
 }
 
@@ -482,7 +529,7 @@ storage::LoadResult storage::load_accounts(Library &t_library, const MasterKey &
 {
 	const LoadResult result = read_accounts(t_library, t_master_key);
 
-	if (result == LoadResult::failed) {
+	if (result == LoadResult::Failed) {
 		g_accounts_writable = false;
 		debug_log::write("storage", "%s did not load - it will not be written this session", accounts_file_name);
 	}
@@ -495,8 +542,14 @@ bool storage::save_accounts(const Library &t_library, const MasterKey &t_master_
 	if (!t_master_key.is_unlocked() || !g_accounts_writable) return false;
 
 	json games = json::array();
-	for (const Game &game : t_library.games()) {
-		games.push_back(game_to_json(game));
+	for (const Game &game : std::span{t_library.games, t_library.game_count}) {
+		games.push_back(game_to_json(t_library, game));
+	}
+
+	if (!t_library.unlisted_games.empty()) {
+		for (json &entry : json::parse(t_library.unlisted_games)) {
+			games.push_back(std::move(entry));
+		}
 	}
 
 	std::string plaintext = games.dump();

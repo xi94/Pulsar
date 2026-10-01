@@ -6,7 +6,7 @@
 #include "ui/commands.h"
 #include "ui/widget.h"
 
-class Fonts;
+struct Fonts;
 
 struct ContextMenuItem {
 	std::string_view label;

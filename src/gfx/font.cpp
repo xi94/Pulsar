@@ -148,14 +148,14 @@ bool Font::load(Renderer &t_renderer, const char *t_path, float t_pixel_height, 
 	}
 
 	const float baked_pixel_height = t_pixel_height * t_dpi_scale;
-	const u32 atlas_size = atlas_size_for(baked_pixel_height);
-	std::vector<u8> coverage(static_cast<usize>(atlas_size) * atlas_size);
+	const u32 size = atlas_size_for(baked_pixel_height);
+	std::vector<u8> coverage(static_cast<usize>(size) * size);
 
 	stbtt_pack_context pack;
-	stbtt_PackBegin(&pack, coverage.data(), static_cast<int>(atlas_size), static_cast<int>(atlas_size), 0, 1, nullptr);
+	stbtt_PackBegin(&pack, coverage.data(), static_cast<int>(size), static_cast<int>(size), 0, 1, nullptr);
 	stbtt_PackSetOversampling(&pack, 1, 1);
-	const bool packed = stbtt_PackFontRange(&pack, font_file.data(), 0, baked_pixel_height, first_char, char_count,
-											m_packed_chars) != 0;
+	const bool packed =
+		stbtt_PackFontRange(&pack, font_file.data(), 0, baked_pixel_height, first_char, char_count, packed_chars) != 0;
 	stbtt_PackEnd(&pack);
 
 	if (!packed) {
@@ -164,24 +164,24 @@ bool Font::load(Renderer &t_renderer, const char *t_path, float t_pixel_height, 
 	}
 
 	const std::vector<u8> rgba = coverage_to_white_rgba(coverage);
-	const TextureLevel atlas_level{rgba.data(), atlas_size, atlas_size};
-	m_atlas = std::make_unique<Texture>(t_renderer, std::span{&atlas_level, 1});
+	const TextureLevel atlas_level{rgba.data(), size, size};
+	atlas = std::make_unique<Texture>(t_renderer, std::span{&atlas_level, 1});
 
-	int ascent = 0;
-	int descent = 0;
-	int line_gap = 0;
-	stbtt_GetFontVMetrics(&info, &ascent, &descent, &line_gap);
+	int ascent_units = 0;
+	int descent_units = 0;
+	int line_gap_units = 0;
+	stbtt_GetFontVMetrics(&info, &ascent_units, &descent_units, &line_gap_units);
 
 	const float logical_scale = stbtt_ScaleForPixelHeight(&info, baked_pixel_height) / t_dpi_scale;
 
-	m_atlas_size = atlas_size;
-	m_bake_scale = t_dpi_scale;
-	m_pixel_height = t_pixel_height;
-	m_ascent = ascent * logical_scale;
-	m_descent = descent * logical_scale;
-	m_line_gap = line_gap * logical_scale;
+	atlas_size = size;
+	bake_scale = t_dpi_scale;
+	pixel_height = t_pixel_height;
+	ascent = ascent_units * logical_scale;
+	descent = descent_units * logical_scale;
+	line_gap = line_gap_units * logical_scale;
 
-	return m_atlas->is_valid();
+	return atlas->is_valid();
 }
 
 std::optional<u32> InstalledFonts::index_of_file(std::string_view t_file) const
@@ -229,19 +229,19 @@ bool Fonts::load(Renderer &t_renderer, std::string_view t_file, float t_body_siz
 	const std::string path = font_file_path(t_file);
 	if (path.empty()) return false;
 
-	Font body;
-	Font secondary;
-	Font caption;
-	if (!body.load(t_renderer, path.c_str(), t_body_size * setting_to_pixel_scale, t_dpi_scale) ||
-		!secondary.load(t_renderer, path.c_str(), t_secondary_size * setting_to_pixel_scale, t_dpi_scale) ||
-		!caption.load(t_renderer, path.c_str(), t_secondary_size * caption_size_ratio * setting_to_pixel_scale,
-					  t_dpi_scale)) {
+	Font loaded_body;
+	Font loaded_secondary;
+	Font loaded_caption;
+	if (!loaded_body.load(t_renderer, path.c_str(), t_body_size * setting_to_pixel_scale, t_dpi_scale) ||
+		!loaded_secondary.load(t_renderer, path.c_str(), t_secondary_size * setting_to_pixel_scale, t_dpi_scale) ||
+		!loaded_caption.load(t_renderer, path.c_str(), t_secondary_size * caption_size_ratio * setting_to_pixel_scale,
+							 t_dpi_scale)) {
 		return false;
 	}
 
-	m_body = std::move(body);
-	m_secondary = std::move(secondary);
-	m_caption = std::move(caption);
+	body = std::move(loaded_body);
+	secondary = std::move(loaded_secondary);
+	caption = std::move(loaded_caption);
 
 	return true;
 }

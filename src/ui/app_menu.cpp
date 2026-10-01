@@ -41,23 +41,23 @@ struct MenuItem {
 };
 
 constexpr MenuItem menu_items[]{
-	{CommandType::check_for_updates, "Check for updates", Asset::icon_update, "", false, false},
-	{CommandType::open_settings, "Settings", Asset::icon_settings, "Ctrl+,", true, true},
-	{CommandType::open_data_folder, "Open data folder", Asset::icon_folder_open, "", false, false},
-	{CommandType::lock_vault, "Lock now", Asset::icon_lock, "Ctrl+L", true, true},
-	{CommandType::open_setup, "Setup", Asset::icon_app, "", true, false},
+	{CommandType::CheckForUpdates, "Check for updates", Asset::IconUpdate, "", false, false},
+	{CommandType::OpenSettings, "Settings", Asset::IconSettings, "Ctrl+,", true, true},
+	{CommandType::OpenDataFolder, "Open data folder", Asset::IconFolderOpen, "", false, false},
+	{CommandType::LockVault, "Lock now", Asset::IconLock, "Ctrl+L", true, true},
+	{CommandType::OpenSetup, "Setup", Asset::IconApp, "", true, false},
 };
 
 constexpr u32 item_count = static_cast<u32>(std::size(menu_items));
 
 float item_height(const Fonts &t_fonts)
 {
-	return std::max(28.0f, t_fonts.body().line_height() + 8.0f);
+	return std::max(28.0f, t_fonts.body.line_height() + 8.0f);
 }
 
 float footer_height(const Fonts &t_fonts)
 {
-	return t_fonts.secondary().line_height() + footer_padding * 2.0f;
+	return t_fonts.secondary.line_height() + footer_padding * 2.0f;
 }
 
 float item_offset(const Fonts &t_fonts, u32 t_item)
@@ -145,15 +145,15 @@ bool AppMenu::on_pointer_up(Vec2 t_point)
 
 CursorKind AppMenu::cursor() const
 {
-	if (!is_blocking()) return CursorKind::arrow;
+	if (!is_blocking()) return CursorKind::Arrow;
 
 	const Rect menu = menu_rect(m_fonts, m_open_amount);
 
 	for (u32 i = 0; i < item_count; i += 1) {
-		if (is_enabled(i) && item_rect(m_fonts, menu, i).contains(m_mouse)) return CursorKind::hand;
+		if (is_enabled(i) && item_rect(m_fonts, menu, i).contains(m_mouse)) return CursorKind::Hand;
 	}
 
-	return CursorKind::arrow;
+	return CursorKind::Arrow;
 }
 
 void AppMenu::draw(DrawList &t_draw_list)
@@ -161,10 +161,10 @@ void AppMenu::draw(DrawList &t_draw_list)
 	if (m_open_amount <= 0.001f) return;
 
 	const Theme &colors = theme();
-	const auto alpha = static_cast<u8>(255.0f * m_open_amount);
+	const auto alpha = to_alpha(m_open_amount);
 	const Rect menu = menu_rect(m_fonts, m_open_amount);
-	const Font &font = m_fonts.body();
-	const Font &hint_font = m_fonts.secondary();
+	const Font &font = m_fonts.body;
+	const Font &hint_font = m_fonts.secondary;
 
 	controls::draw_popup_shadow(t_draw_list, menu, menu_radius, m_open_amount);
 	t_draw_list.add_bordered_rect(menu, rounded(menu_radius), faded(colors.popup, alpha), faded(colors.border, alpha),

@@ -1,4 +1,4 @@
-#include "core/ui_automation.h"
+#include "login/ui_automation.h"
 
 #include <algorithm>
 #include <chrono>
@@ -17,10 +17,6 @@ using Microsoft::WRL::ComPtr;
 namespace {
 constexpr const char *log_category = "uia";
 constexpr LONG min_real_window_width = 50;
-
-struct LookupResult {
-	ComPtr<IUIAutomationElement> element;
-};
 
 class VariantString {
   public:
@@ -118,14 +114,14 @@ BOOL CALLBACK find_top_level_window_proc(HWND t_window, LPARAM t_search)
 template <typename Lookup>
 ComPtr<IUIAutomationElement> run_lookup(const char *t_label, Lookup t_lookup, const std::atomic<bool> &t_cancel)
 {
-	auto result = std::make_shared<LookupResult>();
+	auto result = std::make_shared<ComPtr<IUIAutomationElement>>();
 	const debug_log::Scope scope(log_category, "%s", t_label);
 
 	// A busy client can block a provider call for as long as it likes, so only a cancel may walk away from one.
 	const bool finished = run_unless_cancelled(
 		[result, t_lookup]() {
 			const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-			t_lookup(result->element);
+			t_lookup(*result);
 
 			if (com_result == S_OK || com_result == S_FALSE) {
 				CoUninitialize();
@@ -138,7 +134,7 @@ ComPtr<IUIAutomationElement> run_lookup(const char *t_label, Lookup t_lookup, co
 		return nullptr;
 	}
 
-	return std::move(result->element);
+	return std::move(*result);
 }
 
 template <typename Pattern>
@@ -284,11 +280,6 @@ HWND UiAutomation::find_top_level_window(u32 t_process_id)
 	EnumWindows(find_top_level_window_proc, reinterpret_cast<LPARAM>(&search));
 
 	return search.found;
-}
-
-HWND UiAutomation::find_window_by_title(const wchar_t *t_title)
-{
-	return FindWindowW(nullptr, t_title);
 }
 
 UiElement UiAutomation::element_from_window(HWND t_window) const

@@ -1,13 +1,15 @@
 #pragma once
 
+#include <iterator>
+
 #include "core/settings.h"
 #include "gfx/font.h"
 #include "ui/color_picker.h"
 #include "ui/commands.h"
 #include "ui/draggable.h"
+#include "ui/list_popup.h"
 #include "ui/scrollable.h"
 #include "ui/text_input.h"
-#include "ui/list_popup.h"
 #include "ui/tooltip.h"
 #include "ui/widget.h"
 
@@ -16,36 +18,30 @@ class Renderer;
 class Window;
 
 enum class SettingsTab : u8 {
-	appearance,
-	behavior,
-	privacy,
-	security,
-	count,
+	Appearance,
+	Behavior,
+	Privacy,
+	Security,
+	Count,
 };
 
-constexpr u32 settings_tab_count = static_cast<u32>(SettingsTab::count);
+constexpr u32 settings_tab_count = static_cast<u32>(SettingsTab::Count);
 
 enum class ResettableSetting : u8 {
-	theme,
-	font,
-	font_size,
-	secondary_font_size,
-	accent,
-	corner_roundness,
-	background,
-	background_intensity,
-	background_light,
-	background_light_intensity,
-	background_grain,
-	background_grain_intensity,
-	animations,
-	animation_speed,
-	notifications,
-	hide_from_capture,
-	block_overlay_injection,
-	close_to_tray,
-	auto_lock,
-	count,
+	Theme,
+	Font,
+	FontSize,
+	SecondaryFontSize,
+	Accent,
+	CornerRoundness,
+	Background,
+	BackgroundIntensity,
+	BackgroundLightIntensity,
+	BackgroundGrainIntensity,
+	AnimationSpeed,
+	CloseToTray,
+	AutoLock,
+	Count,
 };
 
 class SettingsPanel : public Widget {
@@ -77,20 +73,19 @@ class SettingsPanel : public Widget {
 	CursorKind cursor() const override;
 
   private:
-	static constexpr u32 resettable_count = static_cast<u32>(ResettableSetting::count);
 	static constexpr u32 group_count = 7;
 
 	enum class SliderKind : u8 {
-		corner_roundness,
-		pattern_strength,
-		light_strength,
-		grain_strength,
-		animation_speed,
-		auto_lock,
-		count,
+		CornerRoundness,
+		PatternStrength,
+		LightStrength,
+		GrainStrength,
+		AnimationSpeed,
+		AutoLock,
+		Count,
 	};
 
-	static constexpr u32 slider_count = static_cast<u32>(SliderKind::count);
+	static constexpr u32 slider_count = static_cast<u32>(SliderKind::Count);
 
 	struct Layout {
 		Rect panel;
@@ -111,6 +106,7 @@ class SettingsPanel : public Widget {
 		Rect background;
 		Rect background_light;
 		Rect background_grain;
+		Rect snow;
 		Rect notifications;
 		Rect animations;
 		Rect hide_from_capture;
@@ -151,8 +147,7 @@ class SettingsPanel : public Widget {
 		Rect Rows::*row;
 	};
 
-	static constexpr u32 row_spec_count = 16;
-	static const RowSpec row_specs[row_spec_count];
+	static const RowSpec row_specs[];
 	static const GroupSpec group_specs[group_count];
 
 	struct PercentSlider {
@@ -164,8 +159,19 @@ class SettingsPanel : public Widget {
 	static constexpr u32 percent_slider_count = 3;
 	static const PercentSlider percent_sliders[percent_slider_count];
 
-	static constexpr u32 toggle_count = 6;
-	static const Toggle toggles[toggle_count];
+	static constexpr Toggle toggles[]{
+		{&Settings::show_notifications, &Rows::notifications},
+		{&Settings::animations_enabled, &Rows::animations},
+		{&Settings::hide_from_capture, &Rows::hide_from_capture},
+		{&Settings::block_overlay_injection, &Rows::block_overlay_injection},
+		{&Settings::background_light, &Rows::background_light},
+		{&Settings::background_grain, &Rows::background_grain},
+		{&Settings::snow, &Rows::snow},
+	};
+
+	static constexpr u32 toggle_count = static_cast<u32>(std::size(toggles));
+	static constexpr u32 first_toggle_reset = static_cast<u32>(ResettableSetting::Count);
+	static constexpr u32 reset_count = first_toggle_reset + toggle_count;
 
 	Layout layout() const;
 	Rows rows(const Layout &t_layout) const;
@@ -204,20 +210,19 @@ class SettingsPanel : public Widget {
 	Rect close_choice_rect(Rect t_row) const;
 	Rect close_segment(Rect t_choice, u32 t_index) const;
 	Rect search_rect(const Layout &t_layout) const;
-	Rect search_text_rect(Rect t_search) const;
-	Rect search_clear_rect(Rect t_search) const;
 	void refresh_search();
 	void clear_search();
 	void focus_search();
 
-	Rect reset_row(const Rows &t_rows, ResettableSetting t_setting) const;
-	Rect reset_control(const Rows &t_rows, ResettableSetting t_setting) const;
-	Rect reset_button(const Rows &t_rows, ResettableSetting t_setting) const;
-	static std::optional<SliderKind> reset_slider(ResettableSetting t_setting);
-	bool can_reset(ResettableSetting t_setting) const;
+	static const Toggle *reset_toggle(u32 t_setting);
+	Rect reset_row(const Rows &t_rows, u32 t_setting) const;
+	Rect reset_control(const Rows &t_rows, u32 t_setting) const;
+	Rect reset_button(const Rows &t_rows, u32 t_setting) const;
+	static std::optional<SliderKind> reset_slider(u32 t_setting);
+	bool can_reset(u32 t_setting) const;
 	void settle_resets();
-	bool is_default(ResettableSetting t_setting) const;
-	void reset(ResettableSetting t_setting);
+	bool is_default(u32 t_setting) const;
+	void reset_to_default(u32 t_setting);
 
 	bool load_fonts(std::string_view t_file);
 	void open_font_list();
@@ -262,7 +267,7 @@ class SettingsPanel : public Widget {
 	CommandQueue &m_commands;
 
 	bool m_open = false;
-	SettingsTab m_tab = SettingsTab::appearance;
+	SettingsTab m_tab = SettingsTab::Appearance;
 	float m_tab_indicator = 0.0f;
 	float m_open_amount = 0.0f;
 
@@ -281,7 +286,7 @@ class SettingsPanel : public Widget {
 	TextInput m_search;
 	char m_applied_query[text_input_capacity]{};
 
-	float m_toggles_shown[toggle_count]{1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+	float m_toggles_shown[toggle_count]{};
 	float m_slider_hover[slider_count]{};
 	float m_pattern_ring[background_count]{};
 	bool m_pattern_open = false;
@@ -298,6 +303,6 @@ class SettingsPanel : public Widget {
 	float m_auto_lock_shown = 0.0f;
 	float m_accent_shown[3]{};
 
-	float m_reset_visible[resettable_count]{};
-	float m_reset_spin[resettable_count]{};
+	float m_reset_visible[reset_count]{};
+	float m_reset_spin[reset_count]{};
 };

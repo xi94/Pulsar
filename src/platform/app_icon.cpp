@@ -6,7 +6,7 @@
 
 int app_icon_pixel_size(AppIconSize t_size)
 {
-	const bool is_small = t_size == AppIconSize::small_icon;
+	const bool is_small = t_size == AppIconSize::SmallIcon;
 
 	// The unscaled GetSystemMetrics reports 16 regardless of display scaling in a per-monitor aware process.
 	const int pixels = GetSystemMetricsForDpi(is_small ? SM_CXSMICON : SM_CXICON, GetDpiForSystem());

@@ -96,21 +96,21 @@ void AccountSearch::close()
 
 bool AccountSearch::is_valid(AccountRef t_account) const
 {
-	return t_account.game < m_library.game_count() && t_account.index < m_library.game(t_account.game).account_count;
+	return t_account.game < m_library.game_count && t_account.index < m_library.games[t_account.game].account_count;
 }
 
 void AccountSearch::rebuild_results()
 {
 	const std::string_view query = m_query.value();
-	const Font &body = m_fonts.body();
-	const Font &secondary = m_fonts.secondary();
+	const Font &body = m_fonts.body;
+	const Font &secondary = m_fonts.secondary;
 	const float name_limit = text_width(body, name_column_sample);
 	m_results.clear();
 	m_name_column = 0.0f;
 	m_region_column = 0.0f;
 
-	for (u32 game = 0; game < m_library.game_count(); game += 1) {
-		for (u32 index = 0; index < m_library.game(game).account_count; index += 1) {
+	for (u32 game = 0; game < m_library.game_count; game += 1) {
+		for (u32 index = 0; index < m_library.games[game].account_count; index += 1) {
 			const AccountRef ref{game, index};
 			const Account &account = m_library.account(ref);
 
@@ -149,15 +149,15 @@ void AccountSearch::rebuild_actions()
 	m_action_count = 0;
 	if (!m_account) return;
 
-	m_actions[m_action_count++] = Action{ActionKind::edit, 0};
-	m_actions[m_action_count++] = Action{ActionKind::copy_username, 0};
-	m_actions[m_action_count++] = Action{ActionKind::copy_password, 0};
+	m_actions[m_action_count++] = Action{ActionKind::Edit, 0};
+	m_actions[m_action_count++] = Action{ActionKind::CopyUsername, 0};
+	m_actions[m_action_count++] = Action{ActionKind::CopyPassword, 0};
 
 	const u16 visible = m_library.account(*m_account).visible_games(m_account->game);
 
-	for (u32 game = 0; game < m_library.game_count() && m_action_count < max_actions; game += 1) {
+	for (u32 game = 0; game < m_library.game_count && m_action_count < max_actions; game += 1) {
 		if ((visible & (1u << game)) != 0) {
-			m_actions[m_action_count++] = Action{ActionKind::login, game};
+			m_actions[m_action_count++] = Action{ActionKind::Login, game};
 		}
 	}
 }
@@ -197,18 +197,18 @@ void AccountSearch::activate(u32 t_row)
 	const AccountRef account = *m_account;
 
 	switch (action.kind) {
-		case ActionKind::edit:
-			m_commands.push(Command{.type = CommandType::edit_account, .account = account});
+		case ActionKind::Edit:
+			m_commands.push(Command{.type = CommandType::EditAccount, .account = account});
 			break;
-		case ActionKind::copy_username:
-			m_commands.push(Command{.type = CommandType::copy_account_username, .account = account});
+		case ActionKind::CopyUsername:
+			m_commands.push(Command{.type = CommandType::CopyAccountUsername, .account = account});
 			break;
-		case ActionKind::copy_password:
-			m_commands.push(Command{.type = CommandType::copy_account_password, .account = account});
+		case ActionKind::CopyPassword:
+			m_commands.push(Command{.type = CommandType::CopyAccountPassword, .account = account});
 			break;
-		case ActionKind::login:
-			m_commands.push(Command{
-				.type = CommandType::login_account, .index = static_cast<i32>(action.game), .account = account});
+		case ActionKind::Login:
+			m_commands.push(
+				Command{.type = CommandType::LoginAccount, .index = static_cast<i32>(action.game), .account = account});
 			break;
 	}
 
@@ -243,7 +243,7 @@ u32 AccountSearch::shown_rows() const
 
 float AccountSearch::row_height() const
 {
-	return std::max(36.0f, m_fonts.body().line_height() + 14.0f);
+	return std::max(36.0f, m_fonts.body.line_height() + 14.0f);
 }
 
 AccountSearch::Layout AccountSearch::layout() const
@@ -252,7 +252,7 @@ AccountSearch::Layout AccountSearch::layout() const
 	const float width = std::min(panel_max_width, window.x - panel_side_margin * 2.0f);
 	const float list_height =
 		list_padding * 2.0f + row_height() * static_cast<float>(shown_rows()) + (has_group_gap() ? group_gap : 0.0f);
-	const float footer_height = controls::keycap_height(m_fonts.secondary()) + footer_padding_y * 2.0f;
+	const float footer_height = controls::keycap_height(m_fonts.secondary) + footer_padding_y * 2.0f;
 	const float rise = panel_rise * (1.0f - m_open_amount);
 
 	Layout result{};
@@ -275,7 +275,7 @@ Rect AccountSearch::query_text_rect(const Layout &t_layout) const
 {
 	const Rect &header = t_layout.header;
 	const float left = header.x + header_padding + header_icon_size + header_icon_gap;
-	const float right = header.right() - header_padding - controls::keycap_width(m_fonts.secondary(), "Esc") - 8.0f;
+	const float right = header.right() - header_padding - controls::keycap_width(m_fonts.secondary, "Esc") - 8.0f;
 
 	return Rect{left, header.y, std::max(0.0f, right - left), header.h};
 }
@@ -350,7 +350,7 @@ bool AccountSearch::on_pointer_down(Vec2 t_point)
 
 	if (!m_account && current.header.contains(t_point)) {
 		m_query.set_focused(true);
-		m_query.on_pointer_down(m_fonts.body(), query_text_rect(current), t_point.x);
+		m_query.on_pointer_down(m_fonts.body, query_text_rect(current), t_point.x);
 		return true;
 	}
 
@@ -367,7 +367,7 @@ bool AccountSearch::on_pointer_move(Vec2 t_point)
 	const Layout current = layout();
 
 	if (m_query.is_selecting()) {
-		m_query.on_pointer_move(m_fonts.body(), query_text_rect(current), t_point.x);
+		m_query.on_pointer_move(m_fonts.body, query_text_rect(current), t_point.x);
 	}
 
 	if (const std::optional<u32> hovered_row = row_at(current, t_point)) {
@@ -418,8 +418,8 @@ bool AccountSearch::on_right_click(Vec2 t_point)
 
 	if (current.header.contains(t_point)) {
 		m_query.set_focused(true);
-		m_query.on_right_click(m_fonts.body(), query_text_rect(current), t_point.x);
-		m_commands.push(Command{.type = CommandType::show_text_menu, .position = t_point, .text_input = &m_query});
+		m_query.on_right_click(m_fonts.body, query_text_rect(current), t_point.x);
+		m_commands.push(Command{.type = CommandType::ShowTextMenu, .position = t_point, .text_input = &m_query});
 	}
 
 	return true;
@@ -524,23 +524,23 @@ bool AccountSearch::on_char(u32 t_character)
 
 CursorKind AccountSearch::cursor() const
 {
-	if (!m_open) return CursorKind::arrow;
-	if (m_query.is_selecting()) return CursorKind::ibeam;
+	if (!m_open) return CursorKind::Arrow;
+	if (m_query.is_selecting()) return CursorKind::IBeam;
 
 	const Layout current = layout();
 
-	if (m_account && back_button_rect(current).contains(m_mouse)) return CursorKind::hand;
-	if (!m_account && current.header.contains(m_mouse)) return CursorKind::ibeam;
+	if (m_account && back_button_rect(current).contains(m_mouse)) return CursorKind::Hand;
+	if (!m_account && current.header.contains(m_mouse)) return CursorKind::IBeam;
 
-	return row_at(current, m_mouse) ? CursorKind::hand : CursorKind::arrow;
+	return row_at(current, m_mouse) ? CursorKind::Hand : CursorKind::Arrow;
 }
 
 void AccountSearch::draw_header(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha)
 {
 	const Theme &colors = theme();
 	const Rect &header = t_layout.header;
-	const Font &body = m_fonts.body();
-	const Font &secondary = m_fonts.secondary();
+	const Font &body = m_fonts.body;
+	const Font &secondary = m_fonts.secondary;
 
 	if (!m_account) {
 		const Rect icon{header.x + header_padding, header.center().y - header_icon_size * 0.5f, header_icon_size,
@@ -562,12 +562,11 @@ void AccountSearch::draw_header(DrawList &t_draw_list, const Layout &t_layout, u
 		t_draw_list.add_rounded_rect(back, rounded(row_radius), faded(hovered(colors.popup), t_alpha));
 	}
 
-	controls::draw_icon(t_draw_list, back.centered(header_icon_size, header_icon_size),
-						m_assets.get(Asset::icon_arrow_back),
-						faded(back_hovered ? colors.text : colors.text_dim, t_alpha));
+	t_draw_list.add_image(back.centered(header_icon_size, header_icon_size), m_assets.get(Asset::IconArrowBack),
+						  faded(back_hovered ? colors.text : colors.text_dim, t_alpha));
 
 	const Rect icon{back.right() + 6.0f, header.center().y - row_icon_size * 0.5f, row_icon_size, row_icon_size};
-	controls::draw_icon(t_draw_list, icon, m_assets.get(Asset::icon_account), faded(colors.text_dim, t_alpha));
+	t_draw_list.add_image(icon, m_assets.get(Asset::IconAccount), faded(colors.text_dim, t_alpha));
 
 	const std::string_view name = account_name(account);
 	const float name_x = icon.right() + row_icon_gap;
@@ -587,8 +586,8 @@ void AccountSearch::draw_result(DrawList &t_draw_list, Rect t_row, AccountRef t_
 								u8 t_alpha) const
 {
 	const Theme &colors = theme();
-	const Font &body = m_fonts.body();
-	const Font &secondary = m_fonts.secondary();
+	const Font &body = m_fonts.body;
+	const Font &secondary = m_fonts.secondary;
 	const Account &account = m_library.account(t_account);
 
 	if (t_highlighted) {
@@ -596,7 +595,7 @@ void AccountSearch::draw_result(DrawList &t_draw_list, Rect t_row, AccountRef t_
 	}
 
 	const Rect icon{t_row.x + row_padding, t_row.center().y - row_icon_size * 0.5f, row_icon_size, row_icon_size};
-	controls::draw_icon(t_draw_list, icon, m_assets.get(Asset::icon_account), faded(colors.text_dim, t_alpha));
+	t_draw_list.add_image(icon, m_assets.get(Asset::IconAccount), faded(colors.text_dim, t_alpha));
 
 	const std::string_view region = account.region;
 	const float right = t_row.right() - row_padding - (m_region_column > 0.0f ? m_region_column + column_gap : 0.0f);
@@ -630,7 +629,7 @@ void AccountSearch::draw_action(DrawList &t_draw_list, Rect t_row, const Action 
 								u8 t_alpha) const
 {
 	const Theme &colors = theme();
-	const Font &body = m_fonts.body();
+	const Font &body = m_fonts.body;
 	const Color backdrop = t_highlighted ? hovered(colors.popup) : colors.popup;
 
 	if (t_highlighted) {
@@ -643,20 +642,20 @@ void AccountSearch::draw_action(DrawList &t_draw_list, Rect t_row, const Action 
 	std::string_view text;
 
 	switch (t_action.kind) {
-		case ActionKind::edit:
-			controls::draw_icon(t_draw_list, icon, m_assets.get(Asset::icon_edit), icon_color);
+		case ActionKind::Edit:
+			t_draw_list.add_image(icon, m_assets.get(Asset::IconEdit), icon_color);
 			text = "Edit account";
 			break;
-		case ActionKind::copy_username:
-			controls::draw_icon(t_draw_list, icon, m_assets.get(Asset::icon_username), icon_color);
+		case ActionKind::CopyUsername:
+			t_draw_list.add_image(icon, m_assets.get(Asset::IconUsername), icon_color);
 			text = "Copy username";
 			break;
-		case ActionKind::copy_password:
-			controls::draw_icon(t_draw_list, icon, m_assets.get(Asset::icon_lock), icon_color);
+		case ActionKind::CopyPassword:
+			t_draw_list.add_image(icon, m_assets.get(Asset::IconLock), icon_color);
 			text = "Copy password";
 			break;
-		case ActionKind::login: {
-			const Game &game = m_library.game(t_action.game);
+		case ActionKind::Login: {
+			const Game &game = m_library.games[t_action.game];
 
 			if (game.icon != nullptr) {
 				t_draw_list.add_image(icon, game.icon, faded(Color{255, 255, 255, 255}, t_alpha), rounded(4.0f));
@@ -679,7 +678,7 @@ void AccountSearch::draw_action(DrawList &t_draw_list, Rect t_row, const Action 
 void AccountSearch::draw_footer(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const
 {
 	const Theme &colors = theme();
-	const Font &font = m_fonts.secondary();
+	const Font &font = m_fonts.secondary;
 	const Rect &footer = t_layout.footer;
 	const float cap = controls::keycap_height(font);
 	const float cap_y = snapped_to_pixel(footer.center().y - cap * 0.5f);
@@ -728,7 +727,7 @@ void AccountSearch::draw(DrawList &t_draw_list)
 	if (m_open_amount <= 0.01f) return;
 
 	const Theme &colors = theme();
-	const auto alpha = static_cast<u8>(255.0f * m_open_amount);
+	const auto alpha = to_alpha(m_open_amount);
 	const Vec2 window = m_window.size();
 	const Layout current = layout();
 
@@ -749,7 +748,7 @@ void AccountSearch::draw(DrawList &t_draw_list)
 
 	if (count == 0) {
 		const bool empty_library = !m_account && m_query.value().empty();
-		draw_text_centered(t_draw_list, m_fonts.secondary(), current.list,
+		draw_text_centered(t_draw_list, m_fonts.secondary, current.list,
 						   empty_library ? "No accounts yet" : "No accounts match", faded(colors.text_faint, alpha));
 	}
 

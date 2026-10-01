@@ -2,26 +2,26 @@
 
 #include <string_view>
 
-#include "core/master_key.h"
+#include "core/crypto.h"
 #include "core/types.h"
 
 constexpr u32 max_game_order = 16;
 constexpr u32 max_game_title = 48;
 
 enum class ThemeKind : u8 {
-	dark,
-	light,
-	forest,
-	ocean,
-	pink,
-	blossom,
-	gruvbox,
-	catppuccin_mocha,
-	catppuccin_latte,
-	nord,
-	dracula,
-	tokyo_night,
-	rose_pine,
+	Dark,
+	Light,
+	Forest,
+	Ocean,
+	Pink,
+	Blossom,
+	Gruvbox,
+	CatppuccinMocha,
+	CatppuccinLatte,
+	Nord,
+	Dracula,
+	TokyoNight,
+	RosePine,
 };
 
 struct OptionLabel {
@@ -48,15 +48,15 @@ constexpr OptionLabel theme_labels[]{
 constexpr u32 theme_count = static_cast<u32>(std::size(theme_labels));
 
 enum class BackgroundStyle : u8 {
-	none,
-	dots,
-	grid,
-	lines,
-	polka,
-	topography,
-	starfield,
-	scanlines,
-	crosshatch,
+	None,
+	Dots,
+	Grid,
+	Lines,
+	Polka,
+	Topography,
+	Starfield,
+	Scanlines,
+	Crosshatch,
 };
 
 constexpr OptionLabel background_labels[]{
@@ -67,6 +67,15 @@ constexpr OptionLabel background_labels[]{
 
 constexpr u32 background_count = static_cast<u32>(std::size(background_labels));
 
+constexpr float animation_speed_min = 0.25f;
+constexpr float animation_speed_max = 3.0f;
+constexpr float corner_roundness_min = 0.0f;
+constexpr float corner_roundness_max = 1.5f;
+constexpr float font_size_min = 10.0f;
+constexpr float font_size_max = 24.0f;
+constexpr float secondary_font_size_min = 8.0f;
+constexpr float secondary_font_size_max = 18.0f;
+
 struct Settings {
 	u32 window_width = 1042;
 	u32 window_height = 675;
@@ -74,18 +83,19 @@ struct Settings {
 	bool animations_enabled = true;
 	float animation_speed = 1.0f;
 	float corner_roundness = 1.0f;
-	BackgroundStyle background_style = BackgroundStyle::none;
+	BackgroundStyle background_style = BackgroundStyle::None;
 	bool background_light = true;
 	bool background_grain = true;
 	float background_light_intensity = 0.5f;
 	float background_grain_intensity = 0.5f;
+	bool snow = false;
 	float background_intensity = 0.5f;
 
 	float font_size = 13.0f;
 	float secondary_font_size = 12.0f;
 	// Braces, not `= "..."`: MSVC zeroes that form whenever a Settings is constant-initialized.
 	char font_name[260]{"segoeui.ttf"};
-	ThemeKind theme = ThemeKind::dark;
+	ThemeKind theme = ThemeKind::Dark;
 	Color accent{203, 166, 247, 255};
 
 	bool show_notifications = true;

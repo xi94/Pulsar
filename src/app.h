@@ -4,8 +4,8 @@
 #include <optional>
 #include <string_view>
 
+#include "core/crypto.h"
 #include "core/library.h"
-#include "core/master_key.h"
 #include "core/settings.h"
 #include "core/storage.h"
 #include "core/updater.h"
@@ -13,7 +13,7 @@
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "gfx/renderer.h"
-#include "platform/single_instance.h"
+#include "platform/process.h"
 #include "platform/tray.h"
 #include "platform/window.h"
 #include "ui/account_modal.h"
@@ -24,6 +24,7 @@
 #include "ui/context_menu.h"
 #include "ui/profiler_overlay.h"
 #include "ui/settings_panel.h"
+#include "ui/snowfall.h"
 #include "ui/title_bar.h"
 #include "ui/toasts.h"
 #include "ui/truncation_hint.h"
@@ -34,9 +35,9 @@
 class App {
   public:
 	enum class StartResult : u8 {
-		ok,
-		already_running,
-		failed,
+		Ok,
+		AlreadyRunning,
+		Failed,
 	};
 
 	App();
@@ -116,6 +117,7 @@ class App {
 	DrawList m_draw_list;
 
 	Carousel m_carousel;
+	Snowfall m_snowfall;
 	Toasts m_toasts;
 	AccountModal m_account_modal;
 	SettingsPanel m_settings_panel;
@@ -135,11 +137,9 @@ class App {
 	bool m_just_updated = false;
 	bool m_unreadable_storage_announced = false;
 	bool m_in_frame = false;
-	UpdateStage m_announced_update_stage = UpdateStage::idle;
+	UpdateStage m_announced_update_stage = UpdateStage::Idle;
 	Vec2 m_mouse{-1.0f, -1.0f};
 	bool m_pointer_down = false;
-	u32 m_swap_chain_width = 0;
-	u32 m_swap_chain_height = 0;
 
 	std::chrono::steady_clock::time_point m_start_time;
 	std::chrono::steady_clock::time_point m_last_frame_time;

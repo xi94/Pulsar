@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <span>
 #include <vector>
 
 #include <sodium.h>
@@ -30,26 +31,16 @@ u16 Account::visible_games(u32 t_owning_game) const
 	return visible_game_mask != 0 ? visible_game_mask : static_cast<u16>(1u << t_owning_game);
 }
 
-void Library::add_game(std::string_view t_title, std::string_view t_short_title, const Texture *t_banner,
-					   const Texture *t_icon, Color t_accent)
-{
-	assert(m_game_count < max_games);
-
-	m_games[m_game_count] =
-		Game{.title = t_title, .short_title = t_short_title, .accent = t_accent, .banner = t_banner, .icon = t_icon};
-	m_game_count += 1;
-}
-
 std::optional<AccountRef> Library::add_account(u32 t_game, const Account &t_account)
 {
-	Game &game = m_games[t_game];
+	Game &game = games[t_game];
 	if (game.account_count >= max_accounts_per_game) return std::nullopt;
 
 	Account &added = game.accounts[game.account_count];
 	added = t_account;
-	added.order = m_next_order;
+	added.order = next_order;
 
-	m_next_order += 1;
+	next_order += 1;
 	game.account_count += 1;
 
 	return AccountRef{t_game, game.account_count - 1};
@@ -57,7 +48,7 @@ std::optional<AccountRef> Library::add_account(u32 t_game, const Account &t_acco
 
 std::optional<AccountRef> Library::insert_account(AccountRef t_where, const Account &t_account)
 {
-	Game &game = m_games[t_where.game];
+	Game &game = games[t_where.game];
 	if (game.account_count >= max_accounts_per_game) return std::nullopt;
 
 	const u32 index = std::min(t_where.index, game.account_count);
@@ -73,7 +64,7 @@ std::optional<AccountRef> Library::insert_account(AccountRef t_where, const Acco
 
 void Library::remove_account(AccountRef t_ref)
 {
-	Game &game = m_games[t_ref.game];
+	Game &game = games[t_ref.game];
 	assert(t_ref.index < game.account_count);
 
 	for (u32 i = t_ref.index; i + 1 < game.account_count; i += 1) {
@@ -110,19 +101,19 @@ void Library::move_visible_account(u32 t_game, u32 t_from_row, u32 t_to_row)
 void Library::number_unordered_accounts()
 {
 	u32 highest = 0;
-	for (const Game &game : games()) {
+	for (const Game &game : std::span{games, game_count}) {
 		for (u32 i = 0; i < game.account_count; i += 1) {
 			highest = std::max(highest, game.accounts[i].order);
 		}
 	}
 
-	m_next_order = highest + 1;
+	next_order = highest + 1;
 
-	for (Game &game : games()) {
+	for (Game &game : std::span{games, game_count}) {
 		for (u32 i = 0; i < game.account_count; i += 1) {
 			if (game.accounts[i].order == 0) {
-				game.accounts[i].order = m_next_order;
-				m_next_order += 1;
+				game.accounts[i].order = next_order;
+				next_order += 1;
 			}
 		}
 	}
@@ -130,35 +121,40 @@ void Library::number_unordered_accounts()
 
 void Library::wipe_accounts()
 {
-	for (Game &game : games()) {
+	for (Game &game : std::span{games, game_count}) {
 		sodium_memzero(game.accounts, sizeof(game.accounts));
 		game.account_count = 0;
 	}
+
+	sodium_memzero(unlisted_games.data(), unlisted_games.size());
+	unlisted_games.clear();
 }
 
 VisibleAccounts Library::visible_accounts(u32 t_game) const
 {
 	VisibleAccounts visible;
-	if (t_game >= m_game_count) return visible;
+	if (t_game >= game_count) return visible;
 
 	const u16 target_bit = static_cast<u16>(1u << t_game);
 
-	for (u32 game = 0; game < m_game_count; game += 1) {
-		for (u32 i = 0; i < m_games[game].account_count; i += 1) {
-			if ((m_games[game].accounts[i].visible_games(game) & target_bit) == 0) continue;
+	for (u32 game = 0; game < game_count; game += 1) {
+		for (u32 i = 0; i < games[game].account_count; i += 1) {
+			if ((games[game].accounts[i].visible_games(game) & target_bit) == 0) continue;
 
 			visible.refs[visible.count] = AccountRef{game, i};
 			visible.count += 1;
 		}
 	}
 
-	std::stable_sort(visible.refs, visible.refs + visible.count, [this](AccountRef t_a, AccountRef t_b) {
+	std::sort(visible.refs, visible.refs + visible.count, [this](AccountRef t_a, AccountRef t_b) {
 		const Account &a = account(t_a);
 		const Account &b = account(t_b);
 
 		if (a.favorite != b.favorite) return a.favorite;
+		if (a.order != b.order) return a.order < b.order;
+		if (t_a.game != t_b.game) return t_a.game < t_b.game;
 
-		return a.order < b.order;
+		return t_a.index < t_b.index;
 	});
 
 	return visible;

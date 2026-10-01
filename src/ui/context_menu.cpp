@@ -22,7 +22,7 @@ constexpr float shortcut_gap = 24.0f;
 
 float item_height(const Fonts &t_fonts)
 {
-	return std::max(28.0f, t_fonts.body().line_height() + 8.0f);
+	return std::max(28.0f, t_fonts.body.line_height() + 8.0f);
 }
 }
 
@@ -40,8 +40,8 @@ void ContextMenu::open(Vec2 t_position, std::span<const ContextMenuItem> t_items
 	float content = 0.0f;
 	for (const ContextMenuItem &item : std::span{m_items, m_item_count}) {
 		const float shortcut =
-			item.shortcut.empty() ? 0.0f : shortcut_gap + controls::shortcut_width(m_fonts.secondary(), item.shortcut);
-		content = std::max(content, text_width(m_fonts.body(), item.label) + shortcut);
+			item.shortcut.empty() ? 0.0f : shortcut_gap + controls::shortcut_width(m_fonts.secondary, item.shortcut);
+		content = std::max(content, text_width(m_fonts.body, item.label) + shortcut);
 	}
 
 	m_width = std::ceil(std::max(min_menu_width, content + (label_inset + menu_padding) * 2.0f));
@@ -115,7 +115,7 @@ bool ContextMenu::on_key_down(u32 t_key)
 
 CursorKind ContextMenu::cursor() const
 {
-	return m_open && item_at(m_mouse) >= 0 ? CursorKind::hand : CursorKind::arrow;
+	return m_open && item_at(m_mouse) >= 0 ? CursorKind::Hand : CursorKind::Arrow;
 }
 
 void ContextMenu::draw(DrawList &t_draw_list)
@@ -123,7 +123,7 @@ void ContextMenu::draw(DrawList &t_draw_list)
 	if (!m_open) return;
 
 	const Theme &colors = theme();
-	const Font &font = m_fonts.body();
+	const Font &font = m_fonts.body;
 
 	controls::draw_popup_shadow(t_draw_list, menu_rect(), menu_radius, 1.0f);
 	t_draw_list.add_bordered_rect(menu_rect(), rounded(menu_radius), colors.popup, colors.border, 1.0f);
@@ -143,7 +143,7 @@ void ContextMenu::draw(DrawList &t_draw_list)
 				  item.enabled ? colors.text : colors.text_faint);
 
 		if (!item.shortcut.empty()) {
-			controls::draw_shortcut(t_draw_list, m_fonts.secondary(), Vec2{row.right() - label_inset, row.center().y},
+			controls::draw_shortcut(t_draw_list, m_fonts.secondary, Vec2{row.right() - label_inset, row.center().y},
 									item.shortcut, backdrop, item.enabled ? 255 : 128);
 		}
 	}

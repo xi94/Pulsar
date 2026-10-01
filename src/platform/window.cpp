@@ -59,14 +59,14 @@ LRESULT resize_edge_at(HWND t_window, POINT t_cursor)
 HCURSOR system_cursor(CursorKind t_cursor)
 {
 	switch (t_cursor) {
-		case CursorKind::hand:
+		case CursorKind::Hand:
 			return LoadCursorW(nullptr, IDC_HAND);
-		case CursorKind::ibeam:
+		case CursorKind::IBeam:
 			return LoadCursorW(nullptr, IDC_IBEAM);
-		case CursorKind::move:
+		case CursorKind::Move:
 			return LoadCursorW(nullptr, IDC_SIZEALL);
-		case CursorKind::arrow:
-		case CursorKind::drag:
+		case CursorKind::Arrow:
+		case CursorKind::Drag:
 			break;
 	}
 
@@ -114,10 +114,10 @@ void Window::register_window_class(HINSTANCE t_instance, const wchar_t *t_class_
 		.style = CS_HREDRAW | CS_VREDRAW,
 		.lpfnWndProc = window_proc,
 		.hInstance = t_instance,
-		.hIcon = load_app_icon(AppIconSize::large_icon),
+		.hIcon = load_app_icon(AppIconSize::LargeIcon),
 		.hCursor = LoadCursorW(nullptr, IDC_ARROW),
 		.lpszClassName = t_class_name,
-		.hIconSm = load_app_icon(AppIconSize::small_icon),
+		.hIconSm = load_app_icon(AppIconSize::SmallIcon),
 	};
 
 	RegisterClassExW(&window_class);
@@ -135,7 +135,7 @@ bool Window::create(const wchar_t *t_title, u32 t_width, u32 t_height, WindowKin
 	m_physical_height = scaled(t_height, m_dpi_scale);
 
 	const HINSTANCE instance = GetModuleHandleW(nullptr);
-	const bool dialog = t_kind == WindowKind::dialog;
+	const bool dialog = t_kind == WindowKind::Dialog;
 	const wchar_t *class_name = dialog ? setup_window_class_name : main_window_class_name;
 	register_window_class(instance, class_name);
 
@@ -259,12 +259,12 @@ Rect Window::title_bar_button_rect(TitleBarButton t_button) const
 {
 	const float right = static_cast<float>(m_width);
 
-	if (m_kind == WindowKind::dialog) {
-		if (t_button == TitleBarButton::minimize) {
+	if (m_kind == WindowKind::Dialog) {
+		if (t_button == TitleBarButton::Minimize) {
 			return Rect{right - title_bar_button_width * 2.0f, 0.0f, title_bar_button_width, title_bar_height};
 		}
 
-		if (t_button == TitleBarButton::close) {
+		if (t_button == TitleBarButton::Close) {
 			return Rect{right - title_bar_button_width, 0.0f, title_bar_button_width, title_bar_height};
 		}
 
@@ -272,9 +272,9 @@ Rect Window::title_bar_button_rect(TitleBarButton t_button) const
 	}
 
 	switch (t_button) {
-		case TitleBarButton::menu:
+		case TitleBarButton::Menu:
 			return Rect{0.0f, 0.0f, title_bar_button_width, title_bar_height};
-		case TitleBarButton::search: {
+		case TitleBarButton::Search: {
 			const float side = m_update_button_visible ? m_update_button_width + search_button_margin : 0.0f;
 			const float left = title_bar_button_width + std::max(search_button_side_room, side);
 			const float limit = right - title_bar_button_width * 3.0f - search_button_margin;
@@ -285,15 +285,15 @@ Rect Window::title_bar_button_rect(TitleBarButton t_button) const
 
 			return Rect{std::floor(x), 0.0f, width, title_bar_height};
 		}
-		case TitleBarButton::update:
+		case TitleBarButton::Update:
 			return Rect{title_bar_button_width, 0.0f, m_update_button_width, title_bar_height};
-		case TitleBarButton::minimize:
+		case TitleBarButton::Minimize:
 			return Rect{right - title_bar_button_width * 3.0f, 0.0f, title_bar_button_width, title_bar_height};
-		case TitleBarButton::maximize:
+		case TitleBarButton::Maximize:
 			return Rect{right - title_bar_button_width * 2.0f, 0.0f, title_bar_button_width, title_bar_height};
-		case TitleBarButton::close:
+		case TitleBarButton::Close:
 			return Rect{right - title_bar_button_width, 0.0f, title_bar_button_width, title_bar_height};
-		case TitleBarButton::none:
+		case TitleBarButton::None:
 			break;
 	}
 
@@ -303,18 +303,18 @@ Rect Window::title_bar_button_rect(TitleBarButton t_button) const
 TitleBarButton Window::title_bar_button_at(Vec2 t_point) const
 {
 	constexpr TitleBarButton buttons[]{
-		TitleBarButton::menu,	  TitleBarButton::search,	TitleBarButton::update,
-		TitleBarButton::minimize, TitleBarButton::maximize, TitleBarButton::close,
+		TitleBarButton::Menu,	  TitleBarButton::Search,	TitleBarButton::Update,
+		TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close,
 	};
 
 	for (const TitleBarButton button : buttons) {
-		if (button == TitleBarButton::update && !m_update_button_visible) continue;
-		if (button == TitleBarButton::search && !m_search_button_visible) continue;
+		if (button == TitleBarButton::Update && !m_update_button_visible) continue;
+		if (button == TitleBarButton::Search && !m_search_button_visible) continue;
 
 		if (title_bar_button_rect(button).contains(t_point)) return button;
 	}
 
-	return TitleBarButton::none;
+	return TitleBarButton::None;
 }
 
 Vec2 Window::to_logical(POINT t_physical) const
@@ -339,7 +339,7 @@ void Window::push_mouse(InputEventType t_type, LPARAM t_lparam)
 LRESULT Window::handle_hit_test(LPARAM t_lparam)
 {
 	const POINT cursor{GET_X_LPARAM(t_lparam), GET_Y_LPARAM(t_lparam)};
-	const LRESULT edge = m_kind == WindowKind::dialog ? HTNOWHERE : resize_edge_at(m_window, cursor);
+	const LRESULT edge = m_kind == WindowKind::Dialog ? HTNOWHERE : resize_edge_at(m_window, cursor);
 
 	m_mouse_over_resize_border = edge != HTNOWHERE;
 	if (m_mouse_over_resize_border) return edge;
@@ -349,7 +349,7 @@ LRESULT Window::handle_hit_test(LPARAM t_lparam)
 
 	const Vec2 point = to_logical(client);
 	const bool over_caption =
-		point.y >= 0.0f && point.y < title_bar_height && title_bar_button_at(point) == TitleBarButton::none;
+		point.y >= 0.0f && point.y < title_bar_height && title_bar_button_at(point) == TitleBarButton::None;
 
 	return over_caption ? HTCAPTION : HTCLIENT;
 }
@@ -382,7 +382,7 @@ void Window::handle_size(WPARAM t_wparam, LPARAM t_lparam)
 
 void Window::handle_min_max_info(LPARAM t_lparam) const
 {
-	if (m_kind == WindowKind::dialog) return;
+	if (m_kind == WindowKind::Dialog) return;
 
 	auto &info = *reinterpret_cast<MINMAXINFO *>(t_lparam);
 	info.ptMinTrackSize.x = std::lround(min_window_width * m_dpi_scale);
@@ -465,13 +465,13 @@ LRESULT Window::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 			return 0;
 
 		case WM_LBUTTONDOWN:
-			push_mouse(InputEventType::mouse_down, t_lparam);
+			push_mouse(InputEventType::MouseDown, t_lparam);
 			SetCapture(m_window);
 			m_mouse_captured = true;
 			return 0;
 
 		case WM_LBUTTONUP:
-			push_mouse(InputEventType::mouse_up, t_lparam);
+			push_mouse(InputEventType::MouseUp, t_lparam);
 			m_mouse_captured = false;
 			ReleaseCapture();
 			return 0;
@@ -479,17 +479,17 @@ LRESULT Window::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 		case WM_CAPTURECHANGED:
 			if (m_mouse_captured) {
 				m_mouse_captured = false;
-				push_input(InputEvent{.type = InputEventType::mouse_up, .position = m_last_mouse});
+				push_input(InputEvent{.type = InputEventType::MouseUp, .position = m_last_mouse});
 			}
 
 			return 0;
 
 		case WM_RBUTTONUP:
-			push_mouse(InputEventType::right_click, t_lparam);
+			push_mouse(InputEventType::RightClick, t_lparam);
 			return 0;
 
 		case WM_MOUSEMOVE:
-			push_mouse(InputEventType::mouse_move, t_lparam);
+			push_mouse(InputEventType::MouseMove, t_lparam);
 			return 0;
 
 		case WM_MOUSEWHEEL: {
@@ -497,7 +497,7 @@ LRESULT Window::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 			ScreenToClient(m_window, &cursor);
 
 			push_input(InputEvent{
-				.type = InputEventType::mouse_wheel,
+				.type = InputEventType::MouseWheel,
 				.position = to_logical(cursor),
 				.wheel_delta = static_cast<float>(GET_WHEEL_DELTA_WPARAM(t_wparam)) / WHEEL_DELTA,
 			});
@@ -505,16 +505,16 @@ LRESULT Window::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 		}
 
 		case WM_KEYDOWN:
-			push_input(InputEvent{.type = InputEventType::key_down, .key = static_cast<u32>(t_wparam)});
+			push_input(InputEvent{.type = InputEventType::KeyDown, .key = static_cast<u32>(t_wparam)});
 			return 0;
 
 		case WM_CHAR:
-			push_input(InputEvent{.type = InputEventType::character, .key = static_cast<u32>(t_wparam)});
+			push_input(InputEvent{.type = InputEventType::Character, .key = static_cast<u32>(t_wparam)});
 			return 0;
 
 		case WM_DESTROY:
 			// The setup window closes before the main window opens, and a quit message would end that one too.
-			if (m_kind == WindowKind::main) {
+			if (m_kind == WindowKind::Main) {
 				PostQuitMessage(0);
 			}
 

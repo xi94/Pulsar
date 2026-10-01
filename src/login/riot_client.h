@@ -7,12 +7,12 @@
 
 #include <Windows.h>
 
-#include "core/ui_automation.h"
+#include "login/ui_automation.h"
 
 enum class PlayResult : u8 {
-	clicked,
-	not_found,
-	login_error,
+	Clicked,
+	NotFound,
+	LoginError,
 };
 
 class RiotClient {
@@ -25,12 +25,11 @@ class RiotClient {
 
 	static bool is_game_in_progress();
 	static void kill_all_client_processes(const std::atomic<bool> &t_cancel);
-	static std::string_view launch_product_for(std::string_view t_game_title);
 
 	bool resolve_executable_path();
 	bool launch(std::string_view t_launch_product);
 
-	void wait_for_window(const std::atomic<bool> &t_cancel) const;
+	HWND wait_for_responsive_window(const std::atomic<bool> &t_cancel) const;
 	bool bring_to_foreground(const std::atomic<bool> &t_cancel) const;
 	bool take_keyboard_focus(const std::atomic<bool> &t_cancel) const;
 
@@ -45,7 +44,6 @@ class RiotClient {
 
   private:
 	HWND find_client_window() const;
-	HWND wait_for_responsive_window(const std::atomic<bool> &t_cancel) const;
 	UiElement current_window_element(const UiAutomation &t_automation) const;
 
 	mutable HWND m_cached_window = nullptr;

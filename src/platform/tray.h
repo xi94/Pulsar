@@ -8,14 +8,14 @@
 #include "core/types.h"
 
 enum class TrayEventType : u8 {
-	none,
-	show_window,
-	exit,
-	quick_login,
+	None,
+	ShowWindow,
+	Exit,
+	QuickLogin,
 };
 
 struct TrayEvent {
-	TrayEventType type = TrayEventType::none;
+	TrayEventType type = TrayEventType::None;
 	i32 game = -1;
 	i32 row = -1;
 };

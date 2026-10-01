@@ -7,7 +7,7 @@
 #include "core/types.h"
 
 class DrawList;
-class Font;
+struct Font;
 
 float text_width(const Font &t_font, std::string_view t_text);
 u32 text_index_at(const Font &t_font, std::string_view t_text, float t_x);

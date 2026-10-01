@@ -16,15 +16,18 @@ struct Vertex2D {
 };
 
 enum class ShaderKind : u8 {
-	solid,
-	textured,
-	banner_glow,
-	color_picker,
-	shadow,
-	outline_countdown,
-	backdrop,
-	backdrop_plain,
+	Solid,
+	Textured,
+	BannerGlow,
+	ColorPicker,
+	Shadow,
+	OutlineCountdown,
+	Backdrop,
+	BackdropPlain,
+	Count,
 };
+
+constexpr u32 shader_kind_count = static_cast<u32>(ShaderKind::Count);
 
 struct RoundedBoxParams {
 	float quad_width;

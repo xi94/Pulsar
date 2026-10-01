@@ -31,24 +31,6 @@ bool write_and_flush(const std::string &t_path, std::string_view t_contents)
 
 	return ok;
 }
-
-std::wstring local_app_data_root()
-{
-	wchar_t from_environment[MAX_PATH];
-	const DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", from_environment, MAX_PATH);
-	if (length > 0 && length < MAX_PATH) return std::wstring{from_environment, length};
-
-	PWSTR known_folder = nullptr;
-	std::wstring root;
-
-	if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &known_folder))) {
-		root = known_folder;
-	}
-
-	CoTaskMemFree(known_folder);
-
-	return root;
-}
 }
 
 bool read_whole_file(const char *t_path, std::vector<u8> &t_out_bytes)
@@ -97,9 +79,27 @@ std::string backup_path_for(const std::string &t_path)
 	return t_path + ".bak";
 }
 
+std::wstring local_app_data_folder()
+{
+	wchar_t from_environment[MAX_PATH];
+	const DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", from_environment, MAX_PATH);
+	if (length > 0 && length < MAX_PATH) return std::wstring{from_environment, length};
+
+	PWSTR known_folder = nullptr;
+	std::wstring root;
+
+	if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &known_folder))) {
+		root = known_folder;
+	}
+
+	CoTaskMemFree(known_folder);
+
+	return root;
+}
+
 std::wstring app_data_subdirectory(const wchar_t *t_subfolder)
 {
-	const std::wstring root = local_app_data_root();
+	const std::wstring root = local_app_data_folder();
 	if (root.empty()) return {};
 
 	const std::wstring directory = root + L"\\" + app_name_wide + L"\\" + t_subfolder;

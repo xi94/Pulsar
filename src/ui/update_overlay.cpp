@@ -77,10 +77,10 @@ constexpr float check_failed_linger_seconds = 5.0f;
 constexpr const wchar_t *releases_url = L"" PULSAR_RELEASE_REPO L"/releases/latest";
 
 enum class NoteKind : u8 {
-	heading,
-	bullet,
-	continuation,
-	text,
+	Heading,
+	Bullet,
+	Continuation,
+	Text,
 };
 
 struct NoteLine {
@@ -88,16 +88,6 @@ struct NoteLine {
 	NoteKind kind;
 	float baseline;
 };
-
-std::string_view trimmed(std::string_view t_text)
-{
-	constexpr std::string_view blank = " \t\r";
-
-	const usize first = t_text.find_first_not_of(blank);
-	if (first == std::string_view::npos) return {};
-
-	return t_text.substr(first, t_text.find_last_not_of(blank) - first + 1);
-}
 
 std::optional<std::string_view> bullet_text(std::string_view t_line)
 {
@@ -145,7 +135,7 @@ u32 layout_notes(const Font &t_font, std::string_view t_notes, std::span<NoteLin
 	const auto push = [&](std::string_view t_text, NoteKind t_kind) {
 		if (count == t_out.size()) return;
 
-		t_out[count] = NoteLine{t_text, t_kind, y + t_font.ascent()};
+		t_out[count] = NoteLine{t_text, t_kind, y + t_font.ascent};
 		count += 1;
 		y += t_font.line_height();
 	};
@@ -172,22 +162,22 @@ u32 layout_notes(const Font &t_font, std::string_view t_notes, std::span<NoteLin
 
 		if (is_heading(line, next_content_line(t_notes, start))) {
 			y += count > 0 ? note_heading_gap_above : 0.0f;
-			push(heading_text(line), NoteKind::heading);
+			push(heading_text(line), NoteKind::Heading);
 			y += note_heading_gap_below;
 		} else if (const std::optional<std::string_view> bullet = bullet_text(line)) {
 			y += blank_gap;
-			push_wrapped(*bullet, NoteKind::bullet, NoteKind::continuation, notes_text_width - note_bullet_indent);
+			push_wrapped(*bullet, NoteKind::Bullet, NoteKind::Continuation, notes_text_width - note_bullet_indent);
 			y += note_item_gap;
 		} else {
 			y += blank_gap;
-			push_wrapped(line, NoteKind::text, NoteKind::text, notes_text_width);
+			push_wrapped(line, NoteKind::Text, NoteKind::Text, notes_text_width);
 			y += note_item_gap;
 		}
 
 		blank_gap = 0.0f;
 	}
 
-	t_out_height = count > 0 ? t_out[count - 1].baseline + t_font.descent() : 0.0f;
+	t_out_height = count > 0 ? t_out[count - 1].baseline + t_font.descent : 0.0f;
 
 	return count;
 }
@@ -204,15 +194,6 @@ std::string_view format_size(double t_bytes, const char *t_suffix, char (&t_buff
 	return std::string_view{t_buffer, static_cast<usize>(std::max(written, 0))};
 }
 
-u8 to_alpha(float t_amount)
-{
-	return static_cast<u8>(std::clamp(t_amount, 0.0f, 1.0f) * 255.0f);
-}
-
-Rect moved(Rect t_rect, float t_dy)
-{
-	return Rect{t_rect.x, t_rect.y + t_dy, t_rect.w, t_rect.h};
-}
 }
 
 UpdateOverlay::UpdateOverlay(Updater &t_updater, const Settings &t_settings, const Fonts &t_fonts,
@@ -238,7 +219,7 @@ void UpdateOverlay::open()
 
 void UpdateOverlay::begin_check()
 {
-	m_shown_stage = UpdateStage::checking;
+	m_shown_stage = UpdateStage::Checking;
 	m_shown_seconds = 0.0f;
 	m_check_requested = true;
 	m_status_linger = 0.0f;
@@ -285,83 +266,83 @@ UpdateOverlay::Content UpdateOverlay::describe() const
 		std::snprintf(content.title, sizeof(content.title), "What's new in %s", m_release_version);
 		copy_to("Pulsar was updated. Here's what changed.", content.detail);
 		content.notes = true;
-		content.primary = Button{"Got it", Action::close, controls::ButtonStyle::accent};
+		content.primary = Button{"Got it", Action::Close, controls::ButtonStyle::Accent};
 		return content;
 	}
 
 	switch (stage) {
-		case UpdateStage::idle:
-		case UpdateStage::checking:
+		case UpdateStage::Idle:
+		case UpdateStage::Checking:
 			set("Checking for updates", "This only takes a moment.");
 			content.spinning = true;
 			break;
 
-		case UpdateStage::up_to_date:
+		case UpdateStage::UpToDate:
 			set("You're up to date", "");
 			std::snprintf(content.detail, sizeof(content.detail), "%s %s is the latest version.", app_name,
 						  app_version);
-			content.primary = Button{"Check again", Action::check, controls::ButtonStyle::neutral};
+			content.primary = Button{"Check again", Action::Check, controls::ButtonStyle::Neutral};
 			break;
 
-		case UpdateStage::check_failed:
+		case UpdateStage::CheckFailed:
 			set("Couldn't check for updates", m_updater.error_message());
 			content.detail_is_error = true;
-			content.primary = Button{"Try again", Action::check, controls::ButtonStyle::accent};
+			content.primary = Button{"Try again", Action::Check, controls::ButtonStyle::Accent};
 			break;
 
-		case UpdateStage::available:
+		case UpdateStage::Available:
 			copy_to("Update available", content.title);
 			std::snprintf(content.detail, sizeof(content.detail), "Version %s is ready to install.", version);
 			content.notes = true;
-			content.secondary = Button{"Later", Action::close, controls::ButtonStyle::ghost};
-			content.primary = Button{"Install update", Action::download, controls::ButtonStyle::accent};
+			content.secondary = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
+			content.primary = Button{"Install update", Action::Download, controls::ButtonStyle::Accent};
 			break;
 
-		case UpdateStage::manual_upgrade_required:
+		case UpdateStage::ManualUpgradeRequired:
 			copy_to("Update available", content.title);
 			std::snprintf(content.detail, sizeof(content.detail), "Version %s has to be downloaded from GitHub.",
 						  version);
-			content.secondary = Button{"Later", Action::close, controls::ButtonStyle::ghost};
-			content.primary = Button{"Open GitHub", Action::releases, controls::ButtonStyle::accent};
+			content.secondary = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
+			content.primary = Button{"Open GitHub", Action::Releases, controls::ButtonStyle::Accent};
 			break;
 
-		case UpdateStage::downloading:
+		case UpdateStage::Downloading:
 			std::snprintf(content.title, sizeof(content.title), "Downloading %s", version);
 			copy_to("You can keep using Pulsar meanwhile.", content.detail);
 			content.progress = true;
-			content.primary = Button{"Cancel", Action::cancel, controls::ButtonStyle::neutral};
+			content.primary = Button{"Cancel", Action::Cancel, controls::ButtonStyle::Neutral};
 			break;
 
-		case UpdateStage::verifying:
+		case UpdateStage::Verifying:
 			std::snprintf(content.title, sizeof(content.title), "Verifying %s", version);
 			copy_to("Making sure the download is genuine.", content.detail);
 			content.spinning = true;
 			content.progress = true;
 			break;
 
-		case UpdateStage::installing:
+		case UpdateStage::Installing:
 			std::snprintf(content.title, sizeof(content.title), "Installing %s", version);
 			copy_to("Pulsar restarts when it's done.", content.detail);
 			content.spinning = true;
 			content.progress = true;
 			break;
 
-		case UpdateStage::ready_to_relaunch:
+		case UpdateStage::ReadyToRelaunch:
 			set("Restarting", "Pulsar will be right back.");
 			content.spinning = true;
 			break;
 
-		case UpdateStage::error:
+		case UpdateStage::Error:
 			set("Update failed", m_updater.error_message());
 			content.detail_is_error = true;
-			content.secondary = Button{"Later", Action::close, controls::ButtonStyle::ghost};
-			content.primary = Button{"Try again", Action::download, controls::ButtonStyle::accent};
+			content.secondary = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
+			content.primary = Button{"Try again", Action::Download, controls::ButtonStyle::Accent};
 			break;
 
-		case UpdateStage::cancelled:
+		case UpdateStage::Cancelled:
 			set("Update cancelled", "The download was stopped.");
-			content.secondary = Button{"Later", Action::close, controls::ButtonStyle::ghost};
-			content.primary = Button{"Try again", Action::download, controls::ButtonStyle::accent};
+			content.secondary = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
+			content.primary = Button{"Try again", Action::Download, controls::ButtonStyle::Accent};
 			break;
 	}
 
@@ -372,7 +353,7 @@ float UpdateOverlay::notes_content_height() const
 {
 	NoteLine lines[max_note_lines];
 	float height = 0.0f;
-	layout_notes(m_fonts.secondary(), shown_notes(), lines, height);
+	layout_notes(m_fonts.secondary, shown_notes(), lines, height);
 
 	return height + notes_padding * 2.0f;
 }
@@ -384,8 +365,8 @@ float UpdateOverlay::notes_box_height() const
 
 float UpdateOverlay::content_height(const Content &t_content) const
 {
-	const Font &body = m_fonts.body();
-	const Font &secondary = m_fonts.secondary();
+	const Font &body = m_fonts.body;
+	const Font &secondary = m_fonts.secondary;
 	std::string_view lines[max_detail_lines];
 	const u32 detail_lines =
 		t_content.detail[0] != '\0' ? wrap_text(secondary, t_content.detail, content_width, lines) : 0;
@@ -410,13 +391,13 @@ float UpdateOverlay::content_height(const Content &t_content) const
 
 Rect UpdateOverlay::anchor_rect() const
 {
-	return m_window.title_bar_button_rect(TitleBarButton::update);
+	return m_window.title_bar_button_rect(TitleBarButton::Update);
 }
 
 UpdateOverlay::Layout UpdateOverlay::layout(const Content &t_content) const
 {
-	const Font &body = m_fonts.body();
-	const Font &secondary = m_fonts.secondary();
+	const Font &body = m_fonts.body;
+	const Font &secondary = m_fonts.secondary;
 	const Vec2 window = m_window.size();
 	const float x =
 		std::clamp(anchor_rect().x, window_margin, std::max(window_margin, window.x - window_margin - popover_width));
@@ -488,12 +469,12 @@ void UpdateOverlay::advance_shown_stage(float t_delta_seconds)
 	if (actual == m_shown_stage) return;
 
 	const bool watched = m_check_requested || is_shown();
-	if (watched && m_shown_stage == UpdateStage::checking && m_shown_seconds < minimum_checking_seconds) {
+	if (watched && m_shown_stage == UpdateStage::Checking && m_shown_seconds < minimum_checking_seconds) {
 		animation::request_frame_after(minimum_checking_seconds - m_shown_seconds);
 		return;
 	}
 
-	const bool answered = m_check_requested && m_shown_stage == UpdateStage::checking;
+	const bool answered = m_check_requested && m_shown_stage == UpdateStage::Checking;
 	m_shown_stage = actual;
 	m_shown_seconds = 0.0f;
 
@@ -502,11 +483,11 @@ void UpdateOverlay::advance_shown_stage(float t_delta_seconds)
 	// A check someone asked for only opens the popover when there is something to install.
 	m_check_requested = false;
 
-	if (actual == UpdateStage::available || actual == UpdateStage::manual_upgrade_required) {
+	if (actual == UpdateStage::Available || actual == UpdateStage::ManualUpgradeRequired) {
 		open();
-	} else if (actual == UpdateStage::up_to_date) {
+	} else if (actual == UpdateStage::UpToDate) {
 		m_status_linger = up_to_date_linger_seconds;
-	} else if (actual == UpdateStage::check_failed) {
+	} else if (actual == UpdateStage::CheckFailed) {
 		m_status_linger = check_failed_linger_seconds;
 	}
 }
@@ -526,7 +507,7 @@ void UpdateOverlay::update(float t_delta_seconds)
 		m_content_key = key;
 		m_content_fade = 0.0f;
 
-		if (m_shown_stage == UpdateStage::downloading) {
+		if (m_shown_stage == UpdateStage::Downloading) {
 			m_progress = 0.0f;
 		}
 	}
@@ -543,7 +524,7 @@ void UpdateOverlay::update(float t_delta_seconds)
 	const u64 total = m_updater.total_bytes();
 	const float downloaded =
 		total > 0 ? static_cast<float>(m_updater.bytes_downloaded()) / static_cast<float>(total) : 0.0f;
-	const float progress = stage == UpdateStage::downloading ? downloaded : 1.0f;
+	const float progress = stage == UpdateStage::Downloading ? downloaded : 1.0f;
 	m_progress = animation::ease_toward(m_progress, progress, progress_ease_rate, t_delta_seconds);
 
 	if (content.spinning) {
@@ -552,7 +533,7 @@ void UpdateOverlay::update(float t_delta_seconds)
 		animation::request_frame();
 	}
 
-	if (stage == UpdateStage::checking || stage == UpdateStage::downloading) {
+	if (stage == UpdateStage::Checking || stage == UpdateStage::Downloading) {
 		animation::request_frame();
 	}
 
@@ -562,30 +543,30 @@ void UpdateOverlay::update(float t_delta_seconds)
 void UpdateOverlay::run(Action t_action)
 {
 	switch (t_action) {
-		case Action::check:
+		case Action::Check:
 			m_updater.check_for_update();
 			close();
 			begin_check();
 			break;
 
-		case Action::download:
+		case Action::Download:
 			m_updater.start_download();
 			break;
 
-		case Action::cancel:
+		case Action::Cancel:
 			m_updater.request_cancel();
 			break;
 
-		case Action::close:
+		case Action::Close:
 			close();
 			break;
 
-		case Action::releases:
+		case Action::Releases:
 			ShellExecuteW(nullptr, L"open", releases_url, nullptr, nullptr, SW_SHOWNORMAL);
 			close();
 			break;
 
-		case Action::none:
+		case Action::None:
 			break;
 	}
 }
@@ -674,20 +655,20 @@ bool UpdateOverlay::on_key_down(u32 t_key)
 
 CursorKind UpdateOverlay::cursor() const
 {
-	if (!is_shown()) return CursorKind::arrow;
-	if (m_notes_scroll.is_dragging()) return CursorKind::drag;
+	if (!is_shown()) return CursorKind::Arrow;
+	if (m_notes_scroll.is_dragging()) return CursorKind::Drag;
 
 	const Content content = describe();
 	const Layout current = layout(content);
 	const bool over_button = (current.primary.w > 0.0f && current.primary.contains(m_mouse)) ||
 							 (current.secondary.w > 0.0f && current.secondary.contains(m_mouse));
 
-	return over_button ? CursorKind::hand : CursorKind::arrow;
+	return over_button ? CursorKind::Hand : CursorKind::Arrow;
 }
 
 void UpdateOverlay::draw_title(DrawList &t_draw_list, const Content &t_content, Rect t_line, u8 t_alpha) const
 {
-	const Font &body = m_fonts.body();
+	const Font &body = m_fonts.body;
 	const Color color = faded(theme().text, t_alpha);
 
 	if (!t_content.spinning) {
@@ -699,20 +680,20 @@ void UpdateOverlay::draw_title(DrawList &t_draw_list, const Content &t_content, 
 	const float start = snapped_to_pixel(t_line.center().x - (title_icon_size + title_icon_gap + text) * 0.5f);
 	const Rect icon{start, t_line.center().y - title_icon_size * 0.5f, title_icon_size, title_icon_size};
 
-	t_draw_list.add_rotated_image(icon, m_spin, m_assets.get(Asset::icon_update), faded(theme().text_dim, t_alpha));
+	t_draw_list.add_rotated_image(icon, m_spin, m_assets.get(Asset::IconUpdate), faded(theme().text_dim, t_alpha));
 	draw_text(t_draw_list, body, Vec2{icon.right() + title_icon_gap, body.centered_baseline(t_line)}, t_content.title,
 			  color);
 }
 
 void UpdateOverlay::draw_notes(DrawList &t_draw_list, Rect t_box, const ScrollGeometry &t_scroll, u8 t_alpha) const
 {
-	const Font &font = m_fonts.secondary();
+	const Font &font = m_fonts.secondary;
 	const Theme &colors = theme();
 	const Color heading = faded(mix(colors.text, m_settings.accent, note_heading_accent_mix), t_alpha);
 	const float line_height = font.line_height();
 	const float left = t_box.x + notes_padding;
 	const float right = left + notes_text_width;
-	const float mark_offset = font.ascent() * note_x_height_share;
+	const float mark_offset = font.ascent * note_x_height_share;
 
 	t_draw_list.add_bordered_rect(t_box, rounded(notes_radius), faded(colors.field, t_alpha),
 								  faded(colors.separator, t_alpha), 1.0f);
@@ -729,7 +710,7 @@ void UpdateOverlay::draw_notes(DrawList &t_draw_list, Rect t_box, const ScrollGe
 		if (baseline < t_box.y - line_height || baseline > t_box.bottom() + line_height) continue;
 
 		switch (line.kind) {
-			case NoteKind::heading: {
+			case NoteKind::Heading: {
 				draw_text(t_draw_list, font, Vec2{left, baseline}, line.text, heading);
 
 				const float rule_x = left + text_width(font, line.text) + note_heading_rule_gap;
@@ -741,7 +722,7 @@ void UpdateOverlay::draw_notes(DrawList &t_draw_list, Rect t_box, const ScrollGe
 				break;
 			}
 
-			case NoteKind::bullet: {
+			case NoteKind::Bullet: {
 				const Rect dot{left + note_bullet_offset, baseline - mark_offset - note_bullet_size * 0.5f,
 							   note_bullet_size, note_bullet_size};
 				t_draw_list.add_rounded_rect(dot, rounded(note_bullet_size * 0.5f), heading);
@@ -750,12 +731,12 @@ void UpdateOverlay::draw_notes(DrawList &t_draw_list, Rect t_box, const ScrollGe
 				break;
 			}
 
-			case NoteKind::continuation:
+			case NoteKind::Continuation:
 				draw_text(t_draw_list, font, Vec2{left + note_bullet_indent, baseline}, line.text,
 						  faded(colors.text, t_alpha));
 				break;
 
-			case NoteKind::text:
+			case NoteKind::Text:
 				draw_text(t_draw_list, font, Vec2{left, baseline}, line.text, faded(colors.text_dim, t_alpha));
 				break;
 		}
@@ -770,7 +751,7 @@ void UpdateOverlay::draw_notes(DrawList &t_draw_list, Rect t_box, const ScrollGe
 void UpdateOverlay::draw_progress(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const
 {
 	const Theme &colors = theme();
-	const Font &secondary = m_fonts.secondary();
+	const Font &secondary = m_fonts.secondary;
 	const Rect &track = t_layout.progress;
 	const float filled = std::max(track.h, track.w * std::clamp(m_progress, 0.0f, 1.0f));
 
@@ -778,7 +759,7 @@ void UpdateOverlay::draw_progress(DrawList &t_draw_list, const Layout &t_layout,
 	t_draw_list.add_rounded_rect(Rect{track.x, track.y, filled, track.h}, rounded(track.h * 0.5f),
 								 faded(m_settings.accent, t_alpha));
 
-	if (m_shown_stage != UpdateStage::downloading) return;
+	if (m_shown_stage != UpdateStage::Downloading) return;
 
 	char downloaded_text[32];
 	char total_text[32];
@@ -804,8 +785,8 @@ void UpdateOverlay::draw(DrawList &t_draw_list)
 	if (!is_shown() || m_height <= 0.0f) return;
 
 	const Theme &colors = theme();
-	const Font &body = m_fonts.body();
-	const Font &secondary = m_fonts.secondary();
+	const Font &body = m_fonts.body;
+	const Font &secondary = m_fonts.secondary;
 	const Content content = describe();
 	const Layout current = layout(content);
 	const u8 frame_alpha = to_alpha(m_open_amount);
@@ -833,24 +814,24 @@ void UpdateOverlay::draw(DrawList &t_draw_list)
 
 	if (content.progress) {
 		Layout shifted = current;
-		shifted.progress = moved(current.progress, rise);
+		shifted.progress = current.progress.moved(Vec2{0.0f, rise});
 		shifted.caption_top = current.caption_top + rise;
 		draw_progress(t_draw_list, shifted, alpha);
 	}
 
 	if (content.notes && current.notes.h > 0.0f) {
-		draw_notes(t_draw_list, moved(current.notes, rise), notes_scroll(current), alpha);
+		draw_notes(t_draw_list, current.notes.moved(Vec2{0.0f, rise}), notes_scroll(current), alpha);
 	}
 
 	const bool live = m_open && !m_notes_scroll.is_dragging();
 	if (current.secondary.w > 0.0f) {
-		controls::draw_button(t_draw_list, body, moved(current.secondary, rise), content.secondary.label,
+		controls::draw_button(t_draw_list, body, current.secondary.moved(Vec2{0.0f, rise}), content.secondary.label,
 							  content.secondary.style, m_settings.accent, true,
 							  live && current.secondary.contains(m_mouse), alpha);
 	}
 
 	if (current.primary.w > 0.0f) {
-		controls::draw_button(t_draw_list, body, moved(current.primary, rise), content.primary.label,
+		controls::draw_button(t_draw_list, body, current.primary.moved(Vec2{0.0f, rise}), content.primary.label,
 							  content.primary.style, m_settings.accent, true, live && current.primary.contains(m_mouse),
 							  alpha);
 	}

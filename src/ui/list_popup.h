@@ -12,7 +12,7 @@
 
 class Assets;
 class DrawList;
-class Fonts;
+struct Fonts;
 struct Settings;
 
 struct ListPopupOptions {
@@ -53,12 +53,12 @@ class ListPopup {
 
   private:
 	enum class Press : u8 {
-		none,
-		outside,
-		search,
-		clear,
-		scrollbar,
-		row,
+		None,
+		Outside,
+		Search,
+		Clear,
+		Scrollbar,
+		Row,
 	};
 
 	struct Placement {
@@ -124,7 +124,7 @@ class ListPopup {
 
 	TextInput m_search;
 	Scrollable m_scroll;
-	Press m_press = Press::none;
+	Press m_press = Press::None;
 	std::optional<u32> m_pressed_match;
 
 	bool m_open = false;

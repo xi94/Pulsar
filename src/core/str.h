@@ -20,6 +20,7 @@ void copy_to(std::string_view t_text, char (&t_destination)[Capacity])
 }
 
 usize find_ignoring_case(std::string_view t_text, std::string_view t_query);
+std::string_view trimmed(std::string_view t_text);
 
 std::string to_utf8(std::wstring_view t_wide);
 std::wstring to_wide(std::string_view t_utf8);

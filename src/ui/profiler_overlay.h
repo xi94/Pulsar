@@ -6,7 +6,7 @@
 
 #include "ui/widget.h"
 
-class Fonts;
+struct Fonts;
 
 class ProfilerOverlay : public Widget {
   public:

@@ -6,26 +6,24 @@
 
 class Assets;
 class DrawList;
-class Font;
+struct Font;
 class Texture;
+class TextInput;
 
 namespace controls {
 
 enum class ButtonStyle : u8 {
-	neutral,
-	accent,
-	danger,
-	ghost,
-	danger_confirm,
+	Neutral,
+	Accent,
+	Danger,
+	Ghost,
+	DangerConfirm,
 };
 
 Color confirm_red();
 
-void draw_icon(DrawList &t_draw_list, Rect t_rect, const Texture *t_icon, Color t_tint);
 void draw_x(DrawList &t_draw_list, Rect t_rect, Color t_color);
 void draw_check(DrawList &t_draw_list, const Assets &t_assets, Rect t_rect, Color t_color);
-void draw_checkbox(DrawList &t_draw_list, const Assets &t_assets, Rect t_box, bool t_checked, bool t_enabled,
-				   Color t_accent);
 void draw_chevron(DrawList &t_draw_list, Rect t_rect, bool t_points_up, Color t_color);
 void draw_lock(DrawList &t_draw_list, Rect t_rect, Color t_color, Color t_backdrop, bool t_open = false);
 
@@ -50,8 +48,10 @@ void draw_popup_shadow(DrawList &t_draw_list, Rect t_popup, float t_radius, floa
 void draw_field(DrawList &t_draw_list, Rect t_rect, float t_radius, Color t_border, Color t_fill, u8 t_alpha);
 void draw_circular_countdown(DrawList &t_draw_list, Rect t_circle, float t_remaining, Color t_color);
 
-void draw_dropdown(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label, bool t_open,
-				   bool t_hovered, Color t_accent, u8 t_alpha);
+Rect search_text_rect(Rect t_search, float t_inset);
+Rect search_clear_rect(Rect t_search);
+void draw_search_field(DrawList &t_draw_list, const Font &t_font, Rect t_search, float t_inset, TextInput &t_input,
+					   Vec2 t_mouse, Color t_accent, u8 t_alpha);
 void draw_button(DrawList &t_draw_list, const Font &t_font, Rect t_rect, std::string_view t_label, ButtonStyle t_style,
 				 Color t_accent, bool t_enabled, bool t_hovered, u8 t_alpha);
 

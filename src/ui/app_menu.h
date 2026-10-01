@@ -6,7 +6,7 @@
 #include "ui/widget.h"
 
 class Assets;
-class Fonts;
+struct Fonts;
 
 class AppMenu : public Widget {
   public:

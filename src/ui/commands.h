@@ -7,31 +7,31 @@
 #include "ui/text_input.h"
 
 enum class CommandType : u8 {
-	toggle_app_menu,
-	toggle_update_overlay,
-	open_update_overlay,
-	open_settings,
-	open_data_folder,
-	open_setup,
-	check_for_updates,
-	open_game,
-	save_changes,
-	request_new_master_password,
-	vault_unlocked,
-	vault_created,
-	show_account_menu,
-	show_text_menu,
-	copy_username,
-	copy_password,
-	edit_text,
-	undo_delete,
-	toggle_favorite,
-	lock_vault,
-	open_account_search,
-	edit_account,
-	login_account,
-	copy_account_username,
-	copy_account_password,
+	ToggleAppMenu,
+	ToggleUpdateOverlay,
+	OpenUpdateOverlay,
+	OpenSettings,
+	OpenDataFolder,
+	OpenSetup,
+	CheckForUpdates,
+	OpenGame,
+	SaveChanges,
+	RequestNewMasterPassword,
+	VaultUnlocked,
+	VaultCreated,
+	ShowAccountMenu,
+	ShowTextMenu,
+	CopyUsername,
+	CopyPassword,
+	EditText,
+	UndoDelete,
+	ToggleFavorite,
+	LockVault,
+	OpenAccountSearch,
+	EditAccount,
+	LoginAccount,
+	CopyAccountUsername,
+	CopyAccountPassword,
 };
 
 struct ArtSource {
@@ -49,7 +49,7 @@ struct Command {
 	i32 index = -1;
 	Vec2 position{};
 	TextInput *text_input = nullptr;
-	TextEdit text_edit = TextEdit::copy;
+	TextEdit text_edit = TextEdit::Copy;
 	AccountRef account{};
 };
 

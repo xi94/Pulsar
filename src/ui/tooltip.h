@@ -5,7 +5,7 @@
 #include "core/types.h"
 
 class DrawList;
-class Fonts;
+struct Fonts;
 
 class Tooltip {
   public:

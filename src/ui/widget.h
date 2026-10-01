@@ -55,7 +55,7 @@ class Widget {
 
 	virtual CursorKind cursor() const
 	{
-		return CursorKind::arrow;
+		return CursorKind::Arrow;
 	}
 
 	void set_mouse(Vec2 t_mouse)

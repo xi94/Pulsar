@@ -4,7 +4,7 @@
 #include <string_view>
 
 #include "core/library.h"
-#include "core/login_attempt.h"
+#include "login/login_attempt.h"
 #include "ui/commands.h"
 #include "ui/list_popup.h"
 #include "ui/scrollable.h"
@@ -13,16 +13,16 @@
 #include "ui/widget.h"
 
 class Assets;
-class Fonts;
+struct Fonts;
 class Toasts;
 class Window;
 struct Settings;
 
 enum class EditField : u8 {
-	note,
-	username,
-	password,
-	count,
+	Note,
+	Username,
+	Password,
+	Count,
 };
 
 class AccountModal : public Widget {
@@ -35,11 +35,6 @@ class AccountModal : public Widget {
 	void set_art_source(ArtSource t_source)
 	{
 		m_art_source = t_source;
-	}
-
-	bool has_art_source() const
-	{
-		return m_art_source.has_value();
 	}
 
 	i32 detached_game() const;
@@ -71,12 +66,12 @@ class AccountModal : public Widget {
 	CursorKind cursor() const override;
 
   private:
-	static constexpr u32 field_count = static_cast<u32>(EditField::count);
+	static constexpr u32 field_count = static_cast<u32>(EditField::Count);
 
 	enum class Mode : u8 {
-		account_list,
-		login_progress,
-		edit_account,
+		AccountList,
+		LoginProgress,
+		EditAccount,
 	};
 
 	struct Layout {
@@ -163,8 +158,6 @@ class AccountModal : public Widget {
 	bool is_row_button_hit(Rect t_row, Vec2 t_point) const;
 	Rect add_button_rect(Rect t_main) const;
 	Rect search_rect(Rect t_main) const;
-	Rect search_text_rect(Rect t_search) const;
-	Rect search_clear_rect(Rect t_search) const;
 	Rect primary_button_rect(Rect t_footer) const;
 	Rect cancel_button_rect(Rect t_primary) const;
 	Rect form_region(Rect t_main) const;
@@ -282,7 +275,7 @@ class AccountModal : public Widget {
 	bool m_press_swallowed = false;
 	i32 m_game = -1;
 	std::optional<AccountRef> m_selected;
-	Mode m_mode = Mode::account_list;
+	Mode m_mode = Mode::AccountList;
 	Scrollable m_rows_scroll;
 	Scrollable m_form_scroll;
 	Tooltip m_tooltip;
@@ -303,7 +296,7 @@ class AccountModal : public Widget {
 	std::optional<PendingLogin> m_queued_login;
 	std::optional<AccountRef> m_login_account;
 	float m_login_seconds = 0.0f;
-	LoginStage m_progress_stage = LoginStage::idle;
+	LoginStage m_progress_stage = LoginStage::Idle;
 	float m_stage_seconds = 0.0f;
 	float m_login_progress = 0.0f;
 	float m_login_outcome = 0.0f;

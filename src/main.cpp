@@ -6,11 +6,12 @@
 #include <shellapi.h>
 
 #include "app.h"
+#include "core/app_identity.h"
 #include "core/crash_handler.h"
 #include "core/debug_log.h"
-#include "core/app_identity.h"
 #include "core/updater.h"
 #include "platform/installation.h"
+#include "platform/process.h"
 #include "setup_app.h"
 
 namespace {
@@ -35,20 +36,6 @@ struct LaunchFlags {
 	bool uninstall = false;
 	bool startup = false;
 };
-
-bool focus_open_setup()
-{
-	const HWND existing = FindWindowW(setup_window_class_name, nullptr);
-	if (existing == nullptr) return false;
-
-	if (IsIconic(existing)) {
-		ShowWindow(existing, SW_RESTORE);
-	}
-
-	SetForegroundWindow(existing);
-
-	return true;
-}
 
 LaunchFlags launch_flags()
 {
@@ -84,9 +71,9 @@ int main()
 	const LaunchFlags flags = launch_flags();
 
 	if (flags.setup || flags.uninstall) {
-		if (focus_open_setup()) return 0;
+		if (bring_window_to_front(setup_window_class_name)) return 0;
 
-		auto setup = std::make_unique<SetupApp>(flags.uninstall ? SetupMode::uninstall : SetupMode::manage);
+		auto setup = std::make_unique<SetupApp>(flags.uninstall ? SetupMode::Uninstall : SetupMode::Manage);
 		setup->run();
 		setup.reset();
 		installation::finish_pending_removal();
@@ -94,13 +81,13 @@ int main()
 	}
 
 	if (!flags.startup && !installation::is_main_window_open() && installation::should_offer_setup()) {
-		if (focus_open_setup()) return 0;
+		if (bring_window_to_front(setup_window_class_name)) return 0;
 
-		auto setup = std::make_unique<SetupApp>(SetupMode::first_run);
+		auto setup = std::make_unique<SetupApp>(SetupMode::FirstRun);
 		const SetupOutcome outcome = setup->run();
 		setup.reset();
 
-		if (outcome != SetupOutcome::portable) {
+		if (outcome != SetupOutcome::Portable) {
 			installation::finish_pending_removal();
 			return 0;
 		}
@@ -109,14 +96,14 @@ int main()
 	const auto app = std::make_unique<App>();
 
 	switch (app->start(flags.startup)) {
-		case App::StartResult::ok:
+		case App::StartResult::Ok:
 			app->run();
 			return 0;
 
-		case App::StartResult::already_running:
+		case App::StartResult::AlreadyRunning:
 			return 0;
 
-		case App::StartResult::failed:
+		case App::StartResult::Failed:
 			return 1;
 	}
 

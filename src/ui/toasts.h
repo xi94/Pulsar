@@ -7,7 +7,7 @@
 #include "ui/commands.h"
 #include "ui/widget.h"
 
-class Fonts;
+struct Fonts;
 class Window;
 struct Settings;
 

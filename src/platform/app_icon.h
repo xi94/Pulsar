@@ -7,8 +7,8 @@
 #include "core/types.h"
 
 enum class AppIconSize : u8 {
-	small_icon,
-	large_icon,
+	SmallIcon,
+	LargeIcon,
 };
 
 HICON load_app_icon(AppIconSize t_size);

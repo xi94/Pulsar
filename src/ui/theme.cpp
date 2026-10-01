@@ -351,7 +351,7 @@ struct ThemeFade {
 };
 
 Theme g_shown = dark;
-ThemeFade g_fade{dark, ThemeKind::dark, 1.0f};
+ThemeFade g_fade{dark, ThemeKind::Dark, 1.0f};
 
 u8 blend(u8 t_from, u8 t_to, float t_amount)
 {

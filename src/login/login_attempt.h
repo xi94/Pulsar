@@ -6,27 +6,27 @@
 #include <string_view>
 #include <thread>
 
-#include "core/riot_client.h"
+#include "login/riot_client.h"
 
 enum class LoginStage : u8 {
-	idle,
-	waiting_for_process,
-	connecting,
-	authenticating,
-	launching,
-	success,
-	error,
-	cancelled,
+	Idle,
+	WaitingForProcess,
+	Connecting,
+	Authenticating,
+	Launching,
+	Success,
+	Error,
+	Cancelled,
 };
 
 struct LoginWork {
-	std::atomic<LoginStage> stage{LoginStage::idle};
+	std::atomic<LoginStage> stage{LoginStage::Idle};
 	std::atomic<bool> cancel_requested{false};
 	std::atomic<bool> worker_finished{false};
 
 	char username[64]{};
 	char password[128]{};
-	char game_title[32]{};
+	char launch_product[32]{};
 	char message[160]{};
 
 	RiotClient riot_client;
@@ -40,7 +40,7 @@ class LoginAttempt {
 	LoginAttempt(const LoginAttempt &) = delete;
 	LoginAttempt &operator=(const LoginAttempt &) = delete;
 
-	void start(std::string_view t_username, std::string_view t_password, std::string_view t_game_title);
+	void start(std::string_view t_username, std::string_view t_password, std::string_view t_launch_product);
 	void cancel();
 	void update();
 

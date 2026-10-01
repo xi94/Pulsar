@@ -50,14 +50,14 @@ void ProfilerOverlay::draw(DrawList &t_draw_list)
 {
 	if (!m_shown) return;
 
-	const Font &font = m_fonts.secondary();
+	const Font &font = m_fonts.secondary;
 	const u32 scope_count = profiler::scope_count();
 	const Rect panel{margin, margin, panel_width, padding * 2.0f + (scope_count + 2) * font.line_height()};
 
 	t_draw_list.add_bordered_rect(panel, rounded(corner_radius), color_panel, color_border, 1.0f);
 
 	const float x = panel.x + padding;
-	float baseline = panel.y + padding + font.ascent();
+	float baseline = panel.y + padding + font.ascent;
 
 	char line[64];
 	std::snprintf(line, sizeof(line), "Frame %.2f ms   F1 hide   F2 reset", profiler::frame_ms());

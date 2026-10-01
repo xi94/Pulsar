@@ -5,18 +5,18 @@
 #include <thread>
 
 enum class UpdateStage : u8 {
-	idle,
-	checking,
-	up_to_date,
-	available,
-	manual_upgrade_required,
-	check_failed,
-	downloading,
-	verifying,
-	installing,
-	ready_to_relaunch,
-	error,
-	cancelled,
+	Idle,
+	Checking,
+	UpToDate,
+	Available,
+	ManualUpgradeRequired,
+	CheckFailed,
+	Downloading,
+	Verifying,
+	Installing,
+	ReadyToRelaunch,
+	Error,
+	Cancelled,
 };
 
 struct UpdateManifest {
@@ -86,7 +86,7 @@ class Updater {
 	void fail_worker(UpdateStage t_stage, const char *t_prefix, const char *t_detail);
 	void prepare_new_worker();
 
-	std::atomic<UpdateStage> m_stage{UpdateStage::idle};
+	std::atomic<UpdateStage> m_stage{UpdateStage::Idle};
 	std::atomic<bool> m_cancel_requested{false};
 	std::atomic<bool> m_worker_finished{false};
 	std::thread m_worker;

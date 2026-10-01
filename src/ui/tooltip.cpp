@@ -60,7 +60,7 @@ void Tooltip::draw(DrawList &t_draw_list, const Fonts &t_fonts, Rect t_bounds, u
 {
 	if (m_visible_amount <= 0.001f || m_length == 0) return;
 
-	const Font &font = t_fonts.secondary();
+	const Font &font = t_fonts.secondary;
 	const std::string_view text{m_text, m_length};
 
 	const float width = text_width(font, text) + padding_x * 2.0f;

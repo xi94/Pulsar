@@ -11,19 +11,19 @@ constexpr Vec2 mouse_outside_window{-1.0f, -1.0f};
 bool deliver(Widget &t_widget, const InputEvent &t_event)
 {
 	switch (t_event.type) {
-		case InputEventType::mouse_down:
+		case InputEventType::MouseDown:
 			return t_widget.on_pointer_down(t_event.position);
-		case InputEventType::mouse_move:
+		case InputEventType::MouseMove:
 			return t_widget.on_pointer_move(t_event.position);
-		case InputEventType::mouse_up:
+		case InputEventType::MouseUp:
 			return t_widget.on_pointer_up(t_event.position);
-		case InputEventType::right_click:
+		case InputEventType::RightClick:
 			return t_widget.on_right_click(t_event.position);
-		case InputEventType::mouse_wheel:
+		case InputEventType::MouseWheel:
 			return t_widget.on_scroll(t_event.position, t_event.wheel_delta);
-		case InputEventType::key_down:
+		case InputEventType::KeyDown:
 			return t_widget.on_key_down(t_event.key);
-		case InputEventType::character:
+		case InputEventType::Character:
 			return t_widget.on_char(t_event.key);
 	}
 
@@ -98,14 +98,14 @@ bool WidgetStack::dispatch(const InputEvent &t_event)
 
 CursorKind WidgetStack::cursor() const
 {
-	CursorKind wanted = CursorKind::arrow;
+	CursorKind wanted = CursorKind::Arrow;
 
 	visit_top_down([&](Widget &t_widget) {
 		if (t_widget.is_visible()) {
 			wanted = t_widget.cursor();
 		}
 
-		return wanted != CursorKind::arrow;
+		return wanted != CursorKind::Arrow;
 	});
 
 	return wanted;
