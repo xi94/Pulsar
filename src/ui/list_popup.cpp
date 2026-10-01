@@ -60,8 +60,10 @@ float row_height(const Fonts &t_fonts)
 }
 }
 
-ListPopup::ListPopup(const Fonts &t_fonts, const Settings &t_settings, ListPopupOptions t_options)
+ListPopup::ListPopup(const Fonts &t_fonts, const Assets &t_assets, const Settings &t_settings,
+					 ListPopupOptions t_options)
 	: m_fonts(t_fonts)
+	, m_assets(t_assets)
 	, m_settings(t_settings)
 	, m_options(std::move(t_options))
 {
@@ -588,7 +590,7 @@ void ListPopup::draw_row(DrawList &t_draw_list, Rect t_row, u32 t_item, bool t_h
 	const Rect check{t_row.right() - row_inset - check_size, t_row.center().y - check_size * 0.5f, check_size,
 					 check_size};
 	if (m_selected == t_item) {
-		controls::draw_check(t_draw_list, check, faded(m_settings.accent, t_alpha));
+		controls::draw_check(t_draw_list, m_assets, check, faded(m_settings.accent, t_alpha));
 	}
 
 	draw_label(t_draw_list, t_row, left, check.x - row_gap - left, m_items[t_item], t_alpha);

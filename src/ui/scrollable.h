@@ -53,4 +53,8 @@ class Scrollable {
 	bool m_dragging = false;
 	float m_drag_start_y = 0.0f;
 	float m_drag_start_target = 0.0f;
+	float m_thickness = 0.0f;
+	float m_activity_seconds = 0.0f;
+	mutable bool m_track_hovered = false;
+	bool m_was_held = false;
 };

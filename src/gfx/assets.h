@@ -15,7 +15,7 @@ enum class Asset : u8 {
 	icon_menu,
 	icon_add,
 	icon_edit,
-	icon_folder,
+	icon_folder_open,
 	icon_grid,
 	icon_list,
 	icon_carousel,
@@ -31,6 +31,10 @@ enum class Asset : u8 {
 	icon_image,
 	icon_username,
 	icon_lock,
+	icon_folder,
+	icon_file,
+	icon_download,
+	icon_check,
 	icon_app,
 	icon_league_of_legends,
 	icon_valorant,
@@ -64,6 +68,8 @@ class Assets {
 	}
 
 	static std::span<const u8> encoded_bytes(Asset t_asset);
+	static std::unique_ptr<Texture> create_texture(Renderer &t_renderer, const u8 *t_rgba_pixels, u32 t_width,
+												   u32 t_height);
 
   private:
 	struct MipLevel {

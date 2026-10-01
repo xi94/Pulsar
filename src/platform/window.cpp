@@ -20,6 +20,13 @@ UINT activate_instance_message()
 	return message;
 }
 
+UINT quit_instance_message()
+{
+	static const UINT message = RegisterWindowMessageW(quit_instance_message_name);
+
+	return message;
+}
+
 POINT frame_border(UINT t_dpi)
 {
 	const int padding = GetSystemMetricsForDpi(SM_CXPADDEDBORDER, t_dpi);
@@ -100,7 +107,7 @@ bool Window::activate_existing_instance()
 	}
 }
 
-void Window::register_window_class(HINSTANCE t_instance) const
+void Window::register_window_class(HINSTANCE t_instance, const wchar_t *t_class_name) const
 {
 	const WNDCLASSEXW window_class{
 		.cbSize = sizeof(WNDCLASSEXW),
@@ -109,17 +116,18 @@ void Window::register_window_class(HINSTANCE t_instance) const
 		.hInstance = t_instance,
 		.hIcon = load_app_icon(AppIconSize::large_icon),
 		.hCursor = LoadCursorW(nullptr, IDC_ARROW),
-		.lpszClassName = main_window_class_name,
+		.lpszClassName = t_class_name,
 		.hIconSm = load_app_icon(AppIconSize::small_icon),
 	};
 
 	RegisterClassExW(&window_class);
 }
 
-bool Window::create(const wchar_t *t_title, u32 t_width, u32 t_height)
+bool Window::create(const wchar_t *t_title, u32 t_width, u32 t_height, WindowKind t_kind)
 {
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
+	m_kind = t_kind;
 	m_dpi_scale = GetDpiForSystem() / default_dpi;
 	m_width = t_width;
 	m_height = t_height;
@@ -127,16 +135,18 @@ bool Window::create(const wchar_t *t_title, u32 t_width, u32 t_height)
 	m_physical_height = scaled(t_height, m_dpi_scale);
 
 	const HINSTANCE instance = GetModuleHandleW(nullptr);
-	register_window_class(instance);
+	const bool dialog = t_kind == WindowKind::dialog;
+	const wchar_t *class_name = dialog ? setup_window_class_name : main_window_class_name;
+	register_window_class(instance, class_name);
 
 	RECT work_area{};
 	SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
 	const int x = work_area.left + (work_area.right - work_area.left - static_cast<int>(m_physical_width)) / 2;
 	const int y = work_area.top + (work_area.bottom - work_area.top - static_cast<int>(m_physical_height)) / 2;
 
-	m_window = CreateWindowExW(0, main_window_class_name, t_title, WS_OVERLAPPEDWINDOW, x, y,
-							   static_cast<int>(m_physical_width), static_cast<int>(m_physical_height), nullptr,
-							   nullptr, instance, this);
+	const DWORD style = dialog ? WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX : WS_OVERLAPPEDWINDOW;
+	m_window = CreateWindowExW(0, class_name, t_title, style, x, y, static_cast<int>(m_physical_width),
+							   static_cast<int>(m_physical_height), nullptr, nullptr, instance, this);
 	if (m_window == nullptr) return false;
 
 	correct_size_for_actual_dpi(t_width, t_height);
@@ -163,6 +173,27 @@ void Window::correct_size_for_actual_dpi(u32 t_width, u32 t_height)
 void Window::show()
 {
 	ShowWindow(m_window, SW_SHOW);
+}
+
+void Window::show_minimized()
+{
+	ShowWindow(m_window, SW_SHOWMINNOACTIVE);
+}
+
+Vec2 Window::restored_size() const
+{
+	WINDOWPLACEMENT placement{.length = sizeof(WINDOWPLACEMENT)};
+	if (!GetWindowPlacement(m_window, &placement)) return size();
+
+	const RECT &normal = placement.rcNormalPosition;
+
+	return Vec2{static_cast<float>(normal.right - normal.left) / m_dpi_scale,
+				static_cast<float>(normal.bottom - normal.top) / m_dpi_scale};
+}
+
+void Window::minimize()
+{
+	ShowWindow(m_window, SW_MINIMIZE);
 }
 
 void Window::restore()
@@ -228,13 +259,25 @@ Rect Window::title_bar_button_rect(TitleBarButton t_button) const
 {
 	const float right = static_cast<float>(m_width);
 
+	if (m_kind == WindowKind::dialog) {
+		if (t_button == TitleBarButton::minimize) {
+			return Rect{right - title_bar_button_width * 2.0f, 0.0f, title_bar_button_width, title_bar_height};
+		}
+
+		if (t_button == TitleBarButton::close) {
+			return Rect{right - title_bar_button_width, 0.0f, title_bar_button_width, title_bar_height};
+		}
+
+		return Rect{};
+	}
+
 	switch (t_button) {
 		case TitleBarButton::menu:
 			return Rect{0.0f, 0.0f, title_bar_button_width, title_bar_height};
 		case TitleBarButton::search: {
-			const float left = title_bar_button_width + search_button_side_room;
-			const float limit = right - title_bar_button_width * 3.0f -
-								(m_update_button_visible ? update_button_width : 0.0f) - search_button_margin;
+			const float side = m_update_button_visible ? m_update_button_width + search_button_margin : 0.0f;
+			const float left = title_bar_button_width + std::max(search_button_side_room, side);
+			const float limit = right - title_bar_button_width * 3.0f - search_button_margin;
 			const float width = std::min(search_button_width, limit - left);
 			if (width < search_button_min_width) return Rect{};
 
@@ -243,8 +286,7 @@ Rect Window::title_bar_button_rect(TitleBarButton t_button) const
 			return Rect{std::floor(x), 0.0f, width, title_bar_height};
 		}
 		case TitleBarButton::update:
-			return Rect{right - title_bar_button_width * 3.0f - update_button_width, 0.0f, update_button_width,
-						title_bar_height};
+			return Rect{title_bar_button_width, 0.0f, m_update_button_width, title_bar_height};
 		case TitleBarButton::minimize:
 			return Rect{right - title_bar_button_width * 3.0f, 0.0f, title_bar_button_width, title_bar_height};
 		case TitleBarButton::maximize:
@@ -297,7 +339,7 @@ void Window::push_mouse(InputEventType t_type, LPARAM t_lparam)
 LRESULT Window::handle_hit_test(LPARAM t_lparam)
 {
 	const POINT cursor{GET_X_LPARAM(t_lparam), GET_Y_LPARAM(t_lparam)};
-	const LRESULT edge = resize_edge_at(m_window, cursor);
+	const LRESULT edge = m_kind == WindowKind::dialog ? HTNOWHERE : resize_edge_at(m_window, cursor);
 
 	m_mouse_over_resize_border = edge != HTNOWHERE;
 	if (m_mouse_over_resize_border) return edge;
@@ -325,8 +367,11 @@ void Window::handle_dpi_changed(WPARAM t_wparam, LPARAM t_lparam)
 				 suggested.bottom - suggested.top, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-void Window::handle_size(LPARAM t_lparam)
+void Window::handle_size(WPARAM t_wparam, LPARAM t_lparam)
 {
+	// Minimizing reports the tiny iconic size, which would otherwise be saved as the window size.
+	if (t_wparam == SIZE_MINIMIZED) return;
+
 	m_physical_width = LOWORD(t_lparam);
 	m_physical_height = HIWORD(t_lparam);
 	m_width = scaled(m_physical_width, 1.0f / m_dpi_scale);
@@ -337,6 +382,8 @@ void Window::handle_size(LPARAM t_lparam)
 
 void Window::handle_min_max_info(LPARAM t_lparam) const
 {
+	if (m_kind == WindowKind::dialog) return;
+
 	auto &info = *reinterpret_cast<MINMAXINFO *>(t_lparam);
 	info.ptMinTrackSize.x = std::lround(min_window_width * m_dpi_scale);
 	info.ptMinTrackSize.y = std::lround(min_window_height * m_dpi_scale);
@@ -346,6 +393,11 @@ LRESULT Window::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 {
 	if (t_message == activate_instance_message()) {
 		restore();
+		return 0;
+	}
+
+	if (t_message == quit_instance_message()) {
+		m_should_close = true;
 		return 0;
 	}
 
@@ -389,7 +441,7 @@ LRESULT Window::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 			return 0;
 
 		case WM_SIZE:
-			handle_size(t_lparam);
+			handle_size(t_wparam, t_lparam);
 			return 0;
 
 		case WM_ERASEBKGND:
@@ -461,7 +513,11 @@ LRESULT Window::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 			return 0;
 
 		case WM_DESTROY:
-			PostQuitMessage(0);
+			// The setup window closes before the main window opens, and a quit message would end that one too.
+			if (m_kind == WindowKind::main) {
+				PostQuitMessage(0);
+			}
+
 			return 0;
 
 		default:

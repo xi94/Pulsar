@@ -75,6 +75,7 @@ class AccountSearch : public Widget {
 	void move_highlight(i32 t_rows);
 
 	u32 row_count() const;
+	bool has_group_gap() const;
 	u32 shown_rows() const;
 	float row_height() const;
 	Layout layout() const;

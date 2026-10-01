@@ -92,14 +92,13 @@ void controls::draw_x(DrawList &t_draw_list, Rect t_rect, Color t_color)
 	t_draw_list.add_line({center.x - arm, center.y + arm}, {center.x + arm, center.y - arm}, thickness, t_color);
 }
 
-void controls::draw_check(DrawList &t_draw_list, Rect t_rect, Color t_color)
+void controls::draw_check(DrawList &t_draw_list, const Assets &t_assets, Rect t_rect, Color t_color)
 {
-	const float scale = std::min(t_rect.w, t_rect.h) / 20.0f;
-	const Vec2 center = t_rect.center();
-	const Vec2 bottom{center.x - 2.0f * scale, center.y + 5.0f * scale};
+	// The icon's glyph fills half of its canvas, so it is drawn larger to match the old line-drawn check.
+	constexpr float icon_scale = 1.4f;
 
-	t_draw_list.add_line({center.x - 7.0f * scale, center.y}, bottom, 2.0f, t_color);
-	t_draw_list.add_line(bottom, {center.x + 7.0f * scale, center.y - 6.0f * scale}, 2.0f, t_color);
+	const float size = std::min(t_rect.w, t_rect.h) * icon_scale;
+	draw_icon(t_draw_list, t_rect.centered(size, size), t_assets.get(Asset::icon_check), t_color);
 }
 
 void controls::draw_chevron(DrawList &t_draw_list, Rect t_rect, bool t_points_up, Color t_color)
@@ -354,7 +353,8 @@ void controls::draw_dropdown(DrawList &t_draw_list, const Font &t_font, Rect t_r
 	draw_chevron(t_draw_list, chevron, t_open, faded(t_open ? colors.text : colors.text_dim, t_alpha));
 }
 
-void controls::draw_checkbox(DrawList &t_draw_list, Rect t_box, bool t_checked, bool t_enabled, Color t_accent)
+void controls::draw_checkbox(DrawList &t_draw_list, const Assets &t_assets, Rect t_box, bool t_checked, bool t_enabled,
+							 Color t_accent)
 {
 	constexpr float radius = 4.0f;
 	constexpr float border = 1.5f;
@@ -370,5 +370,5 @@ void controls::draw_checkbox(DrawList &t_draw_list, Rect t_box, bool t_checked, 
 
 	const Color fill = t_enabled ? t_accent : mix(colors.popup, t_accent, disabled_strength);
 	t_draw_list.add_rounded_rect(t_box, rounded(radius), fill);
-	draw_check(t_draw_list, t_box.inset(check_inset), foreground_on(fill));
+	draw_check(t_draw_list, t_assets, t_box.inset(check_inset), foreground_on(fill));
 }

@@ -1,5 +1,10 @@
 #include "ui/title_bar.h"
 
+#include <cmath>
+#include <cstdio>
+#include <numbers>
+
+#include "core/animation.h"
 #include "core/app_identity.h"
 #include "core/updater.h"
 #include "gfx/assets.h"
@@ -8,18 +13,16 @@
 #include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
+#include "ui/update_overlay.h"
 
 namespace {
 constexpr Color color_close_hover{232, 17, 35, 255};
 constexpr Color color_close_glyph_hover{255, 255, 255, 255};
 constexpr u8 hover_alpha = 18;
-constexpr float pill_tint = 0.2f;
 
 constexpr float glyph_thickness = 1.5f;
 constexpr float icon_size = 16.0f;
 constexpr float pill_inset_y = 7.0f;
-constexpr float pill_inset_x = 4.0f;
-constexpr float pill_padding = 10.0f;
 constexpr float pill_icon_gap = 8.0f;
 constexpr float identity_mark_size = 16.0f;
 constexpr float identity_gap = 8.0f;
@@ -48,46 +51,117 @@ bool is_update_worth_showing(UpdateStage t_stage)
 	}
 }
 
-bool is_update_failure(UpdateStage t_stage)
+constexpr float pill_ease_rate = 16.0f;
+constexpr float pill_spin_turns_per_second = 0.9f;
+constexpr float status_reveal_rate = 14.0f;
+constexpr float status_shift = 4.0f;
+constexpr float status_padding_right = 10.0f;
+constexpr float status_hover_radius = 7.0f;
+
+struct PillLook {
+	std::string_view label;
+	std::string_view sizing_label;
+	Asset icon = Asset::icon_update;
+	Color icon_color{};
+	Color text_color{};
+	bool spinning = false;
+	bool check = false;
+};
+
+PillLook pill_look(const Updater &t_updater, UpdateStage t_stage, bool t_release_notes, char (&t_percent)[8])
 {
-	return t_stage == UpdateStage::error || t_stage == UpdateStage::cancelled;
+	const Theme &colors = theme();
+
+	if (t_release_notes) {
+		return PillLook{"What's new", "What's new", Asset::icon_update, colors.text_dim, colors.text};
+	}
+
+	switch (t_stage) {
+		case UpdateStage::idle:
+		case UpdateStage::checking:
+			return PillLook{"Checking for updates", "Checking for updates", Asset::icon_update,
+							colors.text_dim,		colors.text_dim,		true};
+
+		case UpdateStage::up_to_date:
+			return PillLook{"Up to date", "Up to date", Asset::icon_check, colors.text_dim, colors.text_dim,
+							false,		  true};
+
+		case UpdateStage::check_failed:
+			return PillLook{"Couldn't check", "Couldn't check", Asset::icon_update, colors.error, colors.error};
+
+		case UpdateStage::available:
+		case UpdateStage::manual_upgrade_required:
+			return PillLook{"Update available", "Update available", Asset::icon_download, colors.success, colors.text};
+
+		case UpdateStage::downloading: {
+			const u64 total = t_updater.total_bytes();
+			const u64 percent = total > 0 ? t_updater.bytes_downloaded() * 100 / total : 0;
+			const int written =
+				std::snprintf(t_percent, sizeof(t_percent), "%u%%", static_cast<unsigned>(std::min<u64>(percent, 100)));
+
+			return PillLook{std::string_view{t_percent, static_cast<usize>(std::max(written, 0))}, "100%",
+							Asset::icon_download, colors.text_dim, colors.text};
+		}
+
+		case UpdateStage::verifying:
+			return PillLook{"Verifying", "Verifying", Asset::icon_update, colors.text_dim, colors.text_dim, true};
+
+		case UpdateStage::installing:
+			return PillLook{"Installing", "Installing", Asset::icon_update, colors.text_dim, colors.text_dim, true};
+
+		case UpdateStage::ready_to_relaunch:
+			return PillLook{"Restarting", "Restarting", Asset::icon_update, colors.text_dim, colors.text_dim, true};
+
+		case UpdateStage::error:
+			return PillLook{"Update failed", "Update failed", Asset::icon_update, colors.error, colors.error};
+
+		case UpdateStage::cancelled:
+			return PillLook{"Update cancelled", "Update cancelled", Asset::icon_update, colors.text_dim,
+							colors.text_dim};
+	}
+
+	return PillLook{};
+}
 }
 
-bool is_update_waiting(UpdateStage t_stage)
-{
-	return t_stage == UpdateStage::available || t_stage == UpdateStage::manual_upgrade_required;
-}
-
-Color update_color(UpdateStage t_stage)
-{
-	if (is_update_failure(t_stage)) return theme().error;
-	if (is_update_waiting(t_stage)) return theme().success;
-
-	return theme().text_dim;
-}
-
-std::string_view update_label(UpdateStage t_stage)
-{
-	if (is_update_waiting(t_stage)) return "Update available";
-	if (is_update_failure(t_stage)) return "Update failed";
-
-	return "Updating...";
-}
-}
-
-TitleBar::TitleBar(Window &t_window, const Updater &t_updater, const Fonts &t_fonts, const Assets &t_assets,
-				   CommandQueue &t_commands)
+TitleBar::TitleBar(Window &t_window, const Updater &t_updater, const UpdateOverlay &t_update_overlay,
+				   const Fonts &t_fonts, const Assets &t_assets, CommandQueue &t_commands)
 	: m_window(t_window)
 	, m_updater(t_updater)
+	, m_update_overlay(t_update_overlay)
 	, m_fonts(t_fonts)
 	, m_assets(t_assets)
 	, m_commands(t_commands)
 {
 }
 
-void TitleBar::update(float)
+void TitleBar::update(float t_delta_seconds)
 {
-	m_window.set_update_button_visible(is_update_worth_showing(m_updater.stage()));
+	const bool visible = is_update_worth_showing(m_updater.stage()) || m_update_overlay.is_open() ||
+						 m_update_overlay.is_shown() || m_update_overlay.wants_status();
+	m_window.set_update_button_visible(visible);
+	m_update_reveal =
+		animation::ease_toward(m_update_reveal, visible ? 1.0f : 0.0f, status_reveal_rate, t_delta_seconds);
+
+	if (!visible && m_update_reveal <= 0.0f) return;
+
+	char percent[8];
+	const PillLook look =
+		pill_look(m_updater, m_update_overlay.shown_stage(), m_update_overlay.is_showing_release_notes(), percent);
+	const float target = identity_gap * 0.5f + icon_size + pill_icon_gap +
+						 std::ceil(text_width(m_fonts.secondary(), look.sizing_label)) + status_padding_right;
+
+	m_pill_width = m_pill_width <= 0.0f ? target
+										: animation::ease_toward(m_pill_width, target, pill_ease_rate, t_delta_seconds,
+																 animation::settled_pixels);
+	m_window.set_update_button_width(m_pill_width);
+
+	if (look.spinning) {
+		constexpr float full_turn = std::numbers::pi_v<float> * 2.0f;
+
+		m_pill_spin = std::fmod(m_pill_spin + t_delta_seconds * pill_spin_turns_per_second * full_turn, full_turn);
+		animation::request_frame();
+	}
 }
 
 bool TitleBar::on_pointer_down(Vec2 t_point)
@@ -142,25 +216,54 @@ void TitleBar::draw_hover(DrawList &t_draw_list, TitleBarButton t_button, TitleB
 						 t_button == TitleBarButton::close ? color_close_hover : with_alpha(theme().text, hover_alpha));
 }
 
-void TitleBar::draw_update_pill(DrawList &t_draw_list) const
+void TitleBar::draw_identity(DrawList &t_draw_list, float t_amount) const
 {
-	const UpdateStage stage = m_updater.stage();
-	if (!is_update_worth_showing(stage)) return;
+	const Rect menu = m_window.title_bar_button_rect(TitleBarButton::menu);
+	const float shift = -status_shift * (1.0f - t_amount);
+	const Rect mark{menu.right() + identity_gap * 0.5f, (title_bar_height - identity_mark_size) * 0.5f + shift,
+					identity_mark_size, identity_mark_size};
+	const Font &font = m_fonts.secondary();
+	const auto alpha = static_cast<u8>(255.0f * t_amount);
 
-	const bool in_progress = !is_update_failure(stage) && !is_update_waiting(stage);
-	const Color foreground = update_color(stage);
-	const Color background =
-		in_progress ? with_alpha(theme().text, hover_alpha) : mix(theme().chrome, foreground, pill_tint);
+	controls::draw_icon(t_draw_list, mark, m_assets.get(Asset::icon_app), faded(theme().text_dim, alpha));
+	draw_text(t_draw_list, font, Vec2{mark.right() + identity_gap, font.centered_baseline(menu) + shift}, app_name,
+			  faded(theme().text_dim, alpha));
+}
 
-	const Rect pill = m_window.title_bar_button_rect(TitleBarButton::update).inset(pill_inset_x, pill_inset_y);
-	t_draw_list.add_rounded_rect(pill, rounded(pill.h * 0.5f), background);
+void TitleBar::draw_update_status(DrawList &t_draw_list, float t_amount) const
+{
+	char percent[8];
+	const PillLook look =
+		pill_look(m_updater, m_update_overlay.shown_stage(), m_update_overlay.is_showing_release_notes(), percent);
+	const Rect area = m_window.title_bar_button_rect(TitleBarButton::update);
+	const auto alpha = static_cast<u8>(255.0f * t_amount);
+	const float shift = status_shift * (1.0f - t_amount);
+	const bool emphasized =
+		m_window.is_update_button_visible() && (m_update_overlay.is_open() || area.contains(m_mouse));
 
-	const Rect icon{pill.x + pill_padding, pill.y + (pill.h - icon_size) * 0.5f, icon_size, icon_size};
-	controls::draw_icon(t_draw_list, icon, m_assets.get(Asset::icon_update), foreground);
+	if (emphasized) {
+		t_draw_list.add_rounded_rect(area.inset(0.0f, pill_inset_y), rounded(status_hover_radius),
+									 faded(with_alpha(theme().text, hover_alpha), alpha));
+	}
+
+	t_draw_list.push_clip(area);
 
 	const Font &font = m_fonts.secondary();
-	draw_text(t_draw_list, font, Vec2{icon.right() + pill_icon_gap, font.centered_baseline(pill)}, update_label(stage),
-			  foreground);
+	const Rect icon{area.x + identity_gap * 0.5f, (title_bar_height - icon_size) * 0.5f + shift, icon_size, icon_size};
+	const Color icon_color = faded(look.icon_color, alpha);
+
+	if (look.spinning) {
+		t_draw_list.add_rotated_image(icon, m_pill_spin, m_assets.get(look.icon), icon_color);
+	} else if (look.check) {
+		controls::draw_check(t_draw_list, m_assets, icon, icon_color);
+	} else {
+		controls::draw_icon(t_draw_list, icon, m_assets.get(look.icon), icon_color);
+	}
+
+	draw_text(t_draw_list, font, Vec2{icon.right() + pill_icon_gap, font.centered_baseline(area) + shift}, look.label,
+			  faded(look.text_color, alpha));
+
+	t_draw_list.pop_clip();
 }
 
 void TitleBar::draw_search_pill(DrawList &t_draw_list, TitleBarButton t_hovered) const
@@ -229,17 +332,15 @@ void TitleBar::draw(DrawList &t_draw_list)
 	draw_hover(t_draw_list, TitleBarButton::menu, hovered);
 	controls::draw_icon(t_draw_list, icon_rect(TitleBarButton::menu), m_assets.get(Asset::icon_menu), theme().text);
 
-	const Rect menu = m_window.title_bar_button_rect(TitleBarButton::menu);
-	const Rect mark{menu.right() + identity_gap * 0.5f, (title_bar_height - identity_mark_size) * 0.5f,
-					identity_mark_size, identity_mark_size};
-	const Font &font = m_fonts.secondary();
+	if (m_update_reveal < 0.999f) {
+		draw_identity(t_draw_list, 1.0f - m_update_reveal);
+	}
 
-	controls::draw_icon(t_draw_list, mark, m_assets.get(Asset::icon_app), theme().text_dim);
-	draw_text(t_draw_list, font, Vec2{mark.right() + identity_gap, font.centered_baseline(menu)}, app_name,
-			  theme().text_dim);
+	if (m_update_reveal > 0.001f) {
+		draw_update_status(t_draw_list, m_update_reveal);
+	}
 
 	draw_search_pill(t_draw_list, hovered);
-	draw_update_pill(t_draw_list);
 
 	draw_hover(t_draw_list, TitleBarButton::minimize, hovered);
 	controls::draw_icon(t_draw_list, icon_rect(TitleBarButton::minimize), m_assets.get(Asset::icon_minimize),

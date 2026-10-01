@@ -7,6 +7,7 @@
 #include "ui/draggable.h"
 #include "ui/text_input.h"
 
+class Assets;
 class DrawList;
 class Fonts;
 
@@ -17,7 +18,7 @@ struct ColorPickerHint {
 
 class ColorPicker {
   public:
-	explicit ColorPicker(const Fonts &t_fonts);
+	ColorPicker(const Fonts &t_fonts, const Assets &t_assets);
 
 	void open(Color t_initial, Rect t_anchor, Rect t_bounds);
 	void close();
@@ -93,6 +94,7 @@ class ColorPicker {
 	void end_drags();
 
 	const Fonts &m_fonts;
+	const Assets &m_assets;
 
 	bool m_open = false;
 	Rect m_anchor{};

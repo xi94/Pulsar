@@ -12,6 +12,7 @@ enum class CommandType : u8 {
 	open_update_overlay,
 	open_settings,
 	open_data_folder,
+	open_setup,
 	check_for_updates,
 	open_game,
 	save_changes,

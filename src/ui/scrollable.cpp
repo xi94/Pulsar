@@ -13,6 +13,12 @@ constexpr float min_thumb_height = 24.0f;
 constexpr float thumb_grab_margin = 4.0f;
 constexpr float edge_fade_height = 28.0f;
 constexpr float thumb_hover_strength = 0.3f;
+constexpr float thin_width = 3.0f;
+constexpr float grow_ease_rate = 18.0f;
+constexpr float shrink_ease_rate = 9.0f;
+constexpr float scroll_activity_seconds = 0.9f;
+constexpr float release_linger_seconds = 0.35f;
+constexpr float max_animation_step = 1.0f / 30.0f;
 
 float max_offset(const ScrollGeometry &t_geometry)
 {
@@ -52,21 +58,54 @@ float Scrollable::offset() const
 
 void Scrollable::update(float t_delta_seconds)
 {
-	m_offset = animation::ease_toward(m_offset, m_target, ease_rate, t_delta_seconds, animation::settled_pixels);
+	// A frame after an idle wait carries the whole wait, which would finish an ease in one jump.
+	const float step = std::min(t_delta_seconds, max_animation_step);
+	m_offset = animation::ease_toward(m_offset, m_target, ease_rate, step, animation::settled_pixels);
+
+	const bool held = m_dragging || m_track_hovered;
+	if (m_was_held && !held) {
+		m_activity_seconds = std::max(m_activity_seconds, release_linger_seconds);
+	}
+
+	m_was_held = held;
+	m_activity_seconds = std::max(0.0f, m_activity_seconds - t_delta_seconds);
+
+	if (m_activity_seconds > 0.0f) {
+		animation::request_frame_after(m_activity_seconds);
+	}
+
+	const bool active = held || m_activity_seconds > 0.0f;
+	m_thickness =
+		animation::ease_toward(m_thickness, active ? 1.0f : 0.0f, active ? grow_ease_rate : shrink_ease_rate, step);
 }
 
 void Scrollable::draw(DrawList &t_draw_list, const ScrollGeometry &t_geometry, Vec2 t_mouse, u8 t_alpha) const
 {
+	const bool track_hovered =
+		is_needed(t_geometry) && t_geometry.track.inset(-thumb_grab_margin, 0.0f).contains(t_mouse);
+
+	if (track_hovered != m_track_hovered) {
+		m_track_hovered = track_hovered;
+		animation::request_frame();
+	}
+
 	if (!is_needed(t_geometry)) return;
 
 	const Theme &colors = theme();
-	const Rect &track = t_geometry.track;
-	const Rect thumb = thumb_rect(m_offset, t_geometry);
+	const float width = std::min(t_geometry.track.w, thin_width + (t_geometry.track.w - thin_width) * m_thickness);
+	const float inset = (t_geometry.track.w - width) * 0.5f;
+	const Rect track = t_geometry.track.inset(inset, 0.0f);
+	const Rect thumb = thumb_rect(m_offset, t_geometry).inset(inset, 0.0f);
 	const bool hovered = m_dragging || thumb_grab_rect(m_offset, t_geometry).contains(t_mouse);
 	const Color hovered_thumb =
 		with_alpha(mix(colors.scroll_thumb, colors.text, thumb_hover_strength), colors.scroll_thumb.a);
 
-	t_draw_list.add_rounded_rect(track, rounded(track.w * 0.5f), faded(colors.separator, t_alpha));
+	if (m_thickness > 0.001f) {
+		t_draw_list.add_rounded_rect(
+			track, rounded(track.w * 0.5f),
+			faded(colors.separator, static_cast<u8>(static_cast<float>(t_alpha) * m_thickness)));
+	}
+
 	t_draw_list.add_rounded_rect(thumb, rounded(thumb.w * 0.5f),
 								 faded(hovered ? hovered_thumb : colors.scroll_thumb, t_alpha));
 }
@@ -134,6 +173,11 @@ void Scrollable::on_pointer_up()
 void Scrollable::on_scroll(float t_wheel_delta, const ScrollGeometry &t_geometry)
 {
 	scroll_by(-t_wheel_delta * pixels_per_notch, t_geometry);
+
+	if (is_needed(t_geometry)) {
+		m_activity_seconds = scroll_activity_seconds;
+		animation::request_frame();
+	}
 }
 
 void Scrollable::scroll_by(float t_pixels, const ScrollGeometry &t_geometry)

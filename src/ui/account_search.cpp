@@ -44,6 +44,7 @@ constexpr Vec2 hint_arrow_size{7.0f, 4.0f};
 constexpr u32 max_shown_rows = 8;
 constexpr u32 query_max_length = 64;
 constexpr u32 group_break_row = 3;
+constexpr float group_gap = 9.0f;
 
 std::string_view account_name(const Account &t_account)
 {
@@ -249,7 +250,8 @@ AccountSearch::Layout AccountSearch::layout() const
 {
 	const Vec2 window = m_window.size();
 	const float width = std::min(panel_max_width, window.x - panel_side_margin * 2.0f);
-	const float list_height = list_padding * 2.0f + row_height() * static_cast<float>(shown_rows());
+	const float list_height =
+		list_padding * 2.0f + row_height() * static_cast<float>(shown_rows()) + (has_group_gap() ? group_gap : 0.0f);
 	const float footer_height = controls::keycap_height(m_fonts.secondary()) + footer_padding_y * 2.0f;
 	const float rise = panel_rise * (1.0f - m_open_amount);
 
@@ -289,20 +291,29 @@ Rect AccountSearch::back_button_rect(const Layout &t_layout) const
 Rect AccountSearch::row_rect(const Layout &t_layout, u32 t_row) const
 {
 	const float height = row_height();
+	const bool below_gap = has_group_gap() && m_first_row < group_break_row && t_row >= group_break_row;
 
-	return Rect{t_layout.list.x, t_layout.list.y + static_cast<float>(t_row - m_first_row) * height, t_layout.list.w,
-				height};
+	return Rect{t_layout.list.x,
+				t_layout.list.y + static_cast<float>(t_row - m_first_row) * height + (below_gap ? group_gap : 0.0f),
+				t_layout.list.w, height};
 }
 
 std::optional<u32> AccountSearch::row_at(const Layout &t_layout, Vec2 t_point) const
 {
 	if (!t_layout.list.contains(t_point)) return std::nullopt;
 
-	const auto offset = static_cast<u32>((t_point.y - t_layout.list.y) / row_height());
-	const u32 row = m_first_row + offset;
-	if (offset >= shown_rows() || row >= row_count()) return std::nullopt;
+	const u32 last = std::min(row_count(), m_first_row + shown_rows());
 
-	return row;
+	for (u32 row = m_first_row; row < last; row += 1) {
+		if (row_rect(t_layout, row).contains(t_point)) return row;
+	}
+
+	return std::nullopt;
+}
+
+bool AccountSearch::has_group_gap() const
+{
+	return m_account && m_action_count > group_break_row;
 }
 
 void AccountSearch::update(float t_delta_seconds)
@@ -750,7 +761,8 @@ void AccountSearch::draw(DrawList &t_draw_list)
 
 		if (m_account) {
 			if (row == group_break_row && row > m_first_row) {
-				t_draw_list.add_rect(Rect{rect.x + row_padding, rect.y, rect.w - row_padding * 2.0f, 1.0f},
+				const float y = snapped_to_pixel(rect.y - group_gap * 0.5f - 0.5f);
+				t_draw_list.add_rect(Rect{rect.x + row_padding, y, rect.w - row_padding * 2.0f, 1.0f},
 									 faded(colors.separator, alpha));
 			}
 

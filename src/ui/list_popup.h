@@ -10,6 +10,7 @@
 #include "ui/scrollable.h"
 #include "ui/text_input.h"
 
+class Assets;
 class DrawList;
 class Fonts;
 struct Settings;
@@ -25,7 +26,7 @@ struct ListPopupOptions {
 
 class ListPopup {
   public:
-	ListPopup(const Fonts &t_fonts, const Settings &t_settings, ListPopupOptions t_options);
+	ListPopup(const Fonts &t_fonts, const Assets &t_assets, const Settings &t_settings, ListPopupOptions t_options);
 
 	void open(std::span<const std::string_view> t_items, std::optional<u32> t_selected);
 	void close();
@@ -109,6 +110,7 @@ class ListPopup {
 	void draw_key_hints(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
 
 	const Fonts &m_fonts;
+	const Assets &m_assets;
 	const Settings &m_settings;
 	ListPopupOptions m_options;
 

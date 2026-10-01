@@ -1,8 +1,8 @@
 #pragma once
 
 #define PULSAR_VERSION_MAJOR 0
-#define PULSAR_VERSION_MINOR 5
-#define PULSAR_VERSION_PATCH 1
+#define PULSAR_VERSION_MINOR 6
+#define PULSAR_VERSION_PATCH 0
 
 #define PULSAR_STRINGIFY_IMPL(x) #x
 #define PULSAR_STRINGIFY(x) PULSAR_STRINGIFY_IMPL(x)
@@ -26,6 +26,8 @@ constexpr const char *app_data_folder_name = PULSAR_APP_NAME;
 constexpr const char *legacy_data_folder_names[]{"Rift", "f4-rockstar"};
 
 constexpr const wchar_t *main_window_class_name = L"PulsarDesktopAppWindow";
+constexpr const wchar_t *setup_window_class_name = L"PulsarDesktopAppSetup";
+constexpr const wchar_t *quit_instance_message_name = L"PulsarDesktopAppQuitForSetup";
 constexpr const wchar_t *tray_window_class_name = L"PulsarDesktopAppTray";
 constexpr const wchar_t *single_instance_mutex_name = L"Local\\Pulsar.DesktopApp.SingleInstance";
 constexpr const wchar_t *activate_instance_message_name = L"PulsarDesktopAppActivateExistingInstance";

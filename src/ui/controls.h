@@ -23,8 +23,9 @@ Color confirm_red();
 
 void draw_icon(DrawList &t_draw_list, Rect t_rect, const Texture *t_icon, Color t_tint);
 void draw_x(DrawList &t_draw_list, Rect t_rect, Color t_color);
-void draw_check(DrawList &t_draw_list, Rect t_rect, Color t_color);
-void draw_checkbox(DrawList &t_draw_list, Rect t_box, bool t_checked, bool t_enabled, Color t_accent);
+void draw_check(DrawList &t_draw_list, const Assets &t_assets, Rect t_rect, Color t_color);
+void draw_checkbox(DrawList &t_draw_list, const Assets &t_assets, Rect t_box, bool t_checked, bool t_enabled,
+				   Color t_accent);
 void draw_chevron(DrawList &t_draw_list, Rect t_rect, bool t_points_up, Color t_color);
 void draw_lock(DrawList &t_draw_list, Rect t_rect, Color t_color, Color t_backdrop, bool t_open = false);
 

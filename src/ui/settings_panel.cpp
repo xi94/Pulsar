@@ -597,13 +597,13 @@ SettingsPanel::SettingsPanel(Settings &t_settings, Fonts &t_fonts, Renderer &t_r
 	, m_window(t_window)
 	, m_assets(t_assets)
 	, m_commands(t_commands)
-	, m_font_list(t_fonts, t_settings,
+	, m_font_list(t_fonts, t_assets, t_settings,
 				  ListPopupOptions{
 					  .search_placeholder = "Search fonts...",
 					  .empty_message = "No fonts match your search",
 					  .min_width = font_list_width,
 				  })
-	, m_theme_list(t_fonts, t_settings,
+	, m_theme_list(t_fonts, t_assets, t_settings,
 				   ListPopupOptions{
 					   .search_placeholder = "Search themes",
 					   .empty_message = "No themes match your search",
@@ -616,7 +616,7 @@ SettingsPanel::SettingsPanel(Settings &t_settings, Fonts &t_fonts, Renderer &t_r
 						   },
 					   .hover_preview_seconds = theme_hover_preview_seconds,
 				   })
-	, m_color_picker(t_fonts)
+	, m_color_picker(t_fonts, t_assets)
 {
 	m_search.set_max_length(search_max_length);
 	m_search.set_placeholder("Search settings");

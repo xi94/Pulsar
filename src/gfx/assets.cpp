@@ -16,12 +16,16 @@
 #include "embeds/icons/AppMark.hpp"
 #include "embeds/icons/ArrowBack.hpp"
 #include "embeds/icons/CarouselIcon.hpp"
+#include "embeds/icons/CheckedIcon.hpp"
 #include "embeds/icons/Close.hpp"
 #include "embeds/icons/EditIcon.hpp"
 #include "embeds/icons/EyeHiddenIcon.hpp"
 #include "embeds/icons/EyeVisible.hpp"
 #include "embeds/icons/FavoriteIcon.hpp"
-#include "embeds/icons/FolderIcon.hpp"
+#include "embeds/icons/DownloadIcon.hpp"
+#include "embeds/icons/FileIcon.hpp"
+#include "embeds/icons/FolderBlankIcon.hpp"
+#include "embeds/icons/FolderOpenIcon.hpp"
 #include "embeds/icons/GridIcon.hpp"
 #include "embeds/icons/IconsIcon.hpp"
 #include "embeds/icons/ImageIcon.hpp"
@@ -90,7 +94,7 @@ const EncodedAsset encoded_assets[asset_count]{
 	{icon::menu_icon, "MenuIcon"},
 	{icon::add_icon, "AddIcon"},
 	{icon::edit_icon, "EditIcon"},
-	{icon::folder_icon, "FolderIcon"},
+	{icon::folder_open_icon, "FolderOpenIcon"},
 	{icon::grid_icon, "GridIcon"},
 	{icon::list_icon, "ListIcon"},
 	{icon::carousel_icon, "CarouselIcon"},
@@ -106,6 +110,10 @@ const EncodedAsset encoded_assets[asset_count]{
 	{icon::image_icon, "ImageIcon"},
 	{icon::username_icon, "UsernameIcon"},
 	{icon::lock_icon, "LockIcon"},
+	{icon::folder_icon, "FolderBlankIcon"},
+	{icon::file_icon, "FileIcon"},
+	{icon::download_icon, "DownloadIcon"},
+	{icon::check_icon, "CheckedIcon"},
 	{icon::app_mark, "AppMark"},
 	{icon::league_of_legends_icon, "LeagueIcon"},
 	{icon::valorant_icon, "ValorantIcon"},
@@ -130,6 +138,22 @@ Assets::~Assets()
 std::span<const u8> Assets::encoded_bytes(Asset t_asset)
 {
 	return encoded_assets[static_cast<usize>(t_asset)].bytes;
+}
+
+std::unique_ptr<Texture> Assets::create_texture(Renderer &t_renderer, const u8 *t_rgba_pixels, u32 t_width,
+												u32 t_height)
+{
+	const DecodedImage image = with_mipmaps(t_rgba_pixels, t_width, t_height);
+	std::vector<TextureLevel> levels;
+	levels.reserve(image.levels.size());
+
+	for (const MipLevel &level : image.levels) {
+		levels.push_back(TextureLevel{image.pixels.data() + level.offset, level.width, level.height});
+	}
+
+	auto texture = std::make_unique<Texture>(t_renderer, levels);
+
+	return texture->is_valid() ? std::move(texture) : nullptr;
 }
 
 Assets::DecodedImage Assets::with_mipmaps(const u8 *t_rgba_pixels, u32 t_width, u32 t_height)

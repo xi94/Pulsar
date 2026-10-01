@@ -34,6 +34,11 @@ enum class TitleBarButton : u8 {
 	close,
 };
 
+enum class WindowKind : u8 {
+	main,
+	dialog,
+};
+
 constexpr float title_bar_height = 40.0f;
 constexpr float title_bar_button_width = 46.0f;
 constexpr float update_button_width = 170.0f;
@@ -55,9 +60,12 @@ class Window {
 
 	static bool activate_existing_instance();
 
-	bool create(const wchar_t *t_title, u32 t_width, u32 t_height);
+	bool create(const wchar_t *t_title, u32 t_width, u32 t_height, WindowKind t_kind = WindowKind::main);
+	void minimize();
 	void show();
 	void restore();
+	void show_minimized();
+	Vec2 restored_size() const;
 
 	void on_redraw(std::function<void()> t_callback);
 	void on_dpi_changed(std::function<void()> t_callback);
@@ -157,6 +165,16 @@ class Window {
 		m_update_button_visible = t_visible;
 	}
 
+	bool is_update_button_visible() const
+	{
+		return m_update_button_visible;
+	}
+
+	void set_update_button_width(float t_width)
+	{
+		m_update_button_width = t_width;
+	}
+
 	void set_search_button_visible(bool t_visible)
 	{
 		m_search_button_visible = t_visible;
@@ -181,10 +199,10 @@ class Window {
 	LRESULT handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam);
 	LRESULT handle_hit_test(LPARAM t_lparam);
 	void handle_dpi_changed(WPARAM t_wparam, LPARAM t_lparam);
-	void handle_size(LPARAM t_lparam);
+	void handle_size(WPARAM t_wparam, LPARAM t_lparam);
 	void handle_min_max_info(LPARAM t_lparam) const;
 
-	void register_window_class(HINSTANCE t_instance) const;
+	void register_window_class(HINSTANCE t_instance, const wchar_t *t_class_name) const;
 	void correct_size_for_actual_dpi(u32 t_width, u32 t_height);
 
 	Vec2 to_logical(POINT t_physical) const;
@@ -192,6 +210,7 @@ class Window {
 	void push_mouse(InputEventType t_type, LPARAM t_lparam);
 	void redraw();
 
+	WindowKind m_kind = WindowKind::main;
 	HWND m_window = nullptr;
 
 	u32 m_width = 0;
@@ -203,6 +222,7 @@ class Window {
 	bool m_should_close = false;
 	bool m_close_to_tray = false;
 	bool m_update_button_visible = false;
+	float m_update_button_width = update_button_width;
 	bool m_search_button_visible = false;
 	bool m_excluded_from_capture = false;
 	bool m_mouse_over_resize_border = false;

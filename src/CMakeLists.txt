@@ -1,6 +1,7 @@
 add_executable (Pulsar
   "main.cpp"
   "app.cpp"
+  "setup_app.cpp"
 
   "core/animation.cpp"
   "core/crash_handler.cpp"
@@ -24,6 +25,7 @@ add_executable (Pulsar
 
   "platform/app_icon.cpp"
   "platform/clipboard.cpp"
+  "platform/installation.cpp"
   "platform/overlay_guard.cpp"
   "platform/single_instance.cpp"
   "platform/tray.cpp"
@@ -40,6 +42,7 @@ add_executable (Pulsar
   "ui/profiler_overlay.cpp"
   "ui/scrollable.cpp"
   "ui/settings_panel.cpp"
+  "ui/setup_screen.cpp"
   "ui/text.cpp"
   "ui/text_input.cpp"
   "ui/theme.cpp"

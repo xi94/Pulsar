@@ -266,8 +266,9 @@ void draw_paste_glyph(DrawList &t_draw_list, Rect t_rect, Color t_backdrop, Colo
 }
 }
 
-ColorPicker::ColorPicker(const Fonts &t_fonts)
+ColorPicker::ColorPicker(const Fonts &t_fonts, const Assets &t_assets)
 	: m_fonts(t_fonts)
+	, m_assets(t_assets)
 {
 	m_fields[hex_field].set_max_length(hex_max_length);
 
@@ -850,7 +851,7 @@ void ColorPicker::draw(DrawList &t_draw_list, Vec2 t_mouse)
 	const Color copy_color = current.copy.contains(t_mouse) ? colors.text : colors.text_dim;
 	const Rect copy_glyph = current.copy.centered(glyph_size, glyph_size);
 	if (m_copied_seconds > 0.0f) {
-		controls::draw_check(t_draw_list, copy_glyph, colors.success);
+		controls::draw_check(t_draw_list, m_assets, copy_glyph, colors.success);
 	} else {
 		draw_copy_glyph(t_draw_list, copy_glyph, current.copy.contains(t_mouse) ? colors.control_hover : colors.popup,
 						copy_color);

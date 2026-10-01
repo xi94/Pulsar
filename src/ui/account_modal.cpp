@@ -450,7 +450,7 @@ AccountModal::AccountModal(Library &t_library, const Settings &t_settings, const
 	, m_window(t_window)
 	, m_toasts(t_toasts)
 	, m_commands(t_commands)
-	, m_region_list(t_fonts, t_settings, ListPopupOptions{.empty_message = "No regions"})
+	, m_region_list(t_fonts, t_assets, t_settings, ListPopupOptions{.empty_message = "No regions"})
 {
 	for (u32 i = 0; i < field_count; i += 1) {
 		m_fields[i].set_max_length(field_specs[i].max_length);

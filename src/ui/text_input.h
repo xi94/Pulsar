@@ -8,7 +8,8 @@
 class DrawList;
 class Font;
 
-constexpr u32 text_input_capacity = 128;
+constexpr u32 text_input_capacity = 512;
+constexpr u32 default_text_input_length = 128;
 
 enum class TextEdit : u8 {
 	cut,
@@ -95,7 +96,7 @@ class TextInput {
 
 	char m_text[text_input_capacity]{};
 	u32 m_length = 0;
-	u32 m_max_length = text_input_capacity;
+	u32 m_max_length = default_text_input_length;
 	std::string_view m_placeholder;
 
 	u32 m_cursor = 0;

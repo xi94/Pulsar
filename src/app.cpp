@@ -1,5 +1,7 @@
 #include "app.h"
 
+#include "platform/installation.h"
+
 #include <cstdio>
 #include <utility>
 #include <print>
@@ -148,10 +150,10 @@ App::App()
 	, m_settings_panel(m_settings, m_fonts, m_renderer, m_window, m_assets, m_commands)
 	, m_unlock_screen(m_settings, m_master_key, m_fonts, m_assets, m_window, m_commands)
 	, m_app_menu(m_fonts, m_assets, m_commands)
-	, m_update_overlay(m_updater, m_settings, m_fonts, m_window)
+	, m_update_overlay(m_updater, m_settings, m_fonts, m_assets, m_window)
 	, m_account_search(m_library, m_fonts, m_assets, m_window, m_commands)
 	, m_context_menu(m_fonts, m_commands)
-	, m_title_bar(m_window, m_updater, m_fonts, m_assets, m_commands)
+	, m_title_bar(m_window, m_updater, m_update_overlay, m_fonts, m_assets, m_commands)
 	, m_truncation_hint(m_fonts)
 #ifdef PULSAR_PROFILING
 	, m_profiler_overlay(m_fonts)
@@ -159,7 +161,7 @@ App::App()
 {
 }
 
-App::StartResult App::start()
+App::StartResult App::start(bool t_from_startup)
 {
 	if (!m_instance_guard.is_first_instance()) {
 		const bool activated = Window::activate_existing_instance();
@@ -170,6 +172,7 @@ App::StartResult App::start()
 	}
 
 	m_assets.begin_decode();
+	installation::refresh_registration();
 
 	log_startup_phase("LoadSettings");
 	const storage::LoadResult settings_result = storage::load_settings(m_settings);
@@ -214,7 +217,13 @@ App::StartResult App::start()
 
 	log_startup_phase("FirstFrame");
 	frame();
-	m_window.show();
+
+	if (!t_from_startup) {
+		m_window.show();
+	} else if (!m_settings.close_to_tray || !m_tray.is_icon_visible()) {
+		m_window.show_minimized();
+	}
+
 	log_startup_phase("Done");
 
 	return StartResult::ok;
@@ -222,7 +231,10 @@ App::StartResult App::start()
 
 bool App::create_graphics()
 {
-	if (!m_window.create(app_name_wide, m_settings.window_width, m_settings.window_height)) {
+	const u32 width = std::max(m_settings.window_width, static_cast<u32>(min_window_width));
+	const u32 height = std::max(m_settings.window_height, static_cast<u32>(min_window_height));
+
+	if (!m_window.create(app_name_wide, width, height)) {
 		std::println("Failed to create window.");
 		return false;
 	}
@@ -420,12 +432,29 @@ void App::copy_password(std::string_view t_password)
 	m_toasts.notify_countdown("Password copied - it clears itself in 30 seconds.", lifetime_seconds);
 }
 
+void App::open_setup()
+{
+	const HWND existing = FindWindowW(setup_window_class_name, nullptr);
+
+	if (existing != nullptr) {
+		if (IsIconic(existing)) {
+			ShowWindow(existing, SW_RESTORE);
+		}
+
+		SetForegroundWindow(existing);
+		return;
+	}
+
+	installation::launch(installation::executable_path(), L"--setup");
+}
+
 void App::open_account_search()
 {
 	if (m_locked) return;
 
 	m_app_menu.close();
 	m_context_menu.close();
+	m_update_overlay.close();
 	m_account_search.open();
 }
 
@@ -593,6 +622,7 @@ void App::process(const Command &t_command)
 			if (m_app_menu.is_open()) {
 				m_app_menu.close();
 			} else {
+				m_update_overlay.close();
 				m_app_menu.open(!m_locked, update_status(m_updater.stage()));
 			}
 
@@ -615,6 +645,10 @@ void App::process(const Command &t_command)
 			m_settings_panel.open();
 			break;
 
+		case CommandType::open_setup:
+			open_setup();
+			break;
+
 		case CommandType::open_data_folder: {
 			const std::string directory = storage::data_directory();
 			if (!directory.empty()) {
@@ -626,7 +660,7 @@ void App::process(const Command &t_command)
 
 		case CommandType::check_for_updates:
 			m_updater.check_for_update();
-			m_update_overlay.open();
+			m_update_overlay.begin_check();
 			break;
 
 		case CommandType::open_game:
@@ -775,12 +809,13 @@ void App::announce_update_stage()
 
 	const Command open_updates{.type = CommandType::open_update_overlay};
 
-	if (stage == UpdateStage::available || stage == UpdateStage::manual_upgrade_required) {
+	const bool watching = m_update_overlay.is_open() || m_update_overlay.wants_status();
+
+	if ((stage == UpdateStage::available || stage == UpdateStage::manual_upgrade_required) && !watching) {
 		char message[96];
 		std::snprintf(message, sizeof(message), "Version %s available", m_updater.manifest().version);
-		m_toasts.notify(
-			Notification{.message = message, .icon = Asset::icon_update, .spin_icon = true, .on_click = open_updates});
-	} else if (stage == UpdateStage::error) {
+		m_toasts.notify(Notification{.message = message, .icon = Asset::icon_download, .on_click = open_updates});
+	} else if (stage == UpdateStage::error && !watching) {
 		m_toasts.notify(Notification{
 			.message = "The update could not be installed.", .icon = Asset::icon_update, .on_click = open_updates});
 	}
@@ -868,9 +903,10 @@ void App::frame()
 	m_last_frame_time = now;
 
 	const Vec2 window = m_window.size();
-	if (m_window.width() > 0 && m_window.height() > 0) {
-		m_settings.window_width = m_window.width();
-		m_settings.window_height = m_window.height();
+	const Vec2 restored = m_window.restored_size();
+	if (restored.x >= min_window_width && restored.y >= min_window_height) {
+		m_settings.window_width = static_cast<u32>(std::lround(restored.x));
+		m_settings.window_height = static_cast<u32>(std::lround(restored.y));
 	}
 
 	m_carousel.set_bounds(m_window.content_rect());

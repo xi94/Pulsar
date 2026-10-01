@@ -43,8 +43,9 @@ struct MenuItem {
 constexpr MenuItem menu_items[]{
 	{CommandType::check_for_updates, "Check for updates", Asset::icon_update, "", false, false},
 	{CommandType::open_settings, "Settings", Asset::icon_settings, "Ctrl+,", true, true},
-	{CommandType::open_data_folder, "Open data folder", Asset::icon_folder, "", false, false},
-	{CommandType::lock_vault, "Lock now", Asset::icon_eye_hidden, "Ctrl+L", true, true},
+	{CommandType::open_data_folder, "Open data folder", Asset::icon_folder_open, "", false, false},
+	{CommandType::lock_vault, "Lock now", Asset::icon_lock, "Ctrl+L", true, true},
+	{CommandType::open_setup, "Setup", Asset::icon_app, "", true, false},
 };
 
 constexpr u32 item_count = static_cast<u32>(std::size(menu_items));
@@ -192,11 +193,7 @@ void AppMenu::draw(DrawList &t_draw_list)
 		const Color icon_color = faded(enabled ? colors.text_dim : colors.text_faint, alpha);
 		const Rect icon{item.x + content_x, item.y + (item.h - icon_size) * 0.5f, icon_size, icon_size};
 
-		if (entry.command == CommandType::lock_vault) {
-			controls::draw_lock(t_draw_list, icon, icon_color, faded(backdrop, alpha));
-		} else {
-			t_draw_list.add_image(icon, m_assets.get(entry.icon), icon_color);
-		}
+		t_draw_list.add_image(icon, m_assets.get(entry.icon), icon_color);
 
 		draw_text(t_draw_list, font, Vec2{icon.right() + icon_text_gap, font.centered_baseline(item)}, entry.label,
 				  label);

@@ -44,7 +44,7 @@ class App {
 	App(const App &) = delete;
 	App &operator=(const App &) = delete;
 
-	StartResult start();
+	StartResult start(bool t_from_startup);
 	void run();
 
   private:
@@ -77,6 +77,7 @@ class App {
 	void commit_new_vault_key();
 	void copy_password(std::string_view t_password);
 	void open_account_search();
+	void open_setup();
 	const Account *account_for(AccountRef t_account) const;
 	void clear_clipboard_secret();
 
