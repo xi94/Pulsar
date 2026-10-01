@@ -106,11 +106,11 @@ constexpr float edit_header_icon_size = 28.0f;
 constexpr float edit_header_icon_radius = 7.0f;
 constexpr float edit_header_gap = 10.0f;
 constexpr float edit_header_line_gap = 2.0f;
-constexpr float stack_icon_size = 18.0f;
-constexpr float stack_icon_overlap = 6.0f;
-constexpr float stack_icon_ring = 2.0f;
-constexpr u32 stack_icon_limit = 4;
-constexpr float stack_text_gap = 8.0f;
+constexpr float summary_icon_size = 18.0f;
+constexpr float summary_icon_gap = 6.0f;
+constexpr float summary_icon_radius = 5.0f;
+constexpr u8 summary_unselected_icon_alpha = 60;
+constexpr float summary_text_gap = 8.0f;
 constexpr float tile_min_width = 64.0f;
 constexpr float tile_gap = 8.0f;
 constexpr float tile_icon_size = 24.0f;
@@ -2757,45 +2757,58 @@ void AccountModal::draw_show_in(DrawList &t_draw_list, const FormLayout &t_form,
 	draw_input_box(t_draw_list, box, border, false, accent, t_alpha);
 
 	float x = box.x + input_padding_x;
-	u32 shown = 0;
-	std::optional<u32> first;
+	std::optional<u32> only;
 
 	for (u32 index = 0; index < m_library.game_count(); index += 1) {
-		if ((m_visible_mask & (1u << index)) == 0) continue;
-		if (!first) first = index;
-		if (shown == stack_icon_limit) continue;
-
 		const Game &game = m_library.game(index);
-		const Rect icon{x, box.center().y - stack_icon_size * 0.5f, stack_icon_size, stack_icon_size};
-		const Rect ring = icon.inset(-stack_icon_ring);
+		const bool selected = (m_visible_mask & (1u << index)) != 0;
+		const u8 icon_alpha = selected ? 255 : summary_unselected_icon_alpha;
+		const Rect icon{x, box.center().y - summary_icon_size * 0.5f, summary_icon_size, summary_icon_size};
 
-		t_draw_list.add_rounded_rect(ring, rounded(tile_icon_radius), faded(colors.field, t_alpha));
+		if (selected) only = index;
 
 		if (game.icon != nullptr) {
-			t_draw_list.add_image(icon, game.icon, faded(color_on_art, t_alpha), rounded(tile_icon_radius - 1.0f));
+			t_draw_list.add_image(icon, game.icon, faded(with_alpha(color_on_art, icon_alpha), t_alpha),
+								  rounded(summary_icon_radius));
 		} else {
-			t_draw_list.add_rounded_rect(icon, rounded(tile_icon_radius - 1.0f), faded(game.accent, t_alpha));
+			t_draw_list.add_rounded_rect(icon, rounded(summary_icon_radius),
+										 faded(with_alpha(game.accent, icon_alpha), t_alpha));
 		}
 
-		x += stack_icon_size - stack_icon_overlap;
-		shown += 1;
+		x += summary_icon_size + summary_icon_gap;
 	}
-
-	x += stack_icon_overlap + stack_text_gap;
 
 	const auto count = static_cast<u32>(std::popcount(m_visible_mask));
 	const Rect chevron{box.right() - chevron_margin - chevron_size.x, box.center().y - chevron_size.y * 0.5f,
 					   chevron_size.x, chevron_size.y};
+	const float text_left = x - summary_icon_gap + summary_text_gap;
+	const float text_right = chevron.x - summary_text_gap;
+	const float room = std::max(0.0f, text_right - text_left);
 	char summary[96];
-	const std::string_view title = first ? m_library.game(*first).title : std::string_view{"No games"};
-	const int written =
-		count > 1 ? std::snprintf(summary, sizeof(summary), "%.*s +%u", static_cast<int>(title.size()), title.data(),
-								  count - 1)
-				  : std::snprintf(summary, sizeof(summary), "%.*s", static_cast<int>(title.size()), title.data());
+	int written = 0;
 
-	draw_text_truncated(t_draw_list, body, Vec2{x, body.centered_baseline(box)},
-						std::string_view{summary, static_cast<usize>(std::max(written, 0))},
-						chevron.x - stack_text_gap - x, faded(colors.text, t_alpha));
+	if (count >= m_library.game_count()) {
+		written = std::snprintf(summary, sizeof(summary), "All games");
+	} else if (count == 1 && only) {
+		const Game &game = m_library.game(*only);
+		written = std::snprintf(summary, sizeof(summary), "Only %.*s", static_cast<int>(game.title.size()),
+								game.title.data());
+
+		if (!game.short_title.empty() &&
+			text_width(body, std::string_view{summary, static_cast<usize>(std::max(written, 0))}) > room) {
+			written = std::snprintf(summary, sizeof(summary), "Only %.*s", static_cast<int>(game.short_title.size()),
+									game.short_title.data());
+		}
+	} else {
+		written = std::snprintf(summary, sizeof(summary), "%u of %u", count, m_library.game_count());
+	}
+
+	const std::string_view summary_text{summary, static_cast<usize>(std::max(written, 0))};
+	const float summary_width = std::min(text_width(body, summary_text), room);
+
+	draw_text_truncated(t_draw_list, body,
+						Vec2{snapped_to_pixel(text_right - summary_width), body.centered_baseline(box)}, summary_text,
+						room, faded(colors.text_dim, t_alpha));
 	controls::draw_chevron(t_draw_list, chevron, m_show_in_open,
 						   faded(m_show_in_open || box_hovered ? colors.text : colors.text_dim, t_alpha));
 
@@ -2918,7 +2931,10 @@ void AccountModal::draw_edit_form(DrawList &t_draw_list, Rect t_main, u8 t_alpha
 	const bool region_open = m_region_list.is_open();
 	const bool region_hovered = live && region.contains(m_mouse);
 
-	draw_label(region_row, region_field_label, region_open ? active_label : colors.text_dim);
+	const float region_label_end =
+		draw_label(region_row, region_field_label, region_open ? active_label : colors.text_dim);
+	draw_text(t_draw_list, secondary, Vec2{region_label_end, form.labels[region_row].y + secondary.ascent()},
+			  optional_suffix, faded(colors.text_faint, t_alpha));
 
 	Color region_border = colors.separator;
 	if (region_open) {

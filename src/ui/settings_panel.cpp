@@ -56,11 +56,10 @@ constexpr float reveal_ease_rate = 16.0f;
 constexpr float rows_top_padding = 8.0f;
 constexpr float rail_width = 150.0f;
 constexpr float rail_padding = 10.0f;
-constexpr float tab_label_inset = 14.0f;
-constexpr float tab_indicator_width = 3.0f;
-constexpr float tab_indicator_inset = 8.0f;
+constexpr float tab_label_inset = 12.0f;
+constexpr float tab_gap = 4.0f;
 constexpr float tab_slide_rate = 18.0f;
-constexpr float active_tab_tint = 0.18f;
+constexpr float hovered_tab_fill = 0.5f;
 constexpr float hovered_tab_brightening = 0.5f;
 constexpr float scrollbar_margin = 4.0f;
 constexpr float header_shadow_height = 14.0f;
@@ -2138,15 +2137,24 @@ void SettingsPanel::draw_rail(DrawList &t_draw_list, const Layout &t_layout, u8 
 	t_draw_list.add_rect(Rect{t_layout.rail.right(), t_layout.rail.y, 1.0f, t_layout.rail.h},
 						 faded(colors.separator, t_alpha));
 
+	const Color active_fill = hovered(colors.surface);
+
+	for (u32 i = 0; i < settings_tab_count; i += 1) {
+		const auto tab = static_cast<SettingsTab>(i);
+		const Rect item = tab_rect(t_layout, tab);
+		const bool is_active = tab == m_tab && !searching;
+
+		if (!is_active && pointer_live && item.contains(m_mouse)) {
+			t_draw_list.add_rounded_rect(item.inset(0.0f, tab_gap * 0.5f), rounded(control_radius),
+										 faded(mix(colors.surface, active_fill, hovered_tab_fill), t_alpha));
+		}
+	}
+
 	if (!searching) {
 		const Rect first_tab = tab_rect(t_layout, SettingsTab::appearance);
 		const Rect active{first_tab.x, snapped_to_pixel(first_tab.y + m_tab_indicator * height), first_tab.w, height};
-		t_draw_list.add_rounded_rect(active, rounded(control_radius), faded(colors.row_hover, t_alpha));
-
-		const Rect indicator{first_tab.x,
-							 snapped_to_pixel(first_tab.y + m_tab_indicator * height) + tab_indicator_inset,
-							 tab_indicator_width, height - tab_indicator_inset * 2.0f};
-		t_draw_list.add_rounded_rect(indicator, rounded(tab_indicator_width * 0.5f), faded(m_settings.accent, t_alpha));
+		t_draw_list.add_rounded_rect(active.inset(0.0f, tab_gap * 0.5f), rounded(control_radius),
+									 faded(active_fill, t_alpha));
 	}
 
 	for (u32 i = 0; i < settings_tab_count; i += 1) {
@@ -2156,7 +2164,7 @@ void SettingsPanel::draw_rail(DrawList &t_draw_list, const Layout &t_layout, u8 
 
 		Color label = colors.text_dim;
 		if (tab == m_tab && !searching) {
-			label = mix(colors.text, m_settings.accent, active_tab_tint);
+			label = colors.text;
 		} else if (hovered) {
 			label = mix(colors.text_dim, colors.text, hovered_tab_brightening);
 		}
