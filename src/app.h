@@ -17,6 +17,7 @@
 #include "platform/tray.h"
 #include "platform/window.h"
 #include "ui/account_modal.h"
+#include "ui/account_search.h"
 #include "ui/app_menu.h"
 #include "ui/carousel.h"
 #include "ui/commands.h"
@@ -75,6 +76,8 @@ class App {
 	void save_if_due();
 	void commit_new_vault_key();
 	void copy_password(std::string_view t_password);
+	void open_account_search();
+	const Account *account_for(AccountRef t_account) const;
 	void clear_clipboard_secret();
 
 	void pump_input();
@@ -118,6 +121,7 @@ class App {
 	UnlockScreen m_unlock_screen;
 	AppMenu m_app_menu;
 	UpdateOverlay m_update_overlay;
+	AccountSearch m_account_search;
 	ContextMenu m_context_menu;
 	TitleBar m_title_bar;
 	TruncationHint m_truncation_hint;

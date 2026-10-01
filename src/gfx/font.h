@@ -105,7 +105,13 @@ class Fonts {
 		return m_secondary;
 	}
 
+	const Font &caption() const
+	{
+		return m_caption;
+	}
+
   private:
 	Font m_body;
 	Font m_secondary;
+	Font m_caption;
 };

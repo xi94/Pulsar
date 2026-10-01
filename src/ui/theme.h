@@ -30,6 +30,7 @@ struct Theme {
 
 const Theme &theme();
 const Theme &theme_preset(ThemeKind t_kind);
+Color hovered(Color t_base);
 
 void apply_theme(ThemeKind t_kind);
 void fade_to_theme(ThemeKind t_kind);

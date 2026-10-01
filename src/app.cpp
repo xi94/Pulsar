@@ -16,6 +16,7 @@
 #include "core/ui_automation.h"
 #include "platform/clipboard.h"
 #include "platform/overlay_guard.h"
+#include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
 
@@ -30,6 +31,8 @@ constexpr auto clipboard_secret_lifetime = std::chrono::seconds(30);
 constexpr float status_padding = 14.0f;
 constexpr float status_mark_size = 15.0f;
 constexpr float status_mark_gap = 7.0f;
+constexpr float status_dot_size = 3.0f;
+constexpr float status_dot_gap = 7.0f;
 constexpr float status_baseline_nudge = 2.0f;
 
 struct GameInfo {
@@ -69,6 +72,32 @@ void log_startup_phase(const char *t_phase)
 
 	previous_phase = t_phase;
 	phase_start = now;
+}
+
+std::string_view update_status(UpdateStage t_stage)
+{
+	switch (t_stage) {
+		case UpdateStage::up_to_date:
+			return "Up to date";
+		case UpdateStage::available:
+		case UpdateStage::manual_upgrade_required:
+			return "Update available";
+		case UpdateStage::checking:
+			return "Checking...";
+		case UpdateStage::downloading:
+		case UpdateStage::verifying:
+		case UpdateStage::installing:
+			return "Updating...";
+		case UpdateStage::ready_to_relaunch:
+			return "Restart to update";
+		case UpdateStage::idle:
+		case UpdateStage::check_failed:
+		case UpdateStage::error:
+		case UpdateStage::cancelled:
+			break;
+	}
+
+	return "";
 }
 
 void guard_against_overlays(bool t_block_injection)
@@ -118,9 +147,10 @@ App::App()
 	, m_account_modal(m_library, m_settings, m_fonts, m_assets, m_window, m_toasts, m_commands)
 	, m_settings_panel(m_settings, m_fonts, m_renderer, m_window, m_assets, m_commands)
 	, m_unlock_screen(m_settings, m_master_key, m_fonts, m_assets, m_window, m_commands)
-	, m_app_menu(m_settings, m_fonts, m_assets, m_commands)
+	, m_app_menu(m_fonts, m_assets, m_commands)
 	, m_update_overlay(m_updater, m_settings, m_fonts, m_window)
-	, m_context_menu(m_settings, m_fonts, m_commands)
+	, m_account_search(m_library, m_fonts, m_assets, m_window, m_commands)
+	, m_context_menu(m_fonts, m_commands)
 	, m_title_bar(m_window, m_updater, m_fonts, m_assets, m_commands)
 	, m_truncation_hint(m_fonts)
 #ifdef PULSAR_PROFILING
@@ -239,6 +269,7 @@ void App::stack_widgets()
 	m_widgets.push(m_unlock_screen);
 	m_widgets.push(m_app_menu);
 	m_widgets.push(m_update_overlay);
+	m_widgets.push(m_account_search);
 	m_widgets.push(m_context_menu);
 
 	m_widgets.push_overlay(m_toasts);
@@ -270,6 +301,8 @@ void App::lock()
 {
 	m_locked = true;
 	m_carousel.set_visible(false);
+	m_account_search.close();
+	m_window.set_search_button_visible(false);
 	m_tray.set_locked(true);
 }
 
@@ -277,6 +310,7 @@ void App::unlock()
 {
 	m_locked = false;
 	m_carousel.set_visible(true);
+	m_window.set_search_button_visible(true);
 	m_unlock_screen.hide();
 	m_tray.set_locked(false);
 	m_last_activity = Clock::now();
@@ -386,6 +420,23 @@ void App::copy_password(std::string_view t_password)
 	m_toasts.notify_countdown("Password copied - it clears itself in 30 seconds.", lifetime_seconds);
 }
 
+void App::open_account_search()
+{
+	if (m_locked) return;
+
+	m_app_menu.close();
+	m_context_menu.close();
+	m_account_search.open();
+}
+
+const Account *App::account_for(AccountRef t_account) const
+{
+	if (t_account.game >= m_library.game_count()) return nullptr;
+	if (t_account.index >= m_library.game(t_account.game).account_count) return nullptr;
+
+	return &m_library.account(t_account);
+}
+
 void App::clear_clipboard_secret()
 {
 	if (!m_clipboard_secret) return;
@@ -489,6 +540,25 @@ void App::handle_input(const InputEvent &t_event)
 		return;
 	}
 
+	if (t_event.type == InputEventType::key_down && t_event.key == 'F' && control_down && !m_locked) {
+		if (m_account_search.is_open()) {
+			m_account_search.close();
+			return;
+		}
+
+		if (!m_account_modal.is_blocking() && !m_settings_panel.is_blocking()) {
+			open_account_search();
+			return;
+		}
+	}
+
+	if (t_event.type == InputEventType::key_down && t_event.key == VK_OEM_COMMA && control_down && !m_locked &&
+		!m_settings_panel.is_blocking()) {
+		m_app_menu.close();
+		m_settings_panel.open();
+		return;
+	}
+
 	if (t_event.type == InputEventType::mouse_move) {
 		m_mouse = t_event.position;
 	} else if (t_event.type == InputEventType::mouse_down) {
@@ -523,7 +593,7 @@ void App::process(const Command &t_command)
 			if (m_app_menu.is_open()) {
 				m_app_menu.close();
 			} else {
-				m_app_menu.open(!m_locked);
+				m_app_menu.open(!m_locked, update_status(m_updater.stage()));
 			}
 
 			break;
@@ -623,6 +693,41 @@ void App::process(const Command &t_command)
 		case CommandType::lock_vault:
 			lock_vault();
 			break;
+
+		case CommandType::open_account_search:
+			open_account_search();
+			break;
+
+		case CommandType::edit_account:
+			if (account_for(t_command.account) != nullptr) {
+				m_settings_panel.close();
+				m_account_modal.edit_account(t_command.account);
+			}
+
+			break;
+
+		case CommandType::login_account:
+			if (account_for(t_command.account) != nullptr && t_command.index >= 0) {
+				m_settings_panel.close();
+				m_account_modal.quick_login(static_cast<u32>(t_command.index), t_command.account);
+			}
+
+			break;
+
+		case CommandType::copy_account_username:
+			if (const Account *account = account_for(t_command.account)) {
+				set_clipboard_text(account->username);
+				m_toasts.notify(Notification{.message = "Username copied."});
+			}
+
+			break;
+
+		case CommandType::copy_account_password:
+			if (const Account *account = account_for(t_command.account)) {
+				copy_password(account->password);
+			}
+
+			break;
 	}
 }
 
@@ -632,10 +737,10 @@ void App::open_account_menu(const Command &t_command)
 	if (account == nullptr) return;
 
 	const ContextMenuItem items[]{
-		{account->favorite ? "Unpin" : "Pin to Top",
+		{account->favorite ? "Unpin" : "Pin to top",
 		 Command{.type = CommandType::toggle_favorite, .index = t_command.index}},
-		{"Copy Username", Command{.type = CommandType::copy_username, .index = t_command.index}},
-		{"Copy Password", Command{.type = CommandType::copy_password, .index = t_command.index}},
+		{"Copy username", Command{.type = CommandType::copy_username, .index = t_command.index}},
+		{"Copy password", Command{.type = CommandType::copy_password, .index = t_command.index}},
 	};
 
 	m_context_menu.open(t_command.position, items, m_window.size());
@@ -645,17 +750,17 @@ void App::open_text_menu(const Command &t_command)
 {
 	TextInput &input = *t_command.text_input;
 
-	const auto item = [&input](std::string_view t_label, TextEdit t_edit) {
+	const auto item = [&input](std::string_view t_label, TextEdit t_edit, std::string_view t_shortcut) {
 		const Command edit{.type = CommandType::edit_text, .text_input = &input, .text_edit = t_edit};
 
-		return ContextMenuItem{t_label, edit, input.can_apply(t_edit)};
+		return ContextMenuItem{t_label, edit, input.can_apply(t_edit), t_shortcut};
 	};
 
 	const ContextMenuItem items[]{
-		item("Cut", TextEdit::cut),
-		item("Copy", TextEdit::copy),
-		item("Paste", TextEdit::paste),
-		item("Select All", TextEdit::select_all),
+		item("Cut", TextEdit::cut, "Ctrl+X"),
+		item("Copy", TextEdit::copy, "Ctrl+C"),
+		item("Paste", TextEdit::paste, "Ctrl+V"),
+		item("Select all", TextEdit::select_all, "Ctrl+A"),
 	};
 
 	m_context_menu.open(t_command.position, items, m_window.size());
@@ -812,16 +917,39 @@ void App::draw_status_bar()
 
 	const Rect mark{status_padding, status_bar.y + (status_bar_height - status_mark_size) * 0.5f, status_mark_size,
 					status_mark_size};
-	m_draw_list.add_image(mark, m_assets.get(Asset::icon_app), theme().text_dim);
-
-	char version[48];
-	const int written =
-		std::snprintf(version, sizeof(version), "%s v%s%s", app_name, app_version, is_debug_build ? " [dev]" : "");
 	const Font &font = m_fonts.secondary();
+	const float baseline = font.centered_baseline(status_bar) - status_baseline_nudge;
+	const bool protected_vault = m_settings.master_password_enabled;
 
-	draw_text(m_draw_list, font,
-			  Vec2{mark.right() + status_mark_gap, font.centered_baseline(status_bar) - status_baseline_nudge},
-			  std::string_view{version, static_cast<usize>(std::max(written, 0))}, theme().text_dim);
+	controls::draw_lock(m_draw_list, mark, theme().text_dim, theme().chrome, !m_locked);
+
+	std::string_view state = "Vault unlocked";
+	if (m_locked) {
+		state = "Vault locked";
+	} else if (!protected_vault) {
+		state = "No master password";
+	}
+
+	float x = mark.right() + status_mark_gap;
+	draw_text(m_draw_list, font, Vec2{x, baseline}, state, theme().text_dim);
+	x += text_width(font, state);
+
+	if (!m_locked && protected_vault && m_settings.auto_lock_minutes != 0) {
+		const auto limit = std::chrono::minutes(m_settings.auto_lock_minutes);
+		const auto idle = std::chrono::duration_cast<std::chrono::seconds>(Clock::now() - m_last_activity);
+		const auto remaining = std::max(std::chrono::seconds(1), limit - idle);
+		const auto minutes = static_cast<u32>((remaining.count() + 59) / 60);
+
+		char countdown[48];
+		const int written = std::snprintf(countdown, sizeof(countdown), "auto-locks in %u min", minutes);
+		const Rect dot{x + status_dot_gap, baseline - font.ascent() * 0.35f - status_dot_size * 0.5f, status_dot_size,
+					   status_dot_size};
+
+		m_draw_list.add_rounded_rect(dot, rounded(status_dot_size * 0.5f), theme().text_faint);
+		draw_text(m_draw_list, font, Vec2{dot.right() + status_dot_gap, baseline},
+				  std::string_view{countdown, static_cast<usize>(std::max(written, 0))}, theme().text_faint);
+		animation::request_frame_after(static_cast<float>(remaining.count() - (minutes - 1) * 60) + 0.05f);
+	}
 
 	const bool panel_open = m_account_modal.is_blocking() || m_settings_panel.is_blocking();
 	if (m_carousel.is_visible() && !panel_open) {

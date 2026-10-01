@@ -81,7 +81,7 @@ struct Settings {
 	float background_grain_intensity = 0.5f;
 	float background_intensity = 0.5f;
 
-	float font_size = 14.0f;
+	float font_size = 13.0f;
 	float secondary_font_size = 12.0f;
 	// Braces, not `= "..."`: MSVC zeroes that form whenever a Settings is constant-initialized.
 	char font_name[260]{"segoeui.ttf"};

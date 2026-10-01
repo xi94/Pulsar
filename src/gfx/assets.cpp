@@ -12,6 +12,7 @@
 #include "embeds/banners/Valorant.hpp"
 #include "embeds/icons/2XKOIcon.hpp"
 #include "embeds/icons/AddIcon.hpp"
+#include "embeds/icons/AccountIcon.hpp"
 #include "embeds/icons/AppMark.hpp"
 #include "embeds/icons/ArrowBack.hpp"
 #include "embeds/icons/CarouselIcon.hpp"
@@ -98,6 +99,7 @@ const EncodedAsset encoded_assets[asset_count]{
 	{icon::favorite_icon, "FavoriteIcon"},
 	{icon::update_icon, "UpdateIcon"},
 	{icon::reset_icon, "ResetIcon"},
+	{icon::account_icon, "AccountIcon"},
 	{icon::app_mark, "AppMark"},
 	{icon::league_of_legends_icon, "LeagueIcon"},
 	{icon::valorant_icon, "ValorantIcon"},

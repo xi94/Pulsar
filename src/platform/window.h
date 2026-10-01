@@ -27,6 +27,7 @@ struct InputEvent {
 enum class TitleBarButton : u8 {
 	none,
 	menu,
+	search,
 	update,
 	minimize,
 	maximize,
@@ -36,6 +37,10 @@ enum class TitleBarButton : u8 {
 constexpr float title_bar_height = 40.0f;
 constexpr float title_bar_button_width = 46.0f;
 constexpr float update_button_width = 170.0f;
+constexpr float search_button_width = 300.0f;
+constexpr float search_button_min_width = 150.0f;
+constexpr float search_button_side_room = 120.0f;
+constexpr float search_button_margin = 16.0f;
 constexpr float status_bar_height = 26.0f;
 constexpr float min_window_width = 640.0f;
 constexpr float min_window_height = 440.0f;
@@ -152,6 +157,16 @@ class Window {
 		m_update_button_visible = t_visible;
 	}
 
+	void set_search_button_visible(bool t_visible)
+	{
+		m_search_button_visible = t_visible;
+	}
+
+	bool is_search_button_visible() const
+	{
+		return m_search_button_visible;
+	}
+
 	void set_cursor(CursorKind t_cursor);
 	void set_excluded_from_capture(bool t_excluded);
 
@@ -188,6 +203,7 @@ class Window {
 	bool m_should_close = false;
 	bool m_close_to_tray = false;
 	bool m_update_button_visible = false;
+	bool m_search_button_visible = false;
 	bool m_excluded_from_capture = false;
 	bool m_mouse_over_resize_border = false;
 	bool m_mouse_captured = false;

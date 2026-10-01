@@ -26,6 +26,18 @@ void draw_x(DrawList &t_draw_list, Rect t_rect, Color t_color);
 void draw_check(DrawList &t_draw_list, Rect t_rect, Color t_color);
 void draw_checkbox(DrawList &t_draw_list, Rect t_box, bool t_checked, bool t_enabled, Color t_accent);
 void draw_chevron(DrawList &t_draw_list, Rect t_rect, bool t_points_up, Color t_color);
+void draw_lock(DrawList &t_draw_list, Rect t_rect, Color t_color, Color t_backdrop, bool t_open = false);
+
+float keycap_width(const Font &t_font, std::string_view t_label);
+float keycap_height(const Font &t_font);
+void draw_keycap_frame(DrawList &t_draw_list, Rect t_cap, Color t_backdrop, u8 t_alpha);
+void draw_keycap(DrawList &t_draw_list, const Font &t_font, Rect t_cap, std::string_view t_label, Color t_backdrop,
+				 u8 t_alpha);
+void draw_mouse_keycap(DrawList &t_draw_list, Rect t_cap, Color t_backdrop, u8 t_alpha);
+Color keycap_label_color();
+float shortcut_width(const Font &t_font, std::string_view t_combo);
+void draw_shortcut(DrawList &t_draw_list, const Font &t_font, Vec2 t_right_center, std::string_view t_combo,
+				   Color t_backdrop, u8 t_alpha);
 void draw_magnifier(DrawList &t_draw_list, Rect t_rect, Color t_color);
 void draw_eye(DrawList &t_draw_list, const Assets &t_assets, Rect t_rect, bool t_revealed, Color t_color);
 void draw_favorite(DrawList &t_draw_list, const Assets &t_assets, Rect t_rect, bool t_filled, Color t_color);

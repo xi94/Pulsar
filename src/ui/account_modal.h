@@ -6,7 +6,6 @@
 #include "core/library.h"
 #include "core/login_attempt.h"
 #include "ui/commands.h"
-#include "ui/game_select_popup.h"
 #include "ui/list_popup.h"
 #include "ui/scrollable.h"
 #include "ui/text_input.h"
@@ -46,6 +45,7 @@ class AccountModal : public Widget {
 	i32 detached_game() const;
 	void close();
 	void quick_login(u32 t_game, AccountRef t_account);
+	void edit_account(AccountRef t_account);
 	void undo_delete();
 	void toggle_favorite(i32 t_row);
 	void forget_secrets();
@@ -107,8 +107,10 @@ class AccountModal : public Widget {
 
 	struct FormLayout {
 		Rect region;
-		Rect card;
-		Rect rows[form_row_count];
+		Rect labels[form_row_count];
+		Rect inputs[form_row_count];
+		Rect tiles;
+		u32 tile_columns;
 		float content_height;
 	};
 
@@ -142,6 +144,7 @@ class AccountModal : public Widget {
 	void request_row_tooltip(const Layout &t_layout);
 	EmptyState empty_state(Rect t_region) const;
 	Vec2 floating_panel_size() const;
+	float expanded_form_panel_height(float t_panel_width) const;
 	bool is_docked() const;
 	Rect panel_rect() const;
 	Layout layout() const;
@@ -176,7 +179,13 @@ class AccountModal : public Widget {
 	bool is_region_hit(Rect t_main, Vec2 t_point) const;
 	void open_region_list();
 	void choose_region(u32 t_index);
-	std::string_view visibility_summary(char (&t_buffer)[32]) const;
+	float edit_header_height() const;
+	std::string_view save_label() const;
+	u32 show_in_columns(float t_width) const;
+	float show_in_tile_height() const;
+	Rect show_in_tile(const FormLayout &t_form, u32 t_game) const;
+	std::optional<u32> show_in_tile_at(Rect t_main, Vec2 t_point) const;
+	void toggle_visible_game(u32 t_game);
 
 	TextInput &field(EditField t_field)
 	{
@@ -252,6 +261,8 @@ class AccountModal : public Widget {
 	std::string_view login_status() const;
 	void update_login_progress(float t_delta_seconds);
 	void draw_login_progress(DrawList &t_draw_list, Rect t_main, u8 t_alpha) const;
+	void draw_edit_header(DrawList &t_draw_list, Rect t_main, u8 t_alpha) const;
+	void draw_show_in(DrawList &t_draw_list, const FormLayout &t_form, u8 t_alpha) const;
 	void draw_edit_form(DrawList &t_draw_list, Rect t_main, u8 t_alpha);
 	void draw_footer(DrawList &t_draw_list, Rect t_footer, u8 t_alpha) const;
 	void draw_edit_footer(DrawList &t_draw_list, Rect t_footer, u8 t_alpha) const;
@@ -303,7 +314,9 @@ class AccountModal : public Widget {
 	TextInput m_fields[field_count];
 	std::optional<AccountRef> m_edited;
 	bool m_show_required = false;
-	GameSelectPopup m_visible_games;
+	u16 m_visible_mask = 0;
+	bool m_show_in_open = false;
+	float m_show_in_amount = 0.0f;
 	char m_region[8]{};
 	ListPopup m_region_list;
 };

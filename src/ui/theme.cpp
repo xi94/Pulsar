@@ -388,6 +388,16 @@ const Theme &theme_preset(ThemeKind t_kind)
 	return presets[static_cast<u32>(t_kind)];
 }
 
+Color hovered(Color t_base)
+{
+	constexpr float light_surface = 0.3f;
+	constexpr float darken = 0.06f;
+	constexpr float lighten = 0.08f;
+
+	return luminance(t_base) > light_surface ? mix(t_base, Color{0, 0, 0, 255}, darken)
+											 : mix(t_base, Color{255, 255, 255, 255}, lighten);
+}
+
 void apply_theme(ThemeKind t_kind)
 {
 	g_shown = theme_preset(t_kind);

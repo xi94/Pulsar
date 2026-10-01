@@ -27,6 +27,7 @@ enum class Asset : u8 {
 	icon_favorite,
 	icon_update,
 	icon_reset,
+	icon_account,
 	icon_app,
 	icon_league_of_legends,
 	icon_valorant,

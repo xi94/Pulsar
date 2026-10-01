@@ -1,5 +1,6 @@
 #include "ui/title_bar.h"
 
+#include "core/app_identity.h"
 #include "core/updater.h"
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
@@ -20,6 +21,15 @@ constexpr float pill_inset_y = 7.0f;
 constexpr float pill_inset_x = 4.0f;
 constexpr float pill_padding = 10.0f;
 constexpr float pill_icon_gap = 8.0f;
+constexpr float identity_mark_size = 16.0f;
+constexpr float identity_gap = 8.0f;
+constexpr float search_pill_height = 26.0f;
+constexpr float search_pill_radius = 7.0f;
+constexpr float search_pill_padding = 10.0f;
+constexpr float search_pill_icon_size = 13.0f;
+constexpr float search_pill_icon_gap = 8.0f;
+constexpr std::string_view search_pill_text = "Search all accounts";
+constexpr std::string_view search_pill_shortcut = "Ctrl+F";
 
 bool is_update_worth_showing(UpdateStage t_stage)
 {
@@ -58,8 +68,8 @@ Color update_color(UpdateStage t_stage)
 
 std::string_view update_label(UpdateStage t_stage)
 {
-	if (is_update_waiting(t_stage)) return "Update Available";
-	if (is_update_failure(t_stage)) return "Update Failed";
+	if (is_update_waiting(t_stage)) return "Update available";
+	if (is_update_failure(t_stage)) return "Update failed";
 
 	return "Updating...";
 }
@@ -93,6 +103,10 @@ bool TitleBar::on_pointer_up(Vec2 t_point)
 
 		case TitleBarButton::menu:
 			m_commands.push(Command{.type = CommandType::toggle_app_menu});
+			break;
+
+		case TitleBarButton::search:
+			m_commands.push(Command{.type = CommandType::open_account_search});
 			break;
 
 		case TitleBarButton::update:
@@ -149,6 +163,38 @@ void TitleBar::draw_update_pill(DrawList &t_draw_list) const
 			  foreground);
 }
 
+void TitleBar::draw_search_pill(DrawList &t_draw_list, TitleBarButton t_hovered) const
+{
+	if (!m_window.is_search_button_visible()) return;
+
+	const Rect area = m_window.title_bar_button_rect(TitleBarButton::search);
+	if (area.w <= 0.0f) return;
+
+	const Theme &colors = theme();
+	const bool is_hovered = t_hovered == TitleBarButton::search;
+	const Rect pill = area.inset(0.0f, (area.h - search_pill_height) * 0.5f);
+	const Color fill = is_hovered ? hovered(colors.field) : colors.field;
+	const Font &font = m_fonts.secondary();
+	const Font &key_font = m_fonts.caption();
+
+	t_draw_list.add_bordered_rect(pill, rounded(search_pill_radius), fill,
+								  is_hovered ? colors.border : colors.separator, 1.0f);
+
+	const Rect icon{pill.x + search_pill_padding, pill.center().y - search_pill_icon_size * 0.5f, search_pill_icon_size,
+					search_pill_icon_size};
+	const float keys_right = pill.right() - std::floor((pill.h - controls::keycap_height(key_font)) * 0.5f);
+	const float keys_left = keys_right - controls::shortcut_width(key_font, search_pill_shortcut);
+	const float text_left = icon.right() + search_pill_icon_gap;
+	const float room = std::max(0.0f, keys_left - search_pill_icon_gap - text_left);
+	const float label_width = std::min(text_width(font, search_pill_text), room);
+
+	controls::draw_magnifier(t_draw_list, icon, colors.text_faint);
+	draw_text_truncated(t_draw_list, font,
+						Vec2{snapped_to_pixel(text_left + (room - label_width) * 0.5f), font.centered_baseline(pill)},
+						search_pill_text, room, is_hovered ? colors.text_dim : colors.text_faint);
+	controls::draw_shortcut(t_draw_list, key_font, Vec2{keys_right, pill.center().y}, search_pill_shortcut, fill, 255);
+}
+
 void TitleBar::draw_maximize_glyph(DrawList &t_draw_list, Color t_color) const
 {
 	const Vec2 center = m_window.title_bar_button_rect(TitleBarButton::maximize).center();
@@ -183,6 +229,16 @@ void TitleBar::draw(DrawList &t_draw_list)
 	draw_hover(t_draw_list, TitleBarButton::menu, hovered);
 	controls::draw_icon(t_draw_list, icon_rect(TitleBarButton::menu), m_assets.get(Asset::icon_menu), theme().text);
 
+	const Rect menu = m_window.title_bar_button_rect(TitleBarButton::menu);
+	const Rect mark{menu.right() + identity_gap * 0.5f, (title_bar_height - identity_mark_size) * 0.5f,
+					identity_mark_size, identity_mark_size};
+	const Font &font = m_fonts.secondary();
+
+	controls::draw_icon(t_draw_list, mark, m_assets.get(Asset::icon_app), theme().text_dim);
+	draw_text(t_draw_list, font, Vec2{mark.right() + identity_gap, font.centered_baseline(menu)}, app_name,
+			  theme().text_dim);
+
+	draw_search_pill(t_draw_list, hovered);
 	draw_update_pill(t_draw_list);
 
 	draw_hover(t_draw_list, TitleBarButton::minimize, hovered);

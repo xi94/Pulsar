@@ -14,6 +14,7 @@
 namespace {
 constexpr float coverage_gamma = 0.8f;
 constexpr float setting_to_pixel_scale = 1.5f;
+constexpr float caption_size_ratio = 0.85f;
 constexpr const wchar_t *registered_fonts_key = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts";
 
 struct FontEntry {
@@ -230,13 +231,17 @@ bool Fonts::load(Renderer &t_renderer, std::string_view t_file, float t_body_siz
 
 	Font body;
 	Font secondary;
+	Font caption;
 	if (!body.load(t_renderer, path.c_str(), t_body_size * setting_to_pixel_scale, t_dpi_scale) ||
-		!secondary.load(t_renderer, path.c_str(), t_secondary_size * setting_to_pixel_scale, t_dpi_scale)) {
+		!secondary.load(t_renderer, path.c_str(), t_secondary_size * setting_to_pixel_scale, t_dpi_scale) ||
+		!caption.load(t_renderer, path.c_str(), t_secondary_size * caption_size_ratio * setting_to_pixel_scale,
+					  t_dpi_scale)) {
 		return false;
 	}
 
 	m_body = std::move(body);
 	m_secondary = std::move(secondary);
+	m_caption = std::move(caption);
 
 	return true;
 }

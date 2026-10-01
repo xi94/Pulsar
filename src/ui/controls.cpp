@@ -18,6 +18,10 @@ constexpr float danger_hover_strength = 0.38f;
 constexpr float danger_label_softening = 0.25f;
 constexpr float countdown_gap = 2.5f;
 constexpr float countdown_thickness = 1.5f;
+constexpr float keycap_padding = 5.0f;
+constexpr float keycap_radius = 4.0f;
+constexpr float keycap_lip = 1.0f;
+constexpr float keycap_gap = 3.0f;
 
 struct ButtonLook {
 	Color fill;
@@ -107,6 +111,110 @@ void controls::draw_chevron(DrawList &t_draw_list, Rect t_rect, bool t_points_up
 
 	t_draw_list.add_line({center.x - half_width, center.y - half_height}, tip, 1.5f, t_color);
 	t_draw_list.add_line(tip, {center.x + half_width, center.y - half_height}, 1.5f, t_color);
+}
+
+void controls::draw_lock(DrawList &t_draw_list, Rect t_rect, Color t_color, Color t_backdrop, bool t_open)
+{
+	const float stroke = std::max(1.5f, t_rect.w * 0.11f);
+	const float lift = t_open ? t_rect.h * 0.12f : 0.0f;
+	const Rect shackle{t_rect.x + t_rect.w * 0.24f, t_rect.y + t_rect.h * 0.04f - lift, t_rect.w * 0.52f,
+					   t_rect.h * 0.6f};
+	const Rect body{t_rect.x + t_rect.w * 0.1f, t_rect.y + t_rect.h * 0.42f, t_rect.w * 0.8f, t_rect.h * 0.54f};
+	const float shackle_radius = shackle.w * 0.5f;
+	const float body_radius = t_rect.w * 0.16f;
+	const float keyhole = stroke * 0.9f;
+	const auto radii = [](float t_radius) { return CornerRadii{t_radius, t_radius, t_radius, t_radius}; };
+
+	t_draw_list.add_rounded_rect(shackle, radii(shackle_radius), t_color);
+	t_draw_list.add_rounded_rect(shackle.inset(stroke), radii(shackle_radius - stroke), t_backdrop);
+
+	if (t_open) {
+		const float gap_top = shackle.y + shackle_radius;
+		t_draw_list.add_rect(Rect{shackle.right() - stroke - 0.5f, gap_top, stroke + 1.0f, shackle.bottom() - gap_top},
+							 t_backdrop);
+	}
+
+	t_draw_list.add_rounded_rect(body, radii(body_radius), t_color);
+	t_draw_list.add_rounded_rect(body.inset(stroke), radii(std::max(0.0f, body_radius - stroke)), t_backdrop);
+	t_draw_list.add_rounded_rect(body.centered(keyhole, keyhole), radii(keyhole * 0.5f), t_color);
+}
+
+float controls::keycap_width(const Font &t_font, std::string_view t_label)
+{
+	return std::ceil(text_width(t_font, t_label) + keycap_padding * 2.0f);
+}
+
+float controls::keycap_height(const Font &t_font)
+{
+	return std::ceil(t_font.line_height() + keycap_lip + 2.0f);
+}
+
+void controls::draw_keycap_frame(DrawList &t_draw_list, Rect t_cap, Color t_backdrop, u8 t_alpha)
+{
+	const Rect face{t_cap.x + 1.0f, t_cap.y + 1.0f, t_cap.w - 2.0f, t_cap.h - 2.0f - keycap_lip};
+
+	t_draw_list.add_rounded_rect(t_cap, rounded(keycap_radius), faded(theme().border, t_alpha));
+	t_draw_list.add_rounded_rect(face, rounded(keycap_radius - 1.0f), faded(t_backdrop, t_alpha));
+}
+
+void controls::draw_mouse_keycap(DrawList &t_draw_list, Rect t_cap, Color t_backdrop, u8 t_alpha)
+{
+	draw_keycap_frame(t_draw_list, t_cap, t_backdrop, t_alpha);
+
+	const float height = std::round((t_cap.h - keycap_lip) * 0.6f);
+	const float width = std::round(height * 0.7f);
+	const Rect mouse{snapped_to_pixel(t_cap.center().x - width * 0.5f),
+					 snapped_to_pixel(t_cap.y + (t_cap.h - keycap_lip - height) * 0.5f), width, height};
+	const Color color = faded(keycap_label_color(), t_alpha);
+
+	t_draw_list.add_rounded_rect(mouse, rounded(width * 0.5f), color);
+	t_draw_list.add_rounded_rect(mouse.inset(1.0f), rounded(width * 0.5f - 1.0f), faded(t_backdrop, t_alpha));
+	t_draw_list.add_rect(Rect{mouse.center().x - 0.5f, mouse.y + 2.0f, 1.0f, std::round(height * 0.25f)}, color);
+}
+
+Color controls::keycap_label_color()
+{
+	return mix(theme().text_faint, theme().text_dim, 0.5f);
+}
+
+void controls::draw_keycap(DrawList &t_draw_list, const Font &t_font, Rect t_cap, std::string_view t_label,
+						   Color t_backdrop, u8 t_alpha)
+{
+	draw_keycap_frame(t_draw_list, t_cap, t_backdrop, t_alpha);
+	draw_text_centered(t_draw_list, t_font, Rect{t_cap.x, t_cap.y, t_cap.w, t_cap.h - keycap_lip}, t_label,
+					   faded(keycap_label_color(), t_alpha));
+}
+
+float controls::shortcut_width(const Font &t_font, std::string_view t_combo)
+{
+	float width = 0.0f;
+
+	for (usize start = 0; start < t_combo.size();) {
+		const usize end = std::min(t_combo.find('+', start + 1), t_combo.size());
+		width += keycap_width(t_font, t_combo.substr(start, end - start)) + (start > 0 ? keycap_gap : 0.0f);
+		start = end + 1;
+	}
+
+	return width;
+}
+
+void controls::draw_shortcut(DrawList &t_draw_list, const Font &t_font, Vec2 t_right_center, std::string_view t_combo,
+							 Color t_backdrop, u8 t_alpha)
+{
+	const float height = keycap_height(t_font);
+	float x = t_right_center.x - shortcut_width(t_font, t_combo);
+
+	for (usize start = 0; start < t_combo.size();) {
+		const usize end = std::min(t_combo.find('+', start + 1), t_combo.size());
+		const std::string_view key = t_combo.substr(start, end - start);
+		const float width = keycap_width(t_font, key);
+
+		draw_keycap(t_draw_list, t_font,
+					Rect{snapped_to_pixel(x), snapped_to_pixel(t_right_center.y - height * 0.5f), width, height}, key,
+					t_backdrop, t_alpha);
+		x += width + keycap_gap;
+		start = end + 1;
+	}
 }
 
 void controls::draw_magnifier(DrawList &t_draw_list, Rect t_rect, Color t_color)

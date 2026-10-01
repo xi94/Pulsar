@@ -398,8 +398,8 @@ HMENU Tray::build_menu()
 	}
 
 	append_row(menu, MF_DISABLED | MF_GRAYED, 0, MenuRow{.separator = true, .disabled = true});
-	append_row(menu, MF_STRING, show_command, MenuRow{.label = L"Show Application", .indented = true});
-	append_row(menu, MF_STRING, exit_command, MenuRow{.label = L"Exit Application", .indented = true});
+	append_row(menu, MF_STRING, show_command, MenuRow{.label = L"Show application", .indented = true});
+	append_row(menu, MF_STRING, exit_command, MenuRow{.label = L"Exit application", .indented = true});
 
 	const MENUINFO menu_info{
 		.cbSize = sizeof(MENUINFO),

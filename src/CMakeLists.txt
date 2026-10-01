@@ -30,12 +30,12 @@ add_executable (Pulsar
   "platform/window.cpp"
 
   "ui/account_modal.cpp"
+  "ui/account_search.cpp"
   "ui/app_menu.cpp"
   "ui/carousel.cpp"
   "ui/color_picker.cpp"
   "ui/context_menu.cpp"
   "ui/controls.cpp"
-  "ui/game_select_popup.cpp"
   "ui/list_popup.cpp"
   "ui/profiler_overlay.cpp"
   "ui/scrollable.cpp"

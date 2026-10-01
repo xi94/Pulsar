@@ -2,6 +2,7 @@
 
 #include <optional>
 
+#include "core/library.h"
 #include "core/types.h"
 #include "ui/text_input.h"
 
@@ -25,6 +26,11 @@ enum class CommandType : u8 {
 	undo_delete,
 	toggle_favorite,
 	lock_vault,
+	open_account_search,
+	edit_account,
+	login_account,
+	copy_account_username,
+	copy_account_password,
 };
 
 struct ArtSource {
@@ -43,6 +49,7 @@ struct Command {
 	Vec2 position{};
 	TextInput *text_input = nullptr;
 	TextEdit text_edit = TextEdit::copy;
+	AccountRef account{};
 };
 
 class CommandQueue {

@@ -111,7 +111,7 @@ void show_crash_dialog(const std::wstring &t_reason, const std::wstring &t_locat
 	const std::wstring instruction = std::wstring{app_name_wide} + L" has stopped working";
 
 	const TASKDIALOG_BUTTON buttons[]{
-		{open_folder_button_id, L"Open Crash Folder"},
+		{open_folder_button_id, L"Open crash folder"},
 		{close_button_id, L"Close"},
 	};
 

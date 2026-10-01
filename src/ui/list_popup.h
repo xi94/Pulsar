@@ -71,6 +71,7 @@ class ListPopup {
 		Rect search;
 		Rect separator;
 		Rect list;
+		Rect footer;
 	};
 
 	bool is_searchable() const
@@ -78,6 +79,11 @@ class ListPopup {
 		return !m_options.search_placeholder.empty();
 	}
 
+	float popup_width() const;
+	u32 hint_count() const;
+	float hint_width(u32 t_hint) const;
+	u32 hint_lines() const;
+	float footer_height() const;
 	float chrome_height() const;
 	Placement placement() const;
 	u32 row_capacity() const;
@@ -98,7 +104,9 @@ class ListPopup {
 	void draw_search(DrawList &t_draw_list, const Layout &t_layout, Vec2 t_mouse, u8 t_alpha);
 	void draw_rows(DrawList &t_draw_list, const Layout &t_layout, Vec2 t_mouse, u8 t_alpha) const;
 	void draw_row(DrawList &t_draw_list, Rect t_row, u32 t_item, bool t_highlighted, u8 t_alpha) const;
-	void draw_label(DrawList &t_draw_list, Rect t_row, float t_max_width, std::string_view t_label, u8 t_alpha) const;
+	void draw_label(DrawList &t_draw_list, Rect t_row, float t_left, float t_max_width, std::string_view t_label,
+					u8 t_alpha) const;
+	void draw_key_hints(DrawList &t_draw_list, const Layout &t_layout, u8 t_alpha) const;
 
 	const Fonts &m_fonts;
 	const Settings &m_settings;

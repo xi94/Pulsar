@@ -23,6 +23,7 @@ class TitleBar : public Widget {
 
   private:
 	void draw_hover(DrawList &t_draw_list, TitleBarButton t_button, TitleBarButton t_hovered) const;
+	void draw_search_pill(DrawList &t_draw_list, TitleBarButton t_hovered) const;
 	void draw_update_pill(DrawList &t_draw_list) const;
 	void draw_maximize_glyph(DrawList &t_draw_list, Color t_color) const;
 

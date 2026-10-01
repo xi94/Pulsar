@@ -587,37 +587,37 @@ void UpdateOverlay::draw(DrawList &t_draw_list)
 	char line[96];
 
 	if (m_showing_release) {
-		std::snprintf(line, sizeof(line), "What's New in %s", m_release_version);
+		std::snprintf(line, sizeof(line), "What's new in %s", m_release_version);
 		draw_title(t_draw_list, baseline, line);
 		draw_detail(t_draw_list, baseline, "Pulsar was updated. Here's what changed.");
 		draw_notes(t_draw_list);
-		draw_primary_button(t_draw_list, "Got It", true);
+		draw_primary_button(t_draw_list, "Got it", true);
 		return;
 	}
 
 	switch (stage) {
 		case UpdateStage::idle:
 		case UpdateStage::checking:
-			draw_title(t_draw_list, baseline, "Checking for Updates");
+			draw_title(t_draw_list, baseline, "Checking for updates");
 			draw_detail(t_draw_list, baseline, "This will only take a moment.");
 			break;
 
 		case UpdateStage::up_to_date:
-			draw_title(t_draw_list, baseline, "You're Up to Date");
+			draw_title(t_draw_list, baseline, "You're up to date");
 			std::snprintf(line, sizeof(line), "%s %s is the latest version.", app_name, app_version);
 			draw_detail(t_draw_list, baseline, line);
-			draw_primary_button(t_draw_list, "Check Again", false);
+			draw_primary_button(t_draw_list, "Check again", false);
 			break;
 
 		case UpdateStage::check_failed:
-			draw_title(t_draw_list, baseline, "Couldn't Check for Updates");
+			draw_title(t_draw_list, baseline, "Couldn't check for updates");
 			draw_wrapped_text(t_draw_list, secondary, Vec2{text_column_x(), baseline}, text_column_width(),
 							  m_updater.error_message(), theme().error, max_error_lines);
-			draw_primary_button(t_draw_list, "Try Again", true);
+			draw_primary_button(t_draw_list, "Try again", true);
 			break;
 
 		case UpdateStage::available:
-			draw_title(t_draw_list, baseline, "Update Available");
+			draw_title(t_draw_list, baseline, "Update available");
 			std::snprintf(line, sizeof(line), "Version %s is ready to install.", m_updater.manifest().version);
 			draw_detail(t_draw_list, baseline, line);
 			draw_notes(t_draw_list);
@@ -625,7 +625,7 @@ void UpdateOverlay::draw(DrawList &t_draw_list)
 			break;
 
 		case UpdateStage::manual_upgrade_required:
-			draw_title(t_draw_list, baseline, "Manual Update Required");
+			draw_title(t_draw_list, baseline, "Manual update required");
 			std::snprintf(line, sizeof(line), "Version %s is out - please download it manually",
 						  m_updater.manifest().version);
 			draw_detail(t_draw_list, baseline, line);
@@ -645,14 +645,14 @@ void UpdateOverlay::draw(DrawList &t_draw_list)
 
 		case UpdateStage::error:
 		case UpdateStage::cancelled:
-			draw_title(t_draw_list, baseline, stage == UpdateStage::error ? "Update Failed" : "Update Cancelled");
+			draw_title(t_draw_list, baseline, stage == UpdateStage::error ? "Update failed" : "Update cancelled");
 
 			if (stage == UpdateStage::error) {
 				draw_wrapped_text(t_draw_list, secondary, Vec2{text_column_x(), baseline}, text_column_width(),
 								  m_updater.error_message(), theme().error, max_error_lines);
 			}
 
-			draw_primary_button(t_draw_list, "Try Again", true);
+			draw_primary_button(t_draw_list, "Try again", true);
 			break;
 	}
 }

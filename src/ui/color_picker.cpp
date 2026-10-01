@@ -20,7 +20,7 @@
 
 namespace {
 constexpr float popup_padding = 12.0f;
-constexpr float popup_radius = 12.0f;
+constexpr float popup_radius = 10.0f;
 constexpr float max_square_size = 200.0f;
 constexpr float min_square_size = 120.0f;
 constexpr float strip_gap = 10.0f;

@@ -359,7 +359,7 @@ void UnlockScreen::draw(DrawList &t_draw_list)
 	const float error_baseline = submit_rect().bottom() + gap + secondary.ascent();
 
 	if (m_setup) {
-		draw_centered(body, title_baseline, "Create a Master Password", theme().text);
+		draw_centered(body, title_baseline, "Create a master password", theme().text);
 		draw_centered(secondary, description_baseline, "It encrypts your saved account passwords.", theme().text_dim);
 		draw_centered(secondary, description_baseline + secondary.line_height(),
 					  "Pick something memorable - it can't be recovered.", theme().text_dim);
@@ -372,7 +372,7 @@ void UnlockScreen::draw(DrawList &t_draw_list)
 		draw_field(t_draw_list, i);
 	}
 
-	draw_submit_button(t_draw_list, m_setup ? "Create Password" : "Unlock");
+	draw_submit_button(t_draw_list, m_setup ? "Create password" : "Unlock");
 
 	std::string_view error;
 	if (!m_setup && m_wrong_password) {

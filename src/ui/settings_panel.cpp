@@ -70,6 +70,7 @@ constexpr float header_shadow_travel = 24.0f;
 constexpr float reset_button_size = 28.0f;
 constexpr float reset_button_gap = 10.0f;
 constexpr float reset_icon_size = 18.0f;
+constexpr float reset_column = reset_button_gap + reset_button_size;
 
 constexpr float slider_bar_height = 4.0f;
 constexpr float slider_rest_bar_height = 2.0f;
@@ -79,7 +80,6 @@ constexpr float slider_thumb_ring = 2.0f;
 constexpr float slider_tick_size = 3.0f;
 constexpr float slider_hover_rate = 14.0f;
 constexpr float slider_caption_gap = 8.0f;
-constexpr float inline_slider_gap = 28.0f;
 constexpr u32 auto_lock_stops[]{1, 2, 5, 10, 15, 30, 60, 0};
 constexpr u32 auto_lock_stop_count = static_cast<u32>(std::size(auto_lock_stops));
 
@@ -117,7 +117,7 @@ constexpr u32 pattern_columns = 3;
 constexpr float pattern_select_padding = 10.0f;
 constexpr float pattern_select_chevron_room = 31.0f;
 constexpr float pattern_popup_padding = 14.0f;
-constexpr float pattern_popup_radius = 12.0f;
+constexpr float pattern_popup_radius = 10.0f;
 constexpr float pattern_popup_gap = 6.0f;
 constexpr float pattern_popup_margin = 8.0f;
 constexpr float pattern_popup_rate = 22.0f;
@@ -133,11 +133,11 @@ constexpr float tile_ring_gap = 2.0f;
 constexpr float tile_ring = 2.0f;
 constexpr float tile_ring_rate = 16.0f;
 
-constexpr std::string_view close_choice_labels[]{"Minimize To Tray", "Quit"};
+constexpr std::string_view close_choice_labels[]{"Minimize to tray", "Quit"};
 constexpr float segment_padding_x = 12.0f;
 constexpr float segment_inset = 2.0f;
 constexpr float segment_slide_rate = 18.0f;
-constexpr float theme_list_width = 250.0f;
+constexpr float theme_list_width = 300.0f;
 
 constexpr float theme_dot_size = 16.0f;
 constexpr float theme_dot_overlap = 6.0f;
@@ -291,21 +291,21 @@ Rect slider_control_rect(Rect t_row, const Fonts &t_fonts)
 
 Rect reset_button_rect(Rect t_control, Rect t_row, const Fonts &t_fonts)
 {
-	return Rect{t_control.x - reset_button_gap - reset_button_size,
-				control_center_y(t_row, t_fonts) - reset_button_size * 0.5f, reset_button_size, reset_button_size};
+	return Rect{t_control.x - reset_column, control_center_y(t_row, t_fonts) - reset_button_size * 0.5f,
+				reset_button_size, reset_button_size};
 }
 
-float label_right_edge(Rect t_control, Rect t_row, const Fonts &t_fonts)
+float label_right_edge(Rect t_control)
 {
-	return reset_button_rect(t_control, t_row, t_fonts).x - label_control_gap;
+	return t_control.x - reset_column - label_control_gap;
 }
 
 Rect inline_slider_rect(Rect t_row, Rect t_control, float t_left, const Fonts &t_fonts)
 {
 	const float height = control_height(t_fonts);
+	const float right = t_control.x - reset_column - label_control_gap;
 
-	return Rect{t_left, t_row.center().y - height * 0.5f,
-				std::max(0.0f, label_right_edge(t_control, t_row, t_fonts) - t_left), height};
+	return Rect{t_left, t_row.center().y - height * 0.5f, std::max(0.0f, right - t_left), height};
 }
 
 float slider_fraction_at(Rect t_slider, float t_x)
@@ -544,31 +544,31 @@ const SettingsPanel::GroupSpec SettingsPanel::group_specs[group_count]{
 
 const SettingsPanel::RowSpec SettingsPanel::row_specs[row_spec_count]{
 	{&Rows::theme, SettingsTab::appearance, 0, "Theme", "", "dark light mode palette colour colors interface"},
-	{&Rows::accent, SettingsTab::appearance, 0, "Accent Color", "", "colour highlight buttons"},
-	{&Rows::corner_roundness, SettingsTab::appearance, 0, "Corner Roundness", "", "radius rounded corners"},
+	{&Rows::accent, SettingsTab::appearance, 0, "Accent color", "", "colour highlight buttons"},
+	{&Rows::corner_roundness, SettingsTab::appearance, 0, "Corner roundness", "", "radius rounded corners"},
 	{&Rows::background, SettingsTab::appearance, 1, "Pattern", "",
 	 "background backdrop texture dots grid lines polka topography starfield stars scanlines crosshatch wallpaper "
 	 "strength intensity opacity subtle"},
-	{&Rows::background_light, SettingsTab::appearance, 1, "Soft Light", "",
+	{&Rows::background_light, SettingsTab::appearance, 1, "Soft light", "",
 	 "background backdrop glow gradient top light depth strength intensity"},
 	{&Rows::background_grain, SettingsTab::appearance, 1, "Grain", "",
 	 "background backdrop noise film texture strength intensity"},
 	{&Rows::font, SettingsTab::appearance, 2, "Font", "", "typeface family text"},
-	{&Rows::font_size, SettingsTab::appearance, 2, "Font Size", "", "text scale zoom bigger interface"},
-	{&Rows::secondary_font_size, SettingsTab::appearance, 2, "Small Text Size", "",
+	{&Rows::font_size, SettingsTab::appearance, 2, "Font size", "", "text scale zoom bigger interface"},
+	{&Rows::secondary_font_size, SettingsTab::appearance, 2, "Small text size", "",
 	 "secondary font labels hints scale smaller"},
 	{&Rows::animations, SettingsTab::behavior, 3, "Animations", "",
 	 "motion effects reduce animate popups speed fast slow"},
 	{&Rows::notifications, SettingsTab::behavior, 4, "Notifications", "", "toast popup alert confirmation messages"},
-	{&Rows::close_to_tray, SettingsTab::behavior, 4, "When Closing", "",
+	{&Rows::close_to_tray, SettingsTab::behavior, 4, "When closing", "",
 	 "close to tray minimize quit exit background system tray hide"},
-	{&Rows::hide_from_capture, SettingsTab::privacy, 5, "Hide From Screen Capture",
+	{&Rows::hide_from_capture, SettingsTab::privacy, 5, "Hide from screen capture",
 	 "Hide accounts from screenshares, recordings and screenshots.", "stream record share obs discord"},
-	{&Rows::block_overlay_injection, SettingsTab::privacy, 5, "Block Overlay Injection",
+	{&Rows::block_overlay_injection, SettingsTab::privacy, 5, "Block overlay injection",
 	 "Block overlays and keyloggers. Restart to apply.", "security inject dll"},
-	{&Rows::auto_lock, SettingsTab::security, 6, "Auto-Lock", "Lock the vault after being idle.",
+	{&Rows::auto_lock, SettingsTab::security, 6, "Auto-lock", "Lock the vault after being idle.",
 	 "timeout idle inactive away"},
-	{&Rows::master_password, SettingsTab::security, 6, "Master Password", "Encrypts saved passwords.",
+	{&Rows::master_password, SettingsTab::security, 6, "Master password", "Encrypts saved passwords.",
 	 "change reset vault encryption"},
 };
 
@@ -666,6 +666,7 @@ void SettingsPanel::restore_committed_previews(Settings &t_settings) const
 void SettingsPanel::open()
 {
 	m_open = true;
+	settle_resets();
 	m_search.set_focused(false);
 	clear_search();
 
@@ -770,6 +771,7 @@ SettingsPanel::Rows SettingsPanel::rows(const Layout &t_layout) const
 
 	close_card();
 	result.content_height = cursor.y - top + rows_top_padding * 2.0f;
+	result.row_width = cursor.w;
 
 	return result;
 }
@@ -814,7 +816,7 @@ float SettingsPanel::inline_slider_left(Rect t_row) const
 		widest = std::max(widest, text_width(m_fonts.body(), spec_of(row).title));
 	}
 
-	return snapped_to_pixel(t_row.x + row_inset_x + widest + inline_slider_gap);
+	return snapped_to_pixel(t_row.x + row_inset_x + widest + label_control_gap + reset_column);
 }
 
 Rect SettingsPanel::slider_line(const Rows &t_rows, SliderKind t_slider) const
@@ -1193,12 +1195,16 @@ Rect SettingsPanel::reset_row(const Rows &t_rows, ResettableSetting t_setting) c
 		case ResettableSetting::corner_roundness:
 			return t_rows.corner_roundness;
 		case ResettableSetting::background:
+		case ResettableSetting::background_intensity:
 			return t_rows.background;
 		case ResettableSetting::background_light:
+		case ResettableSetting::background_light_intensity:
 			return t_rows.background_light;
 		case ResettableSetting::background_grain:
+		case ResettableSetting::background_grain_intensity:
 			return t_rows.background_grain;
 		case ResettableSetting::animations:
+		case ResettableSetting::animation_speed:
 			return t_rows.animations;
 		case ResettableSetting::notifications:
 			return t_rows.notifications;
@@ -1219,6 +1225,8 @@ Rect SettingsPanel::reset_row(const Rows &t_rows, ResettableSetting t_setting) c
 
 Rect SettingsPanel::reset_control(const Rows &t_rows, ResettableSetting t_setting) const
 {
+	if (const std::optional<SliderKind> slider = reset_slider(t_setting)) return slider_rect(t_rows, *slider);
+
 	const Rect row = reset_row(t_rows, t_setting);
 
 	switch (t_setting) {
@@ -1226,6 +1234,7 @@ Rect SettingsPanel::reset_control(const Rows &t_rows, ResettableSetting t_settin
 		case ResettableSetting::font:
 			return dropdown_rect(row, m_fonts);
 		case ResettableSetting::background:
+		case ResettableSetting::background_intensity:
 			return pattern_select_rect(row, m_fonts);
 		case ResettableSetting::font_size:
 		case ResettableSetting::secondary_font_size:
@@ -1237,11 +1246,14 @@ Rect SettingsPanel::reset_control(const Rows &t_rows, ResettableSetting t_settin
 		case ResettableSetting::close_to_tray:
 			return close_choice_rect(row);
 		case ResettableSetting::animations:
+		case ResettableSetting::animation_speed:
 		case ResettableSetting::notifications:
 		case ResettableSetting::hide_from_capture:
 		case ResettableSetting::block_overlay_injection:
 		case ResettableSetting::background_light:
+		case ResettableSetting::background_light_intensity:
 		case ResettableSetting::background_grain:
+		case ResettableSetting::background_grain_intensity:
 			return toggle_rect(row, m_fonts);
 		case ResettableSetting::auto_lock:
 			return slider_control_rect(row, m_fonts);
@@ -1255,6 +1267,40 @@ Rect SettingsPanel::reset_control(const Rows &t_rows, ResettableSetting t_settin
 Rect SettingsPanel::reset_button(const Rows &t_rows, ResettableSetting t_setting) const
 {
 	return reset_button_rect(reset_control(t_rows, t_setting), reset_row(t_rows, t_setting), m_fonts);
+}
+
+std::optional<SettingsPanel::SliderKind> SettingsPanel::reset_slider(ResettableSetting t_setting)
+{
+	switch (t_setting) {
+		case ResettableSetting::background_intensity:
+			return SliderKind::pattern_strength;
+		case ResettableSetting::background_light_intensity:
+			return SliderKind::light_strength;
+		case ResettableSetting::background_grain_intensity:
+			return SliderKind::grain_strength;
+		case ResettableSetting::animation_speed:
+			return SliderKind::animation_speed;
+		default:
+			return std::nullopt;
+	}
+}
+
+void SettingsPanel::settle_resets()
+{
+	for (u32 i = 0; i < resettable_count; i += 1) {
+		const auto setting = static_cast<ResettableSetting>(i);
+
+		if (!reset_slider(setting)) {
+			m_reset_visible[i] = can_reset(setting) ? 1.0f : 0.0f;
+		}
+	}
+}
+
+bool SettingsPanel::can_reset(ResettableSetting t_setting) const
+{
+	const std::optional<SliderKind> slider = reset_slider(t_setting);
+
+	return !is_default(t_setting) && (!slider || slider_visibility(*slider) > 0.5f);
 }
 
 bool SettingsPanel::is_default(ResettableSetting t_setting) const
@@ -1276,17 +1322,21 @@ bool SettingsPanel::is_default(ResettableSetting t_setting) const
 		case ResettableSetting::corner_roundness:
 			return same(m_settings.corner_roundness, defaults.corner_roundness);
 		case ResettableSetting::background:
-			return m_settings.background_style == defaults.background_style &&
-				   same(m_settings.background_intensity, defaults.background_intensity);
+			return m_settings.background_style == defaults.background_style;
+		case ResettableSetting::background_intensity:
+			return same(m_settings.background_intensity, defaults.background_intensity);
 		case ResettableSetting::background_light:
-			return m_settings.background_light == defaults.background_light &&
-				   same(m_settings.background_light_intensity, defaults.background_light_intensity);
+			return m_settings.background_light == defaults.background_light;
+		case ResettableSetting::background_light_intensity:
+			return same(m_settings.background_light_intensity, defaults.background_light_intensity);
 		case ResettableSetting::background_grain:
-			return m_settings.background_grain == defaults.background_grain &&
-				   same(m_settings.background_grain_intensity, defaults.background_grain_intensity);
+			return m_settings.background_grain == defaults.background_grain;
+		case ResettableSetting::background_grain_intensity:
+			return same(m_settings.background_grain_intensity, defaults.background_grain_intensity);
 		case ResettableSetting::animations:
-			return m_settings.animations_enabled == defaults.animations_enabled &&
-				   same(m_settings.animation_speed, defaults.animation_speed);
+			return m_settings.animations_enabled == defaults.animations_enabled;
+		case ResettableSetting::animation_speed:
+			return same(m_settings.animation_speed, defaults.animation_speed);
 		case ResettableSetting::notifications:
 			return m_settings.show_notifications == defaults.show_notifications;
 		case ResettableSetting::hide_from_capture:
@@ -1335,20 +1385,28 @@ void SettingsPanel::reset(ResettableSetting t_setting)
 			break;
 		case ResettableSetting::background:
 			m_settings.background_style = defaults.background_style;
+			break;
+		case ResettableSetting::background_intensity:
 			m_settings.background_intensity = defaults.background_intensity;
 			break;
 		case ResettableSetting::background_light:
 			m_settings.background_light = defaults.background_light;
+			break;
+		case ResettableSetting::background_light_intensity:
 			m_settings.background_light_intensity = defaults.background_light_intensity;
 			break;
 		case ResettableSetting::background_grain:
 			m_settings.background_grain = defaults.background_grain;
+			break;
+		case ResettableSetting::background_grain_intensity:
 			m_settings.background_grain_intensity = defaults.background_grain_intensity;
 			break;
 		case ResettableSetting::animations:
 			m_settings.animations_enabled = defaults.animations_enabled;
-			m_settings.animation_speed = defaults.animation_speed;
 			animation::set_enabled(m_settings.animations_enabled);
+			break;
+		case ResettableSetting::animation_speed:
+			m_settings.animation_speed = defaults.animation_speed;
 			animation::set_speed(m_settings.animation_speed);
 			break;
 		case ResettableSetting::notifications:
@@ -1599,16 +1657,19 @@ void SettingsPanel::update_hover_hints(float t_delta_seconds)
 
 	for (u32 i = 0; i < resettable_count; i += 1) {
 		const auto setting = static_cast<ResettableSetting>(i);
-		const bool at_default = is_default(setting);
+		const bool resettable = can_reset(setting);
+		const Rect row = reset_row(current_rows, setting);
+		const bool shown = reset_slider(setting)
+							   ? pointer_live && resettable &&
+									 is_row_hovered(current, Rect{row.x, row.y, current_rows.row_width, row.h})
+							   : resettable;
 
-		m_reset_visible[i] = animation::ease_toward(
-			m_reset_visible[i],
-			pointer_live && !at_default && is_row_hovered(current, reset_row(current_rows, setting)) ? 1.0f : 0.0f,
-			reset_appear_rate, t_delta_seconds);
+		m_reset_visible[i] =
+			animation::ease_toward(m_reset_visible[i], shown ? 1.0f : 0.0f, reset_appear_rate, t_delta_seconds);
 		m_reset_spin[i] = animation::ease_toward(m_reset_spin[i], 0.0f, reset_spin_rate, t_delta_seconds);
 
 		const Rect button = reset_button(current_rows, setting);
-		if (pointer_live && !at_default && is_on_screen(current, reset_row(current_rows, setting)) &&
+		if (pointer_live && resettable && is_on_screen(current, reset_row(current_rows, setting)) &&
 			button.contains(m_mouse)) {
 			m_tooltip.request("Reset to default", button);
 		}
@@ -1775,7 +1836,7 @@ void SettingsPanel::handle_click(Vec2 t_point)
 	for (u32 i = 0; i < resettable_count && !has_popup_open(); i += 1) {
 		const auto setting = static_cast<ResettableSetting>(i);
 
-		if (!is_default(setting) &&
+		if (can_reset(setting) &&
 			hits(current, reset_row(current_rows, setting), reset_button(current_rows, setting), t_point)) {
 			reset(setting);
 			return;
@@ -2001,7 +2062,7 @@ CursorKind SettingsPanel::cursor() const
 	for (u32 i = 0; i < resettable_count; i += 1) {
 		const auto setting = static_cast<ResettableSetting>(i);
 
-		if (!is_default(setting) &&
+		if (can_reset(setting) &&
 			hits(current, reset_row(current_rows, setting), reset_button(current_rows, setting), m_mouse)) {
 			return CursorKind::hand;
 		}
@@ -2111,8 +2172,7 @@ void SettingsPanel::draw_label(DrawList &t_draw_list, const Rows &t_rows, Rect R
 	const RowSpec &spec = spec_of(t_row);
 	const Rect row = t_rows.*t_row;
 
-	draw_row_label(t_draw_list, m_fonts, row, spec.title, spec.description, label_right_edge(t_control, row, m_fonts),
-				   t_alpha);
+	draw_row_label(t_draw_list, m_fonts, row, spec.title, spec.description, label_right_edge(t_control), t_alpha);
 }
 
 void SettingsPanel::draw_dropdown_row(DrawList &t_draw_list, const Layout &t_layout, const Rows &t_rows,
@@ -2177,8 +2237,8 @@ void SettingsPanel::draw_pattern_row(DrawList &t_draw_list, const Layout &t_layo
 	const bool hovered = !has_popup_open() && hits(t_layout, row, button, m_mouse);
 	const RowSpec &spec = spec_of(&Rows::background);
 
-	draw_row_label(t_draw_list, m_fonts, row, spec.title, spec.description, inline_slider_left(row) - label_control_gap,
-				   t_alpha);
+	draw_row_label(t_draw_list, m_fonts, row, spec.title, spec.description,
+				   inline_slider_left(row) - reset_column - label_control_gap, t_alpha);
 	draw_select(t_draw_list, m_fonts.body(), button,
 				background_labels[static_cast<u32>(m_settings.background_style)].name, m_pattern_open, hovered,
 				m_settings.accent, t_alpha);
@@ -2343,7 +2403,7 @@ void SettingsPanel::draw_cards(DrawList &t_draw_list, const Layout &t_layout, co
 
 		if (first || !is_on_screen(t_layout, row)) continue;
 
-		t_draw_list.add_rect(Rect{row.x + row_inset_x, row.y, row.w - row_inset_x * 2.0f, 1.0f},
+		t_draw_list.add_rect(Rect{row.x + row_inset_x, row.y, t_rows.row_width - row_inset_x * 2.0f, 1.0f},
 							 faded(colors.separator, t_alpha));
 	}
 }
@@ -2390,7 +2450,7 @@ void SettingsPanel::draw_master_password(DrawList &t_draw_list, const Layout &t_
 	const Rect button = master_password_button_rect(row, m_fonts);
 	draw_label(t_draw_list, t_rows, &Rows::master_password, button, t_alpha);
 
-	controls::draw_button(t_draw_list, m_fonts.body(), button, "Reset Password", controls::ButtonStyle::neutral,
+	controls::draw_button(t_draw_list, m_fonts.body(), button, "Reset password", controls::ButtonStyle::neutral,
 						  m_settings.accent, true, !has_popup_open() && hits(t_layout, row, button, m_mouse), t_alpha);
 }
 

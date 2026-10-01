@@ -33,9 +33,13 @@ enum class ResettableSetting : u8 {
 	accent,
 	corner_roundness,
 	background,
+	background_intensity,
 	background_light,
+	background_light_intensity,
 	background_grain,
+	background_grain_intensity,
 	animations,
+	animation_speed,
 	notifications,
 	hide_from_capture,
 	block_overlay_injection,
@@ -115,6 +119,7 @@ class SettingsPanel : public Widget {
 		Rect auto_lock;
 		Rect master_password;
 		float content_height;
+		float row_width;
 		Rect cards[group_count];
 		Rect group_titles[group_count];
 		u32 listed_count;
@@ -208,6 +213,9 @@ class SettingsPanel : public Widget {
 	Rect reset_row(const Rows &t_rows, ResettableSetting t_setting) const;
 	Rect reset_control(const Rows &t_rows, ResettableSetting t_setting) const;
 	Rect reset_button(const Rows &t_rows, ResettableSetting t_setting) const;
+	static std::optional<SliderKind> reset_slider(ResettableSetting t_setting);
+	bool can_reset(ResettableSetting t_setting) const;
+	void settle_resets();
 	bool is_default(ResettableSetting t_setting) const;
 	void reset(ResettableSetting t_setting);
 

@@ -1,5 +1,6 @@
 #include "platform/window.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include <dwmapi.h>
@@ -230,8 +231,20 @@ Rect Window::title_bar_button_rect(TitleBarButton t_button) const
 	switch (t_button) {
 		case TitleBarButton::menu:
 			return Rect{0.0f, 0.0f, title_bar_button_width, title_bar_height};
+		case TitleBarButton::search: {
+			const float left = title_bar_button_width + search_button_side_room;
+			const float limit = right - title_bar_button_width * 3.0f -
+								(m_update_button_visible ? update_button_width : 0.0f) - search_button_margin;
+			const float width = std::min(search_button_width, limit - left);
+			if (width < search_button_min_width) return Rect{};
+
+			const float x = std::clamp((right - width) * 0.5f, left, limit - width);
+
+			return Rect{std::floor(x), 0.0f, width, title_bar_height};
+		}
 		case TitleBarButton::update:
-			return Rect{title_bar_button_width, 0.0f, update_button_width, title_bar_height};
+			return Rect{right - title_bar_button_width * 3.0f - update_button_width, 0.0f, update_button_width,
+						title_bar_height};
 		case TitleBarButton::minimize:
 			return Rect{right - title_bar_button_width * 3.0f, 0.0f, title_bar_button_width, title_bar_height};
 		case TitleBarButton::maximize:
@@ -248,12 +261,13 @@ Rect Window::title_bar_button_rect(TitleBarButton t_button) const
 TitleBarButton Window::title_bar_button_at(Vec2 t_point) const
 {
 	constexpr TitleBarButton buttons[]{
-		TitleBarButton::menu,	  TitleBarButton::update, TitleBarButton::minimize,
-		TitleBarButton::maximize, TitleBarButton::close,
+		TitleBarButton::menu,	  TitleBarButton::search,	TitleBarButton::update,
+		TitleBarButton::minimize, TitleBarButton::maximize, TitleBarButton::close,
 	};
 
 	for (const TitleBarButton button : buttons) {
 		if (button == TitleBarButton::update && !m_update_button_visible) continue;
+		if (button == TitleBarButton::search && !m_search_button_visible) continue;
 
 		if (title_bar_button_rect(button).contains(t_point)) return button;
 	}
