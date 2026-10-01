@@ -36,6 +36,7 @@
 #include "embeds/icons/ShelfIcon.hpp"
 #include "embeds/icons/TFTIcon.hpp"
 #include "embeds/icons/UpdateIcon.hpp"
+#include "embeds/icons/UsernameIcon.hpp"
 #include "embeds/icons/ValorantIcon.hpp"
 
 #include "stb/stb_image.h"
@@ -102,6 +103,7 @@ const EncodedAsset encoded_assets[asset_count]{
 	{icon::reset_icon, "ResetIcon"},
 	{icon::account_icon, "AccountIcon"},
 	{icon::image_icon, "ImageIcon"},
+	{icon::username_icon, "UsernameIcon"},
 	{icon::app_mark, "AppMark"},
 	{icon::league_of_legends_icon, "LeagueIcon"},
 	{icon::valorant_icon, "ValorantIcon"},

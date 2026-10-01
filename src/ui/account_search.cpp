@@ -637,7 +637,7 @@ void AccountSearch::draw_action(DrawList &t_draw_list, Rect t_row, const Action 
 			text = "Edit account";
 			break;
 		case ActionKind::copy_username:
-			controls::draw_icon(t_draw_list, icon, m_assets.get(Asset::icon_account), icon_color);
+			controls::draw_icon(t_draw_list, icon, m_assets.get(Asset::icon_username), icon_color);
 			text = "Copy username";
 			break;
 		case ActionKind::copy_password:
