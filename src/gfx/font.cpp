@@ -22,8 +22,7 @@ constexpr u32            K_ATLAS_PADDING          = 1;
 
 // Tried in order when the chosen font lacks a character. Japanese comes before Korean because Malgun Gothic also carries kana and kanji.
 constexpr const wchar_t* K_FALLBACK_FONT_FILES[]{
-	L"segoeui.ttf", L"LeelawUI.ttf", L"YuGothM.ttc", L"meiryo.ttc",   L"malgun.ttf",   L"msjh.ttc",
-	L"msyh.ttc",    L"Nirmala.ttc",  L"Nirmala.ttf", L"seguisym.ttf", L"seguiemj.ttf",
+	L"segoeui.ttf", L"LeelawUI.ttf", L"YuGothM.ttc", L"meiryo.ttc", L"malgun.ttf", L"msjh.ttc", L"msyh.ttc", L"seguisym.ttf", L"seguiemj.ttf",
 };
 
 constexpr usize K_FALLBACK_COUNT = std::size(K_FALLBACK_FONT_FILES);

@@ -7,6 +7,16 @@
 namespace {
 constexpr u32 K_REPLACEMENT_CHARACTER = 0xFFFD;
 
+struct CodepointRange {
+	u32 first;
+	u32 last;
+};
+
+constexpr CodepointRange K_BLOCKED_SCRIPTS[]{
+	{0x0590, 0x06FF}, {0x0750, 0x077F}, {0x0870, 0x08FF}, {0x0900, 0x0D7F},   {0x1CD0, 0x1CFF},
+	{0xA8E0, 0xA8FF}, {0xFB1D, 0xFDFF}, {0xFE70, 0xFEFF}, {0x11B00, 0x11B5F}, {0x1EE00, 0x1EEFF},
+};
+
 [[nodiscard]] auto lowered(char t_character) -> char
 {
 	return t_character >= 'A' && t_character <= 'Z' ? static_cast<char>(t_character - 'A' + 'a') : t_character;
@@ -121,6 +131,16 @@ constexpr u32 K_REPLACEMENT_CHARACTER = 0xFFFD;
 	}
 
 	return index;
+}
+
+[[nodiscard]] auto is_blocked_script(u32 t_codepoint) -> bool
+{
+	if (t_codepoint < K_BLOCKED_SCRIPTS[0].first) [[likely]] {
+		return false;
+	}
+
+	return std::ranges::any_of(K_BLOCKED_SCRIPTS,
+	                           [t_codepoint](CodepointRange t_range) { return t_codepoint >= t_range.first && t_codepoint <= t_range.last; });
 }
 
 [[nodiscard]] auto find_ignoring_case(std::string_view t_text, std::string_view t_query) -> usize

@@ -37,6 +37,7 @@ auto copy_to(std::string_view t_text, char (&t_destination)[Capacity]) -> void
 [[nodiscard]] auto encode_utf8(u32 t_codepoint, char* t_out) -> u32;
 [[nodiscard]] auto next_codepoint(std::string_view t_text, usize t_index) -> usize;
 [[nodiscard]] auto previous_codepoint(std::string_view t_text, usize t_index) -> usize;
+[[nodiscard]] auto is_blocked_script(u32 t_codepoint) -> bool;
 
 [[nodiscard]] auto find_ignoring_case(std::string_view t_text, std::string_view t_query) -> usize;
 [[nodiscard]] auto trimmed(std::string_view t_text) -> std::string_view;

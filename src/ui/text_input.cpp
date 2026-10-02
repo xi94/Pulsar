@@ -44,7 +44,7 @@ enum class CharClass : u8 {
 
 [[nodiscard]] auto is_printable(u32 t_codepoint) -> bool
 {
-	return t_codepoint >= 0x20 && t_codepoint != 0x7F && (t_codepoint < 0x80 || t_codepoint >= 0xA0);
+	return t_codepoint >= 0x20 && t_codepoint != 0x7F && (t_codepoint < 0x80 || t_codepoint >= 0xA0) && !is_blocked_script(t_codepoint);
 }
 
 [[nodiscard]] auto shortcut_for(u32 t_key) -> std::optional<TextEdit>

@@ -24,7 +24,7 @@ TruncationProbe g_truncation_probe;
 
 [[nodiscard]] auto is_drawn(u32 t_codepoint) -> bool
 {
-	return t_codepoint >= 0x20 && t_codepoint != 0x7F;
+	return t_codepoint >= 0x20 && t_codepoint != 0x7F && !is_blocked_script(t_codepoint);
 }
 
 [[nodiscard]] auto is_space(char t_character) -> bool
