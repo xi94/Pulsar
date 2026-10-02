@@ -9,19 +9,19 @@ struct Fonts;
 
 class TruncationHint {
   public:
-	explicit TruncationHint(const Fonts *t_fonts);
+	explicit TruncationHint(const Fonts* t_fonts);
 
-	void capture(const DrawList *t_draw_list);
-	void update(float t_delta_seconds, bool t_suppressed);
-	void draw(DrawList *t_draw_list, Rect t_bounds) const;
+	auto capture(const DrawList* t_draw_list) -> void;
+	auto update(float t_delta_seconds, bool t_suppressed) -> void;
+	auto draw(DrawList* t_draw_list, Rect t_bounds) const -> void;
 
   private:
-	const Fonts *m_fonts;
+	const Fonts* m_fonts;
 
-	char m_text[512]{};
+	char  m_text[512]{};
 	usize m_length = 0;
-	Rect m_anchor{};
-	bool m_requested = false;
-	float m_hover_seconds = 0.0f;
+	Rect  m_anchor{};
+	bool  m_requested      = false;
+	float m_hover_seconds  = 0.0f;
 	float m_visible_amount = 0.0f;
 };

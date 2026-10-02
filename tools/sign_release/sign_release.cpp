@@ -14,25 +14,25 @@
 #include "core/app_identity.h"
 
 namespace {
-constexpr usize max_notes_length = 1023;
+constexpr usize K_MAX_NOTES_LENGTH = 1023;
 
-constexpr const char *usage = "sign_release --exe <Pulsar.exe> [--notes <text> | --notes-file <path>] [--version <X.Y.Z>] "
-							  "[--url <download-url>] [--out <update.json>] [--min-upgrade-version <X.Y.Z>] [--key-hex <128 hex chars>]";
+constexpr const char* K_USAGE = "sign_release --exe <Pulsar.exe> [--notes <text> | --notes-file <path>] [--version <X.Y.Z>] "
+								"[--url <download-url>] [--out <update.json>] [--min-upgrade-version <X.Y.Z>] [--key-hex <128 hex chars>]";
 
-[[noreturn]] void fail(const char *t_message)
+[[noreturn]] void fail(const char* t_message)
 {
 	std::fprintf(stderr, "sign_release: %s\n", t_message);
 	std::exit(1);
 }
 
-bool from_hex(const std::string &t_hex, u8 *t_out, usize t_length)
+[[nodiscard]] auto from_hex(const std::string& t_hex, u8* t_out, usize t_length) -> bool
 {
 	usize decoded = 0;
 
 	return t_hex.size() == t_length * 2 && sodium_hex2bin(t_out, t_length, t_hex.c_str(), t_hex.size(), nullptr, &decoded, nullptr) == 0 && decoded == t_length;
 }
 
-std::string to_hex(const u8 *t_data, usize t_length)
+[[nodiscard]] auto to_hex(const u8* t_data, usize t_length) -> std::string
 {
 	std::string hex(t_length * 2 + 1, '\0');
 	sodium_bin2hex(hex.data(), hex.size(), t_data, t_length);
@@ -41,7 +41,7 @@ std::string to_hex(const u8 *t_data, usize t_length)
 	return hex;
 }
 
-std::string json_escaped(std::string_view t_text)
+[[nodiscard]] auto json_escaped(std::string_view t_text) -> std::string
 {
 	std::string escaped;
 	escaped.reserve(t_text.size());
@@ -68,7 +68,7 @@ std::string json_escaped(std::string_view t_text)
 	return escaped;
 }
 
-bool read_whole_file(const std::string &t_path, std::vector<u8> &t_out_bytes)
+[[nodiscard]] auto read_whole_file(const std::string& t_path, std::vector<u8>& t_out_bytes) -> bool
 {
 	std::ifstream file(t_path, std::ios::binary | std::ios::ate);
 	if (!file) return false;
@@ -79,10 +79,10 @@ bool read_whole_file(const std::string &t_path, std::vector<u8> &t_out_bytes)
 	file.seekg(0, std::ios::beg);
 	t_out_bytes.resize(static_cast<usize>(size));
 
-	return static_cast<bool>(file.read(reinterpret_cast<char *>(t_out_bytes.data()), size));
+	return static_cast<bool>(file.read(reinterpret_cast<char*>(t_out_bytes.data()), size));
 }
 
-std::string read_notes_file(const std::string &t_path)
+[[nodiscard]] auto read_notes_file(const std::string& t_path) -> std::string
 {
 	std::vector<u8> bytes;
 	if (!read_whole_file(t_path, bytes)) fail("could not read --notes-file");
@@ -95,17 +95,17 @@ std::string read_notes_file(const std::string &t_path)
 	return notes;
 }
 
-std::string trimmed_notes(const std::string &t_notes)
+[[nodiscard]] auto trimmed_notes(const std::string& t_notes) -> std::string
 {
-	constexpr const char *blank = " \t\r\n";
+	constexpr const char* BLANK = " \t\r\n";
 
-	const usize first = t_notes.find_first_not_of(blank);
+	const usize first = t_notes.find_first_not_of(BLANK);
 	if (first == std::string::npos) return {};
 
-	return t_notes.substr(first, t_notes.find_last_not_of(blank) - first + 1);
+	return t_notes.substr(first, t_notes.find_last_not_of(BLANK) - first + 1);
 }
 
-std::string exe_version(const std::string &t_exe_path)
+[[nodiscard]] auto exe_version(const std::string& t_exe_path) -> std::string
 {
 	const DWORD info_size = GetFileVersionInfoSizeA(t_exe_path.c_str(), nullptr);
 	if (info_size == 0) return {};
@@ -113,9 +113,9 @@ std::string exe_version(const std::string &t_exe_path)
 	std::vector<u8> info(info_size);
 	if (!GetFileVersionInfoA(t_exe_path.c_str(), 0, info_size, info.data())) return {};
 
-	VS_FIXEDFILEINFO *fixed = nullptr;
-	UINT fixed_size = 0;
-	if (!VerQueryValueA(info.data(), "\\", reinterpret_cast<void **>(&fixed), &fixed_size) || fixed == nullptr || fixed_size < sizeof(VS_FIXEDFILEINFO)) {
+	VS_FIXEDFILEINFO* fixed      = nullptr;
+	UINT              fixed_size = 0;
+	if (!VerQueryValueA(info.data(), "\\", reinterpret_cast<void**>(&fixed), &fixed_size) || fixed == nullptr || fixed_size < sizeof(VS_FIXEDFILEINFO)) {
 		return {};
 	}
 
@@ -125,18 +125,18 @@ std::string exe_version(const std::string &t_exe_path)
 	return version;
 }
 
-std::string release_url(const std::string &t_version)
+[[nodiscard]] auto release_url(const std::string& t_version) -> std::string
 {
 	char url[512];
-	std::snprintf(url, sizeof(url), release_download_url_format, t_version.c_str());
+	std::snprintf(url, sizeof(url), K_RELEASE_DOWNLOAD_URL_FORMAT, t_version.c_str());
 
 	return url;
 }
 
-std::string key_from_environment()
+[[nodiscard]] auto key_from_environment() -> std::string
 {
-	char *value = nullptr;
-	usize length = 0;
+	char*       value  = nullptr;
+	usize       length = 0;
 	std::string key;
 
 	if (_dupenv_s(&value, &length, "PULSAR_SIGNING_KEY_HEX") == 0 && value != nullptr) {
@@ -149,7 +149,7 @@ std::string key_from_environment()
 }
 }
 
-int main(int t_argc, char **t_argv)
+auto main(int t_argc, char** t_argv) -> int
 {
 	std::string exe_path;
 	std::string version;
@@ -161,7 +161,7 @@ int main(int t_argc, char **t_argv)
 
 	for (int i = 1; i < t_argc; i += 1) {
 		const std::string_view option = t_argv[i];
-		if (i + 1 >= t_argc) fail(usage);
+		if (i + 1 >= t_argc) fail(K_USAGE);
 
 		const std::string value = t_argv[i + 1];
 		i += 1;
@@ -183,7 +183,7 @@ int main(int t_argc, char **t_argv)
 		} else if (option == "--key-hex") {
 			key_hex = value;
 		} else {
-			fail(usage);
+			fail(K_USAGE);
 		}
 	}
 
@@ -192,8 +192,8 @@ int main(int t_argc, char **t_argv)
 	notes = trimmed_notes(notes);
 	std::erase(notes, '\r');
 
-	if (notes.size() > max_notes_length) {
-		std::fprintf(stderr, "sign_release: notes are %zu bytes but Pulsar shows at most %zu - shorten them\n", notes.size(), max_notes_length);
+	if (notes.size() > K_MAX_NOTES_LENGTH) {
+		std::fprintf(stderr, "sign_release: notes are %zu bytes but Pulsar shows at most %zu - shorten them\n", notes.size(), K_MAX_NOTES_LENGTH);
 		return 1;
 	}
 

@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <thread>
 
@@ -21,13 +22,17 @@ enum class LoginStage : u8 {
 
 struct LoginWork {
 	std::atomic<LoginStage> stage{LoginStage::Idle};
-	std::atomic<bool> cancel_requested{false};
-	std::atomic<bool> worker_finished{false};
+	std::atomic<bool>       cancel_requested{false};
+	std::atomic<bool>       worker_finished{false};
 
 	char username[64]{};
 	char password[128]{};
 	char launch_product[32]{};
 	char message[160]{};
+
+	std::wstring remembered_client_path;
+	std::wstring found_client_path;
+	bool         client_missing = false;
 
 	RiotClient riot_client;
 };
@@ -37,28 +42,30 @@ class LoginAttempt {
 	LoginAttempt() = default;
 	~LoginAttempt();
 
-	LoginAttempt(const LoginAttempt &) = delete;
-	LoginAttempt &operator=(const LoginAttempt &) = delete;
+	LoginAttempt(const LoginAttempt&)                    = delete;
+	auto operator=(const LoginAttempt&) -> LoginAttempt& = delete;
 
-	void start(std::string_view t_username, std::string_view t_password, std::string_view t_launch_product);
-	void cancel();
-	void update();
+	auto start(std::string_view t_username, std::string_view t_password, std::string_view t_launch_product, std::string_view t_client_path) -> void;
+	auto cancel() -> void;
+	auto update() -> void;
 
-	bool is_active() const
+	[[nodiscard]] auto is_active() const -> bool
 	{
 		return m_active;
 	}
 
-	LoginStage stage() const;
-	std::string_view terminal_message() const;
+	[[nodiscard]] auto stage() const -> LoginStage;
+	[[nodiscard]] auto terminal_message() const -> std::string_view;
+	[[nodiscard]] auto found_client_path() const -> std::string;
+	[[nodiscard]] auto is_client_missing() const -> bool;
 
-	static bool is_terminal(LoginStage t_stage);
+	[[nodiscard]] static auto is_terminal(LoginStage t_stage) -> bool;
 
   private:
-	void abandon_worker();
+	auto abandon_worker() -> void;
 
-	std::shared_ptr<LoginWork> m_work;
-	std::thread m_worker;
-	bool m_active = false;
-	std::chrono::steady_clock::time_point m_cancel_deadline{};
+	std::shared_ptr<LoginWork>            m_work;
+	std::thread                           m_worker;
+	bool                                  m_active = false;
+	std::chrono::steady_clock::time_point m_cancel_deadline;
 };

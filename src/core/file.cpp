@@ -9,7 +9,7 @@
 #include "core/app_identity.h"
 
 namespace {
-bool file_already_holds(const std::string &t_path, std::string_view t_contents)
+[[nodiscard]] auto file_already_holds(const std::string& t_path, std::string_view t_contents) -> bool
 {
 	std::vector<u8> existing;
 	if (!read_whole_file(t_path.c_str(), &existing)) return false;
@@ -17,12 +17,12 @@ bool file_already_holds(const std::string &t_path, std::string_view t_contents)
 	return existing.size() == t_contents.size() && std::memcmp(existing.data(), t_contents.data(), existing.size()) == 0;
 }
 
-bool write_and_flush(const std::string &t_path, std::string_view t_contents)
+[[nodiscard]] auto write_and_flush(const std::string& t_path, std::string_view t_contents) -> bool
 {
 	const HANDLE file = CreateFileA(t_path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 	if (file == INVALID_HANDLE_VALUE) return false;
 
-	DWORD written = 0;
+	DWORD      written = 0;
 	const bool ok =
 		WriteFile(file, t_contents.data(), static_cast<DWORD>(t_contents.size()), &written, nullptr) && written == t_contents.size() && FlushFileBuffers(file);
 	CloseHandle(file);
@@ -31,9 +31,9 @@ bool write_and_flush(const std::string &t_path, std::string_view t_contents)
 }
 }
 
-bool read_whole_file(const char *t_path, std::vector<u8> *t_out_bytes)
+[[nodiscard]] auto read_whole_file(const char* t_path, std::vector<u8>* t_out_bytes) -> bool
 {
-	FILE *file = nullptr;
+	FILE* file = nullptr;
 	if (fopen_s(&file, t_path, "rb") != 0 || file == nullptr) return false;
 
 	std::fseek(file, 0, SEEK_END);
@@ -51,7 +51,7 @@ bool read_whole_file(const char *t_path, std::vector<u8> *t_out_bytes)
 	return ok;
 }
 
-bool write_file_atomic(const std::string &t_path, std::string_view t_contents)
+[[nodiscard]] auto write_file_atomic(const std::string& t_path, std::string_view t_contents) -> bool
 {
 	// Saves happen on nearly every click, so rewriting unchanged content would rotate the last good .bak away.
 	if (file_already_holds(t_path, t_contents)) return true;
@@ -72,18 +72,18 @@ bool write_file_atomic(const std::string &t_path, std::string_view t_contents)
 	return true;
 }
 
-std::string backup_path_for(const std::string &t_path)
+[[nodiscard]] auto backup_path_for(const std::string& t_path) -> std::string
 {
 	return t_path + ".bak";
 }
 
-std::wstring local_app_data_folder()
+[[nodiscard]] auto local_app_data_folder() -> std::wstring
 {
-	wchar_t from_environment[MAX_PATH];
+	wchar_t     from_environment[MAX_PATH];
 	const DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", from_environment, MAX_PATH);
 	if (length > 0 && length < MAX_PATH) return std::wstring{from_environment, length};
 
-	PWSTR known_folder = nullptr;
+	PWSTR        known_folder = nullptr;
 	std::wstring root;
 
 	if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &known_folder))) {
@@ -95,12 +95,12 @@ std::wstring local_app_data_folder()
 	return root;
 }
 
-std::wstring app_data_subdirectory(const wchar_t *t_subfolder)
+[[nodiscard]] auto app_data_subdirectory(const wchar_t* t_subfolder) -> std::wstring
 {
 	const std::wstring root = local_app_data_folder();
 	if (root.empty()) return {};
 
-	const std::wstring directory = root + L"\\" + app_name_wide + L"\\" + t_subfolder;
+	const std::wstring directory = root + L"\\" + K_APP_NAME_WIDE + L"\\" + t_subfolder;
 	SHCreateDirectoryExW(nullptr, directory.c_str(), nullptr);
 
 	return directory;

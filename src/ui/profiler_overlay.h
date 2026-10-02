@@ -10,14 +10,14 @@ struct Fonts;
 
 class ProfilerOverlay : public Widget {
   public:
-	explicit ProfilerOverlay(const Fonts *t_fonts);
+	explicit ProfilerOverlay(const Fonts* t_fonts);
 
-	void draw(DrawList *t_draw_list) override;
-	bool on_key_down(u32 t_key) override;
+	auto draw(DrawList* t_draw_list) -> void override;
+	auto on_key_down(u32 t_key) -> bool override;
 
   private:
-	const Fonts *m_fonts;
-	bool m_shown = false;
+	const Fonts* m_fonts;
+	bool         m_shown = false;
 };
 
 #endif

@@ -10,31 +10,31 @@
 #include "platform/app_icon.h"
 
 namespace {
-constexpr float default_dpi = 96.0f;
-constexpr ULONGLONG activate_existing_timeout_ms = 3000;
+constexpr float     K_DEFAULT_DPI                  = 96.0f;
+constexpr ULONGLONG K_ACTIVATE_EXISTING_TIMEOUT_MS = 3000;
 
-UINT activate_instance_message()
+[[nodiscard]] auto activate_instance_message() -> UINT
 {
-	static const UINT message = RegisterWindowMessageW(activate_instance_message_name);
+	static const UINT MESSAGE = RegisterWindowMessageW(K_ACTIVATE_INSTANCE_MESSAGE_NAME);
 
-	return message;
+	return MESSAGE;
 }
 
-UINT quit_instance_message()
+[[nodiscard]] auto quit_instance_message() -> UINT
 {
-	static const UINT message = RegisterWindowMessageW(quit_instance_message_name);
+	static const UINT MESSAGE = RegisterWindowMessageW(K_QUIT_INSTANCE_MESSAGE_NAME);
 
-	return message;
+	return MESSAGE;
 }
 
-POINT frame_border(UINT t_dpi)
+[[nodiscard]] auto frame_border(UINT t_dpi) -> POINT
 {
 	const int padding = GetSystemMetricsForDpi(SM_CXPADDEDBORDER, t_dpi);
 
 	return POINT{GetSystemMetricsForDpi(SM_CXFRAME, t_dpi) + padding, GetSystemMetricsForDpi(SM_CYFRAME, t_dpi) + padding};
 }
 
-LRESULT resize_edge_at(HWND t_window, POINT t_cursor)
+[[nodiscard]] auto resize_edge_at(HWND t_window, POINT t_cursor) -> LRESULT
 {
 	if (IsZoomed(t_window)) return HTNOWHERE;
 
@@ -42,10 +42,10 @@ LRESULT resize_edge_at(HWND t_window, POINT t_cursor)
 	GetWindowRect(t_window, &window_rect);
 
 	const POINT border = frame_border(GetDpiForWindow(t_window));
-	const bool left = t_cursor.x < window_rect.left + border.x;
-	const bool right = t_cursor.x >= window_rect.right - border.x;
-	const bool top = t_cursor.y < window_rect.top + border.y;
-	const bool bottom = t_cursor.y >= window_rect.bottom - border.y;
+	const bool  left   = t_cursor.x < window_rect.left + border.x;
+	const bool  right  = t_cursor.x >= window_rect.right - border.x;
+	const bool  top    = t_cursor.y < window_rect.top + border.y;
+	const bool  bottom = t_cursor.y >= window_rect.bottom - border.y;
 
 	if (top) return left ? HTTOPLEFT : right ? HTTOPRIGHT : HTTOP;
 	if (bottom) return left ? HTBOTTOMLEFT : right ? HTBOTTOMRIGHT : HTBOTTOM;
@@ -55,7 +55,7 @@ LRESULT resize_edge_at(HWND t_window, POINT t_cursor)
 	return HTNOWHERE;
 }
 
-HCURSOR system_cursor(CursorKind t_cursor)
+[[nodiscard]] auto system_cursor(CursorKind t_cursor) -> HCURSOR
 {
 	switch (t_cursor) {
 		case CursorKind::Hand:
@@ -72,7 +72,7 @@ HCURSOR system_cursor(CursorKind t_cursor)
 	return LoadCursorW(nullptr, IDC_ARROW);
 }
 
-u32 scaled(u32 t_value, float t_scale)
+[[nodiscard]] auto scaled(u32 t_value, float t_scale) -> u32
 {
 	return static_cast<u32>(std::lround(t_value * t_scale));
 }
@@ -85,12 +85,12 @@ Window::~Window()
 	}
 }
 
-bool Window::activate_existing_instance()
+auto Window::activate_existing_instance() -> bool
 {
-	const ULONGLONG deadline = GetTickCount64() + activate_existing_timeout_ms;
+	const ULONGLONG deadline = GetTickCount64() + K_ACTIVATE_EXISTING_TIMEOUT_MS;
 
 	for (;;) {
-		const HWND existing = FindWindowW(main_window_class_name, nullptr);
+		const HWND existing = FindWindowW(K_MAIN_WINDOW_CLASS_NAME, nullptr);
 		if (existing != nullptr) {
 			DWORD process_id = 0;
 			GetWindowThreadProcessId(existing, &process_id);
@@ -106,36 +106,36 @@ bool Window::activate_existing_instance()
 	}
 }
 
-void Window::register_window_class(HINSTANCE t_instance, const wchar_t *t_class_name) const
+auto Window::register_window_class(HINSTANCE t_instance, const wchar_t* t_class_name) const -> void
 {
 	const WNDCLASSEXW window_class{
-		.cbSize = sizeof(WNDCLASSEXW),
-		.style = CS_HREDRAW | CS_VREDRAW,
-		.lpfnWndProc = window_proc,
-		.hInstance = t_instance,
-		.hIcon = load_app_icon(AppIconSize::LargeIcon),
-		.hCursor = LoadCursorW(nullptr, IDC_ARROW),
+		.cbSize        = sizeof(WNDCLASSEXW),
+		.style         = CS_HREDRAW | CS_VREDRAW,
+		.lpfnWndProc   = window_proc,
+		.hInstance     = t_instance,
+		.hIcon         = load_app_icon(AppIconSize::LargeIcon),
+		.hCursor       = LoadCursorW(nullptr, IDC_ARROW),
 		.lpszClassName = t_class_name,
-		.hIconSm = load_app_icon(AppIconSize::SmallIcon),
+		.hIconSm       = load_app_icon(AppIconSize::SmallIcon),
 	};
 
 	RegisterClassExW(&window_class);
 }
 
-bool Window::create(const wchar_t *t_title, u32 t_width, u32 t_height, WindowKind t_kind)
+auto Window::create(const wchar_t* t_title, u32 t_width, u32 t_height, WindowKind t_kind) -> bool
 {
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
-	m_kind = t_kind;
-	m_dpi_scale = GetDpiForSystem() / default_dpi;
-	m_width = t_width;
-	m_height = t_height;
-	m_physical_width = scaled(t_width, m_dpi_scale);
+	m_kind            = t_kind;
+	m_dpi_scale       = GetDpiForSystem() / K_DEFAULT_DPI;
+	m_width           = t_width;
+	m_height          = t_height;
+	m_physical_width  = scaled(t_width, m_dpi_scale);
 	m_physical_height = scaled(t_height, m_dpi_scale);
 
-	const HINSTANCE instance = GetModuleHandleW(nullptr);
-	const bool dialog = t_kind == WindowKind::Dialog;
-	const wchar_t *class_name = dialog ? setup_window_class_name : main_window_class_name;
+	const HINSTANCE instance   = GetModuleHandleW(nullptr);
+	const bool      dialog     = t_kind == WindowKind::Dialog;
+	const wchar_t*  class_name = dialog ? K_SETUP_WINDOW_CLASS_NAME : K_MAIN_WINDOW_CLASS_NAME;
 	register_window_class(instance, class_name);
 
 	RECT work_area{};
@@ -145,7 +145,7 @@ bool Window::create(const wchar_t *t_title, u32 t_width, u32 t_height, WindowKin
 
 	const DWORD style = dialog ? WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX : WS_OVERLAPPEDWINDOW;
 	m_window = CreateWindowExW(0, class_name, t_title, style, x, y, static_cast<int>(m_physical_width), static_cast<int>(m_physical_height), nullptr, nullptr,
-							   instance, this);
+	                           instance, this);
 	if (m_window == nullptr) return false;
 
 	correct_size_for_actual_dpi(t_width, t_height);
@@ -159,42 +159,42 @@ bool Window::create(const wchar_t *t_title, u32 t_width, u32 t_height, WindowKin
 	return true;
 }
 
-void Window::correct_size_for_actual_dpi(u32 t_width, u32 t_height)
+auto Window::correct_size_for_actual_dpi(u32 t_width, u32 t_height) -> void
 {
-	const float actual_scale = GetDpiForWindow(m_window) / default_dpi;
+	const float actual_scale = GetDpiForWindow(m_window) / K_DEFAULT_DPI;
 	if (actual_scale == m_dpi_scale) return;
 
 	m_dpi_scale = actual_scale;
 	SetWindowPos(m_window, nullptr, 0, 0, static_cast<int>(scaled(t_width, actual_scale)), static_cast<int>(scaled(t_height, actual_scale)),
-				 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+	             SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-void Window::show()
+auto Window::show() -> void
 {
 	ShowWindow(m_window, SW_SHOW);
 }
 
-void Window::show_minimized()
+auto Window::show_minimized() -> void
 {
 	ShowWindow(m_window, SW_SHOWMINNOACTIVE);
 }
 
-Vec2 Window::restored_size() const
+auto Window::restored_size() const -> Vec2
 {
 	WINDOWPLACEMENT placement{.length = sizeof(WINDOWPLACEMENT)};
 	if (!GetWindowPlacement(m_window, &placement)) return size();
 
-	const RECT &normal = placement.rcNormalPosition;
+	const RECT& normal = placement.rcNormalPosition;
 
 	return Vec2{static_cast<float>(normal.right - normal.left) / m_dpi_scale, static_cast<float>(normal.bottom - normal.top) / m_dpi_scale};
 }
 
-void Window::minimize()
+auto Window::minimize() -> void
 {
 	ShowWindow(m_window, SW_MINIMIZE);
 }
 
-void Window::restore()
+auto Window::restore() -> void
 {
 	ShowWindow(m_window, SW_SHOW);
 
@@ -205,24 +205,24 @@ void Window::restore()
 	SetForegroundWindow(m_window);
 }
 
-void Window::on_redraw(std::function<void()> t_callback)
+auto Window::on_redraw(std::function<void()> t_callback) -> void
 {
 	m_redraw = std::move(t_callback);
 }
 
-void Window::on_dpi_changed(std::function<void()> t_callback)
+auto Window::on_dpi_changed(std::function<void()> t_callback) -> void
 {
 	m_dpi_changed = std::move(t_callback);
 }
 
-void Window::redraw()
+auto Window::redraw() -> void
 {
 	if (m_redraw) {
 		m_redraw();
 	}
 }
 
-void Window::pump_messages()
+auto Window::pump_messages() -> void
 {
 	m_input_event_count = 0;
 
@@ -237,7 +237,7 @@ void Window::pump_messages()
 	}
 }
 
-void Window::set_cursor(CursorKind t_cursor)
+auto Window::set_cursor(CursorKind t_cursor) -> void
 {
 	if (t_cursor == m_cursor) return;
 
@@ -245,7 +245,7 @@ void Window::set_cursor(CursorKind t_cursor)
 	SetCursor(system_cursor(t_cursor));
 }
 
-void Window::set_excluded_from_capture(bool t_excluded)
+auto Window::set_excluded_from_capture(bool t_excluded) -> void
 {
 	if (t_excluded == m_excluded_from_capture) return;
 
@@ -253,17 +253,17 @@ void Window::set_excluded_from_capture(bool t_excluded)
 	m_excluded_from_capture = t_excluded;
 }
 
-Rect Window::title_bar_button_rect(TitleBarButton t_button) const
+auto Window::title_bar_button_rect(TitleBarButton t_button) const -> Rect
 {
 	const float right = static_cast<float>(m_width);
 
 	if (m_kind == WindowKind::Dialog) {
 		if (t_button == TitleBarButton::Minimize) {
-			return Rect{right - title_bar_button_width * 2.0f, 0.0f, title_bar_button_width, title_bar_height};
+			return Rect{right - K_TITLE_BAR_BUTTON_WIDTH * 2.0f, 0.0f, K_TITLE_BAR_BUTTON_WIDTH, K_TITLE_BAR_HEIGHT};
 		}
 
 		if (t_button == TitleBarButton::Close) {
-			return Rect{right - title_bar_button_width, 0.0f, title_bar_button_width, title_bar_height};
+			return Rect{right - K_TITLE_BAR_BUTTON_WIDTH, 0.0f, K_TITLE_BAR_BUTTON_WIDTH, K_TITLE_BAR_HEIGHT};
 		}
 
 		return Rect{};
@@ -271,26 +271,26 @@ Rect Window::title_bar_button_rect(TitleBarButton t_button) const
 
 	switch (t_button) {
 		case TitleBarButton::Menu:
-			return Rect{0.0f, 0.0f, title_bar_button_width, title_bar_height};
+			return Rect{0.0f, 0.0f, K_TITLE_BAR_BUTTON_WIDTH, K_TITLE_BAR_HEIGHT};
 		case TitleBarButton::Search: {
-			const float side = m_update_button_visible ? m_update_button_width + search_button_margin : 0.0f;
-			const float left = title_bar_button_width + std::max(search_button_side_room, side);
-			const float limit = right - title_bar_button_width * 3.0f - search_button_margin;
-			const float width = std::min(search_button_width, limit - left);
-			if (width < search_button_min_width) return Rect{};
+			const float side  = m_update_button_visible ? m_update_button_width + K_SEARCH_BUTTON_MARGIN : 0.0f;
+			const float left  = K_TITLE_BAR_BUTTON_WIDTH + std::max(K_SEARCH_BUTTON_SIDE_ROOM, side);
+			const float limit = right - K_TITLE_BAR_BUTTON_WIDTH * 3.0f - K_SEARCH_BUTTON_MARGIN;
+			const float width = std::min(K_SEARCH_BUTTON_WIDTH, limit - left);
+			if (width < K_SEARCH_BUTTON_MIN_WIDTH) return Rect{};
 
 			const float x = std::clamp((right - width) * 0.5f, left, limit - width);
 
-			return Rect{std::floor(x), 0.0f, width, title_bar_height};
+			return Rect{std::floor(x), 0.0f, width, K_TITLE_BAR_HEIGHT};
 		}
 		case TitleBarButton::Update:
-			return Rect{title_bar_button_width, 0.0f, m_update_button_width, title_bar_height};
+			return Rect{K_TITLE_BAR_BUTTON_WIDTH, 0.0f, m_update_button_width, K_TITLE_BAR_HEIGHT};
 		case TitleBarButton::Minimize:
-			return Rect{right - title_bar_button_width * 3.0f, 0.0f, title_bar_button_width, title_bar_height};
+			return Rect{right - K_TITLE_BAR_BUTTON_WIDTH * 3.0f, 0.0f, K_TITLE_BAR_BUTTON_WIDTH, K_TITLE_BAR_HEIGHT};
 		case TitleBarButton::Maximize:
-			return Rect{right - title_bar_button_width * 2.0f, 0.0f, title_bar_button_width, title_bar_height};
+			return Rect{right - K_TITLE_BAR_BUTTON_WIDTH * 2.0f, 0.0f, K_TITLE_BAR_BUTTON_WIDTH, K_TITLE_BAR_HEIGHT};
 		case TitleBarButton::Close:
-			return Rect{right - title_bar_button_width, 0.0f, title_bar_button_width, title_bar_height};
+			return Rect{right - K_TITLE_BAR_BUTTON_WIDTH, 0.0f, K_TITLE_BAR_BUTTON_WIDTH, K_TITLE_BAR_HEIGHT};
 		case TitleBarButton::None:
 			break;
 	}
@@ -298,13 +298,13 @@ Rect Window::title_bar_button_rect(TitleBarButton t_button) const
 	return Rect{};
 }
 
-TitleBarButton Window::title_bar_button_at(Vec2 t_point) const
+auto Window::title_bar_button_at(Vec2 t_point) const -> TitleBarButton
 {
-	constexpr TitleBarButton buttons[]{
+	constexpr TitleBarButton BUTTONS[]{
 		TitleBarButton::Menu, TitleBarButton::Search, TitleBarButton::Update, TitleBarButton::Minimize, TitleBarButton::Maximize, TitleBarButton::Close,
 	};
 
-	for (const TitleBarButton button : buttons) {
+	for (const TitleBarButton button : BUTTONS) {
 		if (button == TitleBarButton::Update && !m_update_button_visible) continue;
 		if (button == TitleBarButton::Search && !m_search_button_visible) continue;
 
@@ -314,28 +314,56 @@ TitleBarButton Window::title_bar_button_at(Vec2 t_point) const
 	return TitleBarButton::None;
 }
 
-Vec2 Window::to_logical(POINT t_physical) const
+auto Window::to_logical(POINT t_physical) const -> Vec2
 {
 	return Vec2{t_physical.x / m_dpi_scale, t_physical.y / m_dpi_scale};
 }
 
-void Window::push_input(const InputEvent &t_event)
+auto Window::push_input(const InputEvent& t_event) -> void
 {
-	if (m_input_event_count >= max_input_events) return;
+	if (m_input_event_count >= K_MAX_INPUT_EVENTS) return;
 
 	m_input_events[m_input_event_count] = t_event;
 	m_input_event_count += 1;
 }
 
-void Window::push_mouse(InputEventType t_type, LPARAM t_lparam)
+auto Window::push_mouse(InputEventType t_type, LPARAM t_lparam) -> void
 {
 	m_last_mouse = to_logical(POINT{GET_X_LPARAM(t_lparam), GET_Y_LPARAM(t_lparam)});
 	push_input(InputEvent{.type = t_type, .position = m_last_mouse});
 }
 
-LRESULT Window::handle_hit_test(LPARAM t_lparam)
+auto Window::push_mouse_at(POINT t_client) -> void
 {
-	const POINT cursor{GET_X_LPARAM(t_lparam), GET_Y_LPARAM(t_lparam)};
+	m_last_mouse = to_logical(t_client);
+	push_input(InputEvent{.type = InputEventType::MouseMove, .position = m_last_mouse});
+}
+
+auto Window::track_mouse_leave(bool t_non_client) -> void
+{
+	TRACKMOUSEEVENT track{
+		.cbSize    = sizeof(TRACKMOUSEEVENT),
+		.dwFlags   = TME_LEAVE | (t_non_client ? static_cast<DWORD>(TME_NONCLIENT) : 0u),
+		.hwndTrack = m_window,
+	};
+	TrackMouseEvent(&track);
+}
+
+auto Window::handle_mouse_leave() -> void
+{
+	POINT cursor{};
+	GetCursorPos(&cursor);
+
+	// Moving between the title bar and the client area also ends tracking; the next move message carries the position.
+	if (WindowFromPoint(cursor) == m_window) return;
+
+	m_last_mouse = Vec2{-1.0f, -1.0f};
+	push_input(InputEvent{.type = InputEventType::MouseMove, .position = m_last_mouse});
+}
+
+auto Window::handle_hit_test(LPARAM t_lparam) -> LRESULT
+{
+	const POINT   cursor{GET_X_LPARAM(t_lparam), GET_Y_LPARAM(t_lparam)};
 	const LRESULT edge = m_kind == WindowKind::Dialog ? HTNOWHERE : resize_edge_at(m_window, cursor);
 
 	m_mouse_over_resize_border = edge != HTNOWHERE;
@@ -344,48 +372,48 @@ LRESULT Window::handle_hit_test(LPARAM t_lparam)
 	POINT client = cursor;
 	ScreenToClient(m_window, &client);
 
-	const Vec2 point = to_logical(client);
-	const bool over_caption = point.y >= 0.0f && point.y < title_bar_height && title_bar_button_at(point) == TitleBarButton::None;
+	const Vec2 point        = to_logical(client);
+	const bool over_caption = point.y >= 0.0f && point.y < K_TITLE_BAR_HEIGHT && title_bar_button_at(point) == TitleBarButton::None;
 
 	return over_caption ? HTCAPTION : HTCLIENT;
 }
 
-void Window::handle_dpi_changed(WPARAM t_wparam, LPARAM t_lparam)
+auto Window::handle_dpi_changed(WPARAM t_wparam, LPARAM t_lparam) -> void
 {
-	m_dpi_scale = HIWORD(t_wparam) / default_dpi;
+	m_dpi_scale = HIWORD(t_wparam) / K_DEFAULT_DPI;
 
 	if (m_dpi_changed) {
 		m_dpi_changed();
 	}
 
-	const RECT *suggested = reinterpret_cast<const RECT *>(t_lparam);
+	const RECT* suggested = reinterpret_cast<const RECT*>(t_lparam);
 	SetWindowPos(m_window, nullptr, suggested->left, suggested->top, suggested->right - suggested->left, suggested->bottom - suggested->top,
-				 SWP_NOZORDER | SWP_NOACTIVATE);
+	             SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-void Window::handle_size(WPARAM t_wparam, LPARAM t_lparam)
+auto Window::handle_size(WPARAM t_wparam, LPARAM t_lparam) -> void
 {
 	// Minimizing reports the tiny iconic size, which would otherwise be saved as the window size.
 	if (t_wparam == SIZE_MINIMIZED) return;
 
-	m_physical_width = LOWORD(t_lparam);
+	m_physical_width  = LOWORD(t_lparam);
 	m_physical_height = HIWORD(t_lparam);
-	m_width = scaled(m_physical_width, 1.0f / m_dpi_scale);
-	m_height = scaled(m_physical_height, 1.0f / m_dpi_scale);
+	m_width           = scaled(m_physical_width, 1.0f / m_dpi_scale);
+	m_height          = scaled(m_physical_height, 1.0f / m_dpi_scale);
 
 	redraw();
 }
 
-void Window::handle_min_max_info(LPARAM t_lparam) const
+auto Window::handle_min_max_info(LPARAM t_lparam) const -> void
 {
 	if (m_kind == WindowKind::Dialog) return;
 
-	auto *info = reinterpret_cast<MINMAXINFO *>(t_lparam);
-	info->ptMinTrackSize.x = std::lround(min_window_width * m_dpi_scale);
-	info->ptMinTrackSize.y = std::lround(min_window_height * m_dpi_scale);
+	auto* info             = reinterpret_cast<MINMAXINFO*>(t_lparam);
+	info->ptMinTrackSize.x = std::lround(K_MIN_WINDOW_WIDTH * m_dpi_scale);
+	info->ptMinTrackSize.y = std::lround(K_MIN_WINDOW_HEIGHT * m_dpi_scale);
 }
 
-LRESULT Window::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
+auto Window::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam) -> LRESULT
 {
 	if (t_message == activate_instance_message()) {
 		restore();
@@ -400,7 +428,7 @@ LRESULT Window::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 	switch (t_message) {
 		case WM_NCCALCSIZE: {
 			// The first calculation arrives with wParam FALSE and a bare RECT; skipping it leaves the OS caption drawn.
-			RECT *client = t_wparam ? &reinterpret_cast<NCCALCSIZE_PARAMS *>(t_lparam)->rgrc[0] : reinterpret_cast<RECT *>(t_lparam);
+			RECT* client = t_wparam ? &reinterpret_cast<NCCALCSIZE_PARAMS*>(t_lparam)->rgrc[0] : reinterpret_cast<RECT*>(t_lparam);
 
 			if (IsZoomed(m_window)) {
 				const POINT border = frame_border(GetDpiForWindow(m_window));
@@ -485,15 +513,32 @@ LRESULT Window::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 
 		case WM_MOUSEMOVE:
 			push_mouse(InputEventType::MouseMove, t_lparam);
+			track_mouse_leave(false);
 			return 0;
+
+		case WM_NCMOUSEMOVE: {
+			POINT cursor{GET_X_LPARAM(t_lparam), GET_Y_LPARAM(t_lparam)};
+			ScreenToClient(m_window, &cursor);
+			push_mouse_at(cursor);
+			track_mouse_leave(true);
+			break;
+		}
+
+		case WM_MOUSELEAVE:
+			handle_mouse_leave();
+			return 0;
+
+		case WM_NCMOUSELEAVE:
+			handle_mouse_leave();
+			break;
 
 		case WM_MOUSEWHEEL: {
 			POINT cursor{GET_X_LPARAM(t_lparam), GET_Y_LPARAM(t_lparam)};
 			ScreenToClient(m_window, &cursor);
 
 			push_input(InputEvent{
-				.type = InputEventType::MouseWheel,
-				.position = to_logical(cursor),
+				.type        = InputEventType::MouseWheel,
+				.position    = to_logical(cursor),
 				.wheel_delta = static_cast<float>(GET_WHEEL_DELTA_WPARAM(t_wparam)) / WHEEL_DELTA,
 			});
 			return 0;
@@ -522,14 +567,14 @@ LRESULT Window::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
 	return DefWindowProcW(m_window, t_message, t_wparam, t_lparam);
 }
 
-LRESULT CALLBACK Window::window_proc(HWND t_window, UINT t_message, WPARAM t_wparam, LPARAM t_lparam)
+auto CALLBACK Window::window_proc(HWND t_window, UINT t_message, WPARAM t_wparam, LPARAM t_lparam) -> LRESULT
 {
 	if (t_message == WM_NCCREATE) {
-		const auto *create = reinterpret_cast<const CREATESTRUCTW *>(t_lparam);
+		const auto* create = reinterpret_cast<const CREATESTRUCTW*>(t_lparam);
 		SetWindowLongPtrW(t_window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
 	}
 
-	auto *window = reinterpret_cast<Window *>(GetWindowLongPtrW(t_window, GWLP_USERDATA));
+	auto* window = reinterpret_cast<Window*>(GetWindowLongPtrW(t_window, GWLP_USERDATA));
 	if (window == nullptr) return DefWindowProcW(t_window, t_message, t_wparam, t_lparam);
 
 	window->m_window = t_window;

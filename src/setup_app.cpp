@@ -12,16 +12,16 @@
 #include "ui/theme.h"
 
 namespace {
-constexpr u32 window_width = 480;
-constexpr u32 window_height = 380;
-constexpr u32 draw_list_vertex_capacity = 1 << 14;
-constexpr u32 draw_list_index_capacity = (1 << 14) * 3 / 2;
-constexpr u32 app_icon_texture_size = 256;
-constexpr float heading_font_scale = 1.3f;
-constexpr float title_font_scale = 1.75f;
-constexpr float idle_poll_seconds = 0.25f;
-constexpr auto resume_frame_time = std::chrono::microseconds(16667);
-constexpr float control_icon_size = 16.0f;
+constexpr u32   K_WINDOW_WIDTH              = 480;
+constexpr u32   K_WINDOW_HEIGHT             = 380;
+constexpr u32   K_DRAW_LIST_VERTEX_CAPACITY = 1 << 14;
+constexpr u32   K_DRAW_LIST_INDEX_CAPACITY  = (1 << 14) * 3 / 2;
+constexpr u32   K_APP_ICON_TEXTURE_SIZE     = 256;
+constexpr float K_HEADING_FONT_SCALE        = 1.3f;
+constexpr float K_TITLE_FONT_SCALE          = 1.75f;
+constexpr float K_IDLE_POLL_SECONDS         = 0.25f;
+constexpr auto  K_RESUME_FRAME_TIME         = std::chrono::microseconds(16667);
+constexpr float K_CONTROL_ICON_SIZE         = 16.0f;
 }
 
 SetupApp::SetupApp(SetupMode t_mode)
@@ -31,7 +31,7 @@ SetupApp::SetupApp(SetupMode t_mode)
 {
 }
 
-bool SetupApp::create()
+auto SetupApp::create() -> bool
 {
 	m_assets.begin_decode();
 	storage::load_settings(&m_settings);
@@ -41,20 +41,19 @@ bool SetupApp::create()
 	animation::set_speed(m_settings.animation_speed);
 	set_corner_roundness(m_settings.corner_roundness);
 
-	if (!m_window.create(L"Pulsar setup", window_width, window_height, WindowKind::Dialog)) return false;
+	if (!m_window.create(L"Pulsar setup", K_WINDOW_WIDTH, K_WINDOW_HEIGHT, WindowKind::Dialog)) return false;
 	if (!m_renderer.init(&m_window)) return false;
 
-	m_assets.finish_upload(&m_renderer);
-
+	if (!m_assets.finish_upload(&m_renderer)) return false;
 	if (!reload_fonts()) return false;
 
-	const std::vector<u8> icon = app_icon_pixels(app_icon_texture_size);
+	const std::vector<u8> icon = app_icon_pixels(K_APP_ICON_TEXTURE_SIZE);
 	if (!icon.empty()) {
-		m_app_icon = Assets::create_texture(&m_renderer, icon.data(), app_icon_texture_size, app_icon_texture_size);
+		m_app_icon = Assets::create_texture(&m_renderer, icon.data(), K_APP_ICON_TEXTURE_SIZE, K_APP_ICON_TEXTURE_SIZE);
 		m_screen.set_app_icon(m_app_icon.get());
 	}
 
-	m_draw_list.init(draw_list_vertex_capacity, draw_list_index_capacity);
+	m_draw_list.init(K_DRAW_LIST_VERTEX_CAPACITY, K_DRAW_LIST_INDEX_CAPACITY);
 	m_window.on_redraw([this] { redraw_while_moving(); });
 	m_window.on_dpi_changed([this] { reload_fonts(); });
 	m_last_frame_time = std::chrono::steady_clock::now();
@@ -62,14 +61,14 @@ bool SetupApp::create()
 	return true;
 }
 
-bool SetupApp::reload_fonts()
+auto SetupApp::reload_fonts() -> bool
 {
 	const auto load = [this] {
 		const float scale = m_window.dpi_scale();
 
 		return m_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size, m_settings.secondary_font_size, scale) &&
-			   m_heading_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size * heading_font_scale, m_settings.secondary_font_size, scale) &&
-			   m_title_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size * title_font_scale, m_settings.secondary_font_size, scale);
+		       m_heading_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size * K_HEADING_FONT_SCALE, m_settings.secondary_font_size, scale) &&
+		       m_title_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size * K_TITLE_FONT_SCALE, m_settings.secondary_font_size, scale);
 	};
 
 	if (load()) return true;
@@ -79,7 +78,7 @@ bool SetupApp::reload_fonts()
 	return load();
 }
 
-SetupOutcome SetupApp::run()
+auto SetupApp::run() -> SetupOutcome
 {
 	if (!create()) return m_mode == SetupMode::FirstRun ? SetupOutcome::Portable : SetupOutcome::Closed;
 
@@ -90,7 +89,7 @@ SetupOutcome SetupApp::run()
 	while (!m_window.should_close()) {
 		m_window.pump_messages();
 
-		for (const InputEvent &event : m_window.input_events()) {
+		for (const InputEvent& event : m_window.input_events()) {
 			handle_input(event);
 		}
 
@@ -98,18 +97,18 @@ SetupOutcome SetupApp::run()
 
 		if (const std::optional<SetupOutcome> outcome = m_screen.outcome()) return *outcome;
 
-		const float requested_wait = animation::take_idle_wait(idle_poll_seconds);
-		const float wait = m_window.is_minimized() ? idle_poll_seconds : requested_wait;
+		const float requested_wait = animation::take_idle_wait(K_IDLE_POLL_SECONDS);
+		const float wait           = m_window.is_minimized() ? K_IDLE_POLL_SECONDS : requested_wait;
 
 		if (wait > 0.0f && m_window.wait_for_messages(wait)) {
-			m_last_frame_time = std::chrono::steady_clock::now() - resume_frame_time;
+			m_last_frame_time = std::chrono::steady_clock::now() - K_RESUME_FRAME_TIME;
 		}
 	}
 
 	return SetupOutcome::Closed;
 }
 
-void SetupApp::handle_input(const InputEvent &t_event)
+auto SetupApp::handle_input(const InputEvent& t_event) -> void
 {
 	switch (t_event.type) {
 		case InputEventType::MouseMove:
@@ -118,7 +117,7 @@ void SetupApp::handle_input(const InputEvent &t_event)
 			break;
 
 		case InputEventType::MouseDown: {
-			m_mouse = t_event.position;
+			m_mouse        = t_event.position;
 			m_pointer_down = true;
 
 			const TitleBarButton button = m_window.title_bar_button_at(m_mouse);
@@ -132,7 +131,7 @@ void SetupApp::handle_input(const InputEvent &t_event)
 		}
 
 		case InputEventType::MouseUp: {
-			m_mouse = t_event.position;
+			m_mouse        = t_event.position;
 			m_pointer_down = false;
 
 			const TitleBarButton pressed = std::exchange(m_pressed_button, TitleBarButton::None);
@@ -166,7 +165,7 @@ void SetupApp::handle_input(const InputEvent &t_event)
 	}
 }
 
-void SetupApp::redraw_while_moving()
+auto SetupApp::redraw_while_moving() -> void
 {
 	if (m_window.physical_width() == 0 || m_window.physical_height() == 0) return;
 
@@ -174,15 +173,15 @@ void SetupApp::redraw_while_moving()
 	frame();
 }
 
-void SetupApp::frame()
+auto SetupApp::frame() -> void
 {
 	if (m_in_frame) return;
 
 	m_in_frame = true;
 
-	const auto now = std::chrono::steady_clock::now();
+	const auto  now           = std::chrono::steady_clock::now();
 	const float delta_seconds = std::chrono::duration<float>(now - m_last_frame_time).count();
-	m_last_frame_time = now;
+	m_last_frame_time         = now;
 
 	set_pixel_scale(m_window.dpi_scale());
 	m_screen.set_mouse(m_mouse);
@@ -199,40 +198,40 @@ void SetupApp::frame()
 	m_in_frame = false;
 }
 
-void SetupApp::render()
+auto SetupApp::render() -> void
 {
 	const Vec2 size = m_window.size();
 
 	m_draw_list.clear();
-	m_draw_list.add_rect(Rect{0.0f, 0.0f, size.x, size.y}, theme().window);
+	m_draw_list.add_rect(Rect{0.0f, 0.0f, size.x, size.y}, g_theme.window);
 	begin_truncation_probe(&m_draw_list, m_mouse);
 	m_screen.draw(&m_draw_list);
 	draw_window_controls();
 	m_truncation_hint.capture(&m_draw_list);
-	m_truncation_hint.draw(&m_draw_list, Rect{0.0f, title_bar_height, size.x, size.y - title_bar_height});
+	m_truncation_hint.draw(&m_draw_list, Rect{0.0f, K_TITLE_BAR_HEIGHT, size.x, size.y - K_TITLE_BAR_HEIGHT});
 	m_draw_list.finish();
 
-	m_renderer.render(&m_draw_list, theme().window);
+	m_renderer.render(&m_draw_list, g_theme.window);
 }
 
-void SetupApp::draw_window_controls()
+auto SetupApp::draw_window_controls() -> void
 {
 	const TitleBarButton hovered_button = m_pressed_button != TitleBarButton::None ? m_pressed_button : m_window.title_bar_button_at(m_mouse);
 
 	for (const TitleBarButton button : {TitleBarButton::Minimize, TitleBarButton::Close}) {
-		const Rect rect = m_window.title_bar_button_rect(button);
-		const bool close = button == TitleBarButton::Close;
+		const Rect rect       = m_window.title_bar_button_rect(button);
+		const bool close      = button == TitleBarButton::Close;
 		const bool is_hovered = hovered_button == button && rect.contains(m_mouse);
 
 		if (is_hovered) {
-			m_draw_list.add_rect(rect, close ? title_bar_close_hover : with_alpha(theme().text, title_bar_hover_alpha));
+			m_draw_list.add_rect(rect, close ? K_TITLE_BAR_CLOSE_HOVER : with_alpha(g_theme.text, K_TITLE_BAR_HOVER_ALPHA));
 		}
 
-		Color glyph = theme().text_dim;
+		Color glyph = g_theme.text_dim;
 		if (is_hovered) {
-			glyph = close ? title_bar_close_glyph_hover : theme().text;
+			glyph = close ? K_TITLE_BAR_CLOSE_GLYPH_HOVER : g_theme.text;
 		}
 
-		m_draw_list.add_image(rect.centered(control_icon_size, control_icon_size), m_assets.get(close ? Asset::IconClose : Asset::IconMinimize), glyph);
+		m_draw_list.add_image(rect.centered(K_CONTROL_ICON_SIZE, K_CONTROL_ICON_SIZE), m_assets.get(close ? Asset::IconClose : Asset::IconMinimize), glyph);
 	}
 }

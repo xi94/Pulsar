@@ -2,6 +2,6 @@
 
 #include <string>
 
-void install_crash_handler();
+auto install_crash_handler() -> void;
 
-std::wstring write_diagnostic_dump(const wchar_t *t_tag);
+[[nodiscard]] auto write_diagnostic_dump(const wchar_t* t_tag) -> std::wstring;

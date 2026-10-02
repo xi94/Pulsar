@@ -4,57 +4,57 @@
 
 class DrawList;
 
-constexpr float scrollbar_width = 8.0f;
+constexpr float K_SCROLLBAR_WIDTH = 8.0f;
 
 struct ScrollGeometry {
-	Rect track;
+	Rect  track;
 	float content_height;
 	float visible_height;
 };
 
 class Scrollable {
   public:
-	static bool is_needed(const ScrollGeometry &t_geometry);
+	[[nodiscard]] static auto is_needed(const ScrollGeometry& t_geometry) -> bool;
 
-	void update(float t_delta_seconds);
-	void draw(DrawList *t_draw_list, const ScrollGeometry &t_geometry, Vec2 t_mouse, u8 t_alpha) const;
+	auto update(float t_delta_seconds) -> void;
+	auto draw(DrawList* t_draw_list, const ScrollGeometry& t_geometry, Vec2 t_mouse, u8 t_alpha) const -> void;
 	struct EdgeFades {
 		Rect top;
 		Rect bottom;
 	};
 
-	EdgeFades edge_fades(Rect t_area, const ScrollGeometry &t_geometry) const;
-	void draw_edge_fade(DrawList *t_draw_list, Rect t_area, const ScrollGeometry &t_geometry, Color t_edge) const;
+	[[nodiscard]] auto edge_fades(Rect t_area, const ScrollGeometry& t_geometry) const -> EdgeFades;
+	auto draw_edge_fade(DrawList* t_draw_list, Rect t_area, const ScrollGeometry& t_geometry, Color t_edge) const -> void;
 
-	bool on_pointer_down(Vec2 t_point, const ScrollGeometry &t_geometry);
-	void on_pointer_move(float t_y, const ScrollGeometry &t_geometry);
-	void on_pointer_up();
-	void on_scroll(float t_wheel_delta, const ScrollGeometry &t_geometry);
+	auto on_pointer_down(Vec2 t_point, const ScrollGeometry& t_geometry) -> bool;
+	auto on_pointer_move(float t_y, const ScrollGeometry& t_geometry) -> void;
+	auto on_pointer_up() -> void;
+	auto on_scroll(float t_wheel_delta, const ScrollGeometry& t_geometry) -> void;
 
-	void scroll_by(float t_pixels, const ScrollGeometry &t_geometry);
-	void jump_to(float t_offset, const ScrollGeometry &t_geometry);
-	void reveal(float t_top, float t_bottom, float t_view_top, float t_view_bottom, const ScrollGeometry &t_geometry);
+	auto scroll_by(float t_pixels, const ScrollGeometry& t_geometry) -> void;
+	auto jump_to(float t_offset, const ScrollGeometry& t_geometry) -> void;
+	auto reveal(float t_top, float t_bottom, float t_view_top, float t_view_bottom, const ScrollGeometry& t_geometry) -> void;
 
-	bool is_dragging() const
+	[[nodiscard]] auto is_dragging() const -> bool
 	{
 		return m_dragging;
 	}
 
-	bool is_over_track(Vec2 t_point, const ScrollGeometry &t_geometry) const
+	[[nodiscard]] auto is_over_track(Vec2 t_point, const ScrollGeometry& t_geometry) const -> bool
 	{
 		return is_needed(t_geometry) && t_geometry.track.contains(t_point);
 	}
 
-	float offset() const;
+	[[nodiscard]] auto offset() const -> float;
 
   private:
-	float m_offset = 0.0f;
-	float m_target = 0.0f;
-	bool m_dragging = false;
-	float m_drag_start_y = 0.0f;
-	float m_drag_start_target = 0.0f;
-	float m_thickness = 0.0f;
-	float m_activity_seconds = 0.0f;
-	mutable bool m_track_hovered = false;
-	bool m_was_held = false;
+	float        m_offset            = 0.0f;
+	float        m_target            = 0.0f;
+	bool         m_dragging          = false;
+	float        m_drag_start_y      = 0.0f;
+	float        m_drag_start_target = 0.0f;
+	float        m_thickness         = 0.0f;
+	float        m_activity_seconds  = 0.0f;
+	mutable bool m_track_hovered     = false;
+	bool         m_was_held          = false;
 };

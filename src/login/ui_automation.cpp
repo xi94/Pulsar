@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <concepts>
 #include <memory>
 #include <thread>
 #include <utility>
@@ -15,15 +16,15 @@
 using Microsoft::WRL::ComPtr;
 
 namespace {
-constexpr const char *log_category = "uia";
-constexpr LONG min_real_window_width = 50;
+constexpr const char* K_LOG_CATEGORY          = "uia";
+constexpr LONG        K_MIN_REAL_WINDOW_WIDTH = 50;
 
 class VariantString {
   public:
-	explicit VariantString(const wchar_t *t_text)
+	explicit VariantString(const wchar_t* t_text)
 	{
 		VariantInit(&m_value);
-		m_value.vt = VT_BSTR;
+		m_value.vt      = VT_BSTR;
 		m_value.bstrVal = SysAllocString(t_text);
 	}
 
@@ -32,10 +33,10 @@ class VariantString {
 		VariantClear(&m_value);
 	}
 
-	VariantString(const VariantString &) = delete;
-	VariantString &operator=(const VariantString &) = delete;
+	VariantString(const VariantString&)                    = delete;
+	auto operator=(const VariantString&) -> VariantString& = delete;
 
-	const VARIANT &get() const
+	[[nodiscard]] auto get() const -> const VARIANT&
 	{
 		return m_value;
 	}
@@ -44,17 +45,17 @@ class VariantString {
 	VARIANT m_value;
 };
 
-VARIANT variant_from_control_type(CONTROLTYPEID t_control_type)
+[[nodiscard]] auto variant_from_control_type(CONTROLTYPEID t_control_type) -> VARIANT
 {
 	VARIANT value;
 	VariantInit(&value);
-	value.vt = VT_I4;
+	value.vt   = VT_I4;
 	value.lVal = t_control_type;
 
 	return value;
 }
 
-std::vector<DWORD> process_tree(DWORD t_root_process_id)
+[[nodiscard]] auto process_tree(DWORD t_root_process_id) -> std::vector<DWORD>
 {
 	std::vector<DWORD> tree{t_root_process_id};
 
@@ -62,7 +63,7 @@ std::vector<DWORD> process_tree(DWORD t_root_process_id)
 	if (snapshot == INVALID_HANDLE_VALUE) return tree;
 
 	std::vector<std::pair<DWORD, DWORD>> parent_child_pairs;
-	PROCESSENTRY32W entry{.dwSize = sizeof(entry)};
+	PROCESSENTRY32W                      entry{.dwSize = sizeof(entry)};
 
 	if (Process32FirstW(snapshot, &entry)) {
 		do {
@@ -77,7 +78,7 @@ std::vector<DWORD> process_tree(DWORD t_root_process_id)
 	for (bool grew = true; grew;) {
 		grew = false;
 
-		for (const auto &[parent, child] : parent_child_pairs) {
+		for (const auto& [parent, child] : parent_child_pairs) {
 			if (in_tree(parent) && !in_tree(child)) {
 				tree.push_back(child);
 				grew = true;
@@ -89,13 +90,13 @@ std::vector<DWORD> process_tree(DWORD t_root_process_id)
 }
 
 struct WindowSearch {
-	const std::vector<DWORD> *process_ids;
-	HWND found;
+	const std::vector<DWORD>* process_ids;
+	HWND                      found;
 };
 
-BOOL CALLBACK find_top_level_window_proc(HWND t_window, LPARAM t_search)
+auto CALLBACK find_top_level_window_proc(HWND t_window, LPARAM t_search) -> BOOL
 {
-	auto *search = reinterpret_cast<WindowSearch *>(t_search);
+	auto* search = reinterpret_cast<WindowSearch*>(t_search);
 
 	DWORD process_id = 0;
 	GetWindowThreadProcessId(t_window, &process_id);
@@ -104,18 +105,18 @@ BOOL CALLBACK find_top_level_window_proc(HWND t_window, LPARAM t_search)
 	if (GetWindow(t_window, GW_OWNER) != nullptr || !IsWindowVisible(t_window)) return TRUE;
 
 	RECT rect;
-	if (GetWindowRect(t_window, &rect) && rect.right - rect.left < min_real_window_width) return TRUE;
+	if (GetWindowRect(t_window, &rect) && rect.right - rect.left < K_MIN_REAL_WINDOW_WIDTH) return TRUE;
 
 	search->found = t_window;
 
 	return FALSE;
 }
 
-template <typename Lookup>
-ComPtr<IUIAutomationElement> run_lookup(const char *t_label, Lookup t_lookup, const std::atomic<bool> *t_cancel)
+[[nodiscard]] auto run_lookup(const char* t_label, const std::invocable<ComPtr<IUIAutomationElement>*> auto& t_lookup, const std::atomic<bool>* t_cancel)
+	-> ComPtr<IUIAutomationElement>
 {
-	auto result = std::make_shared<ComPtr<IUIAutomationElement>>();
-	const debug_log::Scope scope(log_category, "%s", t_label);
+	auto                   result = std::make_shared<ComPtr<IUIAutomationElement>>();
+	const debug_log::Scope scope(K_LOG_CATEGORY, "%s", t_label);
 
 	// A busy client can block a provider call for as long as it likes, so only a cancel may walk away from one.
 	const bool finished = run_unless_cancelled(
@@ -130,7 +131,7 @@ ComPtr<IUIAutomationElement> run_lookup(const char *t_label, Lookup t_lookup, co
 		t_cancel);
 
 	if (!finished) {
-		debug_log::write(log_category, "ABANDONED %s - cancelled while the provider was still answering", t_label);
+		debug_log::write(K_LOG_CATEGORY, "ABANDONED %s - cancelled while the provider was still answering", t_label);
 		return nullptr;
 	}
 
@@ -138,7 +139,7 @@ ComPtr<IUIAutomationElement> run_lookup(const char *t_label, Lookup t_lookup, co
 }
 
 template <typename Pattern>
-ComPtr<Pattern> pattern_of(const ComPtr<IUIAutomationElement> &t_element, PATTERNID t_pattern_id)
+[[nodiscard]] auto pattern_of(const ComPtr<IUIAutomationElement>& t_element, PATTERNID t_pattern_id) -> ComPtr<Pattern>
 {
 	ComPtr<Pattern> pattern;
 	if (FAILED(t_element->GetCurrentPatternAs(t_pattern_id, IID_PPV_ARGS(&pattern)))) return nullptr;
@@ -152,69 +153,69 @@ UiElement::UiElement(ComPtr<IUIAutomationElement> t_element)
 {
 }
 
-bool UiElement::set_value(const wchar_t *t_text) const
+auto UiElement::set_value(const wchar_t* t_text) const -> bool
 {
 	if (!is_valid()) return false;
 
 	const auto value_pattern = pattern_of<IUIAutomationValuePattern>(m_element, UIA_ValuePatternId);
 	if (value_pattern == nullptr) {
-		debug_log::write(log_category, "SetValue: element has no ValuePattern - caller falls back to keystrokes");
+		debug_log::write(K_LOG_CATEGORY, "SetValue: element has no ValuePattern - caller falls back to keystrokes");
 		return false;
 	}
 
 	// Never log t_text: account passwords go through here.
-	const debug_log::Scope scope(log_category, "ValuePattern::SetValue");
+	const debug_log::Scope scope(K_LOG_CATEGORY, "ValuePattern::SetValue");
 
-	BSTR text = SysAllocString(t_text);
+	BSTR          text   = SysAllocString(t_text);
 	const HRESULT result = value_pattern->SetValue(text);
 	SysFreeString(text);
 
 	if (FAILED(result)) {
-		debug_log::write(log_category, "ValuePattern::SetValue FAILED hr=0x%08lX", static_cast<unsigned long>(result));
+		debug_log::write(K_LOG_CATEGORY, "ValuePattern::SetValue FAILED hr=0x%08lX", static_cast<unsigned long>(result));
 	}
 
 	return SUCCEEDED(result);
 }
 
-bool UiElement::invoke() const
+auto UiElement::invoke() const -> bool
 {
 	if (!is_valid()) return false;
 
 	const auto invoke_pattern = pattern_of<IUIAutomationInvokePattern>(m_element, UIA_InvokePatternId);
 	if (invoke_pattern == nullptr) return false;
 
-	const debug_log::Scope scope(log_category, "InvokePattern::Invoke");
-	const HRESULT result = invoke_pattern->Invoke();
+	const debug_log::Scope scope(K_LOG_CATEGORY, "InvokePattern::Invoke");
+	const HRESULT          result = invoke_pattern->Invoke();
 
 	if (FAILED(result)) {
-		debug_log::write(log_category, "InvokePattern::Invoke FAILED hr=0x%08lX", static_cast<unsigned long>(result));
+		debug_log::write(K_LOG_CATEGORY, "InvokePattern::Invoke FAILED hr=0x%08lX", static_cast<unsigned long>(result));
 	}
 
 	return SUCCEEDED(result);
 }
 
-bool UiElement::focus() const
+auto UiElement::focus() const -> bool
 {
 	if (!is_valid()) return false;
 
-	const debug_log::Scope scope(log_category, "IUIAutomationElement::SetFocus");
-	const HRESULT result = m_element->SetFocus();
+	const debug_log::Scope scope(K_LOG_CATEGORY, "IUIAutomationElement::SetFocus");
+	const HRESULT          result = m_element->SetFocus();
 
 	if (FAILED(result)) {
-		debug_log::write(log_category, "SetFocus FAILED hr=0x%08lX", static_cast<unsigned long>(result));
+		debug_log::write(K_LOG_CATEGORY, "SetFocus FAILED hr=0x%08lX", static_cast<unsigned long>(result));
 	}
 
 	return SUCCEEDED(result);
 }
 
-bool UiElement::has_keyboard_focus() const
+auto UiElement::has_keyboard_focus() const -> bool
 {
 	BOOL focused = FALSE;
 
 	return is_valid() && SUCCEEDED(m_element->get_CurrentHasKeyboardFocus(&focused)) && focused;
 }
 
-UiAutomation::UiAutomation(const std::atomic<bool> *t_cancel)
+UiAutomation::UiAutomation(const std::atomic<bool>* t_cancel)
 	: m_cancel(t_cancel)
 {
 }
@@ -224,52 +225,52 @@ UiAutomation::~UiAutomation()
 	shutdown();
 }
 
-void UiAutomation::keep_process_mta_alive()
+auto UiAutomation::keep_process_mta_alive() -> void
 {
 	static CO_MTA_USAGE_COOKIE cookie = nullptr;
 	if (cookie != nullptr) return;
 
 	const HRESULT result = CoIncrementMTAUsage(&cookie);
-	debug_log::write(log_category, "CoIncrementMTAUsage hr=0x%08lX (process-wide MTA %s)", static_cast<unsigned long>(result),
-					 SUCCEEDED(result) ? "held open" : "NOT held - apartment will be torn down between attempts");
+	debug_log::write(K_LOG_CATEGORY, "CoIncrementMTAUsage hr=0x%08lX (process-wide MTA %s)", static_cast<unsigned long>(result),
+	                 SUCCEEDED(result) ? "held open" : "NOT held - apartment will be torn down between attempts");
 }
 
-bool UiAutomation::init()
+auto UiAutomation::init() -> bool
 {
 	if (m_automation != nullptr) return true;
 
 	if (!m_com_initialized) {
-		const debug_log::Scope scope(log_category, "CoInitializeEx(COINIT_MULTITHREADED)");
-		const HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-		m_com_initialized = result == S_OK || result == S_FALSE;
+		const debug_log::Scope scope(K_LOG_CATEGORY, "CoInitializeEx(COINIT_MULTITHREADED)");
+		const HRESULT          result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+		m_com_initialized             = result == S_OK || result == S_FALSE;
 
-		debug_log::write(log_category, "CoInitializeEx hr=0x%08lX (%s)", static_cast<unsigned long>(result),
-						 m_com_initialized ? "in the MTA" : "NOT initialised by us");
+		debug_log::write(K_LOG_CATEGORY, "CoInitializeEx hr=0x%08lX (%s)", static_cast<unsigned long>(result),
+		                 m_com_initialized ? "in the MTA" : "NOT initialised by us");
 	}
 
-	const debug_log::Scope scope(log_category, "CoCreateInstance(CLSID_CUIAutomation)");
-	const HRESULT result = CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&m_automation));
+	const debug_log::Scope scope(K_LOG_CATEGORY, "CoCreateInstance(CLSID_CUIAutomation)");
+	const HRESULT          result = CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&m_automation));
 
-	debug_log::write(log_category, "CoCreateInstance(CLSID_CUIAutomation) hr=0x%08lX after %llums", static_cast<unsigned long>(result), scope.elapsed_ms());
+	debug_log::write(K_LOG_CATEGORY, "CoCreateInstance(CLSID_CUIAutomation) hr=0x%08lX after %llums", static_cast<unsigned long>(result), scope.elapsed_ms());
 
 	return SUCCEEDED(result);
 }
 
-void UiAutomation::shutdown()
+auto UiAutomation::shutdown() -> void
 {
 	if (m_automation != nullptr) {
-		const debug_log::Scope scope(log_category, "release IUIAutomation");
+		const debug_log::Scope scope(K_LOG_CATEGORY, "release IUIAutomation");
 		m_automation.Reset();
 	}
 
 	if (m_com_initialized) {
-		const debug_log::Scope scope(log_category, "CoUninitialize");
+		const debug_log::Scope scope(K_LOG_CATEGORY, "CoUninitialize");
 		CoUninitialize();
 		m_com_initialized = false;
 	}
 }
 
-HWND UiAutomation::find_top_level_window(u32 t_process_id)
+auto UiAutomation::find_top_level_window(u32 t_process_id) -> HWND
 {
 	const std::vector<DWORD> process_ids = process_tree(t_process_id);
 
@@ -279,7 +280,7 @@ HWND UiAutomation::find_top_level_window(u32 t_process_id)
 	return search.found;
 }
 
-UiElement UiAutomation::element_from_window(HWND t_window) const
+auto UiAutomation::element_from_window(HWND t_window) const -> UiElement
 {
 	if (m_automation == nullptr || t_window == nullptr || is_cancelled()) return {};
 
@@ -288,13 +289,13 @@ UiElement UiAutomation::element_from_window(HWND t_window) const
 
 	return UiElement{run_lookup(
 		label,
-		[automation = m_automation, t_window](ComPtr<IUIAutomationElement> *t_out) {
+		[automation = m_automation, t_window](ComPtr<IUIAutomationElement>* t_out) {
 			automation->ElementFromHandle(t_window, t_out->ReleaseAndGetAddressOf());
 		},
 		m_cancel)};
 }
 
-UiElement UiAutomation::find_descendant(const UiElement &t_root, const wchar_t *t_name) const
+auto UiAutomation::find_descendant(const UiElement& t_root, const wchar_t* t_name) const -> UiElement
 {
 	if (!can_search(t_root)) return {};
 
@@ -306,10 +307,10 @@ UiElement UiAutomation::find_descendant(const UiElement &t_root, const wchar_t *
 	char label[192];
 	_snprintf_s(label, _TRUNCATE, "FindFirst(Name=%ls)", t_name);
 
-	return find_first(t_root, std::move(condition), label);
+	return find_first(t_root, condition, label);
 }
 
-UiElement UiAutomation::find_descendant(const UiElement &t_root, const wchar_t *t_name, CONTROLTYPEID t_control_type) const
+auto UiAutomation::find_descendant(const UiElement& t_root, const wchar_t* t_name, CONTROLTYPEID t_control_type) const -> UiElement
 {
 	if (!can_search(t_root)) return {};
 
@@ -320,28 +321,63 @@ UiElement UiAutomation::find_descendant(const UiElement &t_root, const wchar_t *
 	ComPtr<IUIAutomationCondition> both;
 
 	if (FAILED(m_automation->CreatePropertyCondition(UIA_NamePropertyId, name.get(), &name_condition)) ||
-		FAILED(m_automation->CreatePropertyCondition(UIA_ControlTypePropertyId, variant_from_control_type(t_control_type), &type_condition)) ||
-		FAILED(m_automation->CreateAndCondition(name_condition.Get(), type_condition.Get(), &both))) {
+	    FAILED(m_automation->CreatePropertyCondition(UIA_ControlTypePropertyId, variant_from_control_type(t_control_type), &type_condition)) ||
+	    FAILED(m_automation->CreateAndCondition(name_condition.Get(), type_condition.Get(), &both))) {
 		return {};
 	}
 
 	char label[192];
 	_snprintf_s(label, _TRUNCATE, "FindFirst(Name=%ls, ControlType=%d)", t_name, static_cast<int>(t_control_type));
 
-	return find_first(t_root, std::move(both), label);
+	return find_first(t_root, both, label);
 }
 
-void UiAutomation::type_text(const wchar_t *t_text) const
+auto UiAutomation::find_edit(const UiElement& t_root, bool t_password) const -> UiElement
 {
-	u32 sent = 0;
+	if (!can_search(t_root)) return {};
+
+	VARIANT password;
+	VariantInit(&password);
+	password.vt      = VT_BOOL;
+	password.boolVal = t_password ? VARIANT_TRUE : VARIANT_FALSE;
+
+	ComPtr<IUIAutomationCondition> type_condition;
+	ComPtr<IUIAutomationCondition> password_condition;
+	ComPtr<IUIAutomationCondition> both;
+
+	if (FAILED(m_automation->CreatePropertyCondition(UIA_ControlTypePropertyId, variant_from_control_type(UIA_EditControlTypeId), &type_condition)) ||
+	    FAILED(m_automation->CreatePropertyCondition(UIA_IsPasswordPropertyId, password, &password_condition)) ||
+	    FAILED(m_automation->CreateAndCondition(type_condition.Get(), password_condition.Get(), &both))) {
+		return {};
+	}
+
+	return find_first(t_root, both, t_password ? "FindFirst(Edit, IsPassword)" : "FindFirst(Edit, not IsPassword)");
+}
+
+auto UiAutomation::find_of_type(const UiElement& t_root, CONTROLTYPEID t_control_type) const -> UiElement
+{
+	if (!can_search(t_root)) return {};
+
+	ComPtr<IUIAutomationCondition> condition;
+	if (FAILED(m_automation->CreatePropertyCondition(UIA_ControlTypePropertyId, variant_from_control_type(t_control_type), &condition))) return {};
+
+	char label[64];
+	_snprintf_s(label, _TRUNCATE, "FindFirst(ControlType=%d)", static_cast<int>(t_control_type));
+
+	return find_first(t_root, condition, label);
+}
+
+auto UiAutomation::type_text(const wchar_t* t_text) const -> void
+{
+	u32 sent     = 0;
 	u32 rejected = 0;
 
-	for (const wchar_t *character = t_text; *character != L'\0'; character += 1) {
+	for (const wchar_t* character = t_text; *character != L'\0'; character += 1) {
 		INPUT inputs[2]{};
-		inputs[0].type = INPUT_KEYBOARD;
-		inputs[0].ki.wScan = static_cast<WORD>(*character);
+		inputs[0].type       = INPUT_KEYBOARD;
+		inputs[0].ki.wScan   = static_cast<WORD>(*character);
 		inputs[0].ki.dwFlags = KEYEVENTF_UNICODE;
-		inputs[1] = inputs[0];
+		inputs[1]            = inputs[0];
 		inputs[1].ki.dwFlags |= KEYEVENTF_KEYUP;
 
 		if (SendInput(2, inputs, sizeof(INPUT)) == 2) {
@@ -351,39 +387,39 @@ void UiAutomation::type_text(const wchar_t *t_text) const
 		}
 	}
 
-	debug_log::write(log_category, "type_text: %u character(s) sent, %u rejected%s", sent, rejected,
-					 rejected != 0 ? " - SendInput was blocked (elevation/UIPI?)" : "");
+	debug_log::write(K_LOG_CATEGORY, "type_text: %u character(s) sent, %u rejected%s", sent, rejected,
+	                 rejected != 0 ? " - SendInput was blocked (elevation/UIPI?)" : "");
 }
 
-void UiAutomation::press_key(WORD t_virtual_key) const
+auto UiAutomation::press_key(WORD t_virtual_key) const -> void
 {
 	INPUT inputs[2]{};
-	inputs[0].type = INPUT_KEYBOARD;
-	inputs[0].ki.wVk = t_virtual_key;
-	inputs[1] = inputs[0];
+	inputs[0].type       = INPUT_KEYBOARD;
+	inputs[0].ki.wVk     = t_virtual_key;
+	inputs[1]            = inputs[0];
 	inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
 
 	const UINT inserted = SendInput(2, inputs, sizeof(INPUT));
 
-	debug_log::write(log_category, "press_key(vk=0x%02X): %u of 2 event(s) inserted%s", t_virtual_key, inserted,
-					 inserted != 2 ? " - SendInput was blocked (elevation/UIPI?)" : "");
+	debug_log::write(K_LOG_CATEGORY, "press_key(vk=0x%02X): %u of 2 event(s) inserted%s", t_virtual_key, inserted,
+	                 inserted != 2 ? " - SendInput was blocked (elevation/UIPI?)" : "");
 }
 
-bool UiAutomation::is_cancelled() const
+auto UiAutomation::is_cancelled() const -> bool
 {
 	return m_cancel->load(std::memory_order_relaxed);
 }
 
-bool UiAutomation::can_search(const UiElement &t_root) const
+auto UiAutomation::can_search(const UiElement& t_root) const -> bool
 {
 	return m_automation != nullptr && t_root.is_valid() && !is_cancelled();
 }
 
-UiElement UiAutomation::find_first(const UiElement &t_root, ComPtr<IUIAutomationCondition> t_condition, const char *t_label) const
+auto UiAutomation::find_first(const UiElement& t_root, const ComPtr<IUIAutomationCondition>& t_condition, const char* t_label) const -> UiElement
 {
 	return UiElement{run_lookup(
 		t_label,
-		[root = t_root.com(), t_condition](ComPtr<IUIAutomationElement> *t_out) {
+		[root = t_root.com(), t_condition](ComPtr<IUIAutomationElement>* t_out) {
 			root->FindFirst(TreeScope_Descendants, t_condition.Get(), t_out->ReleaseAndGetAddressOf());
 		},
 		m_cancel)};

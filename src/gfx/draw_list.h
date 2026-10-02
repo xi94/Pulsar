@@ -12,7 +12,7 @@ struct Vertex2D {
 	float y;
 	float u;
 	float v;
-	u32 color;
+	u32   color;
 };
 
 enum class ShaderKind : u8 {
@@ -27,7 +27,7 @@ enum class ShaderKind : u8 {
 	Count,
 };
 
-constexpr u32 shader_kind_count = static_cast<u32>(ShaderKind::Count);
+constexpr u32 K_SHADER_KIND_COUNT = static_cast<u32>(ShaderKind::Count);
 
 struct RoundedBoxParams {
 	float quad_width;
@@ -35,7 +35,7 @@ struct RoundedBoxParams {
 	float corner_radius;
 	float edge_width;
 
-	bool operator==(const RoundedBoxParams &) const = default;
+	auto operator==(const RoundedBoxParams&) const -> bool = default;
 };
 
 struct OutlineCountdownParams {
@@ -51,17 +51,17 @@ struct OutlineCountdownParams {
 	float end_y;
 	float padding[2];
 
-	bool operator==(const OutlineCountdownParams &) const = default;
+	auto operator==(const OutlineCountdownParams&) const -> bool = default;
 };
 
 struct DrawCommand {
-	ShaderKind shader;
-	const Texture *texture;
-	bool clipped;
-	Rect clip;
-	u32 index_offset;
-	u32 index_count;
-	RoundedBoxParams box;
+	ShaderKind             shader;
+	const Texture*         texture;
+	bool                   clipped;
+	Rect                   clip;
+	u32                    index_offset;
+	u32                    index_count;
+	RoundedBoxParams       box;
 	OutlineCountdownParams outline;
 };
 
@@ -72,117 +72,117 @@ struct UvRect {
 	float v1;
 };
 
-constexpr UvRect full_uv{0.0f, 0.0f, 1.0f, 1.0f};
+constexpr UvRect K_FULL_UV{0.0f, 0.0f, 1.0f, 1.0f};
 
-float scaled_radius(float t_radius);
-void set_corner_roundness(float t_scale);
+[[nodiscard]] auto scaled_radius(float t_radius) -> float;
+auto set_corner_roundness(float t_scale) -> void;
 
-void set_pixel_scale(float t_scale);
-float snapped_to_pixel(float t_value);
+auto set_pixel_scale(float t_scale) -> void;
+[[nodiscard]] auto snapped_to_pixel(float t_value) -> float;
 
-CornerRadii rounded(float t_radius);
-CornerRadii rounded(float t_top_left, float t_top_right, float t_bottom_right, float t_bottom_left);
+[[nodiscard]] auto rounded(float t_radius) -> CornerRadii;
+[[nodiscard]] auto rounded(float t_top_left, float t_top_right, float t_bottom_right, float t_bottom_left) -> CornerRadii;
 
-UvRect cover_uv(float t_box_aspect, float t_texture_aspect);
+[[nodiscard]] auto cover_uv(float t_box_aspect, float t_texture_aspect) -> UvRect;
 
 class DrawList {
   public:
-	void init(u32 t_vertex_capacity, u32 t_index_capacity);
-	void clear();
-	void finish();
+	auto init(u32 t_vertex_capacity, u32 t_index_capacity) -> void;
+	auto clear() -> void;
+	auto finish() -> void;
 
-	void push_clip(Rect t_rect);
-	void pop_clip();
+	auto push_clip(Rect t_rect) -> void;
+	auto pop_clip() -> void;
 
-	void set_probe(Vec2 t_point);
-	Rect visible_rect(Rect t_rect) const;
+	auto set_probe(Vec2 t_point) -> void;
+	[[nodiscard]] auto visible_rect(Rect t_rect) const -> Rect;
 
-	bool has_animated_effects() const
+	[[nodiscard]] auto has_animated_effects() const -> bool
 	{
 		return m_has_animated_effects;
 	}
 
-	u32 probe_cover_count() const
+	[[nodiscard]] auto probe_cover_count() const -> u32
 	{
 		return m_probe_cover_count;
 	}
 
-	void push_scale(Vec2 t_origin, float t_factor);
-	void pop_scale();
+	auto push_scale(Vec2 t_origin, float t_factor) -> void;
+	auto pop_scale() -> void;
 
-	std::span<const DrawCommand> commands() const
+	[[nodiscard]] auto commands() const -> std::span<const DrawCommand>
 	{
 		return {m_commands, m_command_count};
 	}
 
-	std::span<const Vertex2D> vertices() const
+	[[nodiscard]] auto vertices() const -> std::span<const Vertex2D>
 	{
 		return {m_vertices.get(), m_vertex_count};
 	}
 
-	std::span<const u32> indices() const
+	[[nodiscard]] auto indices() const -> std::span<const u32>
 	{
 		return {m_indices.get(), m_index_count};
 	}
 
-	void add_rect(Rect t_rect, Color t_color);
-	void add_triangle(Vec2 t_a, Vec2 t_b, Vec2 t_c, Color t_color);
-	void add_rect_outline(Rect t_rect, float t_thickness, Color t_color);
-	void add_gradient(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right);
-	void add_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right);
-	void add_plain_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right);
-	void add_pattern_swatch(Rect t_rect, CornerRadii t_radii, Color t_color, u32 t_style);
-	void add_line(Vec2 t_from, Vec2 t_to, float t_thickness, Color t_color);
+	auto add_rect(Rect t_rect, Color t_color) -> void;
+	auto add_triangle(Vec2 t_a, Vec2 t_b, Vec2 t_c, Color t_color) -> void;
+	auto add_rect_outline(Rect t_rect, float t_thickness, Color t_color) -> void;
+	auto add_gradient(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right) -> void;
+	auto add_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right) -> void;
+	auto add_plain_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right) -> void;
+	auto add_pattern_swatch(Rect t_rect, CornerRadii t_radii, Color t_color, u32 t_style) -> void;
+	auto add_line(Vec2 t_from, Vec2 t_to, float t_thickness, Color t_color) -> void;
 
-	void add_rounded_rect(Rect t_rect, CornerRadii t_radii, Color t_color);
-	void add_bordered_rect(Rect t_rect, CornerRadii t_radii, Color t_fill, Color t_border, float t_thickness);
+	auto add_rounded_rect(Rect t_rect, CornerRadii t_radii, Color t_color) -> void;
+	auto add_bordered_rect(Rect t_rect, CornerRadii t_radii, Color t_fill, Color t_border, float t_thickness) -> void;
 
-	void add_image(Rect t_rect, const Texture *t_texture, Color t_tint, CornerRadii t_radii = square_corners, UvRect t_uv = full_uv);
-	void add_rotated_image(Rect t_rect, float t_radians, const Texture *t_texture, Color t_tint);
+	auto add_image(Rect t_rect, const Texture* t_texture, Color t_tint, CornerRadii t_radii = K_SQUARE_CORNERS, UvRect t_uv = K_FULL_UV) -> void;
+	auto add_rotated_image(Rect t_rect, float t_radians, const Texture* t_texture, Color t_tint) -> void;
 
-	void add_color_picker_square(Rect t_rect, float t_hue_degrees);
-	void add_banner_glow(Rect t_card, float t_card_radius, float t_glow_size, Color t_color);
-	void add_shadow(Rect t_rect, float t_corner_radius, float t_blur, Color t_color);
-	void add_outline_countdown(Rect t_path, float t_corner_radius, float t_remaining, float t_thickness, Color t_color);
+	auto add_color_picker_square(Rect t_rect, float t_hue_degrees) -> void;
+	auto add_banner_glow(Rect t_card, float t_card_radius, float t_glow_size, Color t_color) -> void;
+	auto add_shadow(Rect t_rect, float t_corner_radius, float t_blur, Color t_color) -> void;
+	auto add_outline_countdown(Rect t_path, float t_corner_radius, float t_remaining, float t_thickness, Color t_color) -> void;
 
   private:
-	void note_cover(Rect t_rect, Color t_color);
+	auto note_cover(Rect t_rect, Color t_color) -> void;
 
-	static constexpr u32 max_commands = 256;
-	static constexpr u32 max_clip_depth = 8;
+	static constexpr u32 K_MAX_COMMANDS   = 256;
+	static constexpr u32 K_MAX_CLIP_DEPTH = 8;
 
-	void target(ShaderKind t_shader, const Texture *t_texture = nullptr, RoundedBoxParams t_box = {}, OutlineCountdownParams t_outline = {});
-	void close_command();
+	auto target(ShaderKind t_shader, const Texture* t_texture = nullptr, RoundedBoxParams t_box = {}, OutlineCountdownParams t_outline = {}) -> void;
+	auto close_command() -> void;
 
-	Vec2 scaled(Vec2 t_point) const;
-	Rect scaled(Rect t_rect) const;
+	[[nodiscard]] auto scaled(Vec2 t_point) const -> Vec2;
+	[[nodiscard]] auto scaled(Rect t_rect) const -> Rect;
 
-	void push_backdrop(ShaderKind t_shader, Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right);
-	void push_quad(Rect t_rect, UvRect t_uv, u32 t_color);
-	void push_quad(const Vertex2D (&t_corners)[4]);
-	void push_rounded(Rect t_rect, CornerRadii t_radii, UvRect t_uv, u32 t_color);
+	auto push_backdrop(ShaderKind t_shader, Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right) -> void;
+	auto push_quad(Rect t_rect, UvRect t_uv, u32 t_color) -> void;
+	auto push_quad(const Vertex2D (&t_corners)[4]) -> void;
+	auto push_rounded(Rect t_rect, CornerRadii t_radii, UvRect t_uv, u32 t_color) -> void;
 
 	std::unique_ptr<Vertex2D[]> m_vertices;
-	std::unique_ptr<u32[]> m_indices;
-	u32 m_vertex_capacity = 0;
-	u32 m_index_capacity = 0;
-	u32 m_vertex_count = 0;
-	u32 m_index_count = 0;
+	std::unique_ptr<u32[]>      m_indices;
+	u32                         m_vertex_capacity = 0;
+	u32                         m_index_capacity  = 0;
+	u32                         m_vertex_count    = 0;
+	u32                         m_index_count     = 0;
 
-	DrawCommand m_commands[max_commands]{};
-	u32 m_command_count = 0;
+	DrawCommand m_commands[K_MAX_COMMANDS]{};
+	u32         m_command_count = 0;
 	DrawCommand m_open{};
-	bool m_has_open_command = false;
+	bool        m_has_open_command = false;
 
-	Rect m_clip_stack[max_clip_depth]{};
-	u32 m_clip_depth = 0;
+	Rect m_clip_stack[K_MAX_CLIP_DEPTH]{};
+	u32  m_clip_depth = 0;
 
 	Vec2 m_probe{-1.0f, -1.0f};
-	u32 m_probe_cover_count = 0;
+	u32  m_probe_cover_count    = 0;
 	bool m_has_animated_effects = false;
 
 	struct Scale {
-		Vec2 origin{};
+		Vec2  origin{};
 		float factor = 1.0f;
 	};
 

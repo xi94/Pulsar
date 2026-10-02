@@ -11,20 +11,20 @@ class UiElement {
 	UiElement() = default;
 	explicit UiElement(Microsoft::WRL::ComPtr<IUIAutomationElement> t_element);
 
-	bool is_valid() const
+	[[nodiscard]] auto is_valid() const -> bool
 	{
 		return m_element != nullptr;
 	}
 
-	const Microsoft::WRL::ComPtr<IUIAutomationElement> &com() const
+	[[nodiscard]] auto com() const -> const Microsoft::WRL::ComPtr<IUIAutomationElement>&
 	{
 		return m_element;
 	}
 
-	bool set_value(const wchar_t *t_text) const;
-	bool invoke() const;
-	bool focus() const;
-	bool has_keyboard_focus() const;
+	[[nodiscard]] auto set_value(const wchar_t* t_text) const -> bool;
+	auto invoke() const -> bool;
+	auto focus() const -> bool;
+	[[nodiscard]] auto has_keyboard_focus() const -> bool;
 
   private:
 	Microsoft::WRL::ComPtr<IUIAutomationElement> m_element;
@@ -32,33 +32,36 @@ class UiElement {
 
 class UiAutomation {
   public:
-	explicit UiAutomation(const std::atomic<bool> *t_cancel);
+	explicit UiAutomation(const std::atomic<bool>* t_cancel);
 	~UiAutomation();
 
-	UiAutomation(const UiAutomation &) = delete;
-	UiAutomation &operator=(const UiAutomation &) = delete;
+	UiAutomation(const UiAutomation&)                    = delete;
+	auto operator=(const UiAutomation&) -> UiAutomation& = delete;
 
-	static void keep_process_mta_alive();
+	static auto keep_process_mta_alive() -> void;
 
-	bool init();
-	void shutdown();
+	[[nodiscard]] auto init() -> bool;
+	auto shutdown() -> void;
 
-	static HWND find_top_level_window(u32 t_process_id);
+	[[nodiscard]] static auto find_top_level_window(u32 t_process_id) -> HWND;
 
-	UiElement element_from_window(HWND t_window) const;
-	UiElement find_descendant(const UiElement &t_root, const wchar_t *t_name) const;
-	UiElement find_descendant(const UiElement &t_root, const wchar_t *t_name, CONTROLTYPEID t_control_type) const;
+	[[nodiscard]] auto element_from_window(HWND t_window) const -> UiElement;
+	[[nodiscard]] auto find_descendant(const UiElement& t_root, const wchar_t* t_name) const -> UiElement;
+	[[nodiscard]] auto find_descendant(const UiElement& t_root, const wchar_t* t_name, CONTROLTYPEID t_control_type) const -> UiElement;
+	[[nodiscard]] auto find_edit(const UiElement& t_root, bool t_password) const -> UiElement;
+	[[nodiscard]] auto find_of_type(const UiElement& t_root, CONTROLTYPEID t_control_type) const -> UiElement;
 
-	void type_text(const wchar_t *t_text) const;
-	void press_key(WORD t_virtual_key) const;
+	auto type_text(const wchar_t* t_text) const -> void;
+	auto press_key(WORD t_virtual_key) const -> void;
 
   private:
-	bool is_cancelled() const;
-	bool can_search(const UiElement &t_root) const;
+	[[nodiscard]] auto is_cancelled() const -> bool;
+	[[nodiscard]] auto can_search(const UiElement& t_root) const -> bool;
 
-	UiElement find_first(const UiElement &t_root, Microsoft::WRL::ComPtr<IUIAutomationCondition> t_condition, const char *t_label) const;
+	[[nodiscard]] auto find_first(const UiElement& t_root, const Microsoft::WRL::ComPtr<IUIAutomationCondition>& t_condition, const char* t_label) const
+		-> UiElement;
 
-	const std::atomic<bool> *m_cancel;
+	const std::atomic<bool>*              m_cancel;
 	Microsoft::WRL::ComPtr<IUIAutomation> m_automation;
-	bool m_com_initialized = false;
+	bool                                  m_com_initialized = false;
 };

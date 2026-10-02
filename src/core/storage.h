@@ -15,15 +15,15 @@ enum class LoadResult : u8 {
 	Locked,
 };
 
-std::string data_directory();
+[[nodiscard]] auto data_directory() -> std::string;
 
-LoadResult load_settings(Settings *t_settings);
-bool save_settings(const Settings *t_settings);
+auto load_settings(Settings* t_settings) -> LoadResult;
+auto save_settings(const Settings* t_settings) -> bool;
 
-LoadResult load_accounts(Library *t_library, const MasterKey *t_master_key);
-bool save_accounts(const Library *t_library, const MasterKey *t_master_key);
+auto load_accounts(Library* t_library, const MasterKey* t_master_key) -> LoadResult;
+auto save_accounts(const Library* t_library, const MasterKey* t_master_key) -> bool;
 
-bool can_save_settings();
-bool can_save_accounts();
+[[nodiscard]] auto can_save_settings() -> bool;
+[[nodiscard]] auto can_save_accounts() -> bool;
 
 }

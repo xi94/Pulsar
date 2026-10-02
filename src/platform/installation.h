@@ -13,30 +13,30 @@
 namespace installation {
 
 struct Options {
-	bool desktop_shortcut = true;
+	bool desktop_shortcut    = true;
 	bool start_menu_shortcut = true;
-	bool start_with_windows = false;
+	bool start_with_windows  = false;
 
-	bool operator==(const Options &) const = default;
+	auto operator==(const Options&) const -> bool = default;
 };
 
 struct Installed {
 	std::wstring location;
 	std::wstring executable;
-	Options options;
+	Options      options;
 };
 
-std::wstring default_location();
-std::wstring with_app_folder(std::wstring_view t_folder);
-std::optional<Installed> find_installation();
-bool is_running_installed_copy();
-bool should_offer_setup();
-void mark_setup_complete();
-void refresh_registration();
-bool is_main_window_open();
-bool close_running_app(std::wstring_view t_only_executable = {});
-void open_folder(const std::wstring &t_folder);
-void finish_pending_removal();
+[[nodiscard]] auto default_location() -> std::wstring;
+[[nodiscard]] auto with_app_folder(std::wstring_view t_folder) -> std::wstring;
+[[nodiscard]] auto find_installation() -> std::optional<Installed>;
+[[nodiscard]] auto is_running_installed_copy() -> bool;
+[[nodiscard]] auto should_offer_setup() -> bool;
+auto mark_setup_complete() -> void;
+auto refresh_registration() -> void;
+[[nodiscard]] auto is_main_window_open() -> bool;
+[[nodiscard]] auto close_running_app(std::wstring_view t_only_executable = {}) -> bool;
+auto open_folder(const std::wstring& t_folder) -> void;
+auto finish_pending_removal() -> void;
 
 enum class Task : u8 {
 	Install,
@@ -49,83 +49,59 @@ class Job {
 	Job() = default;
 	~Job();
 
-	Job(const Job &) = delete;
-	Job &operator=(const Job &) = delete;
+	Job(const Job&)                    = delete;
+	auto operator=(const Job&) -> Job& = delete;
 
-	void start_install(std::wstring t_location, Options t_options);
-	void start_apply(Installed t_installed, Options t_options);
-	void start_uninstall(Installed t_installed, std::optional<std::wstring> t_data_folder);
+	auto start_install(std::wstring t_location, Options t_options) -> void;
+	auto start_apply(Installed t_installed, Options t_options) -> void;
+	auto start_uninstall(Installed t_installed, std::optional<std::wstring> t_data_folder) -> void;
 
-	bool is_finished() const
+	[[nodiscard]] auto is_finished() const -> bool
 	{
 		return m_finished.load(std::memory_order_acquire);
 	}
 
-	bool succeeded() const
+	[[nodiscard]] auto succeeded() const -> bool
 	{
 		return is_finished() && m_succeeded;
 	}
 
-	std::string_view error() const
+	[[nodiscard]] auto error() const -> std::string_view
 	{
 		return is_finished() ? std::string_view{m_error} : std::string_view{};
 	}
 
-	u32 step() const
+	[[nodiscard]] auto step() const -> u32
 	{
 		return m_step.load(std::memory_order_acquire);
 	}
 
-	std::string_view step_label() const;
-	u32 step_count() const;
+	[[nodiscard]] auto step_label() const -> std::string_view;
+	[[nodiscard]] auto step_count() const -> u32;
 
-	Task task() const
+	[[nodiscard]] auto task() const -> Task
 	{
 		return m_task;
 	}
 
-	const std::wstring &installed_executable() const
+	[[nodiscard]] auto installed_executable() const -> const std::wstring&
 	{
 		return m_installed_executable;
 	}
 
-	void reset();
+	auto reset() -> void;
 
   private:
-	void begin(Task t_task);
-	void finish(bool t_succeeded, std::string t_error);
+	auto begin(Task t_task) -> void;
+	auto finish(bool t_succeeded, std::string t_error) -> void;
 
-	Task m_task = Task::Install;
-	std::thread m_thread;
-	std::atomic<u32> m_step{0};
+	Task              m_task = Task::Install;
+	std::thread       m_thread;
+	std::atomic<u32>  m_step{0};
 	std::atomic<bool> m_finished{false};
-	bool m_succeeded = false;
-	std::string m_error;
-	std::wstring m_installed_executable;
-};
-
-class FolderPicker {
-  public:
-	FolderPicker() = default;
-	~FolderPicker();
-
-	FolderPicker(const FolderPicker &) = delete;
-	FolderPicker &operator=(const FolderPicker &) = delete;
-
-	void open(HWND t_owner, std::wstring t_initial_folder);
-
-	bool is_open() const
-	{
-		return m_thread.joinable() && !m_finished.load(std::memory_order_acquire);
-	}
-
-	std::optional<std::wstring> take_result();
-
-  private:
-	std::thread m_thread;
-	std::atomic<bool> m_finished{false};
-	std::atomic<DWORD> m_thread_id{0};
-	std::optional<std::wstring> m_result;
+	bool              m_succeeded = false;
+	std::string       m_error;
+	std::wstring      m_installed_executable;
 };
 
 }

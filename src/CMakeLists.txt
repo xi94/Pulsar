@@ -26,6 +26,7 @@ add_executable (Pulsar
   "platform/app_icon.cpp"
   "platform/clipboard.cpp"
   "platform/installation.cpp"
+  "platform/path_picker.cpp"
   "platform/process.cpp"
   "platform/tray.cpp"
   "platform/window.cpp"

@@ -4,47 +4,35 @@
 #include <cmath>
 #include <cstring>
 
+#include "core/str.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 
 namespace {
-constexpr std::string_view ellipsis = "...";
+constexpr std::string_view K_ELLIPSIS = "...";
 
 struct TruncationProbe {
-	Vec2 point{-1.0f, -1.0f};
-	bool found = false;
-	Rect bounds{};
-	u32 cover_count = 0;
-	char text[512]{};
+	Vec2  point{-1.0f, -1.0f};
+	bool  found = false;
+	Rect  bounds{};
+	u32   cover_count = 0;
+	char  text[512]{};
 	usize length = 0;
 };
 
 TruncationProbe g_truncation_probe;
 
-bool has_glyph(char t_character)
+[[nodiscard]] auto is_drawn(u32 t_codepoint) -> bool
 {
-	const auto code = static_cast<unsigned char>(t_character);
-
-	return code >= Font::first_char && code < Font::first_char + Font::char_count;
+	return t_codepoint >= 0x20 && t_codepoint != 0x7F;
 }
 
-stbtt_aligned_quad advance_glyph(const Font &t_font, char t_character, float *t_pen_x, float *t_pen_y)
-{
-	const auto atlas_size = static_cast<int>(t_font.atlas_size);
-	const int glyph = static_cast<unsigned char>(t_character) - static_cast<int>(Font::first_char);
-
-	stbtt_aligned_quad quad;
-	stbtt_GetPackedQuad(t_font.packed_chars, atlas_size, atlas_size, glyph, t_pen_x, t_pen_y, &quad, 1);
-
-	return quad;
-}
-
-bool is_space(char t_character)
+[[nodiscard]] auto is_space(char t_character) -> bool
 {
 	return t_character == ' ';
 }
 
-usize skip_spaces(std::string_view t_text, usize t_index)
+[[nodiscard]] auto skip_spaces(std::string_view t_text, usize t_index) -> usize
 {
 	while (t_index < t_text.size() && is_space(t_text[t_index])) {
 		t_index += 1;
@@ -53,7 +41,7 @@ usize skip_spaces(std::string_view t_text, usize t_index)
 	return t_index;
 }
 
-usize skip_word(std::string_view t_text, usize t_index)
+[[nodiscard]] auto skip_word(std::string_view t_text, usize t_index) -> usize
 {
 	while (t_index < t_text.size() && !is_space(t_text[t_index])) {
 		t_index += 1;
@@ -62,7 +50,7 @@ usize skip_word(std::string_view t_text, usize t_index)
 	return t_index;
 }
 
-u32 wrap_paragraph(const Font &t_font, std::string_view t_paragraph, float t_max_width, std::span<std::string_view> t_out_lines)
+[[nodiscard]] auto wrap_paragraph(const Font& t_font, std::string_view t_paragraph, float t_max_width, std::span<std::string_view> t_out_lines) -> u32
 {
 	if (t_out_lines.empty()) return 0;
 
@@ -71,27 +59,35 @@ u32 wrap_paragraph(const Font &t_font, std::string_view t_paragraph, float t_max
 		return 1;
 	}
 
-	u32 line_count = 0;
+	u32   line_count = 0;
 	usize line_start = 0;
 
 	while (line_start < t_paragraph.size() && line_count < t_out_lines.size()) {
 		usize line_end = line_start;
-		usize scan = line_start;
+		usize scan     = line_start;
 
 		for (;;) {
 			const usize word_start = skip_spaces(t_paragraph, scan);
-			const usize word_end = skip_word(t_paragraph, word_start);
+			const usize word_end   = skip_word(t_paragraph, word_start);
 			if (word_start == word_end) break;
 
 			const bool fits = text_width(t_font, t_paragraph.substr(line_start, word_end - line_start)) <= t_max_width;
 			if (!fits && line_end > line_start) break;
 
 			line_end = word_end;
-			scan = word_end;
+			scan     = word_end;
 		}
 
 		if (line_end == line_start) {
-			line_end = std::max(skip_word(t_paragraph, line_start), line_start + 1);
+			const usize word_end = skip_word(t_paragraph, line_start);
+			line_end             = next_codepoint(t_paragraph, line_start);
+
+			while (line_end < word_end) {
+				const usize next = next_codepoint(t_paragraph, line_end);
+				if (text_width(t_font, t_paragraph.substr(line_start, next - line_start)) > t_max_width) break;
+
+				line_end = next;
+			}
 		}
 
 		t_out_lines[line_count] = t_paragraph.substr(line_start, line_end - line_start);
@@ -103,65 +99,84 @@ u32 wrap_paragraph(const Font &t_font, std::string_view t_paragraph, float t_max
 }
 }
 
-float text_width(const Font &t_font, std::string_view t_text)
+[[nodiscard]] auto text_width(const Font& t_font, std::string_view t_text) -> float
 {
-	float pen_x = 0.0f;
-	float pen_y = 0.0f;
+	if (t_font.glyphs == nullptr) return 0.0f;
 
-	for (const char character : t_text) {
-		if (has_glyph(character)) {
-			advance_glyph(t_font, character, &pen_x, &pen_y);
+	float advance = 0.0f;
+
+	for (usize index = 0; index < t_text.size();) {
+		const Utf8Codepoint codepoint = decode_utf8(t_text, index);
+		index += codepoint.length;
+
+		if (is_drawn(codepoint.value)) {
+			advance += t_font.glyph(codepoint.value)->advance;
 		}
 	}
 
-	return pen_x / t_font.bake_scale;
+	return advance / t_font.bake_scale;
 }
 
-u32 text_index_at(const Font &t_font, std::string_view t_text, float t_x)
+[[nodiscard]] auto text_index_at(const Font& t_font, std::string_view t_text, float t_x) -> u32
 {
+	if (t_font.glyphs == nullptr) return 0;
+
 	const float baked_x = t_x * t_font.bake_scale;
-	float pen_x = 0.0f;
-	float pen_y = 0.0f;
+	float       pen_x   = 0.0f;
 
-	for (u32 i = 0; i < t_text.size(); i += 1) {
-		if (!has_glyph(t_text[i])) continue;
+	for (usize index = 0; index < t_text.size();) {
+		const Utf8Codepoint codepoint = decode_utf8(t_text, index);
 
-		const float glyph_start = pen_x;
-		advance_glyph(t_font, t_text[i], &pen_x, &pen_y);
+		if (is_drawn(codepoint.value)) {
+			const float glyph_start = pen_x;
+			pen_x += t_font.glyph(codepoint.value)->advance;
 
-		if (baked_x < (glyph_start + pen_x) * 0.5f) return i;
+			if (baked_x < (glyph_start + pen_x) * 0.5f) return static_cast<u32>(index);
+		}
+
+		index += codepoint.length;
 	}
 
 	return static_cast<u32>(t_text.size());
 }
 
-void draw_text(DrawList *t_draw_list, const Font &t_font, Vec2 t_baseline, std::string_view t_text, Color t_color)
+auto draw_text(DrawList* t_draw_list, const Font& t_font, Vec2 t_baseline, std::string_view t_text, Color t_color) -> void
 {
-	if (t_font.atlas == nullptr) return;
+	if (t_font.glyphs == nullptr) return;
 
 	// The atlas is baked at physical resolution, so glyphs only stay crisp on whole physical pixels.
 	const float bake_scale = t_font.bake_scale;
-	float pen_x = std::round(t_baseline.x * bake_scale);
-	float pen_y = std::round(t_baseline.y * bake_scale);
+	const float pen_y      = std::round(t_baseline.y * bake_scale);
+	float       pen_x      = std::round(t_baseline.x * bake_scale);
 
-	for (const char character : t_text) {
-		if (!has_glyph(character)) continue;
+	for (usize index = 0; index < t_text.size();) {
+		const Utf8Codepoint codepoint = decode_utf8(t_text, index);
+		index += codepoint.length;
 
-		const stbtt_aligned_quad quad = advance_glyph(t_font, character, &pen_x, &pen_y);
-		const Rect glyph{quad.x0 / bake_scale, quad.y0 / bake_scale, (quad.x1 - quad.x0) / bake_scale, (quad.y1 - quad.y0) / bake_scale};
+		if (!is_drawn(codepoint.value)) continue;
 
-		t_draw_list->add_image(glyph, t_font.atlas.get(), t_color, square_corners, UvRect{quad.s0, quad.t0, quad.s1, quad.t1});
+		const Glyph* glyph = t_font.glyph(codepoint.value);
+
+		if (glyph->x1 > glyph->x0) {
+			const float x = std::round(pen_x) + glyph->x0;
+			const float y = pen_y + glyph->y0;
+			const Rect  quad{x / bake_scale, y / bake_scale, (glyph->x1 - glyph->x0) / bake_scale, (glyph->y1 - glyph->y0) / bake_scale};
+
+			t_draw_list->add_image(quad, t_font.atlas.get(), t_color, K_SQUARE_CORNERS, UvRect{glyph->u0, glyph->v0, glyph->u1, glyph->v1});
+		}
+
+		pen_x += glyph->advance;
 	}
 }
 
-void draw_text_centered(DrawList *t_draw_list, const Font &t_font, Rect t_box, std::string_view t_text, Color t_color)
+auto draw_text_centered(DrawList* t_draw_list, const Font& t_font, Rect t_box, std::string_view t_text, Color t_color) -> void
 {
 	const float x = t_box.x + (t_box.w - text_width(t_font, t_text)) * 0.5f;
 
 	draw_text(t_draw_list, t_font, Vec2{x, t_font.centered_baseline(t_box)}, t_text, t_color);
 }
 
-void draw_text_truncated(DrawList *t_draw_list, const Font &t_font, Vec2 t_baseline, std::string_view t_text, float t_max_width, Color t_color)
+auto draw_text_truncated(DrawList* t_draw_list, const Font& t_font, Vec2 t_baseline, std::string_view t_text, float t_max_width, Color t_color) -> void
 {
 	if (t_max_width <= 0.0f) return;
 
@@ -170,53 +185,60 @@ void draw_text_truncated(DrawList *t_draw_list, const Font &t_font, Vec2 t_basel
 		return;
 	}
 
-	const float ellipsis_width = text_width(t_font, ellipsis);
+	const float ellipsis_width = text_width(t_font, K_ELLIPSIS);
 	if (ellipsis_width > t_max_width) return;
 
-	usize kept = 0;
-	while (kept < t_text.size() && text_width(t_font, t_text.substr(0, kept + 1)) + ellipsis_width <= t_max_width) {
-		kept += 1;
+	usize kept       = 0;
+	float kept_width = 0.0f;
+
+	while (kept < t_text.size()) {
+		const usize next  = next_codepoint(t_text, kept);
+		const float width = text_width(t_font, t_text.substr(kept, next - kept));
+		if (kept_width + width + ellipsis_width > t_max_width) break;
+
+		kept = next;
+		kept_width += width;
 	}
 
-	const std::string_view head = t_text.substr(0, kept);
-	const float head_width = text_width(t_font, head);
+	const std::string_view head       = t_text.substr(0, kept);
+	const float            head_width = text_width(t_font, head);
 	draw_text(t_draw_list, t_font, t_baseline, head, t_color);
-	draw_text(t_draw_list, t_font, Vec2{t_baseline.x + head_width, t_baseline.y}, ellipsis, t_color);
+	draw_text(t_draw_list, t_font, Vec2{t_baseline.x + head_width, t_baseline.y}, K_ELLIPSIS, t_color);
 
-	TruncationProbe *probe = &g_truncation_probe;
-	const Rect shown{t_baseline.x, t_baseline.y - t_font.ascent, head_width + ellipsis_width, t_font.line_height()};
-	const Rect visible = t_draw_list->visible_rect(shown);
+	TruncationProbe* probe = &g_truncation_probe;
+	const Rect       shown{t_baseline.x, t_baseline.y - t_font.ascent, head_width + ellipsis_width, t_font.line_height()};
+	const Rect       visible = t_draw_list->visible_rect(shown);
 	if (!visible.contains(probe->point)) return;
 
-	probe->found = true;
-	probe->bounds = visible;
+	probe->found       = true;
+	probe->bounds      = visible;
 	probe->cover_count = t_draw_list->probe_cover_count();
-	probe->length = std::min(t_text.size(), sizeof(probe->text));
+	probe->length      = std::min(t_text.size(), sizeof(probe->text));
 	std::memcpy(probe->text, t_text.data(), probe->length);
 }
 
-void begin_truncation_probe(DrawList *t_draw_list, Vec2 t_point)
+auto begin_truncation_probe(DrawList* t_draw_list, Vec2 t_point) -> void
 {
 	t_draw_list->set_probe(t_point);
 	g_truncation_probe.point = t_point;
 	g_truncation_probe.found = false;
 }
 
-std::optional<TruncatedText> hovered_truncated_text(const DrawList *t_draw_list)
+[[nodiscard]] auto hovered_truncated_text(const DrawList* t_draw_list) -> std::optional<TruncatedText>
 {
-	const TruncationProbe *probe = &g_truncation_probe;
+	const TruncationProbe* probe = &g_truncation_probe;
 	if (!probe->found || probe->cover_count != t_draw_list->probe_cover_count()) return std::nullopt;
 
 	return TruncatedText{probe->bounds, std::string_view{probe->text, probe->length}};
 }
 
-u32 wrap_text(const Font &t_font, std::string_view t_text, float t_max_width, std::span<std::string_view> t_out_lines)
+[[nodiscard]] auto wrap_text(const Font& t_font, std::string_view t_text, float t_max_width, std::span<std::string_view> t_out_lines) -> u32
 {
-	u32 line_count = 0;
+	u32   line_count      = 0;
 	usize paragraph_start = 0;
 
 	while (paragraph_start <= t_text.size() && line_count < t_out_lines.size()) {
-		const usize newline = t_text.find('\n', paragraph_start);
+		const usize newline       = t_text.find('\n', paragraph_start);
 		const usize paragraph_end = newline == std::string_view::npos ? t_text.size() : newline;
 
 		line_count += wrap_paragraph(t_font, t_text.substr(paragraph_start, paragraph_end - paragraph_start), t_max_width, t_out_lines.subspan(line_count));
@@ -226,13 +248,18 @@ u32 wrap_text(const Font &t_font, std::string_view t_text, float t_max_width, st
 	return line_count;
 }
 
-float draw_wrapped_text(DrawList *t_draw_list, const Font &t_font, Vec2 t_first_baseline, float t_max_width, std::string_view t_text, Color t_color,
-						u32 t_max_lines)
+auto draw_wrapped_text(DrawList*        t_draw_list,
+                       const Font&      t_font,
+                       Vec2             t_first_baseline,
+                       float            t_max_width,
+                       std::string_view t_text,
+                       Color            t_color,
+                       u32              t_max_lines) -> float
 {
-	constexpr u32 max_drawn_lines = 8;
+	constexpr u32 MAX_DRAWN_LINES = 8;
 
-	std::string_view lines[max_drawn_lines];
-	const u32 line_count = wrap_text(t_font, t_text, t_max_width, std::span{lines, std::min(t_max_lines, max_drawn_lines)});
+	std::string_view lines[MAX_DRAWN_LINES];
+	const u32        line_count = wrap_text(t_font, t_text, t_max_width, std::span{lines, std::min(t_max_lines, MAX_DRAWN_LINES)});
 
 	Vec2 baseline = t_first_baseline;
 	for (const std::string_view line : std::span{lines, line_count}) {

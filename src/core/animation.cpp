@@ -5,13 +5,13 @@
 #include <limits>
 
 namespace {
-bool g_enabled = true;
-float g_speed = 1.0f;
-bool g_frame_requested = false;
-float g_wake_after = std::numeric_limits<float>::max();
+bool  g_enabled         = true;
+float g_speed           = 1.0f;
+bool  g_frame_requested = false;
+float g_wake_after      = std::numeric_limits<float>::max();
 }
 
-float animation::ease_toward(float t_value, float t_target, float t_rate, float t_delta_seconds, float t_settle_distance)
+auto animation::ease_toward(float t_value, float t_target, float t_rate, float t_delta_seconds, float t_settle_distance) -> float
 {
 	if (!g_enabled) return t_target;
 
@@ -24,23 +24,28 @@ float animation::ease_toward(float t_value, float t_target, float t_rate, float 
 	return eased;
 }
 
-float animation::spring_toward(float t_value, float *t_velocity, float t_target, float t_stiffness, float t_damping_ratio, float t_delta_seconds,
-							   float t_settle_distance)
+auto animation::spring_toward(float  t_value,
+                              float* t_velocity,
+                              float  t_target,
+                              float  t_stiffness,
+                              float  t_damping_ratio,
+                              float  t_delta_seconds,
+                              float  t_settle_distance) -> float
 {
-	constexpr float max_step_seconds = 1.0f / 240.0f;
+	constexpr float MAX_STEP_SECONDS = 1.0f / 240.0f;
 
 	if (!g_enabled) {
 		*t_velocity = 0.0f;
 		return t_target;
 	}
 
-	const float damping = 2.0f * t_damping_ratio * std::sqrt(t_stiffness);
-	float remaining = t_delta_seconds * g_speed;
-	float value = t_value;
-	float velocity = *t_velocity;
+	const float damping   = 2.0f * t_damping_ratio * std::sqrt(t_stiffness);
+	float       remaining = t_delta_seconds * g_speed;
+	float       value     = t_value;
+	float       velocity  = *t_velocity;
 
 	while (remaining > 0.0f) {
-		const float step = std::min(remaining, max_step_seconds);
+		const float step         = std::min(remaining, MAX_STEP_SECONDS);
 		const float acceleration = t_stiffness * (t_target - value) - damping * velocity;
 
 		velocity += acceleration * step;
@@ -59,7 +64,7 @@ float animation::spring_toward(float t_value, float *t_velocity, float t_target,
 	return value;
 }
 
-float animation::step_toward(float t_value, float t_target, float t_duration_seconds, float t_delta_seconds)
+auto animation::step_toward(float t_value, float t_target, float t_duration_seconds, float t_delta_seconds) -> float
 {
 	if (!g_enabled || t_duration_seconds <= 0.0f) return t_target;
 
@@ -73,32 +78,32 @@ float animation::step_toward(float t_value, float t_target, float t_duration_sec
 	return stepped;
 }
 
-void animation::request_frame()
+auto animation::request_frame() -> void
 {
 	g_frame_requested = true;
 }
 
-void animation::request_frame_after(float t_seconds)
+auto animation::request_frame_after(float t_seconds) -> void
 {
 	g_wake_after = std::min(g_wake_after, std::max(t_seconds, 0.0f));
 }
 
-float animation::take_idle_wait(float t_limit_seconds)
+auto animation::take_idle_wait(float t_limit_seconds) -> float
 {
 	const float wait = g_frame_requested ? 0.0f : std::min(g_wake_after, t_limit_seconds);
 
 	g_frame_requested = false;
-	g_wake_after = std::numeric_limits<float>::max();
+	g_wake_after      = std::numeric_limits<float>::max();
 
 	return wait;
 }
 
-void animation::set_enabled(bool t_enabled)
+auto animation::set_enabled(bool t_enabled) -> void
 {
 	g_enabled = t_enabled;
 }
 
-void animation::set_speed(float t_speed)
+auto animation::set_speed(float t_speed) -> void
 {
 	g_speed = t_speed;
 }

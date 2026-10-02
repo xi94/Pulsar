@@ -1,5 +1,7 @@
 #pragma once
 
+#include <concepts>
+
 #include "core/types.h"
 
 class DrawList;
@@ -9,66 +11,66 @@ class Widget {
   public:
 	virtual ~Widget() = default;
 
-	virtual void update(float) {}
+	virtual auto update(float) -> void {}
 
-	virtual void draw(DrawList *t_draw_list) = 0;
+	virtual auto draw(DrawList* t_draw_list) -> void = 0;
 
-	virtual bool on_pointer_down(Vec2)
+	virtual auto on_pointer_down(Vec2) -> bool
 	{
 		return false;
 	}
 
-	virtual bool on_pointer_move(Vec2)
+	virtual auto on_pointer_move(Vec2) -> bool
 	{
 		return false;
 	}
 
-	virtual bool on_pointer_up(Vec2)
+	virtual auto on_pointer_up(Vec2) -> bool
 	{
 		return false;
 	}
 
-	virtual bool on_right_click(Vec2)
+	virtual auto on_right_click(Vec2) -> bool
 	{
 		return false;
 	}
 
-	virtual bool on_scroll(Vec2, float)
+	virtual auto on_scroll(Vec2, float) -> bool
 	{
 		return false;
 	}
 
-	virtual bool on_key_down(u32)
+	virtual auto on_key_down(u32) -> bool
 	{
 		return false;
 	}
 
-	virtual bool on_char(u32)
+	virtual auto on_char(u32) -> bool
 	{
 		return false;
 	}
 
-	virtual bool is_blocking() const
+	[[nodiscard]] virtual auto is_blocking() const -> bool
 	{
 		return false;
 	}
 
-	virtual CursorKind cursor() const
+	[[nodiscard]] virtual auto cursor() const -> CursorKind
 	{
 		return CursorKind::Arrow;
 	}
 
-	void set_mouse(Vec2 t_mouse)
+	auto set_mouse(Vec2 t_mouse) -> void
 	{
 		m_mouse = t_mouse;
 	}
 
-	bool is_visible() const
+	[[nodiscard]] auto is_visible() const -> bool
 	{
 		return m_visible;
 	}
 
-	void set_visible(bool t_visible)
+	auto set_visible(bool t_visible) -> void
 	{
 		m_visible = t_visible;
 	}
@@ -82,23 +84,22 @@ class Widget {
 
 class WidgetStack {
   public:
-	void push(Widget *t_widget);
-	void push_overlay(Widget *t_widget);
+	auto push(Widget* t_widget) -> void;
+	auto push_overlay(Widget* t_widget) -> void;
 
-	void update(Vec2 t_mouse, float t_delta_seconds);
-	void draw(DrawList *t_draw_list);
+	auto update(Vec2 t_mouse, float t_delta_seconds) -> void;
+	auto draw(DrawList* t_draw_list) -> void;
 
-	bool dispatch(const InputEvent &t_event);
-	CursorKind cursor() const;
+	[[nodiscard]] auto dispatch(const InputEvent& t_event) -> bool;
+	[[nodiscard]] auto cursor() const -> CursorKind;
 
   private:
-	static constexpr u32 max_widgets = 16;
+	static constexpr u32 K_MAX_WIDGETS = 16;
 
-	template <typename Visitor>
-	bool visit_top_down(Visitor &&t_visitor) const;
+	auto visit_top_down(std::predicate<Widget*> auto&& t_visitor) const -> bool;
 
-	Widget *m_widgets[max_widgets]{};
-	u32 m_widget_count = 0;
-	Widget *m_overlays[max_widgets]{};
-	u32 m_overlay_count = 0;
+	Widget* m_widgets[K_MAX_WIDGETS]{};
+	u32     m_widget_count = 0;
+	Widget* m_overlays[K_MAX_WIDGETS]{};
+	u32     m_overlay_count = 0;
 };

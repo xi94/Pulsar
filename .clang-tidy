@@ -1,0 +1,58 @@
+---
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-exception-escape,
+  -bugprone-incorrect-roundings,
+  -bugprone-integer-division,
+  -bugprone-invalid-enum-default-initialization,
+  -bugprone-suspicious-stringview-data-usage,
+  performance-*,
+  -performance-no-int-to-ptr,
+  modernize-use-override,
+  modernize-use-nullptr,
+  modernize-use-using,
+  modernize-use-equals-default,
+  modernize-use-equals-delete,
+  modernize-use-trailing-return-type,
+  readability-identifier-naming,
+  readability-container-size-empty,
+  readability-redundant-member-init,
+  readability-redundant-string-init,
+  readability-make-member-function-const,
+  misc-redundant-expression,
+  misc-unused-using-decls
+HeaderFilterRegex: 'src[/\\](core|gfx|platform|login|ui)[/\\]|src[/\\](app|setup_app|games)\.h'
+FormatStyle: file
+CheckOptions:
+  modernize-use-trailing-return-type.TransformLambdas: none
+  readability-identifier-naming.NamespaceCase: lower_case
+  readability-identifier-naming.ClassCase: CamelCase
+  readability-identifier-naming.StructCase: CamelCase
+  readability-identifier-naming.UnionCase: CamelCase
+  readability-identifier-naming.EnumCase: CamelCase
+  readability-identifier-naming.EnumConstantCase: CamelCase
+  readability-identifier-naming.TypeAliasCase: CamelCase
+  readability-identifier-naming.TypeAliasIgnoredRegexp: '^([iu](8|16|32|64)|usize|uptr)$'
+  readability-identifier-naming.TemplateParameterCase: CamelCase
+  readability-identifier-naming.FunctionCase: lower_case
+  readability-identifier-naming.MethodCase: lower_case
+  readability-identifier-naming.ParameterCase: lower_case
+  readability-identifier-naming.ParameterPrefix: t_
+  readability-identifier-naming.PublicMemberCase: lower_case
+  readability-identifier-naming.PrivateMemberCase: lower_case
+  readability-identifier-naming.PrivateMemberPrefix: m_
+  readability-identifier-naming.ProtectedMemberCase: lower_case
+  readability-identifier-naming.ProtectedMemberPrefix: m_
+  readability-identifier-naming.GlobalVariableCase: lower_case
+  readability-identifier-naming.GlobalVariablePrefix: g_
+  readability-identifier-naming.GlobalConstantCase: UPPER_CASE
+  readability-identifier-naming.GlobalConstantPrefix: K_
+  readability-identifier-naming.ClassConstantCase: UPPER_CASE
+  readability-identifier-naming.ClassConstantPrefix: K_
+  readability-identifier-naming.StaticConstantCase: UPPER_CASE
+  readability-identifier-naming.LocalVariableCase: lower_case
+  readability-identifier-naming.LocalVariableIgnoredRegexp: '^[A-Z][A-Z0-9_]*$'
+  readability-identifier-naming.MacroDefinitionCase: UPPER_CASE

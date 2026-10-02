@@ -6,9 +6,9 @@
 #include "platform/window.h"
 
 namespace {
-constexpr Vec2 mouse_outside_window{-1.0f, -1.0f};
+constexpr Vec2 K_MOUSE_OUTSIDE_WINDOW{-1.0f, -1.0f};
 
-bool deliver(Widget *t_widget, const InputEvent &t_event)
+[[nodiscard]] auto deliver(Widget* t_widget, const InputEvent& t_event) -> bool
 {
 	switch (t_event.type) {
 		case InputEventType::MouseDown:
@@ -31,24 +31,23 @@ bool deliver(Widget *t_widget, const InputEvent &t_event)
 }
 }
 
-void WidgetStack::push(Widget *t_widget)
+auto WidgetStack::push(Widget* t_widget) -> void
 {
-	assert(m_widget_count < max_widgets);
+	assert(m_widget_count < K_MAX_WIDGETS);
 
 	m_widgets[m_widget_count] = t_widget;
 	m_widget_count += 1;
 }
 
-void WidgetStack::push_overlay(Widget *t_widget)
+auto WidgetStack::push_overlay(Widget* t_widget) -> void
 {
-	assert(m_overlay_count < max_widgets);
+	assert(m_overlay_count < K_MAX_WIDGETS);
 
 	m_overlays[m_overlay_count] = t_widget;
 	m_overlay_count += 1;
 }
 
-template <typename Visitor>
-bool WidgetStack::visit_top_down(Visitor &&t_visitor) const
+auto WidgetStack::visit_top_down(std::predicate<Widget*> auto&& t_visitor) const -> bool
 {
 	for (u32 i = m_overlay_count; i > 0; i -= 1) {
 		if (t_visitor(m_overlays[i - 1])) return true;
@@ -61,12 +60,12 @@ bool WidgetStack::visit_top_down(Visitor &&t_visitor) const
 	return false;
 }
 
-void WidgetStack::update(Vec2 t_mouse, float t_delta_seconds)
+auto WidgetStack::update(Vec2 t_mouse, float t_delta_seconds) -> void
 {
 	bool covered_by_blocker = false;
 
-	visit_top_down([&](Widget *t_widget) {
-		t_widget->set_mouse(covered_by_blocker ? mouse_outside_window : t_mouse);
+	visit_top_down([&](Widget* t_widget) {
+		t_widget->set_mouse(covered_by_blocker ? K_MOUSE_OUTSIDE_WINDOW : t_mouse);
 		t_widget->update(t_delta_seconds);
 		covered_by_blocker = covered_by_blocker || (t_widget->is_visible() && t_widget->is_blocking());
 
@@ -74,31 +73,31 @@ void WidgetStack::update(Vec2 t_mouse, float t_delta_seconds)
 	});
 }
 
-void WidgetStack::draw(DrawList *t_draw_list)
+auto WidgetStack::draw(DrawList* t_draw_list) -> void
 {
-	for (Widget *widget : std::span{m_widgets, m_widget_count}) {
+	for (Widget* widget : std::span{m_widgets, m_widget_count}) {
 		if (widget->is_visible()) {
 			widget->draw(t_draw_list);
 		}
 	}
 
-	for (Widget *widget : std::span{m_overlays, m_overlay_count}) {
+	for (Widget* widget : std::span{m_overlays, m_overlay_count}) {
 		if (widget->is_visible()) {
 			widget->draw(t_draw_list);
 		}
 	}
 }
 
-bool WidgetStack::dispatch(const InputEvent &t_event)
+auto WidgetStack::dispatch(const InputEvent& t_event) -> bool
 {
-	return visit_top_down([&](Widget *t_widget) { return t_widget->is_visible() && (deliver(t_widget, t_event) || t_widget->is_blocking()); });
+	return visit_top_down([&](Widget* t_widget) { return t_widget->is_visible() && (deliver(t_widget, t_event) || t_widget->is_blocking()); });
 }
 
-CursorKind WidgetStack::cursor() const
+auto WidgetStack::cursor() const -> CursorKind
 {
 	CursorKind wanted = CursorKind::Arrow;
 
-	visit_top_down([&](Widget *t_widget) {
+	visit_top_down([&](Widget* t_widget) {
 		if (t_widget->is_visible()) {
 			wanted = t_widget->cursor();
 		}

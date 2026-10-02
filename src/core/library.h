@@ -9,74 +9,74 @@
 
 class Texture;
 
-constexpr u32 max_games = 16;
-constexpr u32 max_accounts_per_game = 32;
-constexpr u32 max_visible_accounts = max_games * max_accounts_per_game;
+constexpr u32 K_MAX_GAMES             = 16;
+constexpr u32 K_MAX_ACCOUNTS_PER_GAME = 32;
+constexpr u32 K_MAX_VISIBLE_ACCOUNTS  = K_MAX_GAMES * K_MAX_ACCOUNTS_PER_GAME;
 
 struct Account {
 	char username[64]{};
 	char note[32]{};
 	char password[128]{};
 	char region[8]{};
-	u16 visible_game_mask = 0;
-	bool favorite = false;
-	i64 last_used = 0;
-	u32 order = 0;
+	u16  visible_game_mask = 0;
+	bool favorite          = false;
+	i64  last_used         = 0;
+	u32  order             = 0;
 
-	void assign(std::string_view t_username, std::string_view t_note, std::string_view t_password);
-	u16 visible_games(u32 t_owning_game) const;
+	auto assign(std::string_view t_username, std::string_view t_note, std::string_view t_password) -> void;
+	[[nodiscard]] auto visible_games(u32 t_owning_game) const -> u16;
 };
 
 struct Game {
 	std::string_view title;
 	std::string_view short_title;
 	std::string_view launch_product;
-	Color accent{};
-	const Texture *banner = nullptr;
-	const Texture *icon = nullptr;
-	Account accounts[max_accounts_per_game]{};
-	u32 account_count = 0;
+	Color            accent{};
+	const Texture*   banner = nullptr;
+	const Texture*   icon   = nullptr;
+	Account          accounts[K_MAX_ACCOUNTS_PER_GAME]{};
+	u32              account_count = 0;
 };
 
 struct AccountRef {
 	u32 game;
 	u32 index;
 
-	bool operator==(const AccountRef &) const = default;
+	auto operator==(const AccountRef&) const -> bool = default;
 };
 
 struct VisibleAccounts {
-	AccountRef refs[max_visible_accounts];
-	u32 count = 0;
+	AccountRef refs[K_MAX_VISIBLE_ACCOUNTS];
+	u32        count = 0;
 
-	std::span<const AccountRef> view() const
+	[[nodiscard]] auto view() const -> std::span<const AccountRef>
 	{
 		return {refs, count};
 	}
 };
 
 struct Library {
-	Game games[max_games];
-	u32 game_count = 0;
-	u32 next_order = 1;
+	Game        games[K_MAX_GAMES];
+	u32         game_count = 0;
+	u32         next_order = 1;
 	std::string unlisted_games;
 
-	std::optional<AccountRef> add_account(u32 t_game, const Account &t_account);
-	std::optional<AccountRef> insert_account(AccountRef t_where, const Account &t_account);
-	void remove_account(AccountRef t_ref);
-	void move_visible_account(u32 t_game, u32 t_from_row, u32 t_to_row);
-	void number_unordered_accounts();
-	void wipe_accounts();
+	[[nodiscard]] auto add_account(u32 t_game, const Account& t_account) -> std::optional<AccountRef>;
+	[[nodiscard]] auto insert_account(AccountRef t_where, const Account& t_account) -> std::optional<AccountRef>;
+	auto remove_account(AccountRef t_ref) -> void;
+	auto move_visible_account(u32 t_game, u32 t_from_row, u32 t_to_row) -> void;
+	auto number_unordered_accounts() -> void;
+	auto wipe_accounts() -> void;
 
-	VisibleAccounts visible_accounts(u32 t_game) const;
-	std::optional<AccountRef> visible_account(u32 t_game, u32 t_row) const;
+	[[nodiscard]] auto visible_accounts(u32 t_game) const -> VisibleAccounts;
+	[[nodiscard]] auto visible_account(u32 t_game, u32 t_row) const -> std::optional<AccountRef>;
 
-	Account *account(AccountRef t_ref)
+	[[nodiscard]] auto account(AccountRef t_ref) -> Account*
 	{
 		return &games[t_ref.game].accounts[t_ref.index];
 	}
 
-	const Account *account(AccountRef t_ref) const
+	[[nodiscard]] auto account(AccountRef t_ref) const -> const Account*
 	{
 		return &games[t_ref.game].accounts[t_ref.index];
 	}

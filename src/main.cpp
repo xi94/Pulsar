@@ -27,37 +27,37 @@ class DebugLogSession {
 		debug_log::shutdown();
 	}
 
-	DebugLogSession(const DebugLogSession &) = delete;
-	DebugLogSession &operator=(const DebugLogSession &) = delete;
+	DebugLogSession(const DebugLogSession&)                    = delete;
+	auto operator=(const DebugLogSession&) -> DebugLogSession& = delete;
 };
 
 struct LaunchFlags {
-	bool setup = false;
+	bool setup     = false;
 	bool uninstall = false;
-	bool startup = false;
+	bool startup   = false;
 };
 
-LaunchFlags launch_flags()
+[[nodiscard]] auto launch_flags() -> LaunchFlags
 {
 	LaunchFlags flags;
-	int count = 0;
-	wchar_t **arguments = CommandLineToArgvW(GetCommandLineW(), &count);
+	int         count     = 0;
+	wchar_t**   arguments = CommandLineToArgvW(GetCommandLineW(), &count);
 	if (arguments == nullptr) return flags;
 
 	for (int i = 1; i < count; i += 1) {
 		const std::wstring_view argument = arguments[i];
-		flags.setup = flags.setup || argument == L"--setup";
-		flags.uninstall = flags.uninstall || argument == L"--uninstall";
-		flags.startup = flags.startup || argument == L"--startup";
+		flags.setup                      = flags.setup || argument == L"--setup";
+		flags.uninstall                  = flags.uninstall || argument == L"--uninstall";
+		flags.startup                    = flags.startup || argument == L"--startup";
 	}
 
-	LocalFree(arguments);
+	LocalFree(static_cast<void*>(arguments));
 
 	return flags;
 }
 }
 
-int main()
+auto main() -> int
 {
 	if (Updater::handed_off_to_repaired_copy()) return 0;
 
@@ -71,7 +71,7 @@ int main()
 	const LaunchFlags flags = launch_flags();
 
 	if (flags.setup || flags.uninstall) {
-		if (bring_window_to_front(setup_window_class_name)) return 0;
+		if (bring_window_to_front(K_SETUP_WINDOW_CLASS_NAME)) return 0;
 
 		auto setup = std::make_unique<SetupApp>(flags.uninstall ? SetupMode::Uninstall : SetupMode::Manage);
 		setup->run();
@@ -81,9 +81,9 @@ int main()
 	}
 
 	if (!flags.startup && !installation::is_main_window_open() && installation::should_offer_setup()) {
-		if (bring_window_to_front(setup_window_class_name)) return 0;
+		if (bring_window_to_front(K_SETUP_WINDOW_CLASS_NAME)) return 0;
 
-		auto setup = std::make_unique<SetupApp>(SetupMode::FirstRun);
+		auto               setup   = std::make_unique<SetupApp>(SetupMode::FirstRun);
 		const SetupOutcome outcome = setup->run();
 		setup.reset();
 

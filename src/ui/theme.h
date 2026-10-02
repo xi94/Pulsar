@@ -28,10 +28,11 @@ struct Theme {
 	Color default_accent;
 };
 
-const Theme &theme();
-const Theme &theme_preset(ThemeKind t_kind);
-Color hovered(Color t_base);
+extern Theme g_theme;
 
-void apply_theme(ThemeKind t_kind);
-void fade_to_theme(ThemeKind t_kind);
-void update_theme(float t_delta_seconds);
+[[nodiscard]] auto theme_preset(ThemeKind t_kind) -> const Theme&;
+[[nodiscard]] auto hovered(Color t_base) -> Color;
+
+auto apply_theme(ThemeKind t_kind) -> void;
+auto fade_to_theme(ThemeKind t_kind) -> void;
+auto update_theme(float t_delta_seconds) -> void;

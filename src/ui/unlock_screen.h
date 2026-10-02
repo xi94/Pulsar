@@ -12,67 +12,67 @@ struct Settings;
 
 class UnlockScreen : public Widget {
   public:
-	UnlockScreen(Settings *t_settings, MasterKey *t_master_key, const Fonts *t_fonts, const Assets *t_assets, const Window *t_window, CommandQueue *t_commands);
+	UnlockScreen(Settings* t_settings, MasterKey* t_master_key, const Fonts* t_fonts, const Assets* t_assets, const Window* t_window, CommandQueue* t_commands);
 
-	void show_unlock();
-	void show_setup();
-	void hide();
+	auto show_unlock() -> void;
+	auto show_setup() -> void;
+	auto hide() -> void;
 
-	void update(float t_delta_seconds) override;
-	void draw(DrawList *t_draw_list) override;
+	auto update(float t_delta_seconds) -> void override;
+	auto draw(DrawList* t_draw_list) -> void override;
 
-	bool on_pointer_down(Vec2 t_point) override;
-	bool on_pointer_move(Vec2 t_point) override;
-	bool on_pointer_up(Vec2 t_point) override;
-	bool on_right_click(Vec2 t_point) override;
-	bool on_key_down(u32 t_key) override;
-	bool on_char(u32 t_character) override;
+	auto on_pointer_down(Vec2 t_point) -> bool override;
+	auto on_pointer_move(Vec2 t_point) -> bool override;
+	auto on_pointer_up(Vec2 t_point) -> bool override;
+	auto on_right_click(Vec2 t_point) -> bool override;
+	auto on_key_down(u32 t_key) -> bool override;
+	auto on_char(u32 t_character) -> bool override;
 
-	bool is_blocking() const override
+	[[nodiscard]] auto is_blocking() const -> bool override
 	{
 		return m_active;
 	}
 
-	CursorKind cursor() const override;
+	[[nodiscard]] auto cursor() const -> CursorKind override;
 
   private:
-	static constexpr u32 password = 0;
-	static constexpr u32 confirmation = 1;
+	static constexpr u32 K_PASSWORD     = 0;
+	static constexpr u32 K_CONFIRMATION = 1;
 
-	u32 field_count() const
+	[[nodiscard]] auto field_count() const -> u32
 	{
 		return m_setup ? 2 : 1;
 	}
 
-	Rect card_rect() const;
-	Rect field_rect(u32 t_field) const;
-	Rect field_text_rect(u32 t_field) const;
-	Rect reveal_rect(u32 t_field) const;
-	Rect submit_rect() const;
-	i32 field_at(Vec2 t_point) const;
-	bool is_reveal_hit(Vec2 t_point) const;
+	[[nodiscard]] auto card_rect() const -> Rect;
+	[[nodiscard]] auto field_rect(u32 t_field) const -> Rect;
+	[[nodiscard]] auto field_text_rect(u32 t_field) const -> Rect;
+	[[nodiscard]] auto reveal_rect(u32 t_field) const -> Rect;
+	[[nodiscard]] auto submit_rect() const -> Rect;
+	[[nodiscard]] auto field_at(Vec2 t_point) const -> i32;
+	[[nodiscard]] auto is_reveal_hit(Vec2 t_point) const -> bool;
 
-	void reset_fields();
-	void focus_field(u32 t_field);
-	void submit();
-	void attempt_unlock();
-	void attempt_setup();
+	auto reset_fields() -> void;
+	auto focus_field(u32 t_field) -> void;
+	auto submit() -> void;
+	auto attempt_unlock() -> void;
+	auto attempt_setup() -> void;
 
-	void draw_field(DrawList *t_draw_list, u32 t_field);
-	void draw_submit_button(DrawList *t_draw_list, std::string_view t_label) const;
+	auto draw_field(DrawList* t_draw_list, u32 t_field) -> void;
+	auto draw_submit_button(DrawList* t_draw_list, std::string_view t_label) const -> void;
 
-	Settings *m_settings;
-	MasterKey *m_master_key;
-	const Fonts *m_fonts;
-	const Assets *m_assets;
-	const Window *m_window;
-	CommandQueue *m_commands;
+	Settings*     m_settings;
+	MasterKey*    m_master_key;
+	const Fonts*  m_fonts;
+	const Assets* m_assets;
+	const Window* m_window;
+	CommandQueue* m_commands;
 
-	bool m_active = false;
-	bool m_setup = false;
-	bool m_wrong_password = false;
+	bool m_active           = false;
+	bool m_setup            = false;
+	bool m_wrong_password   = false;
 	bool m_passwords_differ = false;
-	bool m_setup_failed = false;
+	bool m_setup_failed     = false;
 
 	TextInput m_fields[2];
 };

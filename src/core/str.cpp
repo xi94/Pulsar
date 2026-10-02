@@ -1,16 +1,131 @@
 #include "core/str.h"
 
+#include <algorithm>
+
 #include <Windows.h>
 
 namespace {
-char lowered(char t_character)
+constexpr u32 K_REPLACEMENT_CHARACTER = 0xFFFD;
+
+[[nodiscard]] auto lowered(char t_character) -> char
 {
 	return t_character >= 'A' && t_character <= 'Z' ? static_cast<char>(t_character - 'A' + 'a') : t_character;
 }
+
+[[nodiscard]] auto is_ascii(std::string_view t_text) -> bool
+{
+	return std::ranges::all_of(t_text, [](char t_byte) { return static_cast<u8>(t_byte) < 0x80; });
 }
 
-usize find_ignoring_case(std::string_view t_text, std::string_view t_query)
+[[nodiscard]] auto find_ignoring_case_unicode(std::string_view t_text, std::string_view t_query) -> usize
 {
+	const std::wstring text  = to_wide(t_text);
+	const std::wstring query = to_wide(t_query);
+	if (query.empty()) return 0;
+
+	const int found = FindNLSStringEx(LOCALE_NAME_USER_DEFAULT, FIND_FROMSTART | LINGUISTIC_IGNORECASE, text.c_str(), static_cast<int>(text.size()),
+	                                  query.c_str(), static_cast<int>(query.size()), nullptr, nullptr, nullptr, 0);
+	if (found < 0) return std::string_view::npos;
+
+	return to_utf8(std::wstring_view{text}.substr(0, static_cast<usize>(found))).size();
+}
+}
+
+[[nodiscard]] auto decode_utf8(std::string_view t_text, usize t_index) -> Utf8Codepoint
+{
+	constexpr Utf8Codepoint INVALID{K_REPLACEMENT_CHARACTER, 1};
+	constexpr u32           SMALLEST_FOR_LENGTH[]{0, 0, 0x80, 0x800, 0x10000};
+
+	const auto lead = static_cast<u8>(t_text[t_index]);
+	if (lead < 0x80) [[likely]] {
+		return Utf8Codepoint{lead, 1};
+	}
+
+	u32 length = 0;
+	u32 value  = 0;
+
+	if ((lead & 0xE0) == 0xC0) {
+		length = 2;
+		value  = lead & 0x1F;
+	} else if ((lead & 0xF0) == 0xE0) {
+		length = 3;
+		value  = lead & 0x0F;
+	} else if ((lead & 0xF8) == 0xF0) {
+		length = 4;
+		value  = lead & 0x07;
+	} else {
+		return INVALID;
+	}
+
+	if (t_text.size() - t_index < length) [[unlikely]] {
+		return INVALID;
+	}
+
+	for (u32 i = 1; i < length; i += 1) {
+		const char next = t_text[t_index + i];
+		if (!is_utf8_continuation(next)) return INVALID;
+
+		value = (value << 6) | (static_cast<u8>(next) & 0x3F);
+	}
+
+	if (value < SMALLEST_FOR_LENGTH[length] || value > 0x10FFFF || (value >= 0xD800 && value <= 0xDFFF)) return INVALID;
+
+	return Utf8Codepoint{value, length};
+}
+
+[[nodiscard]] auto encode_utf8(u32 t_codepoint, char* t_out) -> u32
+{
+	if (t_codepoint > 0x10FFFF || (t_codepoint >= 0xD800 && t_codepoint <= 0xDFFF)) {
+		t_codepoint = K_REPLACEMENT_CHARACTER;
+	}
+
+	if (t_codepoint < 0x80) {
+		t_out[0] = static_cast<char>(t_codepoint);
+		return 1;
+	}
+
+	if (t_codepoint < 0x800) {
+		t_out[0] = static_cast<char>(0xC0 | (t_codepoint >> 6));
+		t_out[1] = static_cast<char>(0x80 | (t_codepoint & 0x3F));
+		return 2;
+	}
+
+	if (t_codepoint < 0x10000) {
+		t_out[0] = static_cast<char>(0xE0 | (t_codepoint >> 12));
+		t_out[1] = static_cast<char>(0x80 | ((t_codepoint >> 6) & 0x3F));
+		t_out[2] = static_cast<char>(0x80 | (t_codepoint & 0x3F));
+		return 3;
+	}
+
+	t_out[0] = static_cast<char>(0xF0 | (t_codepoint >> 18));
+	t_out[1] = static_cast<char>(0x80 | ((t_codepoint >> 12) & 0x3F));
+	t_out[2] = static_cast<char>(0x80 | ((t_codepoint >> 6) & 0x3F));
+	t_out[3] = static_cast<char>(0x80 | (t_codepoint & 0x3F));
+	return 4;
+}
+
+[[nodiscard]] auto next_codepoint(std::string_view t_text, usize t_index) -> usize
+{
+	if (t_index >= t_text.size()) return t_text.size();
+
+	return std::min(t_text.size(), t_index + decode_utf8(t_text, t_index).length);
+}
+
+[[nodiscard]] auto previous_codepoint(std::string_view t_text, usize t_index) -> usize
+{
+	if (t_index == 0) return 0;
+
+	usize index = t_index - 1;
+	while (index > 0 && t_index - index < 4 && is_utf8_continuation(t_text[index])) {
+		index -= 1;
+	}
+
+	return index;
+}
+
+[[nodiscard]] auto find_ignoring_case(std::string_view t_text, std::string_view t_query) -> usize
+{
+	if (!is_ascii(t_text) || !is_ascii(t_query)) return find_ignoring_case_unicode(t_text, t_query);
 	if (t_query.size() > t_text.size()) return std::string_view::npos;
 
 	for (usize start = 0; start + t_query.size() <= t_text.size(); start += 1) {
@@ -22,20 +137,20 @@ usize find_ignoring_case(std::string_view t_text, std::string_view t_query)
 	return std::string_view::npos;
 }
 
-std::string_view trimmed(std::string_view t_text)
+[[nodiscard]] auto trimmed(std::string_view t_text) -> std::string_view
 {
-	constexpr std::string_view blank = " \t\r\n\v\f";
+	constexpr std::string_view BLANK = " \t\r\n\v\f";
 
-	const usize first = t_text.find_first_not_of(blank);
+	const usize first = t_text.find_first_not_of(BLANK);
 	if (first == std::string_view::npos) return {};
 
-	return t_text.substr(first, t_text.find_last_not_of(blank) - first + 1);
+	return t_text.substr(first, t_text.find_last_not_of(BLANK) - first + 1);
 }
 
-std::string to_utf8(std::wstring_view t_wide)
+[[nodiscard]] auto to_utf8(std::wstring_view t_wide) -> std::string
 {
 	const auto wide_length = static_cast<int>(t_wide.size());
-	const int length = WideCharToMultiByte(CP_UTF8, 0, t_wide.data(), wide_length, nullptr, 0, nullptr, nullptr);
+	const int  length      = WideCharToMultiByte(CP_UTF8, 0, t_wide.data(), wide_length, nullptr, 0, nullptr, nullptr);
 	if (length <= 0) return {};
 
 	std::string utf8(static_cast<usize>(length), '\0');
@@ -44,10 +159,10 @@ std::string to_utf8(std::wstring_view t_wide)
 	return utf8;
 }
 
-std::wstring to_wide(std::string_view t_utf8)
+[[nodiscard]] auto to_wide(std::string_view t_utf8) -> std::wstring
 {
 	const auto utf8_length = static_cast<int>(t_utf8.size());
-	const int length = MultiByteToWideChar(CP_UTF8, 0, t_utf8.data(), utf8_length, nullptr, 0);
+	const int  length      = MultiByteToWideChar(CP_UTF8, 0, t_utf8.data(), utf8_length, nullptr, 0);
 	if (length <= 0) return {};
 
 	std::wstring wide(static_cast<usize>(length), L'\0');

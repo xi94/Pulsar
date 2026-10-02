@@ -1,6 +1,6 @@
 #pragma once
 
-constexpr const char *shader_source = R"(
+constexpr const char* K_SHADER_SOURCE = R"(
 	cbuffer ViewportConstants : register(b0) {
 		float2 viewport_size;
 		float2 viewport_padding;

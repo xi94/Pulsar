@@ -10,44 +10,44 @@ struct Fonts;
 
 struct ContextMenuItem {
 	std::string_view label;
-	Command command;
-	bool enabled = true;
-	std::string_view shortcut{};
+	Command          command;
+	bool             enabled = true;
+	std::string_view shortcut;
 };
 
 class ContextMenu : public Widget {
   public:
-	ContextMenu(const Fonts *t_fonts, CommandQueue *t_commands);
+	ContextMenu(const Fonts* t_fonts, CommandQueue* t_commands);
 
-	void open(Vec2 t_position, std::span<const ContextMenuItem> t_items, Vec2 t_window_size);
-	void close();
+	auto open(Vec2 t_position, std::span<const ContextMenuItem> t_items, Vec2 t_window_size) -> void;
+	auto close() -> void;
 
-	void draw(DrawList *t_draw_list) override;
+	auto draw(DrawList* t_draw_list) -> void override;
 
-	bool on_pointer_up(Vec2 t_point) override;
-	bool on_right_click(Vec2 t_point) override;
-	bool on_key_down(u32 t_key) override;
+	auto on_pointer_up(Vec2 t_point) -> bool override;
+	auto on_right_click(Vec2 t_point) -> bool override;
+	auto on_key_down(u32 t_key) -> bool override;
 
-	bool is_blocking() const override
+	[[nodiscard]] auto is_blocking() const -> bool override
 	{
 		return m_open;
 	}
 
-	CursorKind cursor() const override;
+	[[nodiscard]] auto cursor() const -> CursorKind override;
 
   private:
-	static constexpr u32 max_items = 8;
+	static constexpr u32 K_MAX_ITEMS = 8;
 
-	Rect menu_rect() const;
-	Rect item_rect(u32 t_index) const;
-	i32 item_at(Vec2 t_point) const;
+	[[nodiscard]] auto menu_rect() const -> Rect;
+	[[nodiscard]] auto item_rect(u32 t_index) const -> Rect;
+	[[nodiscard]] auto item_at(Vec2 t_point) const -> i32;
 
-	const Fonts *m_fonts;
-	CommandQueue *m_commands;
+	const Fonts*  m_fonts;
+	CommandQueue* m_commands;
 
-	bool m_open = false;
-	Vec2 m_position{};
-	float m_width = 0.0f;
-	ContextMenuItem m_items[max_items]{};
-	u32 m_item_count = 0;
+	bool            m_open = false;
+	Vec2            m_position{};
+	float           m_width = 0.0f;
+	ContextMenuItem m_items[K_MAX_ITEMS]{};
+	u32             m_item_count = 0;
 };

@@ -14,6 +14,7 @@
 #include "core/profiler.h"
 #include "core/str.h"
 #include "games.h"
+#include "login/riot_client.h"
 #include "login/ui_automation.h"
 #include "platform/clipboard.h"
 #include "platform/installation.h"
@@ -22,42 +23,44 @@
 #include "ui/theme.h"
 
 namespace {
-constexpr u32 draw_list_vertex_capacity = 1 << 16;
-constexpr u32 draw_list_index_capacity = (1 << 16) * 3 / 2;
-constexpr auto save_delay = std::chrono::milliseconds(500);
-constexpr float idle_poll_seconds = 0.25f;
-constexpr auto resume_frame_time = std::chrono::microseconds(16667);
-constexpr auto clipboard_secret_lifetime = std::chrono::seconds(30);
+constexpr u32            K_DRAW_LIST_VERTEX_CAPACITY = 1 << 16;
+constexpr u32            K_DRAW_LIST_INDEX_CAPACITY  = (1 << 16) * 3 / 2;
+constexpr auto           K_SAVE_DELAY                = std::chrono::milliseconds(500);
+constexpr float          K_IDLE_POLL_SECONDS         = 0.25f;
+constexpr auto           K_RESUME_FRAME_TIME         = std::chrono::microseconds(16667);
+constexpr auto           K_CLIPBOARD_SECRET_LIFETIME = std::chrono::seconds(30);
+constexpr float          K_PICKER_POLL_SECONDS       = 0.1f;
+constexpr const wchar_t* K_RIOT_CLIENT_START_FOLDER  = L"C:\\Riot Games\\Riot Client";
 
-constexpr float status_padding = 14.0f;
-constexpr float status_mark_size = 15.0f;
-constexpr float status_mark_gap = 7.0f;
-constexpr float status_dot_size = 3.0f;
-constexpr float status_dot_gap = 7.0f;
-constexpr float status_baseline_nudge = 2.0f;
+constexpr float K_STATUS_PADDING        = 14.0f;
+constexpr float K_STATUS_MARK_SIZE      = 15.0f;
+constexpr float K_STATUS_MARK_GAP       = 7.0f;
+constexpr float K_STATUS_DOT_SIZE       = 3.0f;
+constexpr float K_STATUS_DOT_GAP        = 7.0f;
+constexpr float K_STATUS_BASELINE_NUDGE = 2.0f;
 
-static_assert(tray_max_games >= max_games);
+static_assert(K_TRAY_MAX_GAMES >= K_MAX_GAMES);
 
-void log_startup_phase(const char *t_phase)
+auto log_startup_phase(const char* t_phase) -> void
 {
 	using Clock = std::chrono::steady_clock;
 
-	static const Clock::time_point process_start = Clock::now();
-	static Clock::time_point phase_start = process_start;
-	static const char *previous_phase = nullptr;
+	static const Clock::time_point PROCESS_START  = Clock::now();
+	static Clock::time_point       phase_start    = PROCESS_START;
+	static const char*             previous_phase = nullptr;
 
 	const Clock::time_point now = Clock::now();
 
 	if (previous_phase != nullptr) {
 		debug_log::write("startup", "%-20s %6.1f ms   (%6.1f ms in)", previous_phase, std::chrono::duration<float, std::milli>(now - phase_start).count(),
-						 std::chrono::duration<float, std::milli>(now - process_start).count());
+		                 std::chrono::duration<float, std::milli>(now - PROCESS_START).count());
 	}
 
 	previous_phase = t_phase;
-	phase_start = now;
+	phase_start    = now;
 }
 
-std::string_view update_status(UpdateStage t_stage)
+[[nodiscard]] auto update_status(UpdateStage t_stage) -> std::string_view
 {
 	switch (t_stage) {
 		case UpdateStage::UpToDate:
@@ -83,7 +86,7 @@ std::string_view update_status(UpdateStage t_stage)
 	return "";
 }
 
-void guard_against_overlays(bool t_block_injection)
+auto guard_against_overlays(bool t_block_injection) -> void
 {
 	set_app_user_model_id();
 
@@ -104,7 +107,7 @@ void guard_against_overlays(bool t_block_injection)
 			break;
 	}
 
-	if (const wchar_t *module = injected_overlay_module()) {
+	if (const wchar_t* module = injected_overlay_module()) {
 		debug_log::write("app", "an overlay module was already loaded before the guard ran: %ls", module);
 	}
 }
@@ -128,7 +131,7 @@ App::App()
 {
 }
 
-App::StartResult App::start(bool t_from_startup)
+auto App::start(bool t_from_startup) -> App::StartResult
 {
 	if (!m_instance_guard.is_first_instance()) {
 		const bool activated = Window::activate_existing_instance();
@@ -156,8 +159,8 @@ App::StartResult App::start(bool t_from_startup)
 	if (!create_graphics()) return StartResult::Failed;
 
 	log_startup_phase("CreateTray");
-	m_tray.create(app_name_wide);
-	m_draw_list.init(draw_list_vertex_capacity, draw_list_index_capacity);
+	m_tray.create(K_APP_NAME_WIDE);
+	m_draw_list.init(K_DRAW_LIST_VERTEX_CAPACITY, K_DRAW_LIST_INDEX_CAPACITY);
 
 	log_startup_phase("AddGames");
 	add_games();
@@ -177,9 +180,9 @@ App::StartResult App::start(bool t_from_startup)
 	m_window.on_redraw([this] { redraw_while_resizing(); });
 	m_window.on_dpi_changed([this] { reload_fonts(); });
 
-	m_start_time = std::chrono::steady_clock::now();
+	m_start_time      = std::chrono::steady_clock::now();
 	m_last_frame_time = m_start_time;
-	m_last_activity = m_start_time;
+	m_last_activity   = m_start_time;
 
 	log_startup_phase("FirstFrame");
 	frame();
@@ -195,12 +198,12 @@ App::StartResult App::start(bool t_from_startup)
 	return StartResult::Ok;
 }
 
-bool App::create_graphics()
+auto App::create_graphics() -> bool
 {
-	const u32 width = std::max(m_settings.window_width, static_cast<u32>(min_window_width));
-	const u32 height = std::max(m_settings.window_height, static_cast<u32>(min_window_height));
+	const u32 width  = std::max(m_settings.window_width, static_cast<u32>(K_MIN_WINDOW_WIDTH));
+	const u32 height = std::max(m_settings.window_height, static_cast<u32>(K_MIN_WINDOW_HEIGHT));
 
-	if (!m_window.create(app_name_wide, width, height)) {
+	if (!m_window.create(K_APP_NAME_WIDE, width, height)) {
 		std::println("Failed to create window.");
 		return false;
 	}
@@ -215,7 +218,7 @@ bool App::create_graphics()
 		return false;
 	}
 
-	m_snowfall.create_textures(&m_renderer);
+	m_snowfall.create_texture(&m_renderer);
 
 	if (!reload_fonts()) {
 		std::println("Failed to load the UI font.");
@@ -225,25 +228,25 @@ bool App::create_graphics()
 	return true;
 }
 
-void App::add_games()
+auto App::add_games() -> void
 {
-	for (const GameInfo &info : game_infos) {
+	for (const GameInfo& info : K_GAME_INFOS) {
 		m_tray.set_game_icon(m_library.game_count, Assets::encoded_bytes(info.icon));
 		m_library.games[m_library.game_count] = Game{
-			.title = info.title,
-			.short_title = info.short_title,
+			.title          = info.title,
+			.short_title    = info.short_title,
 			.launch_product = info.launch_product,
-			.accent = info.accent,
-			.banner = m_assets.get(info.banner),
-			.icon = m_assets.get(info.icon),
+			.accent         = info.accent,
+			.banner         = m_assets.get(info.banner),
+			.icon           = m_assets.get(info.icon),
 		};
 		m_library.game_count += 1;
 	}
 
-	m_tray.on_menu_open([this](TrayMenu *t_menu) { fill_tray_menu(t_menu); });
+	m_tray.on_menu_open([this](TrayMenu* t_menu) { fill_tray_menu(t_menu); });
 }
 
-void App::stack_widgets()
+auto App::stack_widgets() -> void
 {
 	m_widgets.push(&m_carousel);
 	m_widgets.push(&m_account_modal);
@@ -261,7 +264,7 @@ void App::stack_widgets()
 #endif
 }
 
-void App::apply_settings(storage::LoadResult t_load_result)
+auto App::apply_settings(storage::LoadResult t_load_result) -> void
 {
 	apply_theme(m_settings.theme);
 	apply_game_order();
@@ -275,11 +278,12 @@ void App::apply_settings(storage::LoadResult t_load_result)
 	m_settings_panel.sync_with_settings();
 
 	const std::string_view last_run_version = m_settings.last_run_version;
-	m_just_updated = !last_run_version.empty() && last_run_version != app_version;
-	copy_to(app_version, m_settings.last_run_version);
+
+	m_just_updated = !last_run_version.empty() && last_run_version != K_APP_VERSION;
+	copy_to(K_APP_VERSION, m_settings.last_run_version);
 }
 
-void App::lock()
+auto App::lock() -> void
 {
 	m_locked = true;
 	m_carousel.set_visible(false);
@@ -288,7 +292,7 @@ void App::lock()
 	m_tray.set_locked(true);
 }
 
-void App::unlock()
+auto App::unlock() -> void
 {
 	m_locked = false;
 	m_carousel.set_visible(true);
@@ -298,7 +302,7 @@ void App::unlock()
 	m_last_activity = Clock::now();
 }
 
-void App::lock_vault()
+auto App::lock_vault() -> void
 {
 	if (m_locked || !m_settings.master_password_enabled) return;
 
@@ -319,7 +323,7 @@ void App::lock_vault()
 	m_unlock_screen.show_unlock();
 }
 
-void App::lock_if_idle()
+auto App::lock_if_idle() -> void
 {
 	if (m_locked || m_settings.auto_lock_minutes == 0) return;
 	if (Clock::now() - m_last_activity < std::chrono::minutes(m_settings.auto_lock_minutes)) return;
@@ -327,9 +331,9 @@ void App::lock_if_idle()
 	lock_vault();
 }
 
-void App::apply_game_order()
+auto App::apply_game_order() -> void
 {
-	u8 order[max_games]{};
+	u8  order[K_MAX_GAMES]{};
 	u32 count = 0;
 
 	for (u32 i = 0; i < m_settings.game_order_count; i += 1) {
@@ -345,9 +349,9 @@ void App::apply_game_order()
 	m_carousel.set_order({order, count});
 }
 
-void App::save_settings()
+auto App::save_settings() -> void
 {
-	m_settings.zoom_stop = m_carousel.zoom_stop();
+	m_settings.zoom_stop     = m_carousel.zoom_stop();
 	m_settings.selected_game = m_carousel.selected_game();
 
 	m_settings.game_order_count = 0;
@@ -361,18 +365,18 @@ void App::save_settings()
 	storage::save_settings(&committed);
 }
 
-void App::save_everything()
+auto App::save_everything() -> void
 {
 	storage::save_accounts(&m_library, &m_master_key);
 	save_settings();
 }
 
-void App::request_save()
+auto App::request_save() -> void
 {
-	m_save_due = Clock::now() + save_delay;
+	m_save_due = Clock::now() + K_SAVE_DELAY;
 }
 
-void App::save_if_due()
+auto App::save_if_due() -> void
 {
 	if (!m_save_due || Clock::now() < *m_save_due) return;
 
@@ -380,7 +384,7 @@ void App::save_if_due()
 	save_everything();
 }
 
-void App::commit_new_vault_key()
+auto App::commit_new_vault_key() -> void
 {
 	if (storage::save_accounts(&m_library, &m_master_key)) {
 		save_settings();
@@ -393,23 +397,67 @@ void App::commit_new_vault_key()
 	m_replaced_vault_key.reset();
 }
 
-void App::copy_password(std::string_view t_password)
+auto App::copy_password(std::string_view t_password) -> void
 {
 	set_clipboard_secret(t_password);
-	m_clipboard_secret = ClipboardSecret{clipboard_sequence(), Clock::now() + clipboard_secret_lifetime};
+	m_clipboard_secret = ClipboardSecret{clipboard_sequence(), Clock::now() + K_CLIPBOARD_SECRET_LIFETIME};
 
-	constexpr auto lifetime_seconds = std::chrono::duration<float>(clipboard_secret_lifetime).count();
-	m_toasts.notify_countdown("Password copied - it clears itself in 30 seconds.", lifetime_seconds);
+	constexpr auto LIFETIME_SECONDS = std::chrono::duration<float>(K_CLIPBOARD_SECRET_LIFETIME).count();
+	m_toasts.notify_countdown("Password copied - it clears itself in 30 seconds.", LIFETIME_SECONDS);
 }
 
-void App::open_setup()
+auto App::open_setup() -> void
 {
-	if (!bring_window_to_front(setup_window_class_name)) {
+	if (!bring_window_to_front(K_SETUP_WINDOW_CLASS_NAME)) {
 		launch_process(executable_path(), L"--setup");
 	}
 }
 
-void App::open_account_search()
+auto App::locate_riot_client(const Command& t_command) -> void
+{
+	if (m_client_picker.is_open()) return;
+
+	PathRequest request{
+		.kind              = PathKind::File,
+		.title             = L"Locate the Riot Client",
+		.ok_label          = L"Use this client",
+		.start_path        = m_settings.riot_client_path[0] != '\0' ? to_wide(m_settings.riot_client_path) : K_RIOT_CLIENT_START_FOLDER,
+		.file_type_name    = L"Riot Client",
+		.file_type_pattern = L"RiotClientServices.exe",
+	};
+
+	m_locate_request = t_command;
+	m_client_picker.open(m_window.handle(), std::move(request));
+}
+
+auto App::take_picked_riot_client() -> void
+{
+	if (m_client_picker.is_open()) {
+		animation::request_frame_after(K_PICKER_POLL_SECONDS);
+		return;
+	}
+
+	const std::optional<std::wstring> picked  = m_client_picker.take_result();
+	const std::optional<Command>      request = std::exchange(m_locate_request, std::nullopt);
+	if (!picked || !request) return;
+
+	const std::wstring client = RiotClient::executable_near(*picked);
+	if (client.empty()) {
+		m_toasts.notify(Notification{.message = "That isn't the Riot Client - pick RiotClientServices.exe.", .always_show = true});
+		return;
+	}
+
+	copy_to(to_utf8(client), m_settings.riot_client_path);
+	request_save();
+
+	if (request->index >= 0 && account_for(request->account) != nullptr) {
+		m_account_modal.quick_login(static_cast<u32>(request->index), request->account);
+	} else {
+		m_toasts.notify(Notification{.message = "Riot Client location saved."});
+	}
+}
+
+auto App::open_account_search() -> void
 {
 	if (m_locked) return;
 
@@ -419,7 +467,7 @@ void App::open_account_search()
 	m_account_search.open();
 }
 
-const Account *App::account_for(AccountRef t_account) const
+auto App::account_for(AccountRef t_account) const -> const Account*
 {
 	if (t_account.game >= m_library.game_count) return nullptr;
 	if (t_account.index >= m_library.games[t_account.game].account_count) return nullptr;
@@ -427,7 +475,7 @@ const Account *App::account_for(AccountRef t_account) const
 	return m_library.account(t_account);
 }
 
-void App::clear_clipboard_secret()
+auto App::clear_clipboard_secret() -> void
 {
 	if (!m_clipboard_secret) return;
 
@@ -435,31 +483,31 @@ void App::clear_clipboard_secret()
 	m_clipboard_secret.reset();
 }
 
-void App::fill_tray_menu(TrayMenu *t_menu) const
+auto App::fill_tray_menu(TrayMenu* t_menu) const -> void
 {
 	if (m_locked) return;
 
 	for (const u8 game : m_carousel.order()) {
-		if (t_menu->game_count == tray_max_games) break;
+		if (t_menu->game_count == K_TRAY_MAX_GAMES) break;
 
 		const VisibleAccounts visible = m_library.visible_accounts(game);
 
-		TrayGame *entry = &t_menu->games[t_menu->game_count];
+		TrayGame* entry = &t_menu->games[t_menu->game_count];
 		t_menu->game_count += 1;
 
 		copy_to(m_library.games[game].title, entry->title);
-		entry->game = static_cast<i32>(game);
+		entry->game          = static_cast<i32>(game);
 		entry->first_account = t_menu->account_count;
 		entry->account_count = 0;
 
-		for (u32 row = 0; row < visible.count && t_menu->account_count < tray_max_accounts; row += 1) {
-			const Account *account = m_library.account(visible.refs[row]);
-			const std::string_view note = account->note;
+		for (u32 row = 0; row < visible.count && t_menu->account_count < K_TRAY_MAX_ACCOUNTS; row += 1) {
+			const Account*         account = m_library.account(visible.refs[row]);
+			const std::string_view note    = account->note;
 
-			TrayAccount *item = &t_menu->accounts[t_menu->account_count];
+			TrayAccount* item = &t_menu->accounts[t_menu->account_count];
 			copy_to(note.empty() ? std::string_view{account->username} : note, item->label);
 			item->game = static_cast<i32>(game);
-			item->row = static_cast<i32>(row);
+			item->row  = static_cast<i32>(row);
 
 			t_menu->account_count += 1;
 			entry->account_count += 1;
@@ -467,28 +515,28 @@ void App::fill_tray_menu(TrayMenu *t_menu) const
 	}
 }
 
-void App::pump_input()
+auto App::pump_input() -> void
 {
 	PULSAR_PROFILE_SCOPE("Input");
 
 	m_window.pump_messages();
 	m_window.set_close_to_tray(m_settings.close_to_tray && m_tray.is_icon_visible());
 	m_tray.set_colors(TrayColors{
-		.background = theme().popup,
-		.hover = mix(theme().popup, m_settings.accent, 0.42f),
-		.text = theme().text,
-		.text_disabled = theme().text_faint,
-		.separator = theme().separator,
+		.background    = g_theme.popup,
+		.hover         = mix(g_theme.popup, m_settings.accent, 0.42f),
+		.text          = g_theme.text,
+		.text_disabled = g_theme.text_faint,
+		.separator     = g_theme.separator,
 	});
 
 	handle_tray_event();
 
-	for (const InputEvent &event : m_window.input_events()) {
+	for (const InputEvent& event : m_window.input_events()) {
 		handle_input(event);
 	}
 }
 
-void App::handle_tray_event()
+auto App::handle_tray_event() -> void
 {
 	const TrayEvent event = m_tray.take_event();
 	if (event.type != TrayEventType::None) {
@@ -520,7 +568,7 @@ void App::handle_tray_event()
 	}
 }
 
-void App::handle_input(const InputEvent &t_event)
+auto App::handle_input(const InputEvent& t_event) -> void
 {
 	m_last_activity = Clock::now();
 
@@ -530,7 +578,7 @@ void App::handle_input(const InputEvent &t_event)
 		return;
 	}
 
-	if (t_event.type == InputEventType::KeyDown && t_event.key == 'F' && control_down && !m_locked) {
+	if (t_event.type == InputEventType::KeyDown && t_event.key == 'S' && control_down && !m_locked) {
 		if (m_account_search.is_open()) {
 			m_account_search.close();
 			return;
@@ -565,14 +613,14 @@ void App::handle_input(const InputEvent &t_event)
 	}
 }
 
-void App::process_commands()
+auto App::process_commands() -> void
 {
 	while (const std::optional<Command> command = m_commands.pop()) {
 		process(*command);
 	}
 }
 
-void App::process(const Command &t_command)
+auto App::process(const Command& t_command) -> void
 {
 	animation::request_frame();
 
@@ -658,14 +706,14 @@ void App::process(const Command &t_command)
 			break;
 
 		case CommandType::CopyUsername:
-			if (const Account *account = m_account_modal.account_at_row(t_command.index)) {
+			if (const Account* account = m_account_modal.account_at_row(t_command.index)) {
 				set_clipboard_text(account->username);
 			}
 
 			break;
 
 		case CommandType::CopyPassword:
-			if (const Account *account = m_account_modal.account_at_row(t_command.index)) {
+			if (const Account* account = m_account_modal.account_at_row(t_command.index)) {
 				copy_password(account->password);
 			}
 
@@ -708,7 +756,7 @@ void App::process(const Command &t_command)
 			break;
 
 		case CommandType::CopyAccountUsername:
-			if (const Account *account = account_for(t_command.account)) {
+			if (const Account* account = account_for(t_command.account)) {
 				set_clipboard_text(account->username);
 				m_toasts.notify(Notification{.message = "Username copied."});
 			}
@@ -716,17 +764,21 @@ void App::process(const Command &t_command)
 			break;
 
 		case CommandType::CopyAccountPassword:
-			if (const Account *account = account_for(t_command.account)) {
+			if (const Account* account = account_for(t_command.account)) {
 				copy_password(account->password);
 			}
 
 			break;
+
+		case CommandType::LocateRiotClient:
+			locate_riot_client(t_command);
+			break;
 	}
 }
 
-void App::open_account_menu(const Command &t_command)
+auto App::open_account_menu(const Command& t_command) -> void
 {
-	const Account *account = m_account_modal.account_at_row(t_command.index);
+	const Account* account = m_account_modal.account_at_row(t_command.index);
 	if (account == nullptr) return;
 
 	const ContextMenuItem items[]{
@@ -738,9 +790,9 @@ void App::open_account_menu(const Command &t_command)
 	m_context_menu.open(t_command.position, items, m_window.size());
 }
 
-void App::open_text_menu(const Command &t_command)
+auto App::open_text_menu(const Command& t_command) -> void
 {
-	TextInput *input = t_command.text_input;
+	TextInput* input = t_command.text_input;
 
 	const auto item = [input](std::string_view t_label, TextEdit t_edit, std::string_view t_shortcut) {
 		const Command edit{.type = CommandType::EditText, .text_input = input, .text_edit = t_edit};
@@ -758,7 +810,7 @@ void App::open_text_menu(const Command &t_command)
 	m_context_menu.open(t_command.position, items, m_window.size());
 }
 
-void App::announce_update_stage()
+auto App::announce_update_stage() -> void
 {
 	const UpdateStage stage = m_updater.stage();
 	if (stage == m_announced_update_stage) return;
@@ -778,27 +830,27 @@ void App::announce_update_stage()
 	}
 }
 
-void App::announce_first_run_after_update()
+auto App::announce_first_run_after_update() -> void
 {
 	if (m_locked || !std::exchange(m_just_updated, false)) return;
 
 	const std::string_view notes_version = m_settings.release_notes_version;
-	const std::string_view notes = m_settings.release_notes;
+	const std::string_view notes         = m_settings.release_notes;
 
-	if (notes_version == app_version && !notes.empty()) {
+	if (notes_version == K_APP_VERSION && !notes.empty()) {
 		m_update_overlay.show_release_notes(notes_version, notes);
 		m_settings.release_notes_version[0] = '\0';
-		m_settings.release_notes[0] = '\0';
+		m_settings.release_notes[0]         = '\0';
 		request_save();
 		return;
 	}
 
 	char message[96];
-	std::snprintf(message, sizeof(message), "Updated to %s", app_version);
+	std::snprintf(message, sizeof(message), "Updated to %s", K_APP_VERSION);
 	m_toasts.notify(Notification{.message = message, .icon = Asset::IconUpdate});
 }
 
-void App::announce_unreadable_storage()
+auto App::announce_unreadable_storage() -> void
 {
 	if (m_unreadable_storage_announced || (storage::can_save_settings() && storage::can_save_accounts())) return;
 
@@ -806,7 +858,7 @@ void App::announce_unreadable_storage()
 	m_toasts.notify(Notification{.message = "Saved data could not be read - changes will not be kept"});
 }
 
-void App::relaunch_if_update_installed()
+auto App::relaunch_if_update_installed() -> void
 {
 	if (!m_updater.consume_ready_to_relaunch()) return;
 
@@ -821,7 +873,7 @@ void App::relaunch_if_update_installed()
 	m_window.request_close();
 }
 
-void App::redraw_while_resizing()
+auto App::redraw_while_resizing() -> void
 {
 	if (m_window.physical_width() == 0 || m_window.physical_height() == 0) return;
 
@@ -829,7 +881,7 @@ void App::redraw_while_resizing()
 	frame();
 }
 
-bool App::reload_fonts()
+auto App::reload_fonts() -> bool
 {
 	const auto load = [this] {
 		return m_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size, m_settings.secondary_font_size, m_window.dpi_scale());
@@ -842,20 +894,20 @@ bool App::reload_fonts()
 	return load();
 }
 
-void App::frame()
+auto App::frame() -> void
 {
 	if (m_in_frame) return;
 
 	m_in_frame = true;
 	PULSAR_PROFILE_FRAME_BEGIN();
 
-	const auto now = std::chrono::steady_clock::now();
+	const auto  now           = std::chrono::steady_clock::now();
 	const float delta_seconds = std::chrono::duration<float>(now - m_last_frame_time).count();
-	m_last_frame_time = now;
+	m_last_frame_time         = now;
 
 	const Vec2 restored = m_window.restored_size();
-	if (restored.x >= min_window_width && restored.y >= min_window_height) {
-		m_settings.window_width = static_cast<u32>(std::lround(restored.x));
+	if (restored.x >= K_MIN_WINDOW_WIDTH && restored.y >= K_MIN_WINDOW_HEIGHT) {
+		m_settings.window_width  = static_cast<u32>(std::lround(restored.x));
 		m_settings.window_height = static_cast<u32>(std::lround(restored.y));
 	}
 
@@ -900,21 +952,21 @@ void App::frame()
 	m_in_frame = false;
 }
 
-void App::draw_status_bar()
+auto App::draw_status_bar() -> void
 {
 	const Vec2 window = m_window.size();
-	const Rect status_bar{0.0f, window.y - status_bar_height, window.x, status_bar_height};
+	const Rect status_bar{0.0f, window.y - K_STATUS_BAR_HEIGHT, window.x, K_STATUS_BAR_HEIGHT};
 
-	m_draw_list.add_rect(Rect{0.0f, title_bar_height, window.x, 1.0f}, theme().chrome_seam);
-	m_draw_list.add_rect(Rect{0.0f, status_bar.y - 1.0f, window.x, 1.0f}, theme().chrome_seam);
-	m_draw_list.add_rect(status_bar, theme().chrome);
+	m_draw_list.add_rect(Rect{0.0f, K_TITLE_BAR_HEIGHT, window.x, 1.0f}, g_theme.chrome_seam);
+	m_draw_list.add_rect(Rect{0.0f, status_bar.y - 1.0f, window.x, 1.0f}, g_theme.chrome_seam);
+	m_draw_list.add_rect(status_bar, g_theme.chrome);
 
-	const Rect mark{status_padding, status_bar.y + (status_bar_height - status_mark_size) * 0.5f, status_mark_size, status_mark_size};
-	const Font &font = m_fonts.secondary;
-	const float baseline = font.centered_baseline(status_bar) - status_baseline_nudge;
-	const bool protected_vault = m_settings.master_password_enabled;
+	const Rect  mark{K_STATUS_PADDING, status_bar.y + (K_STATUS_BAR_HEIGHT - K_STATUS_MARK_SIZE) * 0.5f, K_STATUS_MARK_SIZE, K_STATUS_MARK_SIZE};
+	const Font& font            = m_fonts.secondary;
+	const float baseline        = font.centered_baseline(status_bar) - K_STATUS_BASELINE_NUDGE;
+	const bool  protected_vault = m_settings.master_password_enabled;
 
-	controls::draw_lock(&m_draw_list, mark, theme().text_dim, theme().chrome, !m_locked);
+	controls::draw_lock(&m_draw_list, mark, g_theme.text_dim, g_theme.chrome, !m_locked);
 
 	std::string_view state = "Vault unlocked";
 	if (m_locked) {
@@ -923,24 +975,24 @@ void App::draw_status_bar()
 		state = "No master password";
 	}
 
-	float x = mark.right() + status_mark_gap;
-	draw_text(&m_draw_list, font, Vec2{x, baseline}, state, theme().text_dim);
+	float x = mark.right() + K_STATUS_MARK_GAP;
+	draw_text(&m_draw_list, font, Vec2{x, baseline}, state, g_theme.text_dim);
 	x += text_width(font, state);
 
 	if (!m_locked && protected_vault && m_settings.auto_lock_minutes != 0) {
-		const auto limit = std::chrono::minutes(m_settings.auto_lock_minutes);
-		const auto idle = std::chrono::duration_cast<std::chrono::seconds>(Clock::now() - m_last_activity);
+		const auto limit     = std::chrono::minutes(m_settings.auto_lock_minutes);
+		const auto idle      = std::chrono::duration_cast<std::chrono::seconds>(Clock::now() - m_last_activity);
 		const auto remaining = std::max(std::chrono::seconds(1), limit - idle);
-		const auto minutes = static_cast<u32>((remaining.count() + 59) / 60);
+		const auto minutes   = static_cast<u32>((remaining.count() + 59) / 60);
 
-		char countdown[48];
-		const int written = std::snprintf(countdown, sizeof(countdown), "auto-locks in %u min", minutes);
-		const Rect dot{x + status_dot_gap, baseline - font.ascent * 0.35f - status_dot_size * 0.5f, status_dot_size, status_dot_size};
+		char       countdown[48];
+		const int  written = std::snprintf(countdown, sizeof(countdown), "auto-locks in %u min", minutes);
+		const Rect dot{x + K_STATUS_DOT_GAP, baseline - font.ascent * 0.35f - K_STATUS_DOT_SIZE * 0.5f, K_STATUS_DOT_SIZE, K_STATUS_DOT_SIZE};
 
-		m_draw_list.add_rounded_rect(dot, rounded(status_dot_size * 0.5f), theme().text_faint);
-		draw_text(&m_draw_list, font, Vec2{dot.right() + status_dot_gap, baseline}, std::string_view{countdown, static_cast<usize>(std::max(written, 0))},
-				  theme().text_faint);
-		animation::request_frame_after(static_cast<float>(remaining.count() - (minutes - 1) * 60) + 0.05f);
+		m_draw_list.add_rounded_rect(dot, rounded(K_STATUS_DOT_SIZE * 0.5f), g_theme.text_faint);
+		draw_text(&m_draw_list, font, Vec2{dot.right() + K_STATUS_DOT_GAP, baseline}, std::string_view{countdown, static_cast<usize>(std::max(written, 0))},
+		          g_theme.text_faint);
+		animation::request_frame_after(static_cast<float>(remaining.count() - static_cast<i64>(minutes - 1) * 60) + 0.05f);
 	}
 
 	const bool panel_open = m_account_modal.is_blocking() || m_settings_panel.is_blocking();
@@ -949,14 +1001,14 @@ void App::draw_status_bar()
 	}
 }
 
-void App::render()
+auto App::render() -> void
 {
 	PULSAR_PROFILE_SCOPE("Render");
 
 	m_draw_list.clear();
 
-	const Vec2 window = m_window.size();
-	const Color backdrop = theme().window;
+	const Vec2  window   = m_window.size();
+	const Color backdrop = g_theme.window;
 	m_draw_list.add_backdrop(Rect{0.0f, 0.0f, window.x, window.y}, backdrop, backdrop, backdrop, backdrop);
 
 	begin_truncation_probe(&m_draw_list, m_mouse);
@@ -976,12 +1028,12 @@ void App::render()
 	}
 
 	m_renderer.set_backdrop(static_cast<u32>(m_settings.background_style), m_settings.background_intensity,
-							m_settings.background_light ? m_settings.background_light_intensity : 0.0f,
-							m_settings.background_grain ? m_settings.background_grain_intensity : 0.0f);
-	m_renderer.render(&m_draw_list, theme().window);
+	                        m_settings.background_light ? m_settings.background_light_intensity : 0.0f,
+	                        m_settings.background_grain ? m_settings.background_grain_intensity : 0.0f);
+	m_renderer.render(&m_draw_list, g_theme.window);
 }
 
-void App::run()
+auto App::run() -> void
 {
 	while (!m_window.should_close()) {
 		pump_input();
@@ -992,6 +1044,7 @@ void App::run()
 		m_updater.update();
 		announce_update_stage();
 		process_commands();
+		take_picked_riot_client();
 		relaunch_if_update_installed();
 		save_if_due();
 		lock_if_idle();
@@ -1001,11 +1054,11 @@ void App::run()
 
 		m_window.set_excluded_from_capture(m_settings.hide_from_capture);
 
-		const float requested_wait = animation::take_idle_wait(idle_poll_seconds);
-		const float wait = m_window.is_hidden() || m_window.is_minimized() ? idle_poll_seconds : requested_wait;
+		const float requested_wait = animation::take_idle_wait(K_IDLE_POLL_SECONDS);
+		const float wait           = m_window.is_hidden() || m_window.is_minimized() ? K_IDLE_POLL_SECONDS : requested_wait;
 
 		if (wait > 0.0f && m_window.wait_for_messages(wait)) {
-			m_last_frame_time = std::chrono::steady_clock::now() - resume_frame_time;
+			m_last_frame_time = std::chrono::steady_clock::now() - K_RESUME_FRAME_TIME;
 		}
 
 		debug_log::mark_ui_thread_alive();

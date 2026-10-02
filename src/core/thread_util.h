@@ -2,17 +2,18 @@
 
 #include <atomic>
 #include <chrono>
+#include <concepts>
 #include <thread>
 #include <utility>
 
 #include <Windows.h>
 
-inline bool wait_for_thread(std::thread *t_thread, std::chrono::milliseconds t_timeout)
+[[nodiscard]] inline auto wait_for_thread(std::thread* t_thread, std::chrono::milliseconds t_timeout) -> bool
 {
 	return WaitForSingleObject(t_thread->native_handle(), static_cast<DWORD>(t_timeout.count())) == WAIT_OBJECT_0;
 }
 
-inline void join_or_abandon(std::thread *t_thread, std::chrono::milliseconds t_timeout)
+inline auto join_or_abandon(std::thread* t_thread, std::chrono::milliseconds t_timeout) -> void
 {
 	if (!t_thread->joinable()) return;
 
@@ -23,8 +24,7 @@ inline void join_or_abandon(std::thread *t_thread, std::chrono::milliseconds t_t
 	}
 }
 
-template <typename Work>
-bool run_unless_cancelled(Work t_work, const std::atomic<bool> *t_cancel)
+[[nodiscard]] auto run_unless_cancelled(std::invocable auto t_work, const std::atomic<bool>* t_cancel) -> bool
 {
 	std::thread worker(std::move(t_work));
 

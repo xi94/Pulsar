@@ -16,32 +16,32 @@
 #include "ui/theme.h"
 
 namespace {
-constexpr float margin_bottom = 12.0f;
-constexpr float padding_x = 16.0f;
-constexpr float padding_y = 9.0f;
-constexpr float max_corner_radius = 22.0f;
-constexpr float slide_distance = 14.0f;
-constexpr float icon_size = 15.0f;
-constexpr float icon_gap = 8.0f;
-constexpr float icon_turn_seconds = 5.0f;
-constexpr float bar_height = 3.0f;
-constexpr float bar_gap = 7.0f;
-constexpr float breathing_width = 26.0f;
-constexpr float min_card_width = 150.0f;
-constexpr float max_card_width = 300.0f;
-constexpr float lifetime_seconds = 4.0f;
-constexpr float presence_ease_rate = 18.0f;
-constexpr float clickable_presence = 0.6f;
+constexpr float K_MARGIN_BOTTOM      = 12.0f;
+constexpr float K_PADDING_X          = 16.0f;
+constexpr float K_PADDING_Y          = 9.0f;
+constexpr float K_MAX_CORNER_RADIUS  = 22.0f;
+constexpr float K_SLIDE_DISTANCE     = 14.0f;
+constexpr float K_ICON_SIZE          = 15.0f;
+constexpr float K_ICON_GAP           = 8.0f;
+constexpr float K_ICON_TURN_SECONDS  = 5.0f;
+constexpr float K_BAR_HEIGHT         = 3.0f;
+constexpr float K_BAR_GAP            = 7.0f;
+constexpr float K_BREATHING_WIDTH    = 26.0f;
+constexpr float K_MIN_CARD_WIDTH     = 150.0f;
+constexpr float K_MAX_CARD_WIDTH     = 300.0f;
+constexpr float K_LIFETIME_SECONDS   = 4.0f;
+constexpr float K_PRESENCE_EASE_RATE = 18.0f;
+constexpr float K_CLICKABLE_PRESENCE = 0.6f;
 
-constexpr u32 bar_glow_layers = 2;
-constexpr float bar_glow_spread = 2.0f;
-constexpr float bar_glow_alpha = 54.0f;
-constexpr float sweep_width = 46.0f;
-constexpr float sweeps_per_second = 0.55f;
-constexpr float sweep_alpha = 120.0f;
+constexpr u32   K_BAR_GLOW_LAYERS   = 2;
+constexpr float K_BAR_GLOW_SPREAD   = 2.0f;
+constexpr float K_BAR_GLOW_ALPHA    = 54.0f;
+constexpr float K_SWEEP_WIDTH       = 46.0f;
+constexpr float K_SWEEPS_PER_SECOND = 0.55f;
+constexpr float K_SWEEP_ALPHA       = 120.0f;
 }
 
-Toasts::Toasts(const Settings *t_settings, const Fonts *t_fonts, const Assets *t_assets, const Window *t_window, CommandQueue *t_commands)
+Toasts::Toasts(const Settings* t_settings, const Fonts* t_fonts, const Assets* t_assets, const Window* t_window, CommandQueue* t_commands)
 	: m_settings(t_settings)
 	, m_fonts(t_fonts)
 	, m_assets(t_assets)
@@ -50,78 +50,78 @@ Toasts::Toasts(const Settings *t_settings, const Fonts *t_fonts, const Assets *t
 {
 }
 
-void Toasts::notify(const Notification &t_notification)
+auto Toasts::notify(const Notification& t_notification) -> void
 {
-	show(t_notification, t_notification.seconds > 0.0f ? t_notification.seconds : lifetime_seconds, false);
+	show(t_notification, t_notification.seconds > 0.0f ? t_notification.seconds : K_LIFETIME_SECONDS, false);
 }
 
-void Toasts::notify_countdown(std::string_view t_message, float t_seconds)
+auto Toasts::notify_countdown(std::string_view t_message, float t_seconds) -> void
 {
 	show(Notification{.message = t_message}, t_seconds, true);
 }
 
-void Toasts::dismiss()
+auto Toasts::dismiss() -> void
 {
-	m_showing = false;
+	m_showing   = false;
 	m_countdown = false;
 	m_on_click.reset();
 }
 
-bool Toasts::is_offering(CommandType t_type) const
+auto Toasts::is_offering(CommandType t_type) const -> bool
 {
 	return m_showing && m_on_click && m_on_click->type == t_type;
 }
 
-void Toasts::show(const Notification &t_notification, float t_seconds, bool t_countdown)
+auto Toasts::show(const Notification& t_notification, float t_seconds, bool t_countdown) -> void
 {
 	animation::request_frame();
 
 	if (!m_settings->show_notifications && !t_notification.always_show) return;
 
 	copy_to(t_notification.message, m_message);
-	m_icon = t_notification.icon;
-	m_spin_icon = t_notification.spin_icon;
-	m_on_click = t_notification.on_click;
-	m_total_seconds = t_seconds;
+	m_icon              = t_notification.icon;
+	m_spin_icon         = t_notification.spin_icon;
+	m_on_click          = t_notification.on_click;
+	m_total_seconds     = t_seconds;
 	m_remaining_seconds = t_seconds;
-	m_showing = true;
-	m_countdown = t_countdown;
+	m_showing           = true;
+	m_countdown         = t_countdown;
 }
 
-float Toasts::icon_column_width() const
+auto Toasts::icon_column_width() const -> float
 {
-	return m_icon ? icon_size + icon_gap : 0.0f;
+	return m_icon ? K_ICON_SIZE + K_ICON_GAP : 0.0f;
 }
 
-Rect Toasts::card_rect() const
+auto Toasts::card_rect() const -> Rect
 {
-	const Font &font = m_fonts->secondary;
-	const float chrome = padding_x * 2.0f + icon_column_width();
-	const float width = std::clamp(chrome + text_width(font, m_message) + breathing_width, min_card_width, max_card_width);
+	const Font& font   = m_fonts->secondary;
+	const float chrome = K_PADDING_X * 2.0f + icon_column_width();
+	const float width  = std::clamp(chrome + text_width(font, m_message) + K_BREATHING_WIDTH, K_MIN_CARD_WIDTH, K_MAX_CARD_WIDTH);
 
-	std::string_view lines[max_lines];
-	const u32 line_count = std::max(1u, wrap_text(font, m_message, width - chrome, lines));
-	const float height = padding_y * 2.0f + line_count * font.line_height() + bar_gap + bar_height;
-	const Vec2 window = m_window->size();
-	const float bottom = window.y - status_bar_height - margin_bottom;
+	std::string_view lines[K_MAX_LINES];
+	const u32        line_count = std::max(1u, wrap_text(font, m_message, width - chrome, lines));
+	const float      height     = K_PADDING_Y * 2.0f + line_count * font.line_height() + K_BAR_GAP + K_BAR_HEIGHT;
+	const Vec2       window     = m_window->size();
+	const float      bottom     = window.y - K_STATUS_BAR_HEIGHT - K_MARGIN_BOTTOM;
 
 	return Rect{(window.x - width) * 0.5f, bottom - height, width, height};
 }
 
-Rect Toasts::animated_card_rect() const
+auto Toasts::animated_card_rect() const -> Rect
 {
 	Rect card = card_rect();
-	card.y += snapped_to_pixel((1.0f - m_presence) * slide_distance);
+	card.y += snapped_to_pixel((1.0f - m_presence) * K_SLIDE_DISTANCE);
 
 	return card;
 }
 
-bool Toasts::is_clickable_at(Vec2 t_point) const
+auto Toasts::is_clickable_at(Vec2 t_point) const -> bool
 {
-	return !m_countdown && m_showing && m_presence >= clickable_presence && animated_card_rect().contains(t_point);
+	return !m_countdown && m_showing && m_presence >= K_CLICKABLE_PRESENCE && animated_card_rect().contains(t_point);
 }
 
-void Toasts::update(float t_delta_seconds)
+auto Toasts::update(float t_delta_seconds) -> void
 {
 	PULSAR_PROFILE_SCOPE("Toasts.Update");
 
@@ -129,10 +129,11 @@ void Toasts::update(float t_delta_seconds)
 
 	if (m_showing && !held_by_hover) {
 		m_remaining_seconds = std::max(0.0f, m_remaining_seconds - t_delta_seconds);
-		m_showing = m_remaining_seconds > 0.0f;
+		m_showing           = m_remaining_seconds > 0.0f;
 	}
 
-	m_presence = animation::ease_toward(m_presence, m_showing ? 1.0f : 0.0f, presence_ease_rate, t_delta_seconds, animation::settled_pixels / slide_distance);
+	m_presence =
+		animation::ease_toward(m_presence, m_showing ? 1.0f : 0.0f, K_PRESENCE_EASE_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS / K_SLIDE_DISTANCE);
 	m_elapsed_seconds += t_delta_seconds;
 
 	if (m_showing || m_presence > 0.0f) {
@@ -140,12 +141,12 @@ void Toasts::update(float t_delta_seconds)
 	}
 }
 
-bool Toasts::on_pointer_down(Vec2 t_point)
+auto Toasts::on_pointer_down(Vec2 t_point) -> bool
 {
 	return is_clickable_at(t_point);
 }
 
-bool Toasts::on_pointer_up(Vec2 t_point)
+auto Toasts::on_pointer_up(Vec2 t_point) -> bool
 {
 	if (!is_clickable_at(t_point)) return false;
 
@@ -158,65 +159,65 @@ bool Toasts::on_pointer_up(Vec2 t_point)
 	return true;
 }
 
-CursorKind Toasts::cursor() const
+auto Toasts::cursor() const -> CursorKind
 {
 	return is_clickable_at(m_mouse) ? CursorKind::Hand : CursorKind::Arrow;
 }
 
-void Toasts::draw(DrawList *t_draw_list)
+auto Toasts::draw(DrawList* t_draw_list) -> void
 {
 	PULSAR_PROFILE_SCOPE("Toasts.Draw");
 
 	if (m_presence < 0.01f) return;
 
-	const Font &font = m_fonts->secondary;
-	const Rect card = animated_card_rect();
-	const auto alpha = to_alpha(m_presence);
+	const Font& font  = m_fonts->secondary;
+	const Rect  card  = animated_card_rect();
+	const auto  alpha = to_alpha(m_presence);
 
-	const float corner_radius = std::min(card.h * 0.5f, max_corner_radius);
+	const float corner_radius = std::min(card.h * 0.5f, K_MAX_CORNER_RADIUS);
 	controls::draw_popup_shadow(t_draw_list, card, corner_radius, m_presence);
-	t_draw_list->add_bordered_rect(card, rounded(corner_radius), faded(with_alpha(theme().popup, 244), alpha), faded(theme().border, alpha), 1.0f);
+	t_draw_list->add_bordered_rect(card, rounded(corner_radius), faded(with_alpha(g_theme.popup, 244), alpha), faded(g_theme.border, alpha), 1.0f);
 
 	if (m_icon) {
-		const float first_line_center = card.y + padding_y + font.line_height() * 0.5f;
-		const Rect icon{card.x + padding_x, first_line_center - icon_size * 0.5f, icon_size, icon_size};
-		const float turn = std::fmod(m_elapsed_seconds, icon_turn_seconds) / icon_turn_seconds;
+		const float first_line_center = card.y + K_PADDING_Y + font.line_height() * 0.5f;
+		const Rect  icon{card.x + K_PADDING_X, first_line_center - K_ICON_SIZE * 0.5f, K_ICON_SIZE, K_ICON_SIZE};
+		const float turn    = std::fmod(m_elapsed_seconds, K_ICON_TURN_SECONDS) / K_ICON_TURN_SECONDS;
 		const float radians = m_spin_icon ? turn * 2.0f * std::numbers::pi_v<float> : 0.0f;
 
 		t_draw_list->add_rotated_image(icon, radians, m_assets->get(*m_icon), faded(m_settings->accent, alpha));
 	}
 
-	const float text_x = card.x + padding_x + icon_column_width();
-	draw_wrapped_text(t_draw_list, font, Vec2{text_x, card.y + padding_y + font.ascent}, card.right() - padding_x - text_x, m_message,
-					  faded(theme().text, alpha), max_lines);
+	const float text_x = card.x + K_PADDING_X + icon_column_width();
+	draw_wrapped_text(t_draw_list, font, Vec2{text_x, card.y + K_PADDING_Y + font.ascent}, card.right() - K_PADDING_X - text_x, m_message,
+	                  faded(g_theme.text, alpha), K_MAX_LINES);
 
 	draw_time_left_bar(t_draw_list, card, alpha);
 }
 
-void Toasts::draw_time_left_bar(DrawList *t_draw_list, Rect t_card, u8 t_alpha) const
+auto Toasts::draw_time_left_bar(DrawList* t_draw_list, Rect t_card, u8 t_alpha) const -> void
 {
 	const Color accent = m_settings->accent;
-	const Rect track{t_card.x + padding_x, t_card.bottom() - padding_y - bar_height, t_card.w - padding_x * 2.0f, bar_height};
+	const Rect  track{t_card.x + K_PADDING_X, t_card.bottom() - K_PADDING_Y - K_BAR_HEIGHT, t_card.w - K_PADDING_X * 2.0f, K_BAR_HEIGHT};
 	const float remaining = m_total_seconds > 0.0f ? m_remaining_seconds / m_total_seconds : 0.0f;
-	const Rect fill{track.x, track.y, track.w * std::clamp(remaining, 0.0f, 1.0f), track.h};
+	const Rect  fill{track.x, track.y, track.w * std::clamp(remaining, 0.0f, 1.0f), track.h};
 
-	t_draw_list->add_rounded_rect(track, rounded(bar_height * 0.5f), faded(theme().control, t_alpha));
+	t_draw_list->add_rounded_rect(track, rounded(K_BAR_HEIGHT * 0.5f), faded(g_theme.control, t_alpha));
 	if (fill.w <= 0.0f) return;
 
-	for (u32 layer = 1; layer <= bar_glow_layers; layer += 1) {
-		const float spread = bar_glow_spread * layer;
-		const auto glow_alpha = static_cast<u8>(bar_glow_alpha / layer * m_presence);
-		t_draw_list->add_rounded_rect(fill.inset(-spread), rounded(bar_height * 0.5f + spread), with_alpha(accent, glow_alpha));
+	for (u32 layer = 1; layer <= K_BAR_GLOW_LAYERS; layer += 1) {
+		const float spread     = K_BAR_GLOW_SPREAD * layer;
+		const auto  glow_alpha = static_cast<u8>(K_BAR_GLOW_ALPHA / layer * m_presence);
+		t_draw_list->add_rounded_rect(fill.inset(-spread), rounded(K_BAR_HEIGHT * 0.5f + spread), with_alpha(accent, glow_alpha));
 	}
 
-	t_draw_list->add_rounded_rect(fill, rounded(bar_height * 0.5f), faded(accent, t_alpha));
+	t_draw_list->add_rounded_rect(fill, rounded(K_BAR_HEIGHT * 0.5f), faded(accent, t_alpha));
 
-	t_draw_list->push_clip(fill.inset(0.0f, -bar_glow_spread * bar_glow_layers));
+	t_draw_list->push_clip(fill.inset(0.0f, -K_BAR_GLOW_SPREAD * K_BAR_GLOW_LAYERS));
 
-	const float sweep_x = fill.x - sweep_width + std::fmod(m_elapsed_seconds * sweeps_per_second, 1.0f) * (fill.w + sweep_width);
+	const float sweep_x    = fill.x - K_SWEEP_WIDTH + std::fmod(m_elapsed_seconds * K_SWEEPS_PER_SECOND, 1.0f) * (fill.w + K_SWEEP_WIDTH);
 	const Color sweep_edge = with_alpha(lightened(accent, 70), 0);
-	const Color sweep_peak = with_alpha(lightened(accent, 70), static_cast<u8>(sweep_alpha * m_presence));
-	const float half_sweep = sweep_width * 0.5f;
+	const Color sweep_peak = with_alpha(lightened(accent, 70), static_cast<u8>(K_SWEEP_ALPHA * m_presence));
+	const float half_sweep = K_SWEEP_WIDTH * 0.5f;
 
 	t_draw_list->add_gradient(Rect{sweep_x, fill.y, half_sweep, fill.h}, sweep_edge, sweep_peak, sweep_edge, sweep_peak);
 	t_draw_list->add_gradient(Rect{sweep_x + half_sweep, fill.y, half_sweep, fill.h}, sweep_peak, sweep_edge, sweep_peak, sweep_edge);

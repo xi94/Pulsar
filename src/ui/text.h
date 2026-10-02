@@ -9,21 +9,26 @@
 class DrawList;
 struct Font;
 
-float text_width(const Font &t_font, std::string_view t_text);
-u32 text_index_at(const Font &t_font, std::string_view t_text, float t_x);
+[[nodiscard]] auto text_width(const Font& t_font, std::string_view t_text) -> float;
+[[nodiscard]] auto text_index_at(const Font& t_font, std::string_view t_text, float t_x) -> u32;
 
-void draw_text(DrawList *t_draw_list, const Font &t_font, Vec2 t_baseline, std::string_view t_text, Color t_color);
-void draw_text_centered(DrawList *t_draw_list, const Font &t_font, Rect t_box, std::string_view t_text, Color t_color);
-void draw_text_truncated(DrawList *t_draw_list, const Font &t_font, Vec2 t_baseline, std::string_view t_text, float t_max_width, Color t_color);
+auto draw_text(DrawList* t_draw_list, const Font& t_font, Vec2 t_baseline, std::string_view t_text, Color t_color) -> void;
+auto draw_text_centered(DrawList* t_draw_list, const Font& t_font, Rect t_box, std::string_view t_text, Color t_color) -> void;
+auto draw_text_truncated(DrawList* t_draw_list, const Font& t_font, Vec2 t_baseline, std::string_view t_text, float t_max_width, Color t_color) -> void;
 
 struct TruncatedText {
-	Rect bounds;
+	Rect             bounds;
 	std::string_view text;
 };
 
-void begin_truncation_probe(DrawList *t_draw_list, Vec2 t_point);
-std::optional<TruncatedText> hovered_truncated_text(const DrawList *t_draw_list);
+auto begin_truncation_probe(DrawList* t_draw_list, Vec2 t_point) -> void;
+[[nodiscard]] auto hovered_truncated_text(const DrawList* t_draw_list) -> std::optional<TruncatedText>;
 
-u32 wrap_text(const Font &t_font, std::string_view t_text, float t_max_width, std::span<std::string_view> t_out_lines);
-float draw_wrapped_text(DrawList *t_draw_list, const Font &t_font, Vec2 t_first_baseline, float t_max_width, std::string_view t_text, Color t_color,
-						u32 t_max_lines);
+[[nodiscard]] auto wrap_text(const Font& t_font, std::string_view t_text, float t_max_width, std::span<std::string_view> t_out_lines) -> u32;
+auto draw_wrapped_text(DrawList*        t_draw_list,
+                       const Font&      t_font,
+                       Vec2             t_first_baseline,
+                       float            t_max_width,
+                       std::string_view t_text,
+                       Color            t_color,
+                       u32              t_max_lines) -> float;

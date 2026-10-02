@@ -20,35 +20,48 @@ class RiotClient {
 	RiotClient() = default;
 	~RiotClient();
 
-	RiotClient(const RiotClient &) = delete;
-	RiotClient &operator=(const RiotClient &) = delete;
+	RiotClient(const RiotClient&)                    = delete;
+	auto operator=(const RiotClient&) -> RiotClient& = delete;
 
-	static bool is_game_in_progress();
-	static void kill_all_client_processes(const std::atomic<bool> *t_cancel);
+	[[nodiscard]] static auto is_game_in_progress() -> bool;
+	static auto kill_all_client_processes(const std::atomic<bool>* t_cancel) -> void;
 
-	bool resolve_executable_path();
-	bool launch(std::string_view t_launch_product);
+	[[nodiscard]] static auto executable_near(const std::wstring& t_chosen_path) -> std::wstring;
 
-	HWND wait_for_responsive_window(const std::atomic<bool> *t_cancel) const;
-	bool bring_to_foreground(const std::atomic<bool> *t_cancel) const;
-	bool take_keyboard_focus(const std::atomic<bool> *t_cancel) const;
+	[[nodiscard]] auto resolve_executable_path(const std::wstring& t_remembered_path) -> bool;
+	[[nodiscard]] auto launch(std::string_view t_launch_product) -> bool;
 
-	bool submit_login(const UiAutomation &t_automation, std::string_view t_username, std::string_view t_password, const std::atomic<bool> *t_cancel) const;
+	[[nodiscard]] auto executable_path() const -> const std::wstring&
+	{
+		return m_executable_path;
+	}
 
-	bool wait_for_login_result(const UiAutomation &t_automation, std::wstring *t_out_error, const std::atomic<bool> *t_cancel,
-							   const std::wstring *t_error_to_ignore) const;
+	auto wait_for_responsive_window(const std::atomic<bool>* t_cancel) const -> HWND;
+	auto bring_to_foreground(const std::atomic<bool>* t_cancel) const -> bool;
+	auto take_keyboard_focus(const std::atomic<bool>* t_cancel) const -> bool;
 
-	PlayResult click_play_when_ready(const UiAutomation &t_automation, u32 t_timeout_ms, const std::atomic<bool> *t_cancel, std::wstring *t_out_error) const;
+	[[nodiscard]] auto
+	submit_login(const UiAutomation& t_automation, std::string_view t_username, std::string_view t_password, const std::atomic<bool>* t_cancel) const -> bool;
+
+	[[nodiscard]] auto wait_for_login_result(const UiAutomation&      t_automation,
+	                                         std::wstring*            t_out_error,
+	                                         const std::atomic<bool>* t_cancel,
+	                                         const std::wstring*      t_error_to_ignore) const -> bool;
+
+	[[nodiscard]] auto
+	click_play_when_ready(const UiAutomation& t_automation, u32 t_timeout_ms, const std::atomic<bool>* t_cancel, std::wstring* t_out_error) const -> PlayResult;
 
   private:
-	HWND find_client_window() const;
-	UiElement current_window_element(const UiAutomation &t_automation) const;
+	[[nodiscard]] auto find_client_window() const -> HWND;
+	[[nodiscard]] auto current_window_element(const UiAutomation& t_automation) const -> UiElement;
 
-	mutable HWND m_cached_window = nullptr;
-	mutable UiElement m_cached_window_element;
-	mutable std::chrono::steady_clock::time_point m_cached_window_expiry{};
+	mutable HWND                                  m_cached_window = nullptr;
+	mutable UiElement                             m_cached_window_element;
+	mutable std::chrono::steady_clock::time_point m_cached_window_expiry;
+
+	mutable bool m_form_found_by_name = true;
 
 	std::wstring m_executable_path;
-	HANDLE m_process = nullptr;
-	u32 m_process_id = 0;
+	HANDLE       m_process    = nullptr;
+	u32          m_process_id = 0;
 };

@@ -14,16 +14,16 @@ class Snowfall {
 	Snowfall() = default;
 	~Snowfall();
 
-	Snowfall(const Snowfall &) = delete;
-	Snowfall &operator=(const Snowfall &) = delete;
+	Snowfall(const Snowfall&)                    = delete;
+	auto operator=(const Snowfall&) -> Snowfall& = delete;
 
-	void create_textures(Renderer *t_renderer);
-	void update(float t_delta_seconds, Rect t_area, bool t_focused);
-	void clear();
-	void draw(DrawList *t_draw_list) const;
+	auto create_texture(Renderer* t_renderer) -> void;
+	auto update(float t_delta_seconds, Rect t_area, bool t_focused) -> void;
+	auto clear() -> void;
+	auto draw(DrawList* t_draw_list) const -> void;
 
   private:
-	static constexpr u32 layer_count = 2;
+	static constexpr u32 K_LAYER_COUNT = 2;
 
 	struct Flake {
 		float x;
@@ -36,12 +36,12 @@ class Snowfall {
 		float alpha;
 	};
 
-	float random();
-	Flake spawn(u32 t_layer, bool t_anywhere);
+	[[nodiscard]] auto random() -> float;
+	[[nodiscard]] auto spawn(u32 t_layer, bool t_anywhere) -> Flake;
 
-	std::unique_ptr<Texture> m_sprites[layer_count];
-	std::vector<Flake> m_flakes[layer_count];
-	Rect m_area{};
-	float m_time = 0.0f;
-	u32 m_random_state = 0x9E3779B9u;
+	std::unique_ptr<Texture> m_sprite;
+	std::vector<Flake>       m_flakes[K_LAYER_COUNT];
+	Rect                     m_area{};
+	float                    m_time         = 0.0f;
+	u32                      m_random_state = 0x9E3779B9u;
 };

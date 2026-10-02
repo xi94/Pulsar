@@ -12,30 +12,30 @@ enum class HookBlockResult : u8 {
 	Unsupported,
 };
 
-std::wstring executable_path();
-void launch_process(const std::wstring &t_executable, const wchar_t *t_arguments = nullptr);
-bool bring_window_to_front(const wchar_t *t_class_name);
+[[nodiscard]] auto executable_path() -> std::wstring;
+auto launch_process(const std::wstring& t_executable, const wchar_t* t_arguments = nullptr) -> void;
+[[nodiscard]] auto bring_window_to_front(const wchar_t* t_class_name) -> bool;
 
-void set_app_user_model_id();
-HookBlockResult block_hook_injection();
-const wchar_t *injected_overlay_module();
+auto set_app_user_model_id() -> void;
+[[nodiscard]] auto block_hook_injection() -> HookBlockResult;
+[[nodiscard]] auto injected_overlay_module() -> const wchar_t*;
 
 class SingleInstanceGuard {
   public:
 	SingleInstanceGuard();
 	~SingleInstanceGuard();
 
-	SingleInstanceGuard(const SingleInstanceGuard &) = delete;
-	SingleInstanceGuard &operator=(const SingleInstanceGuard &) = delete;
+	SingleInstanceGuard(const SingleInstanceGuard&)                    = delete;
+	auto operator=(const SingleInstanceGuard&) -> SingleInstanceGuard& = delete;
 
-	bool is_first_instance() const
+	[[nodiscard]] auto is_first_instance() const -> bool
 	{
 		return m_first_instance;
 	}
 
-	void release();
+	auto release() -> void;
 
   private:
-	HANDLE m_mutex = nullptr;
-	bool m_first_instance = false;
+	HANDLE m_mutex          = nullptr;
+	bool   m_first_instance = false;
 };

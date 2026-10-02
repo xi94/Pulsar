@@ -1,6 +1,6 @@
 ---
 BasedOnStyle: LLVM
-UseTab: Always
+UseTab: AlignWithSpaces
 TabWidth: 4
 IndentWidth: 4
 ColumnLimit: 160
@@ -11,8 +11,21 @@ AllowShortFunctionsOnASingleLine: Empty
 AllowShortIfStatementsOnASingleLine: WithoutElse
 AllowShortLoopsOnASingleLine: false
 AlwaysBreakTemplateDeclarations: Yes
-PointerAlignment: Right
-ReferenceAlignment: Right
+BinPackParameters: OnePerLine
+AllowAllParametersOfDeclarationOnNextLine: false
+AlignAfterOpenBracket: Align
+AlignConsecutiveDeclarations:
+  Enabled: true
+  AlignFunctionDeclarations: false
+  AlignFunctionPointers: false
+AlignConsecutiveAssignments:
+  Enabled: true
+  AlignFunctionDeclarations: false
+AlignConsecutiveMacros: Consecutive
+AlignConsecutiveBitFields: Consecutive
+AlignTrailingComments: true
+PointerAlignment: Left
+ReferenceAlignment: Left
 SpaceBeforeParens: ControlStatements
 IndentCaseLabels: true
 NamespaceIndentation: None

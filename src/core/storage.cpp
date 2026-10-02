@@ -17,23 +17,23 @@
 using nlohmann::json;
 
 namespace {
-constexpr int format_version = 1;
-constexpr const char *accounts_file_name = "accounts.vault";
-constexpr const char *settings_file_name = "settings.json";
+constexpr int         K_FORMAT_VERSION     = 1;
+constexpr const char* K_ACCOUNTS_FILE_NAME = "accounts.vault";
+constexpr const char* K_SETTINGS_FILE_NAME = "settings.json";
 
 struct BoolSetting {
-	const char *key;
-	bool Settings::*value;
+	const char* key;
+	bool Settings::* value;
 };
 
 struct FloatSetting {
-	const char *key;
-	float Settings::*value;
-	float min;
-	float max;
+	const char* key;
+	float Settings::* value;
+	float             min;
+	float             max;
 };
 
-constexpr BoolSetting bool_settings[]{
+constexpr BoolSetting K_BOOL_SETTINGS[]{
 	{"animations_enabled", &Settings::animations_enabled},
 	{"background_light", &Settings::background_light},
 	{"background_grain", &Settings::background_grain},
@@ -44,11 +44,11 @@ constexpr BoolSetting bool_settings[]{
 	{"close_to_tray", &Settings::close_to_tray},
 };
 
-constexpr FloatSetting float_settings[]{
-	{"animation_speed", &Settings::animation_speed, animation_speed_min, animation_speed_max},
-	{"corner_roundness", &Settings::corner_roundness, corner_roundness_min, corner_roundness_max},
-	{"font_pixel_size", &Settings::font_size, font_size_min, font_size_max},
-	{"secondary_font_pixel_size", &Settings::secondary_font_size, secondary_font_size_min, secondary_font_size_max},
+constexpr FloatSetting K_FLOAT_SETTINGS[]{
+	{"animation_speed", &Settings::animation_speed, K_ANIMATION_SPEED_MIN, K_ANIMATION_SPEED_MAX},
+	{"corner_roundness", &Settings::corner_roundness, K_CORNER_ROUNDNESS_MIN, K_CORNER_ROUNDNESS_MAX},
+	{"font_pixel_size", &Settings::font_size, K_FONT_SIZE_MIN, K_FONT_SIZE_MAX},
+	{"secondary_font_pixel_size", &Settings::secondary_font_size, K_SECONDARY_FONT_SIZE_MIN, K_SECONDARY_FONT_SIZE_MAX},
 	{"background_intensity", &Settings::background_intensity, 0.0f, 1.0f},
 	{"background_light_intensity", &Settings::background_light_intensity, 0.0f, 1.0f},
 	{"background_grain_intensity", &Settings::background_grain_intensity, 0.0f, 1.0f},
@@ -56,19 +56,19 @@ constexpr FloatSetting float_settings[]{
 
 bool g_settings_writable = true;
 bool g_accounts_writable = true;
-u8 g_saved_accounts_digest[crypto_generichash_BYTES]{};
+u8   g_saved_accounts_digest[crypto_generichash_BYTES]{};
 
-void accounts_digest(std::span<const u8> t_plaintext, const MasterKey *t_master_key, u8 *t_out_digest)
+auto accounts_digest(std::span<const u8> t_plaintext, const MasterKey* t_master_key, u8* t_out_digest) -> void
 {
-	crypto_generichash(t_out_digest, crypto_generichash_BYTES, t_plaintext.data(), t_plaintext.size(), t_master_key->data_key(), crypto::key_size);
+	crypto_generichash(t_out_digest, crypto_generichash_BYTES, t_plaintext.data(), t_plaintext.size(), t_master_key->data_key(), crypto::K_KEY_SIZE);
 }
 
-void remember_saved_accounts(std::span<const u8> t_plaintext, const MasterKey *t_master_key)
+auto remember_saved_accounts(std::span<const u8> t_plaintext, const MasterKey* t_master_key) -> void
 {
 	accounts_digest(t_plaintext, t_master_key, g_saved_accounts_digest);
 }
 
-bool matches_saved_accounts(std::span<const u8> t_plaintext, const MasterKey *t_master_key)
+[[nodiscard]] auto matches_saved_accounts(std::span<const u8> t_plaintext, const MasterKey* t_master_key) -> bool
 {
 	u8 digest[crypto_generichash_BYTES];
 	accounts_digest(t_plaintext, t_master_key, digest);
@@ -76,17 +76,17 @@ bool matches_saved_accounts(std::span<const u8> t_plaintext, const MasterKey *t_
 	return sodium_memcmp(digest, g_saved_accounts_digest, sizeof(digest)) == 0;
 }
 
-bool path_exists(const std::string &t_path)
+[[nodiscard]] auto path_exists(const std::string& t_path) -> bool
 {
 	return GetFileAttributesA(t_path.c_str()) != INVALID_FILE_ATTRIBUTES;
 }
 
-void migrate_legacy_file(const std::string &t_root, const std::string &t_directory, const char *t_file_name)
+auto migrate_legacy_file(const std::string& t_root, const std::string& t_directory, const char* t_file_name) -> void
 {
 	const std::string path = t_directory + "\\" + t_file_name;
 	if (path_exists(path)) return;
 
-	for (const char *legacy_folder : legacy_data_folder_names) {
+	for (const char* legacy_folder : K_LEGACY_DATA_FOLDER_NAMES) {
 		const std::string legacy_path = t_root + "\\" + legacy_folder + "\\" + t_file_name;
 
 		if (path_exists(legacy_path) && CopyFileA(legacy_path.c_str(), path.c_str(), TRUE)) {
@@ -96,14 +96,14 @@ void migrate_legacy_file(const std::string &t_root, const std::string &t_directo
 	}
 }
 
-std::string storage_path(const char *t_file_name)
+[[nodiscard]] auto storage_path(const char* t_file_name) -> std::string
 {
 	const std::string directory = storage::data_directory();
 
 	return directory.empty() ? std::string{} : directory + "\\" + t_file_name;
 }
 
-std::string to_hex(std::span<const u8> t_bytes)
+[[nodiscard]] auto to_hex(std::span<const u8> t_bytes) -> std::string
 {
 	std::string hex(t_bytes.size() * 2 + 1, '\0');
 	sodium_bin2hex(hex.data(), hex.size(), t_bytes.data(), t_bytes.size());
@@ -112,15 +112,15 @@ std::string to_hex(std::span<const u8> t_bytes)
 	return hex;
 }
 
-bool from_hex(const std::string &t_hex, std::span<u8> t_out)
+auto from_hex(const std::string& t_hex, std::span<u8> t_out) -> bool
 {
 	usize decoded = 0;
 
 	return t_hex.size() == t_out.size() * 2 && sodium_hex2bin(t_out.data(), t_out.size(), t_hex.c_str(), t_hex.size(), nullptr, &decoded, nullptr) == 0 &&
-		   decoded == t_out.size();
+	       decoded == t_out.size();
 }
 
-std::string to_base64(std::span<const u8> t_bytes)
+[[nodiscard]] auto to_base64(std::span<const u8> t_bytes) -> std::string
 {
 	std::string encoded(sodium_base64_ENCODED_LEN(t_bytes.size(), sodium_base64_VARIANT_ORIGINAL), '\0');
 	sodium_bin2base64(encoded.data(), encoded.size(), t_bytes.data(), t_bytes.size(), sodium_base64_VARIANT_ORIGINAL);
@@ -129,7 +129,7 @@ std::string to_base64(std::span<const u8> t_bytes)
 	return encoded;
 }
 
-bool from_base64(const std::string &t_text, std::vector<u8> *t_out)
+[[nodiscard]] auto from_base64(const std::string& t_text, std::vector<u8>* t_out) -> bool
 {
 	t_out->resize(t_text.size());
 
@@ -143,7 +143,7 @@ bool from_base64(const std::string &t_text, std::vector<u8> *t_out)
 	return true;
 }
 
-bool parse_json_file(const std::string &t_path, json *t_out)
+[[nodiscard]] auto parse_json_file(const std::string& t_path, json* t_out) -> bool
 {
 	std::vector<u8> bytes;
 	if (!read_whole_file(t_path.c_str(), &bytes)) return false;
@@ -153,19 +153,19 @@ bool parse_json_file(const std::string &t_path, json *t_out)
 	return t_out->is_object();
 }
 
-bool read_json_with_backup(const std::string &t_path, json *t_out)
+[[nodiscard]] auto read_json_with_backup(const std::string& t_path, json* t_out) -> bool
 {
 	return parse_json_file(t_path, t_out) || parse_json_file(backup_path_for(t_path), t_out);
 }
 
-storage::LoadResult missing_or_failed(const std::string &t_path)
+[[nodiscard]] auto missing_or_failed(const std::string& t_path) -> storage::LoadResult
 {
 	return path_exists(t_path) ? storage::LoadResult::Failed : storage::LoadResult::NoFile;
 }
 
-json master_password_to_json(const Settings *t_settings)
+[[nodiscard]] auto master_password_to_json(const Settings* t_settings) -> json
 {
-	const MasterKeyParams &key = t_settings->master_key;
+	const MasterKeyParams& key = t_settings->master_key;
 
 	return json{
 		{"enabled", t_settings->master_password_enabled},
@@ -177,33 +177,33 @@ json master_password_to_json(const Settings *t_settings)
 	};
 }
 
-void read_master_password(const json &t_json, Settings *t_settings)
+auto read_master_password(const json& t_json, Settings* t_settings) -> void
 {
 	t_settings->master_password_enabled = false;
 
 	const auto found = t_json.find("master_password");
 	if (found == t_json.end() || !found->is_object()) return;
 
-	MasterKeyParams *key = &t_settings->master_key;
+	MasterKeyParams* key = &t_settings->master_key;
 
 	t_settings->master_password_enabled = found->value("enabled", false);
-	key->ops_limit = found->value("ops_limit", u64{0});
-	key->mem_limit = static_cast<usize>(found->value("mem_limit", u64{0}));
+	key->ops_limit                      = found->value("ops_limit", u64{0});
+	key->mem_limit                      = static_cast<usize>(found->value("mem_limit", u64{0}));
 	from_hex(found->value("salt_hex", std::string{}), key->salt);
 	from_hex(found->value("wrap_nonce_hex", std::string{}), key->wrap_nonce);
 	from_hex(found->value("wrapped_dek_hex", std::string{}), key->wrapped_data_key);
 }
 
-void read_bool_and_float_settings(const json &t_json, Settings *t_settings)
+auto read_bool_and_float_settings(const json& t_json, Settings* t_settings) -> void
 {
 	t_settings->close_to_tray = t_json.value("minimize_to_tray", t_settings->close_to_tray);
 
-	for (const BoolSetting &setting : bool_settings) {
+	for (const BoolSetting& setting : K_BOOL_SETTINGS) {
 		t_settings->*setting.value = t_json.value(setting.key, t_settings->*setting.value);
 	}
 
-	for (const FloatSetting &setting : float_settings) {
-		const float value = t_json.value(setting.key, t_settings->*setting.value);
+	for (const FloatSetting& setting : K_FLOAT_SETTINGS) {
+		const float value          = t_json.value(setting.key, t_settings->*setting.value);
 		t_settings->*setting.value = std::clamp(value, setting.min, setting.max);
 	}
 
@@ -212,7 +212,7 @@ void read_bool_and_float_settings(const json &t_json, Settings *t_settings)
 	}
 }
 
-void read_appearance(const json &t_json, Settings *t_settings)
+auto read_appearance(const json& t_json, Settings* t_settings) -> void
 {
 	const auto accent = t_json.find("accent_color");
 	if (accent != t_json.end() && accent->is_array() && accent->size() == 4) {
@@ -222,41 +222,41 @@ void read_appearance(const json &t_json, Settings *t_settings)
 	copy_to(t_json.value("font_name", std::string{t_settings->font_name}), t_settings->font_name);
 
 	const std::string theme = t_json.value("theme", std::string{});
-	for (u32 i = 0; i < theme_count; i += 1) {
-		if (theme == theme_labels[i].id) {
+	for (u32 i = 0; i < K_THEME_COUNT; i += 1) {
+		if (theme == K_THEME_LABELS[i].id) {
 			t_settings->theme = static_cast<ThemeKind>(i);
 		}
 	}
 
 	const std::string background = t_json.value("background", std::string{});
-	for (u32 i = 0; i < background_count; i += 1) {
-		if (background == background_labels[i].id) {
+	for (u32 i = 0; i < K_BACKGROUND_COUNT; i += 1) {
+		if (background == K_BACKGROUND_LABELS[i].id) {
 			t_settings->background_style = static_cast<BackgroundStyle>(i);
 		}
 	}
 }
 
-void read_game_order(const json &t_json, Settings *t_settings)
+auto read_game_order(const json& t_json, Settings* t_settings) -> void
 {
 	const auto order = t_json.find("carousel_order");
 	if (order == t_json.end() || !order->is_array()) return;
 
 	t_settings->game_order_count = 0;
 
-	for (const json &title : *order) {
-		if (!title.is_string() || t_settings->game_order_count == max_game_order) continue;
+	for (const json& title : *order) {
+		if (!title.is_string() || t_settings->game_order_count == K_MAX_GAME_ORDER) continue;
 
 		copy_to(title.get<std::string>(), t_settings->game_order[t_settings->game_order_count]);
 		t_settings->game_order_count += 1;
 	}
 }
 
-i32 read_zoom_stop(const json &t_json, i32 t_fallback)
+[[nodiscard]] auto read_zoom_stop(const json& t_json, i32 t_fallback) -> i32
 {
 	if (t_json.contains("view_zoom")) return t_json.value("view_zoom", t_fallback);
 
 	// Older saves used earlier stop layouts: carousel, grid, list, then carousel, shelf, grid, list, icons.
-	const i32 legacy = t_json.value("carousel_zoom_stop", t_fallback);
+	const i32 legacy    = t_json.value("carousel_zoom_stop", t_fallback);
 	const i32 shelf_era = t_json.value("view_zoom_stop", legacy > 0 ? legacy + 1 : legacy);
 
 	if (shelf_era <= 1) return shelf_era;
@@ -266,20 +266,21 @@ i32 read_zoom_stop(const json &t_json, i32 t_fallback)
 	return shelf_era - 2;
 }
 
-storage::LoadResult read_settings(Settings *t_settings)
+[[nodiscard]] auto read_settings(Settings* t_settings) -> storage::LoadResult
 {
-	const std::string path = storage_path(settings_file_name);
+	const std::string path = storage_path(K_SETTINGS_FILE_NAME);
 	if (path.empty()) return storage::LoadResult::Failed;
 
 	json settings;
 	if (!read_json_with_backup(path, &settings)) return missing_or_failed(path);
 
 	try {
-		t_settings->window_width = settings.value("window_width", t_settings->window_width);
-		t_settings->window_height = settings.value("window_height", t_settings->window_height);
+		t_settings->window_width      = settings.value("window_width", t_settings->window_width);
+		t_settings->window_height     = settings.value("window_height", t_settings->window_height);
 		t_settings->auto_lock_minutes = settings.value("auto_lock_minutes", t_settings->auto_lock_minutes);
-		t_settings->zoom_stop = read_zoom_stop(settings, t_settings->zoom_stop);
-		t_settings->selected_game = settings.value("carousel_selected_banner", t_settings->selected_game);
+		t_settings->zoom_stop         = read_zoom_stop(settings, t_settings->zoom_stop);
+		t_settings->selected_game     = settings.value("carousel_selected_banner", t_settings->selected_game);
+		copy_to(settings.value("riot_client_path", std::string{}), t_settings->riot_client_path);
 		copy_to(settings.value("last_run_version", std::string{}), t_settings->last_run_version);
 		copy_to(settings.value("release_notes_version", std::string{}), t_settings->release_notes_version);
 		copy_to(settings.value("release_notes", std::string{}), t_settings->release_notes);
@@ -288,14 +289,14 @@ storage::LoadResult read_settings(Settings *t_settings)
 		read_game_order(settings, t_settings);
 		read_appearance(settings, t_settings);
 		read_master_password(settings, t_settings);
-	} catch (const json::exception &) {
+	} catch (const json::exception&) {
 		return storage::LoadResult::Failed;
 	}
 
 	return storage::LoadResult::Ok;
 }
 
-json visible_titles(const Library *t_library, u16 t_mask)
+[[nodiscard]] auto visible_titles(const Library* t_library, u16 t_mask) -> json
 {
 	json titles = json::array();
 
@@ -308,16 +309,16 @@ json visible_titles(const Library *t_library, u16 t_mask)
 	return titles;
 }
 
-u16 visible_mask(const Library *t_library, const json &t_account)
+[[nodiscard]] auto visible_mask(const Library* t_library, const json& t_account) -> u16
 {
 	const auto titles = t_account.find("visible_in");
 	if (titles == t_account.end() || !titles->is_array()) return t_account.value("visible_mask", u16{0});
 
 	u16 mask = 0;
 
-	for (const json &title : *titles) {
+	for (const json& title : *titles) {
 		for (u32 game = 0; game < t_library->game_count && title.is_string(); game += 1) {
-			if (t_library->games[game].title == title.get_ref<const std::string &>()) {
+			if (t_library->games[game].title == title.get_ref<const std::string&>()) {
 				mask |= static_cast<u16>(1u << game);
 			}
 		}
@@ -326,13 +327,13 @@ u16 visible_mask(const Library *t_library, const json &t_account)
 	return mask;
 }
 
-json game_to_json(const Library *t_library, const Game &t_game)
+[[nodiscard]] auto game_to_json(const Library* t_library, const Game& t_game) -> json
 {
 	json accounts = json::array();
 
-	for (const Account &account : std::span{t_game.accounts, t_game.account_count}) {
+	for (const Account& account : std::span{t_game.accounts, t_game.account_count}) {
 		json entry{
-			{"username", account.username}, {"note", account.note},			  {"region", account.region}, {"password", account.password},
+			{"username", account.username}, {"note", account.note},           {"region", account.region}, {"password", account.password},
 			{"favorite", account.favorite}, {"last_used", account.last_used}, {"order", account.order},
 		};
 
@@ -346,31 +347,31 @@ json game_to_json(const Library *t_library, const Game &t_game)
 	return json{{"title", std::string{t_game.title}}, {"accounts", std::move(accounts)}};
 }
 
-void read_game_accounts(const json &t_json, const Library *t_library, Game *t_game)
+auto read_game_accounts(const json& t_json, const Library* t_library, Game* t_game) -> void
 {
 	t_game->account_count = 0;
 
 	const auto accounts = t_json.find("accounts");
 	if (accounts == t_json.end() || !accounts->is_array()) return;
 
-	for (const json &entry : *accounts) {
-		if (t_game->account_count >= max_accounts_per_game) break;
+	for (const json& entry : *accounts) {
+		if (t_game->account_count >= K_MAX_ACCOUNTS_PER_GAME) break;
 
-		Account *account = &t_game->accounts[t_game->account_count];
+		Account* account = &t_game->accounts[t_game->account_count];
 		account->assign(entry.value("username", std::string{}), entry.value("note", std::string{}), entry.value("password", std::string{}));
 		copy_to(entry.value("region", std::string{}), account->region);
 		account->visible_game_mask = visible_mask(t_library, entry);
-		account->favorite = entry.value("favorite", false);
-		account->last_used = entry.value("last_used", i64{0});
-		account->order = entry.value("order", u32{0});
+		account->favorite          = entry.value("favorite", false);
+		account->last_used         = entry.value("last_used", i64{0});
+		account->order             = entry.value("order", u32{0});
 
 		t_game->account_count += 1;
 	}
 }
 
-Game *find_game(Library *t_library, std::string_view t_title)
+[[nodiscard]] auto find_game(Library* t_library, std::string_view t_title) -> Game*
 {
-	for (Game &game : std::span{t_library->games, t_library->game_count}) {
+	for (Game& game : std::span{t_library->games, t_library->game_count}) {
 		if (game.title == t_title) return &game;
 	}
 
@@ -379,7 +380,7 @@ Game *find_game(Library *t_library, std::string_view t_title)
 
 template <typename Buffer>
 struct WipedOnExit {
-	Buffer *buffer;
+	Buffer* buffer;
 
 	~WipedOnExit()
 	{
@@ -387,14 +388,14 @@ struct WipedOnExit {
 	}
 };
 
-bool decrypt_vault(const json &t_envelope, const MasterKey *t_master_key, std::vector<u8> *t_out_plaintext)
+[[nodiscard]] auto decrypt_vault(const json& t_envelope, const MasterKey* t_master_key, std::vector<u8>* t_out_plaintext) -> bool
 {
-	u8 nonce[crypto::nonce_size];
-	u8 tag[crypto::tag_size];
+	u8              nonce[crypto::K_NONCE_SIZE];
+	u8              tag[crypto::K_TAG_SIZE];
 	std::vector<u8> ciphertext;
 
 	if (!from_hex(t_envelope.value("nonce_hex", std::string{}), nonce) || !from_hex(t_envelope.value("tag_hex", std::string{}), tag) ||
-		!from_base64(t_envelope.value("ciphertext_b64", std::string{}), &ciphertext)) {
+	    !from_base64(t_envelope.value("ciphertext_b64", std::string{}), &ciphertext)) {
 		return false;
 	}
 
@@ -403,18 +404,18 @@ bool decrypt_vault(const json &t_envelope, const MasterKey *t_master_key, std::v
 	return crypto::decrypt(t_master_key->data_key(), nonce, ciphertext, tag, t_out_plaintext->data());
 }
 
-storage::LoadResult read_accounts(Library *t_library, const MasterKey *t_master_key)
+[[nodiscard]] auto read_accounts(Library* t_library, const MasterKey* t_master_key) -> storage::LoadResult
 {
 	if (!t_master_key->is_unlocked()) return storage::LoadResult::Locked;
 
-	const std::string path = storage_path(accounts_file_name);
+	const std::string path = storage_path(K_ACCOUNTS_FILE_NAME);
 	if (path.empty()) return storage::LoadResult::Failed;
 
 	json envelope;
 	if (!read_json_with_backup(path, &envelope)) return missing_or_failed(path);
 
 	try {
-		std::vector<u8> plaintext;
+		std::vector<u8>   plaintext;
 		const WipedOnExit wipe_plaintext{&plaintext};
 
 		if (!decrypt_vault(envelope, t_master_key, &plaintext)) return storage::LoadResult::Failed;
@@ -426,8 +427,8 @@ storage::LoadResult read_accounts(Library *t_library, const MasterKey *t_master_
 
 		json unlisted = json::array();
 
-		for (const json &entry : games) {
-			if (Game *game = find_game(t_library, entry.value("title", std::string{}))) {
+		for (const json& entry : games) {
+			if (Game* game = find_game(t_library, entry.value("title", std::string{}))) {
 				read_game_accounts(entry, t_library, game);
 			} else {
 				unlisted.push_back(entry);
@@ -437,7 +438,7 @@ storage::LoadResult read_accounts(Library *t_library, const MasterKey *t_master_
 		t_library->unlisted_games = unlisted.empty() ? std::string{} : unlisted.dump();
 
 		t_library->number_unordered_accounts();
-	} catch (const json::exception &) {
+	} catch (const json::exception&) {
 		return storage::LoadResult::Failed;
 	}
 
@@ -445,21 +446,21 @@ storage::LoadResult read_accounts(Library *t_library, const MasterKey *t_master_
 }
 }
 
-std::string storage::data_directory()
+auto storage::data_directory() -> std::string
 {
 	const std::string root = to_utf8(local_app_data_folder());
 	if (root.empty()) return {};
 
-	const std::string directory = root + "\\" + app_data_folder_name;
+	const std::string directory = root + "\\" + K_APP_DATA_FOLDER_NAME;
 	CreateDirectoryA(directory.c_str(), nullptr);
 
-	migrate_legacy_file(root, directory, accounts_file_name);
-	migrate_legacy_file(root, directory, settings_file_name);
+	migrate_legacy_file(root, directory, K_ACCOUNTS_FILE_NAME);
+	migrate_legacy_file(root, directory, K_SETTINGS_FILE_NAME);
 
 	return directory;
 }
 
-storage::LoadResult storage::load_settings(Settings *t_settings)
+auto storage::load_settings(Settings* t_settings) -> storage::LoadResult
 {
 	const LoadResult result = read_settings(t_settings);
 
@@ -468,17 +469,17 @@ storage::LoadResult storage::load_settings(Settings *t_settings)
 		// a fresh master password, and saving under that would overwrite the real vault.
 		g_settings_writable = false;
 		g_accounts_writable = false;
-		debug_log::write("storage", "%s did not load - neither file will be written this session", settings_file_name);
+		debug_log::write("storage", "%s did not load - neither file will be written this session", K_SETTINGS_FILE_NAME);
 	}
 
 	return result;
 }
 
-bool storage::save_settings(const Settings *t_settings)
+auto storage::save_settings(const Settings* t_settings) -> bool
 {
 	if (!g_settings_writable) return false;
 
-	const std::string path = storage_path(settings_file_name);
+	const std::string path = storage_path(K_SETTINGS_FILE_NAME);
 	if (path.empty()) return false;
 
 	json game_order = json::array();
@@ -487,15 +488,16 @@ bool storage::save_settings(const Settings *t_settings)
 	}
 
 	const Color accent = t_settings->accent;
-	json settings{
-		{"format_version", format_version},
+	json        settings{
+		{"format_version", K_FORMAT_VERSION},
 		{"window_width", t_settings->window_width},
 		{"window_height", t_settings->window_height},
-		{"background", background_labels[static_cast<u32>(t_settings->background_style)].id},
+		{"background", K_BACKGROUND_LABELS[static_cast<u32>(t_settings->background_style)].id},
 		{"accent_color", json::array({accent.r, accent.g, accent.b, accent.a})},
 		{"font_name", t_settings->font_name},
-		{"theme", theme_labels[static_cast<u32>(t_settings->theme)].id},
+		{"theme", K_THEME_LABELS[static_cast<u32>(t_settings->theme)].id},
 		{"auto_lock_minutes", t_settings->auto_lock_minutes},
+		{"riot_client_path", t_settings->riot_client_path},
 		{"last_run_version", t_settings->last_run_version},
 		{"release_notes_version", t_settings->release_notes_version},
 		{"release_notes", t_settings->release_notes},
@@ -505,67 +507,67 @@ bool storage::save_settings(const Settings *t_settings)
 		{"master_password", master_password_to_json(t_settings)},
 	};
 
-	for (const BoolSetting &setting : bool_settings) {
+	for (const BoolSetting& setting : K_BOOL_SETTINGS) {
 		settings[setting.key] = t_settings->*setting.value;
 	}
 
-	for (const FloatSetting &setting : float_settings) {
+	for (const FloatSetting& setting : K_FLOAT_SETTINGS) {
 		settings[setting.key] = t_settings->*setting.value;
 	}
 
 	return write_file_atomic(path, settings.dump(2));
 }
 
-storage::LoadResult storage::load_accounts(Library *t_library, const MasterKey *t_master_key)
+auto storage::load_accounts(Library* t_library, const MasterKey* t_master_key) -> storage::LoadResult
 {
 	const LoadResult result = read_accounts(t_library, t_master_key);
 
 	if (result == LoadResult::Failed) {
 		g_accounts_writable = false;
-		debug_log::write("storage", "%s did not load - it will not be written this session", accounts_file_name);
+		debug_log::write("storage", "%s did not load - it will not be written this session", K_ACCOUNTS_FILE_NAME);
 	}
 
 	return result;
 }
 
-bool storage::save_accounts(const Library *t_library, const MasterKey *t_master_key)
+auto storage::save_accounts(const Library* t_library, const MasterKey* t_master_key) -> bool
 {
 	if (!t_master_key->is_unlocked() || !g_accounts_writable) return false;
 
 	json games = json::array();
-	for (const Game &game : std::span{t_library->games, t_library->game_count}) {
+	for (const Game& game : std::span{t_library->games, t_library->game_count}) {
 		games.push_back(game_to_json(t_library, game));
 	}
 
 	if (!t_library->unlisted_games.empty()) {
-		for (json &entry : json::parse(t_library->unlisted_games)) {
+		for (json& entry : json::parse(t_library->unlisted_games)) {
 			games.push_back(std::move(entry));
 		}
 	}
 
-	std::string plaintext = games.dump();
+	std::string       plaintext = games.dump();
 	const WipedOnExit wipe_plaintext{&plaintext};
 
-	const std::span<const u8> plaintext_bytes{reinterpret_cast<const u8 *>(plaintext.data()), plaintext.size()};
+	const std::span<const u8> plaintext_bytes{reinterpret_cast<const u8*>(plaintext.data()), plaintext.size()};
 
 	// A fresh nonce makes every encryption differ, so unchanged accounts have to be caught before encrypting.
 	if (matches_saved_accounts(plaintext_bytes, t_master_key)) return true;
 
-	u8 nonce[crypto::nonce_size];
+	u8 nonce[crypto::K_NONCE_SIZE];
 	crypto::random_bytes(nonce);
 
-	u8 tag[crypto::tag_size];
+	u8              tag[crypto::K_TAG_SIZE];
 	std::vector<u8> ciphertext(plaintext.size());
 	if (!crypto::encrypt(t_master_key->data_key(), nonce, plaintext_bytes, ciphertext.data(), tag)) return false;
 
 	const json envelope{
-		{"format_version", format_version},
+		{"format_version", K_FORMAT_VERSION},
 		{"nonce_hex", to_hex(nonce)},
 		{"tag_hex", to_hex(tag)},
 		{"ciphertext_b64", to_base64(ciphertext)},
 	};
 
-	const std::string path = storage_path(accounts_file_name);
+	const std::string path = storage_path(K_ACCOUNTS_FILE_NAME);
 	if (path.empty() || !write_file_atomic(path, envelope.dump())) return false;
 
 	remember_saved_accounts(plaintext_bytes, t_master_key);
@@ -573,12 +575,12 @@ bool storage::save_accounts(const Library *t_library, const MasterKey *t_master_
 	return true;
 }
 
-bool storage::can_save_settings()
+auto storage::can_save_settings() -> bool
 {
 	return g_settings_writable;
 }
 
-bool storage::can_save_accounts()
+auto storage::can_save_accounts() -> bool
 {
 	return g_accounts_writable;
 }

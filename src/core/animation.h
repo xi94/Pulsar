@@ -2,20 +2,22 @@
 
 namespace animation {
 
-constexpr float settled_amount = 0.002f;
-constexpr float settled_pixels = 0.25f;
+constexpr float K_SETTLED_AMOUNT = 0.002f;
+constexpr float K_SETTLED_PIXELS = 0.25f;
 
-float ease_toward(float t_value, float t_target, float t_rate, float t_delta_seconds, float t_settle_distance = settled_amount);
+[[nodiscard]] auto ease_toward(float t_value, float t_target, float t_rate, float t_delta_seconds, float t_settle_distance = K_SETTLED_AMOUNT) -> float;
 
-float spring_toward(float t_value, float *t_velocity, float t_target, float t_stiffness, float t_damping_ratio, float t_delta_seconds, float t_settle_distance);
+[[nodiscard]] auto
+spring_toward(float t_value, float* t_velocity, float t_target, float t_stiffness, float t_damping_ratio, float t_delta_seconds, float t_settle_distance)
+	-> float;
 
-float step_toward(float t_value, float t_target, float t_duration_seconds, float t_delta_seconds);
+[[nodiscard]] auto step_toward(float t_value, float t_target, float t_duration_seconds, float t_delta_seconds) -> float;
 
-void request_frame();
-void request_frame_after(float t_seconds);
-float take_idle_wait(float t_limit_seconds);
+auto request_frame() -> void;
+auto request_frame_after(float t_seconds) -> void;
+[[nodiscard]] auto take_idle_wait(float t_limit_seconds) -> float;
 
-void set_enabled(bool t_enabled);
-void set_speed(float t_speed);
+auto set_enabled(bool t_enabled) -> void;
+auto set_speed(float t_speed) -> void;
 
 }

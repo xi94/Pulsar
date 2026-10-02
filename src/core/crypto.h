@@ -5,30 +5,30 @@
 
 namespace crypto {
 
-constexpr u32 key_size = 32;
-constexpr u32 salt_size = 16;
-constexpr u32 nonce_size = 24;
-constexpr u32 tag_size = 16;
+constexpr u32 K_KEY_SIZE   = 32;
+constexpr u32 K_SALT_SIZE  = 16;
+constexpr u32 K_NONCE_SIZE = 24;
+constexpr u32 K_TAG_SIZE   = 16;
 
-void random_bytes(std::span<u8> t_out);
+auto random_bytes(std::span<u8> t_out) -> void;
 
-bool derive_key(std::string_view t_password, const u8 *t_salt, u64 t_ops_limit, usize t_mem_limit, u8 *t_out_key);
+[[nodiscard]] auto derive_key(std::string_view t_password, const u8* t_salt, u64 t_ops_limit, usize t_mem_limit, u8* t_out_key) -> bool;
 
-u64 default_ops_limit();
-usize default_mem_limit();
+[[nodiscard]] auto default_ops_limit() -> u64;
+[[nodiscard]] auto default_mem_limit() -> usize;
 
-bool encrypt(const u8 *t_key, const u8 *t_nonce, std::span<const u8> t_plaintext, u8 *t_out_ciphertext, u8 *t_out_tag);
+[[nodiscard]] auto encrypt(const u8* t_key, const u8* t_nonce, std::span<const u8> t_plaintext, u8* t_out_ciphertext, u8* t_out_tag) -> bool;
 
-bool decrypt(const u8 *t_key, const u8 *t_nonce, std::span<const u8> t_ciphertext, const u8 *t_tag, u8 *t_out_plaintext);
+[[nodiscard]] auto decrypt(const u8* t_key, const u8* t_nonce, std::span<const u8> t_ciphertext, const u8* t_tag, u8* t_out_plaintext) -> bool;
 
 }
 
 struct MasterKeyParams {
-	u8 salt[crypto::salt_size]{};
-	u64 ops_limit = 0;
+	u8    salt[crypto::K_SALT_SIZE]{};
+	u64   ops_limit = 0;
 	usize mem_limit = 0;
-	u8 wrap_nonce[crypto::nonce_size]{};
-	u8 wrapped_data_key[crypto::key_size + crypto::tag_size]{};
+	u8    wrap_nonce[crypto::K_NONCE_SIZE]{};
+	u8    wrapped_data_key[crypto::K_KEY_SIZE + crypto::K_TAG_SIZE]{};
 };
 
 class MasterKey {
@@ -36,25 +36,25 @@ class MasterKey {
 	MasterKey() = default;
 	~MasterKey();
 
-	MasterKey(const MasterKey &) = delete;
-	MasterKey &operator=(const MasterKey &) = delete;
+	MasterKey(const MasterKey&)                    = delete;
+	auto operator=(const MasterKey&) -> MasterKey& = delete;
 
-	bool create(std::string_view t_password, MasterKeyParams *t_out_params);
-	bool unlock(std::string_view t_password, const MasterKeyParams &t_params);
-	void lock();
-	void swap(MasterKey *t_other);
+	[[nodiscard]] auto create(std::string_view t_password, MasterKeyParams* t_out_params) -> bool;
+	[[nodiscard]] auto unlock(std::string_view t_password, const MasterKeyParams& t_params) -> bool;
+	auto lock() -> void;
+	auto swap(MasterKey* t_other) -> void;
 
-	bool is_unlocked() const
+	[[nodiscard]] auto is_unlocked() const -> bool
 	{
 		return m_unlocked;
 	}
 
-	const u8 *data_key() const
+	[[nodiscard]] auto data_key() const -> const u8*
 	{
 		return m_data_key;
 	}
 
   private:
-	u8 m_data_key[crypto::key_size]{};
+	u8   m_data_key[crypto::K_KEY_SIZE]{};
 	bool m_unlocked = false;
 };

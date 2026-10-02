@@ -7,10 +7,10 @@
 #include "core/str.h"
 
 namespace {
-bool put_global(UINT t_format, const void *t_bytes, usize t_size)
+auto put_global(UINT t_format, const void* t_bytes, usize t_size) -> bool
 {
-	const HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, t_size);
-	void *destination = memory != nullptr ? GlobalLock(memory) : nullptr;
+	const HGLOBAL memory      = GlobalAlloc(GMEM_MOVEABLE, t_size);
+	void*         destination = memory != nullptr ? GlobalLock(memory) : nullptr;
 
 	if (destination == nullptr) {
 		if (memory != nullptr) GlobalFree(memory);
@@ -28,7 +28,7 @@ bool put_global(UINT t_format, const void *t_bytes, usize t_size)
 	return true;
 }
 
-void put_text(std::string_view t_text, bool t_keep_out_of_history)
+auto put_text(std::string_view t_text, bool t_keep_out_of_history) -> void
 {
 	std::wstring wide = to_wide(t_text);
 
@@ -37,14 +37,14 @@ void put_text(std::string_view t_text, bool t_keep_out_of_history)
 		put_global(CF_UNICODETEXT, wide.c_str(), (wide.size() + 1) * sizeof(wchar_t));
 
 		if (t_keep_out_of_history) {
-			static const UINT exclude_from_monitors = RegisterClipboardFormatW(L"ExcludeClipboardContentFromMonitorProcessing");
-			static const UINT can_include_in_history = RegisterClipboardFormatW(L"CanIncludeInClipboardHistory");
-			static const UINT can_upload_to_cloud = RegisterClipboardFormatW(L"CanUploadToCloudClipboard");
-			const DWORD disallowed = 0;
+			static const UINT EXCLUDE_FROM_MONITORS  = RegisterClipboardFormatW(L"ExcludeClipboardContentFromMonitorProcessing");
+			static const UINT CAN_INCLUDE_IN_HISTORY = RegisterClipboardFormatW(L"CanIncludeInClipboardHistory");
+			static const UINT CAN_UPLOAD_TO_CLOUD    = RegisterClipboardFormatW(L"CanUploadToCloudClipboard");
+			const DWORD       disallowed             = 0;
 
-			put_global(exclude_from_monitors, &disallowed, sizeof(disallowed));
-			put_global(can_include_in_history, &disallowed, sizeof(disallowed));
-			put_global(can_upload_to_cloud, &disallowed, sizeof(disallowed));
+			put_global(EXCLUDE_FROM_MONITORS, &disallowed, sizeof(disallowed));
+			put_global(CAN_INCLUDE_IN_HISTORY, &disallowed, sizeof(disallowed));
+			put_global(CAN_UPLOAD_TO_CLOUD, &disallowed, sizeof(disallowed));
 		}
 
 		CloseClipboard();
@@ -54,24 +54,24 @@ void put_text(std::string_view t_text, bool t_keep_out_of_history)
 }
 }
 
-void set_clipboard_text(std::string_view t_text)
+auto set_clipboard_text(std::string_view t_text) -> void
 {
 	put_text(t_text, false);
 }
 
-void set_clipboard_secret(std::string_view t_secret)
+auto set_clipboard_secret(std::string_view t_secret) -> void
 {
 	put_text(t_secret, true);
 }
 
-std::string clipboard_text()
+[[nodiscard]] auto clipboard_text() -> std::string
 {
 	if (!OpenClipboard(GetActiveWindow())) return {};
 
 	std::string text;
 
 	const HANDLE data = GetClipboardData(CF_UNICODETEXT);
-	if (const auto *wide = data != nullptr ? static_cast<const wchar_t *>(GlobalLock(data)) : nullptr) {
+	if (const auto* wide = data != nullptr ? static_cast<const wchar_t*>(GlobalLock(data)) : nullptr) {
 		text = to_utf8(wide);
 		GlobalUnlock(data);
 	}
@@ -81,17 +81,17 @@ std::string clipboard_text()
 	return text;
 }
 
-bool clipboard_has_text()
+[[nodiscard]] auto clipboard_has_text() -> bool
 {
 	return IsClipboardFormatAvailable(CF_UNICODETEXT);
 }
 
-u32 clipboard_sequence()
+[[nodiscard]] auto clipboard_sequence() -> u32
 {
 	return GetClipboardSequenceNumber();
 }
 
-void clear_clipboard_if_unchanged(u32 t_sequence)
+auto clear_clipboard_if_unchanged(u32 t_sequence) -> void
 {
 	if (GetClipboardSequenceNumber() != t_sequence || !OpenClipboard(nullptr)) return;
 

@@ -16,36 +16,36 @@ class SetupApp {
   public:
 	explicit SetupApp(SetupMode t_mode);
 
-	SetupApp(const SetupApp &) = delete;
-	SetupApp &operator=(const SetupApp &) = delete;
+	SetupApp(const SetupApp&)                    = delete;
+	auto operator=(const SetupApp&) -> SetupApp& = delete;
 
-	SetupOutcome run();
+	auto run() -> SetupOutcome;
 
   private:
-	bool create();
-	bool reload_fonts();
-	void handle_input(const InputEvent &t_event);
-	void redraw_while_moving();
-	void frame();
-	void render();
-	void draw_window_controls();
+	[[nodiscard]] auto create() -> bool;
+	auto reload_fonts() -> bool;
+	auto handle_input(const InputEvent& t_event) -> void;
+	auto redraw_while_moving() -> void;
+	auto frame() -> void;
+	auto render() -> void;
+	auto draw_window_controls() -> void;
 
-	SetupMode m_mode;
-	Settings m_settings;
-	Window m_window;
-	Renderer m_renderer;
-	Assets m_assets;
-	Fonts m_fonts;
-	Fonts m_heading_fonts;
-	Fonts m_title_fonts;
-	DrawList m_draw_list;
+	SetupMode                m_mode;
+	Settings                 m_settings;
+	Window                   m_window;
+	Renderer                 m_renderer;
+	Assets                   m_assets;
+	Fonts                    m_fonts;
+	Fonts                    m_heading_fonts;
+	Fonts                    m_title_fonts;
+	DrawList                 m_draw_list;
 	std::unique_ptr<Texture> m_app_icon;
-	SetupScreen m_screen;
-	TruncationHint m_truncation_hint;
+	SetupScreen              m_screen;
+	TruncationHint           m_truncation_hint;
 
-	Vec2 m_mouse{-1.0f, -1.0f};
-	TitleBarButton m_pressed_button = TitleBarButton::None;
-	bool m_pointer_down = false;
+	Vec2                                  m_mouse{-1.0f, -1.0f};
+	TitleBarButton                        m_pressed_button = TitleBarButton::None;
+	bool                                  m_pointer_down   = false;
 	std::chrono::steady_clock::time_point m_last_frame_time;
-	bool m_in_frame = false;
+	bool                                  m_in_frame = false;
 };

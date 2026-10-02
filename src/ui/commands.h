@@ -32,12 +32,13 @@ enum class CommandType : u8 {
 	LoginAccount,
 	CopyAccountUsername,
 	CopyAccountPassword,
+	LocateRiotClient,
 };
 
 struct ArtSource {
-	Rect rect;
+	Rect  rect;
 	float radius;
-	bool is_icon;
+	bool  is_icon;
 	float border = 0.0f;
 	Color border_color{};
 	float glow = 0.0f;
@@ -46,38 +47,38 @@ struct ArtSource {
 
 struct Command {
 	CommandType type;
-	i32 index = -1;
-	Vec2 position{};
-	TextInput *text_input = nullptr;
-	TextEdit text_edit = TextEdit::Copy;
-	AccountRef account{};
+	i32         index = -1;
+	Vec2        position{};
+	TextInput*  text_input = nullptr;
+	TextEdit    text_edit  = TextEdit::Copy;
+	AccountRef  account{};
 };
 
 class CommandQueue {
   public:
-	void push(const Command &t_command)
+	auto push(const Command& t_command) -> void
 	{
-		if (m_count == capacity) return;
+		if (m_count == K_CAPACITY) return;
 
-		m_commands[(m_first + m_count) % capacity] = t_command;
+		m_commands[(m_first + m_count) % K_CAPACITY] = t_command;
 		m_count += 1;
 	}
 
-	std::optional<Command> pop()
+	[[nodiscard]] auto pop() -> std::optional<Command>
 	{
 		if (m_count == 0) return std::nullopt;
 
 		const Command command = m_commands[m_first];
-		m_first = (m_first + 1) % capacity;
+		m_first               = (m_first + 1) % K_CAPACITY;
 		m_count -= 1;
 
 		return command;
 	}
 
   private:
-	static constexpr u32 capacity = 32;
+	static constexpr u32 K_CAPACITY = 32;
 
-	Command m_commands[capacity]{};
-	u32 m_first = 0;
-	u32 m_count = 0;
+	Command m_commands[K_CAPACITY]{};
+	u32     m_first = 0;
+	u32     m_count = 0;
 };

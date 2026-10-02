@@ -5,12 +5,12 @@
 #include "core/app_identity.h"
 
 namespace {
-constexpr const wchar_t *known_overlay_modules[]{
+constexpr const wchar_t* K_KNOWN_OVERLAY_MODULES[]{
 	L"DiscordHook64.dll", L"DiscordHook32.dll", L"GameOverlayRenderer64.dll", L"GameOverlayRenderer.dll", L"RTSSHooks64.dll",
 };
 }
 
-std::wstring executable_path()
+[[nodiscard]] auto executable_path() -> std::wstring
 {
 	std::wstring path(MAX_PATH, L'\0');
 
@@ -27,7 +27,7 @@ std::wstring executable_path()
 	}
 }
 
-void launch_process(const std::wstring &t_executable, const wchar_t *t_arguments)
+auto launch_process(const std::wstring& t_executable, const wchar_t* t_arguments) -> void
 {
 	std::wstring command = L"\"" + t_executable + L"\"";
 	if (t_arguments != nullptr && *t_arguments != L'\0') {
@@ -35,20 +35,20 @@ void launch_process(const std::wstring &t_executable, const wchar_t *t_arguments
 		command += t_arguments;
 	}
 
-	const usize slash = t_executable.find_last_of(L"\\/");
+	const usize        slash  = t_executable.find_last_of(L"\\/");
 	const std::wstring folder = slash == std::wstring::npos ? std::wstring{} : t_executable.substr(0, slash);
 
-	STARTUPINFOW startup{.cb = sizeof(startup)};
+	STARTUPINFOW        startup{.cb = sizeof(startup)};
 	PROCESS_INFORMATION process{};
 
 	if (CreateProcessW(t_executable.c_str(), command.data(), nullptr, nullptr, FALSE, 0, nullptr, folder.empty() ? nullptr : folder.c_str(), &startup,
-					   &process)) {
+	                   &process)) {
 		CloseHandle(process.hProcess);
 		CloseHandle(process.hThread);
 	}
 }
 
-bool bring_window_to_front(const wchar_t *t_class_name)
+[[nodiscard]] auto bring_window_to_front(const wchar_t* t_class_name) -> bool
 {
 	const HWND window = FindWindowW(t_class_name, nullptr);
 	if (window == nullptr) return false;
@@ -62,17 +62,17 @@ bool bring_window_to_front(const wchar_t *t_class_name)
 	return true;
 }
 
-void set_app_user_model_id()
+auto set_app_user_model_id() -> void
 {
-	SetCurrentProcessExplicitAppUserModelID(app_user_model_id);
+	SetCurrentProcessExplicitAppUserModelID(K_APP_USER_MODEL_ID);
 }
 
-HookBlockResult block_hook_injection()
+[[nodiscard]] auto block_hook_injection() -> HookBlockResult
 {
-	using SetMitigationPolicy = BOOL(WINAPI *)(PROCESS_MITIGATION_POLICY, PVOID, SIZE_T);
+	using SetMitigationPolicy = BOOL(WINAPI*)(PROCESS_MITIGATION_POLICY, PVOID, SIZE_T);
 
-	const HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
-	const auto set_policy = kernel32 != nullptr ? reinterpret_cast<SetMitigationPolicy>(GetProcAddress(kernel32, "SetProcessMitigationPolicy")) : nullptr;
+	const HMODULE kernel32   = GetModuleHandleW(L"kernel32.dll");
+	const auto    set_policy = kernel32 != nullptr ? reinterpret_cast<SetMitigationPolicy>(GetProcAddress(kernel32, "SetProcessMitigationPolicy")) : nullptr;
 	if (set_policy == nullptr) return HookBlockResult::Unsupported;
 
 	PROCESS_MITIGATION_EXTENSION_POINT_DISABLE_POLICY policy{};
@@ -81,9 +81,9 @@ HookBlockResult block_hook_injection()
 	return set_policy(ProcessExtensionPointDisablePolicy, &policy, sizeof(policy)) ? HookBlockResult::Blocked : HookBlockResult::Refused;
 }
 
-const wchar_t *injected_overlay_module()
+[[nodiscard]] auto injected_overlay_module() -> const wchar_t*
 {
-	for (const wchar_t *module : known_overlay_modules) {
+	for (const wchar_t* module : K_KNOWN_OVERLAY_MODULES) {
 		if (GetModuleHandleW(module) != nullptr) return module;
 	}
 
@@ -91,7 +91,7 @@ const wchar_t *injected_overlay_module()
 }
 
 SingleInstanceGuard::SingleInstanceGuard()
-	: m_mutex(CreateMutexW(nullptr, TRUE, single_instance_mutex_name))
+	: m_mutex(CreateMutexW(nullptr, TRUE, K_SINGLE_INSTANCE_MUTEX_NAME))
 	, m_first_instance(m_mutex != nullptr && GetLastError() != ERROR_ALREADY_EXISTS)
 {
 }
@@ -101,7 +101,7 @@ SingleInstanceGuard::~SingleInstanceGuard()
 	release();
 }
 
-void SingleInstanceGuard::release()
+auto SingleInstanceGuard::release() -> void
 {
 	if (m_mutex == nullptr) return;
 

@@ -33,70 +33,70 @@ class Updater {
 	Updater() = default;
 	~Updater();
 
-	Updater(const Updater &) = delete;
-	Updater &operator=(const Updater &) = delete;
+	Updater(const Updater&)                    = delete;
+	auto operator=(const Updater&) -> Updater& = delete;
 
-	static bool handed_off_to_repaired_copy();
+	[[nodiscard]] static auto handed_off_to_repaired_copy() -> bool;
 
-	void check_for_update();
-	void start_download();
-	void update();
+	auto check_for_update() -> void;
+	auto start_download() -> void;
+	auto update() -> void;
 
-	void request_cancel()
+	auto request_cancel() -> void
 	{
 		m_cancel_requested.store(true, std::memory_order_relaxed);
 	}
 
-	bool consume_ready_to_relaunch();
+	[[nodiscard]] auto consume_ready_to_relaunch() -> bool;
 
-	UpdateStage stage() const
+	[[nodiscard]] auto stage() const -> UpdateStage
 	{
 		return m_stage.load(std::memory_order_acquire);
 	}
 
-	const UpdateManifest &manifest() const
+	[[nodiscard]] auto manifest() const -> const UpdateManifest&
 	{
 		return m_manifest;
 	}
 
-	const char *error_message() const
+	[[nodiscard]] auto error_message() const -> const char*
 	{
 		return m_error_message;
 	}
 
-	u64 bytes_downloaded() const
+	[[nodiscard]] auto bytes_downloaded() const -> u64
 	{
 		return m_bytes_downloaded.load(std::memory_order_relaxed);
 	}
 
-	u64 total_bytes() const
+	[[nodiscard]] auto total_bytes() const -> u64
 	{
 		return m_total_bytes.load(std::memory_order_relaxed);
 	}
 
-	double bytes_per_second() const
+	[[nodiscard]] auto bytes_per_second() const -> double
 	{
 		return m_bytes_per_second.load(std::memory_order_relaxed);
 	}
 
   private:
-	void check_for_update_on_worker();
-	void download_and_install_on_worker(UpdateManifest t_manifest);
-	void finish_worker(UpdateStage t_stage);
-	void fail_worker(UpdateStage t_stage, const char *t_prefix, const char *t_detail);
-	void prepare_new_worker();
+	auto check_for_update_on_worker() -> void;
+	auto download_and_install_on_worker(UpdateManifest t_manifest) -> void;
+	auto finish_worker(UpdateStage t_stage) -> void;
+	auto fail_worker(UpdateStage t_stage, const char* t_prefix, const char* t_detail) -> void;
+	auto prepare_new_worker() -> void;
 
 	std::atomic<UpdateStage> m_stage{UpdateStage::Idle};
-	std::atomic<bool> m_cancel_requested{false};
-	std::atomic<bool> m_worker_finished{false};
-	std::thread m_worker;
-	bool m_worker_active = false;
-	bool m_ready_to_relaunch = false;
+	std::atomic<bool>        m_cancel_requested{false};
+	std::atomic<bool>        m_worker_finished{false};
+	std::thread              m_worker;
+	bool                     m_worker_active     = false;
+	bool                     m_ready_to_relaunch = false;
 
-	std::atomic<u64> m_bytes_downloaded{0};
-	std::atomic<u64> m_total_bytes{0};
+	std::atomic<u64>    m_bytes_downloaded{0};
+	std::atomic<u64>    m_total_bytes{0};
 	std::atomic<double> m_bytes_per_second{0.0};
 
 	UpdateManifest m_manifest{};
-	char m_error_message[256]{};
+	char           m_error_message[256]{};
 };

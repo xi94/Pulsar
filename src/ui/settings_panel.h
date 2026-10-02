@@ -25,7 +25,7 @@ enum class SettingsTab : u8 {
 	Count,
 };
 
-constexpr u32 settings_tab_count = static_cast<u32>(SettingsTab::Count);
+constexpr u32 K_SETTINGS_TAB_COUNT = static_cast<u32>(SettingsTab::Count);
 
 enum class ResettableSetting : u8 {
 	Theme,
@@ -41,38 +41,39 @@ enum class ResettableSetting : u8 {
 	AnimationSpeed,
 	CloseToTray,
 	AutoLock,
+	RiotClient,
 	Count,
 };
 
 class SettingsPanel : public Widget {
   public:
-	SettingsPanel(Settings *t_settings, Fonts *t_fonts, Renderer *t_renderer, const Window *t_window, const Assets *t_assets, CommandQueue *t_commands);
+	SettingsPanel(Settings* t_settings, Fonts* t_fonts, Renderer* t_renderer, const Window* t_window, const Assets* t_assets, CommandQueue* t_commands);
 
-	void open();
-	void close();
-	void sync_with_settings();
-	void restore_committed_previews(Settings *t_settings) const;
+	auto open() -> void;
+	auto close() -> void;
+	auto sync_with_settings() -> void;
+	auto restore_committed_previews(Settings* t_settings) const -> void;
 
-	void update(float t_delta_seconds) override;
-	void draw(DrawList *t_draw_list) override;
+	auto update(float t_delta_seconds) -> void override;
+	auto draw(DrawList* t_draw_list) -> void override;
 
-	bool on_pointer_down(Vec2 t_point) override;
-	bool on_pointer_move(Vec2 t_point) override;
-	bool on_pointer_up(Vec2 t_point) override;
-	bool on_right_click(Vec2 t_point) override;
-	bool on_scroll(Vec2 t_point, float t_wheel_delta) override;
-	bool on_key_down(u32 t_key) override;
-	bool on_char(u32 t_character) override;
+	auto on_pointer_down(Vec2 t_point) -> bool override;
+	auto on_pointer_move(Vec2 t_point) -> bool override;
+	auto on_pointer_up(Vec2 t_point) -> bool override;
+	auto on_right_click(Vec2 t_point) -> bool override;
+	auto on_scroll(Vec2 t_point, float t_wheel_delta) -> bool override;
+	auto on_key_down(u32 t_key) -> bool override;
+	auto on_char(u32 t_character) -> bool override;
 
-	bool is_blocking() const override
+	[[nodiscard]] auto is_blocking() const -> bool override
 	{
 		return m_open_amount > 0.01f;
 	}
 
-	CursorKind cursor() const override;
+	[[nodiscard]] auto cursor() const -> CursorKind override;
 
   private:
-	static constexpr u32 group_count = 7;
+	static constexpr u32 K_GROUP_COUNT = 8;
 
 	enum class SliderKind : u8 {
 		CornerRoundness,
@@ -84,7 +85,7 @@ class SettingsPanel : public Widget {
 		Count,
 	};
 
-	static constexpr u32 slider_count = static_cast<u32>(SliderKind::Count);
+	static constexpr u32 K_SLIDER_COUNT = static_cast<u32>(SliderKind::Count);
 
 	struct Layout {
 		Rect panel;
@@ -96,69 +97,70 @@ class SettingsPanel : public Widget {
 	};
 
 	struct Rows {
-		Rect theme;
-		Rect font;
-		Rect font_size;
-		Rect secondary_font_size;
-		Rect accent;
-		Rect corner_roundness;
-		Rect background;
-		Rect background_light;
-		Rect background_grain;
-		Rect snow;
-		Rect notifications;
-		Rect animations;
-		Rect hide_from_capture;
-		Rect block_overlay_injection;
-		Rect close_to_tray;
-		Rect auto_lock;
-		Rect master_password;
+		Rect  theme;
+		Rect  font;
+		Rect  font_size;
+		Rect  secondary_font_size;
+		Rect  accent;
+		Rect  corner_roundness;
+		Rect  background;
+		Rect  background_light;
+		Rect  background_grain;
+		Rect  snow;
+		Rect  notifications;
+		Rect  animations;
+		Rect  hide_from_capture;
+		Rect  block_overlay_injection;
+		Rect  close_to_tray;
+		Rect  riot_client;
+		Rect  auto_lock;
+		Rect  master_password;
 		float content_height;
 		float row_width;
-		Rect cards[group_count];
-		Rect group_titles[group_count];
-		u32 listed_count;
+		Rect  cards[K_GROUP_COUNT];
+		Rect  group_titles[K_GROUP_COUNT];
+		u32   listed_count;
 	};
 
 	struct ThemeChoice {
 		ThemeKind theme;
-		Color accent;
+		Color     accent;
 
-		bool operator==(const ThemeChoice &) const = default;
+		auto operator==(const ThemeChoice&) const -> bool = default;
 	};
 
 	struct RowSpec {
-		Rect Rows::*row;
-		SettingsTab tab;
-		u32 group;
-		const char *title;
-		const char *description;
-		const char *keywords;
+		Rect Rows::* row;
+		SettingsTab  tab;
+		u32          group;
+		const char*  title;
+		const char*  description;
+		const char*  keywords;
 	};
 
 	struct GroupSpec {
 		SettingsTab tab;
-		const char *title;
+		const char* title;
 	};
 
 	struct Toggle {
-		bool Settings::*value;
-		Rect Rows::*row;
+		bool Settings::* value;
+		Rect Rows::* row;
 	};
 
-	static const RowSpec row_specs[];
-	static const GroupSpec group_specs[group_count];
+	static const RowSpec   K_ROW_SPECS[];
+	static const GroupSpec K_GROUP_SPECS[K_GROUP_COUNT];
 
 	struct PercentSlider {
-		Rect Rows::*row;
-		float Settings::*value;
-		bool (*shown)(const Settings *t_settings);
+		Rect Rows::* row;
+		float Settings::* value;
+		bool (*shown)(const Settings* t_settings);
 	};
 
-	static constexpr u32 percent_slider_count = 3;
-	static const PercentSlider percent_sliders[percent_slider_count];
+	static constexpr u32       K_PERCENT_SLIDER_COUNT = 3;
+	static const PercentSlider K_PERCENT_SLIDERS[K_PERCENT_SLIDER_COUNT];
 
-	static constexpr Toggle toggles[]{
+	static constexpr Toggle K_TOGGLES[]{
 		{&Settings::show_notifications, &Rows::notifications},
 		{&Settings::animations_enabled, &Rows::animations},
 		{&Settings::hide_from_capture, &Rows::hide_from_capture},
@@ -168,140 +170,146 @@ class SettingsPanel : public Widget {
 		{&Settings::snow, &Rows::snow},
 	};
 
-	static constexpr u32 toggle_count = static_cast<u32>(std::size(toggles));
-	static constexpr u32 first_toggle_reset = static_cast<u32>(ResettableSetting::Count);
-	static constexpr u32 reset_count = first_toggle_reset + toggle_count;
+	static constexpr u32 K_TOGGLE_COUNT       = static_cast<u32>(std::size(K_TOGGLES));
+	static constexpr u32 K_FIRST_TOGGLE_RESET = static_cast<u32>(ResettableSetting::Count);
+	static constexpr u32 K_RESET_COUNT        = K_FIRST_TOGGLE_RESET + K_TOGGLE_COUNT;
 
-	Layout layout() const;
-	Rows rows(const Layout &t_layout) const;
-	ScrollGeometry rows_scroll(const Layout &t_layout, const Rows &t_rows) const;
-	bool is_on_screen(const Layout &t_layout, Rect t_row) const;
-	bool hits(const Layout &t_layout, Rect t_row, Rect t_control, Vec2 t_point) const;
-	ListPopup *open_list();
-	const ListPopup *open_list() const;
-	bool has_popup_open() const;
-	Rect tab_rect(const Layout &t_layout, SettingsTab t_tab) const;
-	std::optional<SettingsTab> tab_at(const Layout &t_layout, Vec2 t_point) const;
-	void select_tab(SettingsTab t_tab);
-	bool is_row_hovered(const Layout &t_layout, Rect t_row) const;
+	[[nodiscard]] auto layout() const -> Layout;
+	[[nodiscard]] auto rows(const Layout& t_layout) const -> Rows;
+	[[nodiscard]] auto rows_scroll(const Layout& t_layout, const Rows& t_rows) const -> ScrollGeometry;
+	[[nodiscard]] auto is_on_screen(const Layout& t_layout, Rect t_row) const -> bool;
+	[[nodiscard]] auto hits(const Layout& t_layout, Rect t_row, Rect t_control, Vec2 t_point) const -> bool;
+	[[nodiscard]] auto open_list() -> ListPopup*;
+	[[nodiscard]] auto open_list() const -> const ListPopup*;
+	[[nodiscard]] auto has_popup_open() const -> bool;
+	[[nodiscard]] auto tab_rect(const Layout& t_layout, SettingsTab t_tab) const -> Rect;
+	[[nodiscard]] auto tab_at(const Layout& t_layout, Vec2 t_point) const -> std::optional<SettingsTab>;
+	auto select_tab(SettingsTab t_tab) -> void;
+	[[nodiscard]] auto is_row_hovered(const Layout& t_layout, Rect t_row) const -> bool;
 
-	static const RowSpec &spec_of(Rect Rows::*t_row);
-	bool is_searching() const;
-	bool matches_search(const RowSpec &t_spec) const;
-	bool is_listed(const RowSpec &t_spec) const;
-	float row_extent(const RowSpec &t_spec) const;
+	[[nodiscard]] static auto spec_of(Rect Rows::* t_row) -> const RowSpec&;
+	[[nodiscard]] auto is_searching() const -> bool;
+	[[nodiscard]] auto matches_search(const RowSpec& t_spec) const -> bool;
+	[[nodiscard]] auto is_listed(const RowSpec& t_spec) const -> bool;
+	[[nodiscard]] auto row_extent(const RowSpec& t_spec) const -> float;
 
-	float inline_slider_left(Rect t_row) const;
-	Rect slider_line(const Rows &t_rows, SliderKind t_slider) const;
-	Rect slider_rect(const Rows &t_rows, SliderKind t_slider) const;
-	Rect slider_hit_rect(const Rows &t_rows, SliderKind t_slider) const;
-	float slider_visibility(SliderKind t_slider) const;
-	float slider_fraction(SliderKind t_slider) const;
-	std::string_view slider_readout(SliderKind t_slider, char (&t_buffer)[16]) const;
-	std::optional<SliderKind> slider_at(const Layout &t_layout, const Rows &t_rows, Vec2 t_point) const;
-	void apply_slider(SliderKind t_slider, float t_fraction);
+	[[nodiscard]] auto inline_slider_left(Rect t_row) const -> float;
+	[[nodiscard]] auto slider_line(const Rows& t_rows, SliderKind t_slider) const -> Rect;
+	[[nodiscard]] auto slider_rect(const Rows& t_rows, SliderKind t_slider) const -> Rect;
+	[[nodiscard]] auto slider_hit_rect(const Rows& t_rows, SliderKind t_slider) const -> Rect;
+	[[nodiscard]] auto slider_visibility(SliderKind t_slider) const -> float;
+	[[nodiscard]] auto slider_fraction(SliderKind t_slider) const -> float;
+	[[nodiscard]] auto slider_readout(SliderKind t_slider, char (&t_buffer)[16]) const -> std::string_view;
+	[[nodiscard]] auto slider_at(const Layout& t_layout, const Rows& t_rows, Vec2 t_point) const -> std::optional<SliderKind>;
+	auto apply_slider(SliderKind t_slider, float t_fraction) -> void;
 
-	Vec2 pattern_tile_size() const;
-	Rect pattern_popup_rect(const Rows &t_rows) const;
-	Rect pattern_tile(Rect t_popup, u32 t_index) const;
-	std::optional<u32> pattern_at(Rect t_popup, Vec2 t_point) const;
+	[[nodiscard]] auto pattern_tile_size() const -> Vec2;
+	[[nodiscard]] auto pattern_popup_rect(const Rows& t_rows) const -> Rect;
+	[[nodiscard]] auto pattern_tile(Rect t_popup, u32 t_index) const -> Rect;
+	[[nodiscard]] auto pattern_at(Rect t_popup, Vec2 t_point) const -> std::optional<u32>;
 
-	Rect close_choice_rect(Rect t_row) const;
-	Rect close_segment(Rect t_choice, u32 t_index) const;
-	Rect search_rect(const Layout &t_layout) const;
-	void refresh_search();
-	void clear_search();
-	void focus_search();
+	[[nodiscard]] auto close_choice_rect(Rect t_row) const -> Rect;
+	[[nodiscard]] auto close_segment(Rect t_choice, u32 t_index) const -> Rect;
+	[[nodiscard]] auto search_rect(const Layout& t_layout) const -> Rect;
+	auto refresh_search() -> void;
+	auto clear_search() -> void;
+	auto focus_search() -> void;
 
-	static const Toggle *reset_toggle(u32 t_setting);
-	Rect reset_row(const Rows &t_rows, u32 t_setting) const;
-	Rect reset_control(const Rows &t_rows, u32 t_setting) const;
-	Rect reset_button(const Rows &t_rows, u32 t_setting) const;
-	static std::optional<SliderKind> reset_slider(u32 t_setting);
-	bool can_reset(u32 t_setting) const;
-	void settle_resets();
-	bool is_default(u32 t_setting) const;
-	void reset_to_default(u32 t_setting);
+	[[nodiscard]] static auto reset_toggle(u32 t_setting) -> const Toggle*;
+	[[nodiscard]] auto reset_row(const Rows& t_rows, u32 t_setting) const -> Rect;
+	[[nodiscard]] auto reset_control(const Rows& t_rows, u32 t_setting) const -> Rect;
+	[[nodiscard]] auto reset_button(const Rows& t_rows, u32 t_setting) const -> Rect;
+	[[nodiscard]] static auto reset_slider(u32 t_setting) -> std::optional<SliderKind>;
+	[[nodiscard]] auto can_reset(u32 t_setting) const -> bool;
+	auto settle_resets() -> void;
+	[[nodiscard]] auto is_default(u32 t_setting) const -> bool;
+	auto reset_to_default(u32 t_setting) -> void;
 
-	bool load_fonts(std::string_view t_file);
-	void open_font_list();
-	void open_theme_list();
-	void choose_font(u32 t_index);
-	void refresh_font_label();
-	void show_theme(ThemeChoice t_choice);
-	void select_theme(ThemeKind t_theme);
-	void choose_theme(ThemeKind t_theme);
-	void cycle_theme(i32 t_step);
-	void update_theme_preview();
-	void choose_background(u32 t_index);
-	void pull_picked_color();
-	void step_font_size(Rect t_stepper, float *t_value, float t_min, float t_max, Vec2 t_point);
-	void handle_click(Vec2 t_point);
+	auto load_fonts(std::string_view t_file) -> bool;
+	auto open_font_list() -> void;
+	auto open_theme_list() -> void;
+	auto choose_font(u32 t_index) -> void;
+	auto refresh_font_label() -> void;
+	auto show_theme(ThemeChoice t_choice) -> void;
+	auto select_theme(ThemeKind t_theme) -> void;
+	auto choose_theme(ThemeKind t_theme) -> void;
+	auto cycle_theme(i32 t_step) -> void;
+	auto update_theme_preview() -> void;
+	auto choose_background(u32 t_index) -> void;
+	auto pull_picked_color() -> void;
+	auto step_font_size(Rect t_stepper, float* t_value, float t_min, float t_max, Vec2 t_point) -> void;
+	auto handle_click(Vec2 t_point) -> void;
 
-	void update_hover_hints(float t_delta_seconds);
+	auto update_hover_hints(float t_delta_seconds) -> void;
 
-	void draw_chrome(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha) const;
-	void draw_rail(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha) const;
-	void draw_label(DrawList *t_draw_list, const Rows &t_rows, Rect Rows::*t_row, Rect t_control, u8 t_alpha) const;
-	void draw_dropdown_row(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, Rect Rows::*t_row, std::string_view t_value, bool t_open,
-						   u8 t_alpha) const;
-	void draw_search(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha);
-	void draw_cards(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_captions(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_no_results(DrawList *t_draw_list, const Layout &t_layout, u8 t_alpha) const;
-	void draw_appearance(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_pattern_row(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_pattern_popup(DrawList *t_draw_list, const Rows &t_rows, u8 t_alpha) const;
-	void draw_close_choice(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_toggles(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_sliders(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_master_password(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
-	void draw_reset_buttons(DrawList *t_draw_list, const Layout &t_layout, const Rows &t_rows, u8 t_alpha) const;
+	auto draw_chrome(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void;
+	auto draw_rail(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void;
+	auto draw_label(DrawList* t_draw_list, const Rows& t_rows, Rect Rows::* t_row, Rect t_control, u8 t_alpha) const -> void;
+	auto draw_dropdown_row(DrawList*     t_draw_list,
+	                       const Layout& t_layout,
+	                       const Rows&   t_rows,
+	                       Rect Rows::*     t_row,
+	                       std::string_view t_value,
+	                       bool             t_open,
+	                       u8               t_alpha) const -> void;
+	auto draw_search(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) -> void;
+	auto draw_cards(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
+	auto draw_captions(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
+	auto draw_no_results(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void;
+	auto draw_appearance(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
+	auto draw_pattern_row(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
+	auto draw_pattern_popup(DrawList* t_draw_list, const Rows& t_rows, u8 t_alpha) const -> void;
+	auto draw_close_choice(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
+	auto draw_toggles(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
+	auto draw_sliders(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
+	auto draw_riot_client(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
+	auto draw_master_password(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
+	auto draw_reset_buttons(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
 
-	Settings *m_settings;
-	Fonts *m_fonts;
-	Renderer *m_renderer;
-	const Window *m_window;
-	const Assets *m_assets;
-	CommandQueue *m_commands;
+	Settings*     m_settings;
+	Fonts*        m_fonts;
+	Renderer*     m_renderer;
+	const Window* m_window;
+	const Assets* m_assets;
+	CommandQueue* m_commands;
 
-	bool m_open = false;
-	SettingsTab m_tab = SettingsTab::Appearance;
-	float m_tab_indicator = 0.0f;
-	float m_open_amount = 0.0f;
+	bool        m_open          = false;
+	SettingsTab m_tab           = SettingsTab::Appearance;
+	float       m_tab_indicator = 0.0f;
+	float       m_open_amount   = 0.0f;
 
-	InstalledFonts m_installed_fonts;
+	InstalledFonts                m_installed_fonts;
 	std::vector<std::string_view> m_font_names;
-	std::string m_font_label;
-	ListPopup m_font_list;
-	ListPopup m_theme_list;
-	std::optional<ThemeChoice> m_theme_before_preview;
-	float m_theme_wheel = 0.0f;
-	ColorPicker m_color_picker;
-	Scrollable m_rows_scroll;
-	Tooltip m_tooltip;
-	Draggable m_slider_drags[slider_count];
+	std::string                   m_font_label;
+	ListPopup                     m_font_list;
+	ListPopup                     m_theme_list;
+	std::optional<ThemeChoice>    m_theme_before_preview;
+	float                         m_theme_wheel = 0.0f;
+	ColorPicker                   m_color_picker;
+	Scrollable                    m_rows_scroll;
+	Tooltip                       m_tooltip;
+	Draggable                     m_slider_drags[K_SLIDER_COUNT];
 
 	TextInput m_search;
-	char m_applied_query[text_input_capacity]{};
+	char      m_applied_query[K_TEXT_INPUT_CAPACITY]{};
 
-	float m_toggles_shown[toggle_count]{};
-	float m_slider_hover[slider_count]{};
-	float m_pattern_ring[background_count]{};
-	bool m_pattern_open = false;
+	float m_toggles_shown[K_TOGGLE_COUNT]{};
+	float m_slider_hover[K_SLIDER_COUNT]{};
+	float m_pattern_ring[K_BACKGROUND_COUNT]{};
+	bool  m_pattern_open        = false;
 	float m_pattern_open_amount = 0.0f;
-	float m_close_choice_shown = 0.0f;
+	float m_close_choice_shown  = 0.0f;
 
-	float m_font_size_shown = 0.0f;
+	float m_font_size_shown           = 0.0f;
 	float m_secondary_font_size_shown = 0.0f;
-	float m_animation_speed_shown = 0.0f;
-	float m_corner_roundness_shown = 0.0f;
-	float m_percent_shown[percent_slider_count]{};
-	float m_percent_reveal[percent_slider_count]{};
+	float m_animation_speed_shown     = 0.0f;
+	float m_corner_roundness_shown    = 0.0f;
+	float m_percent_shown[K_PERCENT_SLIDER_COUNT]{};
+	float m_percent_reveal[K_PERCENT_SLIDER_COUNT]{};
 	float m_animation_speed_reveal = 0.0f;
-	float m_auto_lock_shown = 0.0f;
+	float m_auto_lock_shown        = 0.0f;
 	float m_accent_shown[3]{};
 
-	float m_reset_visible[reset_count]{};
-	float m_reset_spin[reset_count]{};
+	float m_reset_visible[K_RESET_COUNT]{};
+	float m_reset_spin[K_RESET_COUNT]{};
 };
