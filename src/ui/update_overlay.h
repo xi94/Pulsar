@@ -9,12 +9,14 @@
 
 class Assets;
 struct Fonts;
+namespace os {
 class Window;
+}
 struct Settings;
 
 class UpdateOverlay : public Widget {
   public:
-	UpdateOverlay(Updater* t_updater, const Settings* t_settings, const Fonts* t_fonts, const Assets* t_assets, const Window* t_window);
+	UpdateOverlay(Updater* t_updater, const Settings* t_settings, const Fonts* t_fonts, const Assets* t_assets, const os::Window* t_window);
 
 	auto open() -> void;
 	auto begin_check() -> void;
@@ -53,7 +55,7 @@ class UpdateOverlay : public Widget {
 	auto on_pointer_move(Vec2 t_point) -> bool override;
 	auto on_pointer_up(Vec2 t_point) -> bool override;
 	auto on_scroll(Vec2 t_point, float t_wheel_delta) -> bool override;
-	auto on_key_down(u32 t_key) -> bool override;
+	auto on_key_down(os::Key t_key) -> bool override;
 
 	[[nodiscard]] auto is_blocking() const -> bool override
 	{
@@ -116,11 +118,11 @@ class UpdateOverlay : public Widget {
 	auto draw_notes(DrawList* t_draw_list, Rect t_box, const ScrollGeometry& t_scroll, u8 t_alpha) const -> void;
 	auto draw_progress(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void;
 
-	Updater*        m_updater;
-	const Settings* m_settings;
-	const Fonts*    m_fonts;
-	const Assets*   m_assets;
-	const Window*   m_window;
+	Updater*          m_updater;
+	const Settings*   m_settings;
+	const Fonts*      m_fonts;
+	const Assets*     m_assets;
+	const os::Window* m_window;
 
 	bool        m_open            = false;
 	float       m_open_amount     = 0.0f;

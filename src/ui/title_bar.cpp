@@ -114,7 +114,7 @@ struct StatusLook {
 }
 }
 
-TitleBar::TitleBar(Window*              t_window,
+TitleBar::TitleBar(os::Window*          t_window,
                    const Updater*       t_updater,
                    const UpdateOverlay* t_update_overlay,
                    const Fonts*         t_fonts,
@@ -133,10 +133,10 @@ auto TitleBar::update(float t_delta_seconds) -> void
 {
 	const bool visible =
 		is_update_worth_showing(m_updater->stage()) || m_update_overlay->is_open() || m_update_overlay->is_shown() || m_update_overlay->wants_status();
-	m_window->set_update_button_visible(visible);
-	m_update_reveal = animation::ease_toward(m_update_reveal, visible ? 1.0f : 0.0f, K_STATUS_REVEAL_RATE, t_delta_seconds);
+	m_update_visible = visible;
+	m_update_reveal  = animation::ease_toward(m_update_reveal, visible ? 1.0f : 0.0f, K_STATUS_REVEAL_RATE, t_delta_seconds);
 
-	const bool emphasized = visible && (m_update_overlay->is_open() || m_window->title_bar_button_rect(TitleBarButton::Update).contains(m_mouse));
+	const bool emphasized = visible && (m_update_overlay->is_open() || layout().button_rect(TitleBarButton::Update).contains(m_mouse));
 	m_status_emphasis     = animation::ease_toward(m_status_emphasis, emphasized ? 1.0f : 0.0f, K_STATUS_EMPHASIS_RATE, t_delta_seconds);
 
 	if (!visible && m_update_reveal <= 0.0f) return;
@@ -148,7 +148,6 @@ auto TitleBar::update(float t_delta_seconds) -> void
 
 	m_status_width =
 		m_status_width <= 0.0f ? target : animation::ease_toward(m_status_width, target, K_STATUS_WIDTH_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS);
-	m_window->set_update_button_width(m_status_width);
 
 	if (look.spinning) {
 		constexpr float FULL_TURN = std::numbers::pi_v<float> * 2.0f;
@@ -158,14 +157,24 @@ auto TitleBar::update(float t_delta_seconds) -> void
 	}
 }
 
+auto TitleBar::layout() const -> TitleBarLayout
+{
+	return TitleBarLayout{
+		.width          = static_cast<float>(m_window->width()),
+		.update_visible = m_update_visible,
+		.update_width   = m_status_width > 0.0f ? m_status_width : K_UPDATE_BUTTON_WIDTH,
+		.search_visible = m_search_visible,
+	};
+}
+
 auto TitleBar::on_pointer_down(Vec2 t_point) -> bool
 {
-	return m_window->title_bar_button_at(t_point) != TitleBarButton::None;
+	return layout().button_at(t_point) != TitleBarButton::None;
 }
 
 auto TitleBar::on_pointer_up(Vec2 t_point) -> bool
 {
-	switch (m_window->title_bar_button_at(t_point)) {
+	switch (layout().button_at(t_point)) {
 		case TitleBarButton::None:
 			return false;
 
@@ -182,15 +191,15 @@ auto TitleBar::on_pointer_up(Vec2 t_point) -> bool
 			break;
 
 		case TitleBarButton::Minimize:
-			ShowWindow(m_window->handle(), SW_MINIMIZE);
+			m_window->minimize();
 			break;
 
 		case TitleBarButton::Maximize:
-			ShowWindow(m_window->handle(), m_window->is_maximized() ? SW_RESTORE : SW_MAXIMIZE);
+			m_window->toggle_maximized();
 			break;
 
 		case TitleBarButton::Close:
-			PostMessageW(m_window->handle(), WM_CLOSE, 0, 0);
+			m_window->close();
 			break;
 	}
 
@@ -199,20 +208,20 @@ auto TitleBar::on_pointer_up(Vec2 t_point) -> bool
 
 auto TitleBar::cursor() const -> CursorKind
 {
-	return m_window->title_bar_button_at(m_mouse) == TitleBarButton::None ? CursorKind::Arrow : CursorKind::Hand;
+	return layout().button_at(m_mouse) == TitleBarButton::None ? CursorKind::Arrow : CursorKind::Hand;
 }
 
 auto TitleBar::draw_hover(DrawList* t_draw_list, TitleBarButton t_button, TitleBarButton t_hovered) const -> void
 {
 	if (t_button != t_hovered) return;
 
-	t_draw_list->add_rect(m_window->title_bar_button_rect(t_button),
+	t_draw_list->add_rect(layout().button_rect(t_button),
 	                      t_button == TitleBarButton::Close ? K_TITLE_BAR_CLOSE_HOVER : with_alpha(g_theme.text, K_TITLE_BAR_HOVER_ALPHA));
 }
 
 auto TitleBar::draw_identity(DrawList* t_draw_list, float t_amount) const -> void
 {
-	const Rect  menu  = m_window->title_bar_button_rect(TitleBarButton::Menu);
+	const Rect  menu  = layout().button_rect(TitleBarButton::Menu);
 	const float shift = -K_STATUS_SHIFT * (1.0f - t_amount);
 	const Rect  mark{menu.right() + K_IDENTITY_GAP * 0.5f, (K_TITLE_BAR_HEIGHT - K_IDENTITY_MARK_SIZE) * 0.5f + shift, K_IDENTITY_MARK_SIZE,
 	                 K_IDENTITY_MARK_SIZE};
@@ -227,7 +236,7 @@ auto TitleBar::draw_update_status(DrawList* t_draw_list, float t_amount) const -
 {
 	char             percent[8];
 	const StatusLook look  = status_look(m_updater, m_update_overlay->shown_stage(), m_update_overlay->is_showing_release_notes(), percent);
-	const Rect       area  = m_window->title_bar_button_rect(TitleBarButton::Update);
+	const Rect       area  = layout().button_rect(TitleBarButton::Update);
 	const auto       alpha = to_alpha(t_amount);
 	const float      shift = K_STATUS_SHIFT * (1.0f - t_amount);
 	t_draw_list->push_clip(area);
@@ -252,9 +261,9 @@ auto TitleBar::draw_update_status(DrawList* t_draw_list, float t_amount) const -
 
 auto TitleBar::draw_search_pill(DrawList* t_draw_list, TitleBarButton t_hovered) const -> void
 {
-	if (!m_window->is_search_button_visible()) return;
+	if (!m_search_visible) return;
 
-	const Rect area = m_window->title_bar_button_rect(TitleBarButton::Search);
+	const Rect area = layout().button_rect(TitleBarButton::Search);
 	if (area.w <= 0.0f) return;
 
 	const bool  is_hovered = t_hovered == TitleBarButton::Search;
@@ -280,7 +289,7 @@ auto TitleBar::draw_search_pill(DrawList* t_draw_list, TitleBarButton t_hovered)
 
 auto TitleBar::draw_maximize_glyph(DrawList* t_draw_list, Color t_color) const -> void
 {
-	const Vec2 center = m_window->title_bar_button_rect(TitleBarButton::Maximize).center();
+	const Vec2 center = layout().button_rect(TitleBarButton::Maximize).center();
 
 	if (!m_window->is_maximized()) {
 		constexpr float SQUARE_SIZE = 10.0f;
@@ -300,8 +309,8 @@ auto TitleBar::draw(DrawList* t_draw_list) -> void
 {
 	t_draw_list->add_rect(Rect{0.0f, 0.0f, static_cast<float>(m_window->width()), K_TITLE_BAR_HEIGHT}, g_theme.chrome);
 
-	const TitleBarButton hovered     = m_window->title_bar_button_at(m_mouse);
-	const auto           icon_rect   = [this](TitleBarButton t_button) { return m_window->title_bar_button_rect(t_button).centered(K_ICON_SIZE, K_ICON_SIZE); };
+	const TitleBarButton hovered     = layout().button_at(m_mouse);
+	const auto           icon_rect   = [this](TitleBarButton t_button) { return layout().button_rect(t_button).centered(K_ICON_SIZE, K_ICON_SIZE); };
 	const auto           glyph_color = [hovered](TitleBarButton t_button) { return hovered == t_button ? g_theme.text : g_theme.text_dim; };
 
 	draw_hover(t_draw_list, TitleBarButton::Menu, hovered);

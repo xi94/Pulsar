@@ -8,7 +8,6 @@
 #include "core/debug_log.h"
 #include "core/str.h"
 #include "core/thread_util.h"
-#include "login/ui_automation.h"
 
 namespace {
 constexpr const char* K_LOG_CATEGORY = "login";
@@ -72,26 +71,23 @@ auto fail(LoginWork* t_work, const char* t_message) -> void
 	return true;
 }
 
-[[nodiscard]] auto is_invalid_credentials(const std::wstring& t_error) -> bool
+[[nodiscard]] auto is_invalid_credentials(const std::string& t_error) -> bool
 {
-	return t_error.find(L"credentials") != std::wstring::npos;
+	return t_error.find("credentials") != std::string::npos;
 }
 
-[[nodiscard]] auto failure_message(const std::wstring& t_error) -> const char*
+[[nodiscard]] auto failure_message(const std::string& t_error) -> const char*
 {
 	if (t_error.empty()) return K_UNRECOGNIZED_ERROR_MESSAGE;
 
 	return is_invalid_credentials(t_error) ? K_INVALID_CREDENTIALS_MESSAGE : K_SERVER_ERROR_MESSAGE;
 }
 
-[[nodiscard]] auto
-submit_and_wait_for_error(LoginWork* t_work, const UiAutomation& t_automation, std::wstring* t_out_error, const std::wstring* t_error_to_ignore = nullptr)
-	-> bool
+[[nodiscard]] auto submit_and_wait_for_error(LoginWork* t_work, std::string* t_out_error, const std::string* t_error_to_ignore = nullptr) -> bool
 {
 	t_out_error->clear();
 
-	return t_work->riot_client.submit_login(t_automation, t_work->username, t_work->password, &t_work->cancel_requested) &&
-	       t_work->riot_client.wait_for_login_result(t_automation, t_out_error, &t_work->cancel_requested, t_error_to_ignore);
+	return t_work->riot_client.submit_login(t_work->username, t_work->password) && t_work->riot_client.wait_for_login_result(t_out_error, t_error_to_ignore);
 }
 
 [[nodiscard]] auto start_fresh_client(LoginWork* t_work) -> bool
@@ -122,7 +118,7 @@ submit_and_wait_for_error(LoginWork* t_work, const UiAutomation& t_automation, s
 		return false;
 	}
 
-	t_work->riot_client.wait_for_responsive_window(&t_work->cancel_requested);
+	t_work->riot_client.wait_for_responsive_window();
 
 	return !stop_if_cancelled(t_work);
 }
@@ -131,18 +127,18 @@ submit_and_wait_for_error(LoginWork* t_work, const UiAutomation& t_automation, s
 {
 	set_stage(t_work, LoginStage::Connecting);
 
-	t_work->riot_client.bring_to_foreground(&t_work->cancel_requested);
-	t_work->riot_client.take_keyboard_focus(&t_work->cancel_requested);
+	t_work->riot_client.bring_to_foreground();
+	t_work->riot_client.take_keyboard_focus();
 
 	return !stop_if_cancelled(t_work);
 }
 
-[[nodiscard]] auto authenticate(LoginWork* t_work, const UiAutomation& t_automation) -> bool
+[[nodiscard]] auto authenticate(LoginWork* t_work) -> bool
 {
 	set_stage(t_work, LoginStage::Authenticating);
 
-	std::wstring error;
-	bool         error_shown = submit_and_wait_for_error(t_work, t_automation, &error);
+	std::string error;
+	bool        error_shown = submit_and_wait_for_error(t_work, &error);
 
 	if (stop_if_cancelled(t_work)) return false;
 
@@ -151,8 +147,8 @@ submit_and_wait_for_error(LoginWork* t_work, const UiAutomation& t_automation, s
 
 		set_stage(t_work, LoginStage::Authenticating);
 
-		const std::wstring previous_error = error;
-		error_shown                       = submit_and_wait_for_error(t_work, t_automation, &error, &previous_error);
+		const std::string previous_error = error;
+		error_shown                      = submit_and_wait_for_error(t_work, &error, &previous_error);
 
 		if (stop_if_cancelled(t_work)) return false;
 	}
@@ -165,26 +161,14 @@ submit_and_wait_for_error(LoginWork* t_work, const UiAutomation& t_automation, s
 	return true;
 }
 
-auto run_login(LoginWork* t_work) -> void
+auto sign_in_and_play(LoginWork* t_work) -> void
 {
-	t_work->message[0] = '\0';
-	set_stage(t_work, LoginStage::WaitingForProcess);
-
-	if (!start_fresh_client(t_work) || !focus_client(t_work)) return;
-
-	UiAutomation automation{&t_work->cancel_requested};
-	if (!automation.init()) {
-		debug_log::write(K_LOG_CATEGORY, "UiAutomation::init failed - see the uia lines just above for the HRESULT");
-		fail(t_work, K_AUTOMATION_FAILED_MESSAGE);
-		return;
-	}
-
-	if (!authenticate(t_work, automation)) return;
+	if (!authenticate(t_work)) return;
 
 	set_stage(t_work, LoginStage::Launching);
 
-	std::wstring     late_error;
-	const PlayResult play = t_work->riot_client.click_play_when_ready(automation, K_PLAY_BUTTON_TIMEOUT_MS, &t_work->cancel_requested, &late_error);
+	std::string      late_error;
+	const PlayResult play = t_work->riot_client.click_play_when_ready(K_PLAY_BUTTON_TIMEOUT_MS, &late_error);
 
 	if (stop_if_cancelled(t_work)) return;
 
@@ -194,6 +178,23 @@ auto run_login(LoginWork* t_work) -> void
 	}
 
 	set_stage(t_work, LoginStage::Success);
+}
+
+auto run_login(LoginWork* t_work) -> void
+{
+	t_work->message[0] = '\0';
+	set_stage(t_work, LoginStage::WaitingForProcess);
+
+	if (!start_fresh_client(t_work) || !focus_client(t_work)) return;
+
+	if (t_work->riot_client.start_automation()) {
+		sign_in_and_play(t_work);
+	} else {
+		debug_log::write(K_LOG_CATEGORY, "UI automation failed to start - see the uia lines just above for the HRESULT");
+		fail(t_work, K_AUTOMATION_FAILED_MESSAGE);
+	}
+
+	t_work->riot_client.stop_automation();
 }
 
 auto worker_main(const std::shared_ptr<LoginWork>& t_work) -> void
@@ -219,7 +220,7 @@ LoginAttempt::~LoginAttempt()
 	}
 
 	const debug_log::Scope scope(K_LOG_CATEGORY, "shutdown join of the login worker");
-	join_or_abandon(&m_worker, K_SHUTDOWN_JOIN_TIMEOUT);
+	join_worker(K_SHUTDOWN_JOIN_TIMEOUT);
 }
 
 auto LoginAttempt::is_terminal(LoginStage t_stage) -> bool
@@ -234,13 +235,13 @@ auto LoginAttempt::start(std::string_view t_username, std::string_view t_passwor
 		return;
 	}
 
-	join_or_abandon(&m_worker, K_FINISHED_JOIN_TIMEOUT);
+	join_worker(K_FINISHED_JOIN_TIMEOUT);
 
 	auto work = std::make_shared<LoginWork>();
 	copy_to(t_username, work->username);
 	copy_to(t_password, work->password);
 	copy_to(t_launch_product, work->launch_product);
-	work->remembered_client_path = to_wide(t_client_path);
+	work->remembered_client_path = std::string{t_client_path};
 	work->stage.store(LoginStage::WaitingForProcess, std::memory_order_relaxed);
 
 	m_work   = work;
@@ -273,7 +274,7 @@ auto LoginAttempt::found_client_path() const -> std::string
 {
 	if (m_work == nullptr || !is_terminal(stage())) return {};
 
-	return to_utf8(m_work->found_client_path);
+	return m_work->found_client_path;
 }
 
 auto LoginAttempt::is_client_missing() const -> bool
@@ -287,7 +288,7 @@ auto LoginAttempt::update() -> void
 
 	if (m_work->worker_finished.load(std::memory_order_acquire)) {
 		const debug_log::Scope scope(K_LOG_CATEGORY, "render-thread join of a finished login worker");
-		join_or_abandon(&m_worker, K_FINISHED_JOIN_TIMEOUT);
+		join_worker(K_FINISHED_JOIN_TIMEOUT);
 		m_active = false;
 
 		debug_log::write(K_LOG_CATEGORY, "attempt retired (final stage %s)", stage_name(stage()));
@@ -309,7 +310,7 @@ auto LoginAttempt::abandon_worker() -> void
 
 	// The detached worker keeps its own reference to the old work, so it can never write into the next attempt.
 	m_work->cancel_requested.store(true, std::memory_order_relaxed);
-	join_or_abandon(&m_worker, std::chrono::milliseconds{0});
+	join_worker(std::chrono::milliseconds{0});
 
 	auto abandoned = std::make_shared<LoginWork>();
 	if (user_cancelled) {
@@ -323,4 +324,11 @@ auto LoginAttempt::abandon_worker() -> void
 
 	m_work   = std::move(abandoned);
 	m_active = false;
+}
+
+auto LoginAttempt::join_worker(std::chrono::milliseconds t_timeout) -> void
+{
+	if (m_worker.joinable()) {
+		join_or_abandon(&m_worker, &m_work->worker_finished, t_timeout);
+	}
 }

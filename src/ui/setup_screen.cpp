@@ -2,11 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
-#include <string>
 #include <span>
+#include <string>
 #include <utility>
-
-#include <Windows.h>
 
 #include "core/animation.h"
 #include "core/settings.h"
@@ -15,11 +13,12 @@
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
-#include "platform/process.h"
-#include "platform/window.h"
+#include "os/process.h"
+#include "os/window.h"
 #include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
+#include "ui/window_layout.h"
 
 namespace {
 constexpr float K_CONTENT_INSET           = 36.0f;
@@ -108,7 +107,7 @@ constexpr std::string_view K_DELETE_DATA_LABEL = "Also delete my accounts and se
 	return 1.0f - inverse * inverse * inverse;
 }
 
-[[nodiscard]] auto option_of(const installation::Options& t_options, u32 t_option) -> bool
+[[nodiscard]] auto option_of(const os::installation::Options& t_options, u32 t_option) -> bool
 {
 	switch (t_option) {
 		case 0:
@@ -120,7 +119,7 @@ constexpr std::string_view K_DELETE_DATA_LABEL = "Also delete my accounts and se
 	}
 }
 
-auto toggle_option(installation::Options* t_options, u32 t_option) -> void
+auto toggle_option(os::installation::Options* t_options, u32 t_option) -> void
 {
 	switch (t_option) {
 		case 0:
@@ -143,10 +142,10 @@ auto toggle_option(installation::Options* t_options, u32 t_option) -> void
 	return drive || t_path.starts_with("\\\\");
 }
 
-[[nodiscard]] auto trimmed_folder(std::string_view t_path) -> std::wstring
+[[nodiscard]] auto trimmed_folder(std::string_view t_path) -> std::string
 {
-	std::wstring folder = to_wide(t_path);
-	while (folder.size() > 3 && (folder.back() == L'\\' || folder.back() == L'/' || folder.back() == L' ')) {
+	std::string folder{t_path};
+	while (folder.size() > 3 && (folder.back() == '\\' || folder.back() == '/' || folder.back() == ' ')) {
 		folder.pop_back();
 	}
 
@@ -160,7 +159,7 @@ SetupScreen::SetupScreen(SetupMode       t_mode,
                          const Fonts*    t_heading_fonts,
                          const Fonts*    t_title_fonts,
                          const Assets*   t_assets,
-                         Window*         t_window)
+                         os::Window*     t_window)
 	: m_mode(t_mode)
 	, m_settings(t_settings)
 	, m_fonts(t_fonts)
@@ -168,10 +167,10 @@ SetupScreen::SetupScreen(SetupMode       t_mode,
 	, m_title_fonts(t_title_fonts)
 	, m_assets(t_assets)
 	, m_window(t_window)
-	, m_installed(installation::find_installation())
+	, m_installed(os::installation::find_installation())
 {
 	m_location.set_max_length(K_TEXT_INPUT_CAPACITY - 1);
-	m_location.set_value(to_utf8(m_installed ? m_installed->location : installation::default_location()));
+	m_location.set_value(m_installed ? m_installed->location : os::installation::default_location());
 
 	if (m_installed && t_mode != SetupMode::FirstRun) {
 		m_options = m_installed->options;
@@ -241,9 +240,9 @@ auto SetupScreen::start_uninstall() -> void
 
 	m_progress         = 0.0f;
 	m_finished_seconds = 0.0f;
-	std::optional<std::wstring> data_folder;
+	std::optional<std::string> data_folder;
 	if (m_delete_data) {
-		data_folder = to_wide(storage::data_directory());
+		data_folder = storage::data_directory();
 	}
 
 	m_job.start_uninstall(*m_installed, std::move(data_folder));
@@ -252,11 +251,11 @@ auto SetupScreen::start_uninstall() -> void
 
 auto SetupScreen::open_installed_app() -> void
 {
-	const std::wstring executable = m_job.installed_executable();
+	const std::string executable = m_job.installed_executable();
 
-	if (!installation::close_running_app()) return;
+	if (!os::installation::close_running_app()) return;
 
-	launch_process(executable);
+	os::launch_process(executable);
 	finish(SetupOutcome::Quit);
 }
 
@@ -272,8 +271,8 @@ auto SetupScreen::go_back() -> void
 			break;
 
 		case Page::Failed:
-			m_installed = installation::find_installation();
-			go_to(m_job.task() == installation::Task::Uninstall && m_installed ? Page::Manage : Page::Location, false);
+			m_installed = os::installation::find_installation();
+			go_to(m_job.task() == os::installation::Task::Uninstall && m_installed ? Page::Manage : Page::Location, false);
 			break;
 
 		default:
@@ -292,7 +291,7 @@ auto SetupScreen::activate(Hit t_hit) -> void
 				go_to(Page::Location, true);
 			} else if (t_hit == Hit::Portable) {
 				if (m_mode == SetupMode::FirstRun) {
-					installation::mark_setup_complete();
+					os::installation::mark_setup_complete();
 					finish(SetupOutcome::Portable);
 				} else {
 					finish(SetupOutcome::Closed);
@@ -308,8 +307,9 @@ auto SetupScreen::activate(Hit t_hit) -> void
 				start_install();
 			} else if (t_hit == Hit::Browse) {
 				m_location.set_focused(false);
-				m_picker.open(m_window->handle(),
-				              PathRequest{.title = L"Choose where to install Pulsar", .ok_label = L"Select folder", .start_path = to_wide(m_location.value())});
+				m_picker.open(
+					m_window,
+					os::PathRequest{.title = "Choose where to install Pulsar", .ok_label = "Select folder", .start_path = std::string{m_location.value()}});
 			} else if (is_option) {
 				toggle_option(&m_options, option());
 			}
@@ -318,7 +318,7 @@ auto SetupScreen::activate(Hit t_hit) -> void
 
 		case Page::Manage:
 			if (t_hit == Hit::OpenFolder && m_installed) {
-				installation::open_folder(m_installed->location);
+				os::open_path(m_installed->location);
 			} else if (t_hit == Hit::Secondary) {
 				go_to(Page::ConfirmUninstall, true);
 			} else if (t_hit == Hit::Primary) {
@@ -347,7 +347,7 @@ auto SetupScreen::activate(Hit t_hit) -> void
 
 		case Page::Done:
 			if (t_hit == Hit::Primary) {
-				if (m_job.task() == installation::Task::Install) {
+				if (m_job.task() == os::installation::Task::Install) {
 					open_installed_app();
 				} else {
 					finish(SetupOutcome::Quit);
@@ -382,8 +382,8 @@ auto SetupScreen::update(float t_delta_seconds) -> void
 
 	m_location.update(t_delta_seconds);
 
-	if (const std::optional<std::wstring> picked = m_picker.take_result()) {
-		m_location.set_value(to_utf8(installation::with_app_folder(*picked)));
+	if (const std::optional<std::string> picked = m_picker.take_result()) {
+		m_location.set_value(os::installation::with_app_folder(*picked));
 		m_field_error = {};
 	}
 
@@ -473,7 +473,7 @@ auto SetupScreen::primary_label(Page t_page) const -> std::string_view
 		case Page::ConfirmUninstall:
 			return "Uninstall";
 		case Page::Done:
-			return m_job.task() == installation::Task::Install ? "Open Pulsar" : "Close";
+			return m_job.task() == os::installation::Task::Install ? "Open Pulsar" : "Close";
 		case Page::Failed:
 			return "Back";
 		default:
@@ -662,17 +662,17 @@ auto SetupScreen::on_pointer_up(Vec2 t_point) -> bool
 	return true;
 }
 
-auto SetupScreen::on_key_down(u32 t_key) -> bool
+auto SetupScreen::on_key_down(os::Key t_key) -> bool
 {
 	if (m_outcome || m_picker.is_open() || is_busy()) return true;
 
-	if (m_location.is_focused() && t_key != VK_RETURN && t_key != VK_ESCAPE) {
+	if (m_location.is_focused() && t_key != os::Key::Enter && t_key != os::Key::Escape) {
 		m_location.on_key_down(t_key);
 		m_field_error = {};
 		return true;
 	}
 
-	if (t_key == VK_ESCAPE) {
+	if (t_key == os::Key::Escape) {
 		if (m_location.is_focused()) {
 			m_location.set_focused(false);
 		} else if (m_page == Page::Location || m_page == Page::ConfirmUninstall || m_page == Page::Failed) {
@@ -680,7 +680,7 @@ auto SetupScreen::on_key_down(u32 t_key) -> bool
 		} else if (m_page == Page::Manage || (m_page == Page::Choose && m_mode != SetupMode::FirstRun)) {
 			finish(SetupOutcome::Closed);
 		}
-	} else if (t_key == VK_RETURN) {
+	} else if (t_key == os::Key::Enter) {
 		if (m_page == Page::Location) {
 			start_install();
 		} else if (m_page == Page::Done || m_page == Page::Failed) {
@@ -759,7 +759,7 @@ auto SetupScreen::draw_installed_location(DrawList* t_draw_list, const PageDraw&
 
 	draw_text(t_draw_list, secondary, Vec2{box.x, caption_y + secondary.ascent}, "Installed in", faded(g_theme.text_faint, alpha));
 	t_draw_list->add_bordered_rect(box, rounded(K_FIELD_RADIUS), faded(g_theme.field, alpha), faded(g_theme.separator, alpha), 1.0f);
-	draw_text_truncated(t_draw_list, body, Vec2{text_x, body.centered_baseline(box)}, to_utf8(m_installed->location), button.x - K_BROWSE_INSET - text_x,
+	draw_text_truncated(t_draw_list, body, Vec2{text_x, body.centered_baseline(box)}, m_installed->location, button.x - K_BROWSE_INSET - text_x,
 	                    faded(g_theme.text_dim, alpha));
 
 	t_draw_list->add_rounded_rect(button, rounded(K_BROWSE_RADIUS), faded(mix(g_theme.control, g_theme.control_hover, hover), alpha));
@@ -921,7 +921,7 @@ auto SetupScreen::draw_status(DrawList* t_draw_list, Page t_page, const PageDraw
 	const Font& secondary = m_fonts->secondary;
 	const Color accent    = m_settings->accent;
 	const Vec2  size      = m_window->size();
-	const bool  install   = m_job.task() != installation::Task::Uninstall;
+	const bool  install   = m_job.task() != os::installation::Task::Uninstall;
 	const float bottom    = has_footer(t_page) ? footer_rect().y : size.y;
 	const Rect  content   = content_rect();
 

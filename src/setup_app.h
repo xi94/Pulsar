@@ -7,10 +7,11 @@
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
-#include "gfx/renderer.h"
-#include "platform/window.h"
+#include "os/window.h"
+#include "render/renderer.h"
 #include "ui/setup_screen.h"
 #include "ui/truncation_hint.h"
+#include "ui/window_layout.h"
 
 class SetupApp {
   public:
@@ -24,15 +25,16 @@ class SetupApp {
   private:
 	[[nodiscard]] auto create() -> bool;
 	auto reload_fonts() -> bool;
-	auto handle_input(const InputEvent& t_event) -> void;
+	auto handle_input(const os::InputEvent& t_event) -> void;
 	auto redraw_while_moving() -> void;
 	auto frame() -> void;
 	auto render() -> void;
 	auto draw_window_controls() -> void;
+	[[nodiscard]] auto title_bar() const -> TitleBarLayout;
 
 	SetupMode                m_mode;
 	Settings                 m_settings;
-	Window                   m_window;
+	os::Window               m_window;
 	Renderer                 m_renderer;
 	Assets                   m_assets;
 	Fonts                    m_fonts;

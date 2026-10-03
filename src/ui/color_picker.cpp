@@ -7,14 +7,12 @@
 #include <span>
 #include <utility>
 
-#include <Windows.h>
-
 #include "core/animation.h"
 #include "core/str.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
-#include "platform/clipboard.h"
-#include "platform/window.h"
+#include "os/clipboard.h"
+#include "os/window.h"
 #include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
@@ -449,14 +447,14 @@ auto ColorPicker::copy_hex() -> void
 	const std::string_view digits  = format_hex(m_color, hex);
 	const int              written = std::snprintf(text, sizeof(text), "#%.*s", static_cast<int>(digits.size()), digits.data());
 
-	set_clipboard_text(std::string_view{text, static_cast<usize>(std::max(written, 0))});
+	os::set_clipboard_text(std::string_view{text, static_cast<usize>(std::max(written, 0))});
 	m_copied_seconds       = K_FEEDBACK_SECONDS;
 	m_paste_failed_seconds = 0.0f;
 }
 
 auto ColorPicker::paste_color() -> void
 {
-	const std::optional<Color> parsed = parse_color(clipboard_text(), m_color.a);
+	const std::optional<Color> parsed = parse_color(os::clipboard_text(), m_color.a);
 
 	if (!parsed) {
 		m_paste_failed_seconds = K_FEEDBACK_SECONDS;
@@ -654,25 +652,25 @@ auto ColorPicker::on_right_click(Vec2 t_point) -> TextInput*
 	return &m_fields[field];
 }
 
-auto ColorPicker::on_key_down(u32 t_key) -> bool
+auto ColorPicker::on_key_down(os::Key t_key) -> bool
 {
 	if (!m_open) return false;
 
 	const i32  focused = focused_field();
-	const bool control = is_key_down(VK_CONTROL);
+	const bool control = os::modifiers().shortcut;
 
 	if (focused < 0) {
-		if (t_key == VK_ESCAPE) {
+		if (t_key == os::Key::Escape) {
 			close();
 			return true;
 		}
 
-		if (control && t_key == 'C') {
+		if (control && t_key == os::Key::C) {
 			copy_hex();
 			return true;
 		}
 
-		if (control && t_key == 'V') {
+		if (control && t_key == os::Key::V) {
 			paste_color();
 			return true;
 		}
@@ -681,14 +679,14 @@ auto ColorPicker::on_key_down(u32 t_key) -> bool
 	}
 
 	switch (t_key) {
-		case VK_RETURN:
-		case VK_ESCAPE:
+		case os::Key::Enter:
+		case os::Key::Escape:
 			focus_field(-1);
 			return true;
 
-		case VK_TAB: {
+		case os::Key::Tab: {
 			const auto count = static_cast<i32>(K_FIELD_COUNT);
-			const i32  step  = is_key_down(VK_SHIFT) ? count - 1 : 1;
+			const i32  step  = os::modifiers().shift ? count - 1 : 1;
 			const i32  next  = (focused + step) % count;
 
 			focus_field(next);

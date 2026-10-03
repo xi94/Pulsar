@@ -12,11 +12,11 @@
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
-#include "gfx/renderer.h"
-#include "platform/path_picker.h"
-#include "platform/process.h"
-#include "platform/tray.h"
-#include "platform/window.h"
+#include "os/path_picker.h"
+#include "os/process.h"
+#include "os/tray.h"
+#include "os/window.h"
+#include "render/renderer.h"
 #include "ui/account_modal.h"
 #include "ui/account_search.h"
 #include "ui/app_menu.h"
@@ -87,12 +87,12 @@ class App {
 
 	auto pump_input() -> void;
 	auto handle_tray_event() -> void;
-	auto handle_input(const InputEvent& t_event) -> void;
+	auto handle_input(const os::InputEvent& t_event) -> void;
 	auto process_commands() -> void;
 	auto process(const Command& t_command) -> void;
 	auto open_account_menu(const Command& t_command) -> void;
 	auto open_text_menu(const Command& t_command) -> void;
-	auto fill_tray_menu(TrayMenu* t_menu) const -> void;
+	auto fill_tray_menu(os::TrayMenu* t_menu) const -> void;
 
 	auto announce_update_stage() -> void;
 	auto announce_first_run_after_update() -> void;
@@ -105,19 +105,19 @@ class App {
 	auto render() -> void;
 	auto draw_status_bar() -> void;
 
-	SingleInstanceGuard m_instance_guard;
-	Settings            m_settings;
-	Library             m_library;
-	MasterKey           m_master_key;
-	Updater             m_updater;
-	CommandQueue        m_commands;
+	os::SingleInstanceGuard m_instance_guard;
+	Settings                m_settings;
+	Library                 m_library;
+	MasterKey               m_master_key;
+	Updater                 m_updater;
+	CommandQueue            m_commands;
 
-	Window   m_window;
-	Renderer m_renderer;
-	Assets   m_assets;
-	Fonts    m_fonts;
-	Tray     m_tray;
-	DrawList m_draw_list;
+	os::Window m_window;
+	Renderer   m_renderer;
+	Assets     m_assets;
+	Fonts      m_fonts;
+	os::Tray   m_tray;
+	DrawList   m_draw_list;
 
 	Carousel       m_carousel;
 	Snowfall       m_snowfall;
@@ -153,6 +153,6 @@ class App {
 	std::optional<VaultKey>          m_replaced_vault_key;
 	std::optional<ClipboardSecret>   m_clipboard_secret;
 
-	PathPicker             m_client_picker;
+	os::PathPicker         m_client_picker;
 	std::optional<Command> m_locate_request;
 };

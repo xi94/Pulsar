@@ -1,16 +1,15 @@
 #include "ui/unlock_screen.h"
 
-#include <Windows.h>
-
 #include "core/crypto.h"
 #include "core/settings.h"
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
-#include "platform/window.h"
+#include "os/window.h"
 #include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
+#include "ui/window_layout.h"
 
 namespace {
 constexpr float K_CARD_WIDTH           = 380.0f;
@@ -30,12 +29,12 @@ constexpr float K_HALO_BLUR            = 90.0f;
 constexpr u8    K_HALO_ALPHA           = 46;
 }
 
-UnlockScreen::UnlockScreen(Settings*     t_settings,
-                           MasterKey*    t_master_key,
-                           const Fonts*  t_fonts,
-                           const Assets* t_assets,
-                           const Window* t_window,
-                           CommandQueue* t_commands)
+UnlockScreen::UnlockScreen(Settings*         t_settings,
+                           MasterKey*        t_master_key,
+                           const Fonts*      t_fonts,
+                           const Assets*     t_assets,
+                           const os::Window* t_window,
+                           CommandQueue*     t_commands)
 	: m_settings(t_settings)
 	, m_master_key(t_master_key)
 	, m_fonts(t_fonts)
@@ -79,7 +78,7 @@ auto UnlockScreen::hide() -> void
 
 auto UnlockScreen::card_rect() const -> Rect
 {
-	const Rect  area        = m_window->content_rect();
+	const Rect  area        = content_rect(m_window->size());
 	const float card_height = m_setup ? K_SETUP_CARD_HEIGHT : K_UNLOCK_CARD_HEIGHT;
 	const float top         = area.y + (area.h - card_height) * 0.5f;
 
@@ -216,13 +215,13 @@ auto UnlockScreen::on_char(u32 t_character) -> bool
 	return true;
 }
 
-auto UnlockScreen::on_key_down(u32 t_key) -> bool
+auto UnlockScreen::on_key_down(os::Key t_key) -> bool
 {
 	if (!m_active) return false;
 
-	if (t_key == VK_RETURN) {
+	if (t_key == os::Key::Enter) {
 		submit();
-	} else if (m_setup && t_key == VK_TAB) {
+	} else if (m_setup && t_key == os::Key::Tab) {
 		focus_field(m_fields[K_PASSWORD].is_focused() ? K_CONFIRMATION : K_PASSWORD);
 	} else {
 		for (u32 i = 0; i < field_count(); i += 1) {

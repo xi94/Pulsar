@@ -1,10 +1,11 @@
-add_executable (Pulsar
+# Everything here builds on every platform and never includes an OS header. Each platform adds its os/, render/ and
+# login/ backends further down.
+add_library (pulsar_portable OBJECT
   "main.cpp"
   "app.cpp"
   "setup_app.cpp"
 
   "core/animation.cpp"
-  "core/crash_handler.cpp"
   "core/crypto.cpp"
   "core/debug_log.cpp"
   "core/file.cpp"
@@ -14,22 +15,13 @@ add_executable (Pulsar
   "core/str.cpp"
   "core/updater.cpp"
 
-  "login/login_attempt.cpp"
-  "login/riot_client.cpp"
-  "login/ui_automation.cpp"
-
   "gfx/assets.cpp"
   "gfx/draw_list.cpp"
   "gfx/font.cpp"
-  "gfx/renderer.cpp"
 
-  "platform/app_icon.cpp"
-  "platform/clipboard.cpp"
-  "platform/installation.cpp"
-  "platform/path_picker.cpp"
-  "platform/process.cpp"
-  "platform/tray.cpp"
-  "platform/window.cpp"
+  "login/login_attempt.cpp"
+
+  "render/renderer.cpp"
 
   "ui/account_modal.cpp"
   "ui/account_search.cpp"
@@ -54,36 +46,68 @@ add_executable (Pulsar
   "ui/unlock_screen.cpp"
   "ui/update_overlay.cpp"
   "ui/widget.cpp"
+  "ui/window_layout.cpp"
 
   "third_party/stb_impl.cpp"
-
-  "app.manifest"
-  "app.rc"
 )
 
-target_include_directories(Pulsar PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
-target_compile_definitions(Pulsar PRIVATE UNICODE _UNICODE NOMINMAX)
-target_compile_options(Pulsar PRIVATE "/FIcore/force_include.h")
-target_compile_definitions(Pulsar PRIVATE "$<$<NOT:$<CONFIG:Release>>:PULSAR_PROFILING>")
+target_include_directories(pulsar_portable PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} "${CMAKE_CURRENT_SOURCE_DIR}/third_party" "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libsodium/include")
+target_compile_definitions(pulsar_portable PUBLIC SODIUM_STATIC "$<$<NOT:$<CONFIG:Release>>:PULSAR_PROFILING>")
+set_property(TARGET pulsar_portable PROPERTY CXX_STANDARD 26)
 
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(SODIUM_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libsodium/lib/x64-debug")
+if (MSVC)
+  target_compile_options(pulsar_portable PUBLIC "/FIcore/force_include.h")
 else()
-  set(SODIUM_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libsodium/lib/x64-release")
+  target_compile_options(pulsar_portable PUBLIC "SHELL:-include \"${CMAKE_CURRENT_SOURCE_DIR}/core/force_include.h\"")
 endif()
-target_include_directories(Pulsar PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libsodium/include")
-target_compile_definitions(Pulsar PRIVATE SODIUM_STATIC)
-target_link_libraries(Pulsar PRIVATE "${SODIUM_LIB_DIR}/libsodium.lib")
 
-target_link_libraries(Pulsar PRIVATE shell32 dwmapi UIAutomationCore ole32 oleaut32 dbghelp comctl32 winhttp msimg32 d3d11 dxgi d3dcompiler version)
+if (WIN32)
+  # <Windows.h> expands to nothing once its include guard is defined, so portable code that reaches for Win32 fails to
+  # compile here instead of first failing on a Mac.
+  target_compile_definitions(pulsar_portable PRIVATE _WINDOWS_)
 
-find_package(Threads REQUIRED)
-target_link_libraries(Pulsar PRIVATE Threads::Threads)
+  add_executable (Pulsar
+    "os/win32/app_icon.cpp"
+    "os/win32/clipboard.cpp"
+    "os/win32/crash_handler.cpp"
+    "os/win32/files.cpp"
+    "os/win32/fonts.cpp"
+    "os/win32/http.cpp"
+    "os/win32/input.cpp"
+    "os/win32/installation.cpp"
+    "os/win32/path_picker.cpp"
+    "os/win32/process.cpp"
+    "os/win32/self_update.cpp"
+    "os/win32/system.cpp"
+    "os/win32/tray.cpp"
+    "os/win32/win32.cpp"
+    "os/win32/window.cpp"
 
-set_property(TARGET Pulsar PROPERTY CXX_STANDARD 26)
+    "render/d3d11/renderer.cpp"
 
-# WIN32_EXECUTABLE implies a WinMain entry; mainCRTStartup keeps main() as the one entry point in both configs.
-if (CMAKE_BUILD_TYPE STREQUAL "Release")
-  set_property(TARGET Pulsar PROPERTY WIN32_EXECUTABLE TRUE)
-  target_link_options(Pulsar PRIVATE "/ENTRY:mainCRTStartup")
+    "login/win32/riot_client.cpp"
+    "login/win32/ui_automation.cpp"
+
+    "app.manifest"
+    "app.rc"
+  )
+
+  target_compile_definitions(Pulsar PRIVATE UNICODE _UNICODE NOMINMAX)
+  set_property(TARGET Pulsar PROPERTY CXX_STANDARD 26)
+
+  if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(SODIUM_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libsodium/lib/x64-debug")
+  else()
+    set(SODIUM_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libsodium/lib/x64-release")
+  endif()
+
+  find_package(Threads REQUIRED)
+  target_link_libraries(Pulsar PRIVATE pulsar_portable "${SODIUM_LIB_DIR}/libsodium.lib" Threads::Threads)
+  target_link_libraries(Pulsar PRIVATE shell32 dwmapi UIAutomationCore ole32 oleaut32 dbghelp comctl32 winhttp msimg32 d3d11 dxgi d3dcompiler version)
+
+  # WIN32_EXECUTABLE implies a WinMain entry; mainCRTStartup keeps main() as the one entry point in both configs.
+  if (CMAKE_BUILD_TYPE STREQUAL "Release")
+    set_property(TARGET Pulsar PROPERTY WIN32_EXECUTABLE TRUE)
+    target_link_options(Pulsar PRIVATE "/ENTRY:mainCRTStartup")
+  endif()
 endif()

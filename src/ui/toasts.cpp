@@ -10,10 +10,11 @@
 #include "core/str.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
-#include "platform/window.h"
+#include "os/window.h"
 #include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
+#include "ui/window_layout.h"
 
 namespace {
 constexpr float K_MARGIN_BOTTOM      = 12.0f;
@@ -41,7 +42,7 @@ constexpr float K_SWEEPS_PER_SECOND = 0.55f;
 constexpr float K_SWEEP_ALPHA       = 120.0f;
 }
 
-Toasts::Toasts(const Settings* t_settings, const Fonts* t_fonts, const Assets* t_assets, const Window* t_window, CommandQueue* t_commands)
+Toasts::Toasts(const Settings* t_settings, const Fonts* t_fonts, const Assets* t_assets, const os::Window* t_window, CommandQueue* t_commands)
 	: m_settings(t_settings)
 	, m_fonts(t_fonts)
 	, m_assets(t_assets)

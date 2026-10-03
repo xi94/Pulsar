@@ -15,7 +15,9 @@
 class Assets;
 struct Fonts;
 class Toasts;
+namespace os {
 class Window;
+}
 struct Settings;
 
 enum class EditField : u8 {
@@ -27,13 +29,13 @@ enum class EditField : u8 {
 
 class AccountModal : public Widget {
   public:
-	AccountModal(Library*      t_library,
-	             Settings*     t_settings,
-	             const Fonts*  t_fonts,
-	             const Assets* t_assets,
-	             const Window* t_window,
-	             Toasts*       t_toasts,
-	             CommandQueue* t_commands);
+	AccountModal(Library*          t_library,
+	             Settings*         t_settings,
+	             const Fonts*      t_fonts,
+	             const Assets*     t_assets,
+	             const os::Window* t_window,
+	             Toasts*           t_toasts,
+	             CommandQueue*     t_commands);
 
 	auto open(i32 t_game) -> void;
 
@@ -60,7 +62,7 @@ class AccountModal : public Widget {
 	auto on_pointer_up(Vec2 t_point) -> bool override;
 	auto on_right_click(Vec2 t_point) -> bool override;
 	auto on_scroll(Vec2 t_point, float t_wheel_delta) -> bool override;
-	auto on_key_down(u32 t_key) -> bool override;
+	auto on_key_down(os::Key t_key) -> bool override;
 	auto on_char(u32 t_character) -> bool override;
 
 	[[nodiscard]] auto is_blocking() const -> bool override
@@ -234,7 +236,7 @@ class AccountModal : public Widget {
 	auto animate_reorder(const VisibleAccounts& t_before) -> void;
 	auto reset_row_motion() -> void;
 
-	auto handle_list_key(u32 t_key) -> bool;
+	auto handle_list_key(os::Key t_key) -> bool;
 	auto handle_list_press(const Layout& t_layout, Vec2 t_point) -> void;
 	auto handle_list_click(const Layout& t_layout, Vec2 t_point) -> void;
 	auto handle_edit_click(const Layout& t_layout, Vec2 t_point) -> void;
@@ -270,13 +272,13 @@ class AccountModal : public Widget {
 	auto draw_footer(DrawList* t_draw_list, Rect t_footer, u8 t_alpha) const -> void;
 	auto draw_edit_footer(DrawList* t_draw_list, Rect t_footer, u8 t_alpha) const -> void;
 
-	Library*      m_library;
-	Settings*     m_settings;
-	const Fonts*  m_fonts;
-	const Assets* m_assets;
-	const Window* m_window;
-	Toasts*       m_toasts;
-	CommandQueue* m_commands;
+	Library*          m_library;
+	Settings*         m_settings;
+	const Fonts*      m_fonts;
+	const Assets*     m_assets;
+	const os::Window* m_window;
+	Toasts*           m_toasts;
+	CommandQueue*     m_commands;
 
 	bool                      m_open        = false;
 	float                     m_open_amount = 0.0f;

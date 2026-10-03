@@ -4,6 +4,7 @@
 #include <string_view>
 
 #include "core/types.h"
+#include "os/input.h"
 
 class DrawList;
 struct Font;
@@ -66,8 +67,8 @@ class TextInput {
 	[[nodiscard]] auto can_apply(TextEdit t_edit) const -> bool;
 	auto apply(TextEdit t_edit) -> void;
 
-	auto on_char(u32 t_character) -> void;
-	auto on_key_down(u32 t_key) -> void;
+	auto on_char(u32 t_codepoint) -> void;
+	auto on_key_down(os::Key t_key) -> void;
 
 	auto on_pointer_down(const Font& t_font, Rect t_field, float t_x) -> void;
 	auto on_pointer_move(const Font& t_font, Rect t_field, float t_x) -> void;
@@ -103,10 +104,9 @@ class TextInput {
 	u32 m_cursor = 0;
 	u32 m_anchor = 0;
 
-	bool m_focused        = false;
-	bool m_masked         = false;
-	bool m_selecting      = false;
-	u16  m_high_surrogate = 0;
+	bool m_focused   = false;
+	bool m_masked    = false;
+	bool m_selecting = false;
 
 	u32   m_click_count   = 0;
 	u64   m_last_click_ms = 0;

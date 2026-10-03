@@ -41,6 +41,3 @@ auto copy_to(std::string_view t_text, char (&t_destination)[Capacity]) -> void
 
 [[nodiscard]] auto find_ignoring_case(std::string_view t_text, std::string_view t_query) -> usize;
 [[nodiscard]] auto trimmed(std::string_view t_text) -> std::string_view;
-
-[[nodiscard]] auto to_utf8(std::wstring_view t_wide) -> std::string;
-[[nodiscard]] auto to_wide(std::string_view t_utf8) -> std::wstring;

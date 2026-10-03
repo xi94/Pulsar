@@ -13,7 +13,7 @@ class ProfilerOverlay : public Widget {
 	explicit ProfilerOverlay(const Fonts* t_fonts);
 
 	auto draw(DrawList* t_draw_list) -> void override;
-	auto on_key_down(u32 t_key) -> bool override;
+	auto on_key_down(os::Key t_key) -> bool override;
 
   private:
 	const Fonts* m_fonts;

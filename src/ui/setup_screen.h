@@ -3,15 +3,17 @@
 #include <optional>
 #include <string_view>
 
-#include "platform/installation.h"
-#include "platform/path_picker.h"
+#include "os/installation.h"
+#include "os/path_picker.h"
 #include "ui/text_input.h"
 #include "ui/widget.h"
 
 class Assets;
 struct Fonts;
 class Texture;
+namespace os {
 class Window;
+}
 struct Settings;
 
 enum class SetupMode : u8 {
@@ -34,7 +36,7 @@ class SetupScreen : public Widget {
 	            const Fonts*    t_heading_fonts,
 	            const Fonts*    t_title_fonts,
 	            const Assets*   t_assets,
-	            Window*         t_window);
+	            os::Window*     t_window);
 
 	auto set_app_icon(const Texture* t_icon) -> void
 	{
@@ -52,7 +54,7 @@ class SetupScreen : public Widget {
 	auto on_pointer_down(Vec2 t_point) -> bool override;
 	auto on_pointer_move(Vec2 t_point) -> bool override;
 	auto on_pointer_up(Vec2 t_point) -> bool override;
-	auto on_key_down(u32 t_key) -> bool override;
+	auto on_key_down(os::Key t_key) -> bool override;
 	auto on_char(u32 t_character) -> bool override;
 
 	[[nodiscard]] auto cursor() const -> CursorKind override;
@@ -145,15 +147,15 @@ class SetupScreen : public Widget {
 	const Fonts*    m_heading_fonts;
 	const Fonts*    m_title_fonts;
 	const Assets*   m_assets;
-	Window*         m_window;
+	os::Window*     m_window;
 	const Texture*  m_app_icon = nullptr;
 
-	std::optional<installation::Installed> m_installed;
-	installation::Options                  m_options;
-	installation::Job                      m_job;
-	PathPicker                             m_picker;
-	TextInput                              m_location;
-	std::string_view                       m_field_error;
+	std::optional<os::installation::Installed> m_installed;
+	os::installation::Options                  m_options;
+	os::installation::Job                      m_job;
+	os::PathPicker                             m_picker;
+	TextInput                                  m_location;
+	std::string_view                           m_field_error;
 
 	Page                m_page = Page::Choose;
 	std::optional<Page> m_previous_page;

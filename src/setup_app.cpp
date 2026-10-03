@@ -6,10 +6,11 @@
 #include "core/animation.h"
 #include "core/storage.h"
 #include "core/str.h"
-#include "platform/app_icon.h"
+#include "os/app_icon.h"
 #include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
+#include "ui/window_layout.h"
 
 namespace {
 constexpr u32   K_WINDOW_WIDTH              = 480;
@@ -41,13 +42,15 @@ auto SetupApp::create() -> bool
 	animation::set_speed(m_settings.animation_speed);
 	set_corner_roundness(m_settings.corner_roundness);
 
-	if (!m_window.create(L"Pulsar setup", K_WINDOW_WIDTH, K_WINDOW_HEIGHT, WindowKind::Dialog)) return false;
+	if (!m_window.create("Pulsar setup", K_WINDOW_WIDTH, K_WINDOW_HEIGHT, os::WindowKind::Dialog)) return false;
+	m_window.set_title_bar(K_TITLE_BAR_HEIGHT, [this](Vec2 t_point) { return title_bar().button_at(t_point) != TitleBarButton::None; });
+
 	if (!m_renderer.init(&m_window)) return false;
 
 	if (!m_assets.finish_upload(&m_renderer)) return false;
 	if (!reload_fonts()) return false;
 
-	const std::vector<u8> icon = app_icon_pixels(K_APP_ICON_TEXTURE_SIZE);
+	const std::vector<u8> icon = os::app_icon_pixels(K_APP_ICON_TEXTURE_SIZE);
 	if (!icon.empty()) {
 		m_app_icon = Assets::create_texture(&m_renderer, icon.data(), K_APP_ICON_TEXTURE_SIZE, K_APP_ICON_TEXTURE_SIZE);
 		m_screen.set_app_icon(m_app_icon.get());
@@ -78,18 +81,23 @@ auto SetupApp::reload_fonts() -> bool
 	return load();
 }
 
+auto SetupApp::title_bar() const -> TitleBarLayout
+{
+	return TitleBarLayout{.width = static_cast<float>(m_window.width()), .dialog = true};
+}
+
 auto SetupApp::run() -> SetupOutcome
 {
 	if (!create()) return m_mode == SetupMode::FirstRun ? SetupOutcome::Portable : SetupOutcome::Closed;
 
 	frame();
 	m_window.show();
-	SetForegroundWindow(m_window.handle());
+	m_window.bring_to_front();
 
-	while (!m_window.should_close()) {
+	while (!m_window.should_quit()) {
 		m_window.pump_messages();
 
-		for (const InputEvent& event : m_window.input_events()) {
+		for (const os::InputEvent& event : m_window.input_events()) {
 			handle_input(event);
 		}
 
@@ -108,19 +116,19 @@ auto SetupApp::run() -> SetupOutcome
 	return SetupOutcome::Closed;
 }
 
-auto SetupApp::handle_input(const InputEvent& t_event) -> void
+auto SetupApp::handle_input(const os::InputEvent& t_event) -> void
 {
 	switch (t_event.type) {
-		case InputEventType::MouseMove:
+		case os::InputEventType::MouseMove:
 			m_mouse = t_event.position;
 			m_screen.on_pointer_move(m_mouse);
 			break;
 
-		case InputEventType::MouseDown: {
+		case os::InputEventType::MouseDown: {
 			m_mouse        = t_event.position;
 			m_pointer_down = true;
 
-			const TitleBarButton button = m_window.title_bar_button_at(m_mouse);
+			const TitleBarButton button = title_bar().button_at(m_mouse);
 			if (button != TitleBarButton::None) {
 				m_pressed_button = button;
 				break;
@@ -130,7 +138,7 @@ auto SetupApp::handle_input(const InputEvent& t_event) -> void
 			break;
 		}
 
-		case InputEventType::MouseUp: {
+		case os::InputEventType::MouseUp: {
 			m_mouse        = t_event.position;
 			m_pointer_down = false;
 
@@ -140,10 +148,10 @@ auto SetupApp::handle_input(const InputEvent& t_event) -> void
 				break;
 			}
 
-			if (m_window.title_bar_button_at(m_mouse) != pressed) break;
+			if (title_bar().button_at(m_mouse) != pressed) break;
 
 			if (pressed == TitleBarButton::Close) {
-				m_window.request_close();
+				m_window.request_quit();
 			} else if (pressed == TitleBarButton::Minimize) {
 				m_window.minimize();
 			}
@@ -151,16 +159,16 @@ auto SetupApp::handle_input(const InputEvent& t_event) -> void
 			break;
 		}
 
-		case InputEventType::KeyDown:
+		case os::InputEventType::KeyDown:
 			m_screen.on_key_down(t_event.key);
 			break;
 
-		case InputEventType::Character:
-			m_screen.on_char(t_event.key);
+		case os::InputEventType::Character:
+			m_screen.on_char(t_event.codepoint);
 			break;
 
-		case InputEventType::MouseWheel:
-		case InputEventType::RightClick:
+		case os::InputEventType::MouseWheel:
+		case os::InputEventType::RightClick:
 			break;
 	}
 }
@@ -188,7 +196,7 @@ auto SetupApp::frame() -> void
 	m_screen.update(delta_seconds);
 	m_truncation_hint.update(delta_seconds, m_pointer_down);
 
-	const bool over_controls = m_window.title_bar_button_at(m_mouse) != TitleBarButton::None;
+	const bool over_controls = title_bar().button_at(m_mouse) != TitleBarButton::None;
 	m_window.set_cursor(over_controls ? CursorKind::Arrow : m_screen.cursor());
 
 	if (!m_window.is_minimized() && !m_window.is_hidden()) {
@@ -216,10 +224,10 @@ auto SetupApp::render() -> void
 
 auto SetupApp::draw_window_controls() -> void
 {
-	const TitleBarButton hovered_button = m_pressed_button != TitleBarButton::None ? m_pressed_button : m_window.title_bar_button_at(m_mouse);
+	const TitleBarButton hovered_button = m_pressed_button != TitleBarButton::None ? m_pressed_button : title_bar().button_at(m_mouse);
 
 	for (const TitleBarButton button : {TitleBarButton::Minimize, TitleBarButton::Close}) {
-		const Rect rect       = m_window.title_bar_button_rect(button);
+		const Rect rect       = title_bar().button_rect(button);
 		const bool close      = button == TitleBarButton::Close;
 		const bool is_hovered = hovered_button == button && rect.contains(m_mouse);
 

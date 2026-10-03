@@ -15,7 +15,9 @@
 
 class Assets;
 class Renderer;
+namespace os {
 class Window;
+}
 
 enum class SettingsTab : u8 {
 	Appearance,
@@ -47,7 +49,7 @@ enum class ResettableSetting : u8 {
 
 class SettingsPanel : public Widget {
   public:
-	SettingsPanel(Settings* t_settings, Fonts* t_fonts, Renderer* t_renderer, const Window* t_window, const Assets* t_assets, CommandQueue* t_commands);
+	SettingsPanel(Settings* t_settings, Fonts* t_fonts, Renderer* t_renderer, const os::Window* t_window, const Assets* t_assets, CommandQueue* t_commands);
 
 	auto open() -> void;
 	auto close() -> void;
@@ -62,7 +64,7 @@ class SettingsPanel : public Widget {
 	auto on_pointer_up(Vec2 t_point) -> bool override;
 	auto on_right_click(Vec2 t_point) -> bool override;
 	auto on_scroll(Vec2 t_point, float t_wheel_delta) -> bool override;
-	auto on_key_down(u32 t_key) -> bool override;
+	auto on_key_down(os::Key t_key) -> bool override;
 	auto on_char(u32 t_character) -> bool override;
 
 	[[nodiscard]] auto is_blocking() const -> bool override
@@ -266,12 +268,12 @@ class SettingsPanel : public Widget {
 	auto draw_master_password(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
 	auto draw_reset_buttons(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
 
-	Settings*     m_settings;
-	Fonts*        m_fonts;
-	Renderer*     m_renderer;
-	const Window* m_window;
-	const Assets* m_assets;
-	CommandQueue* m_commands;
+	Settings*         m_settings;
+	Fonts*            m_fonts;
+	Renderer*         m_renderer;
+	const os::Window* m_window;
+	const Assets*     m_assets;
+	CommandQueue*     m_commands;
 
 	bool        m_open          = false;
 	SettingsTab m_tab           = SettingsTab::Appearance;

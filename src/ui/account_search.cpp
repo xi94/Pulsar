@@ -3,18 +3,18 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-
-#include <Windows.h>
+#include <utility>
 
 #include "core/animation.h"
 #include "core/str.h"
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
-#include "platform/window.h"
+#include "os/window.h"
 #include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
+#include "ui/window_layout.h"
 
 namespace {
 constexpr float            K_OPEN_EASE_RATE      = 22.0f;
@@ -64,7 +64,7 @@ constexpr float            K_GROUP_GAP        = 9.0f;
 }
 }
 
-AccountSearch::AccountSearch(const Library* t_library, const Fonts* t_fonts, const Assets* t_assets, const Window* t_window, CommandQueue* t_commands)
+AccountSearch::AccountSearch(const Library* t_library, const Fonts* t_fonts, const Assets* t_assets, const os::Window* t_window, CommandQueue* t_commands)
 	: m_library(t_library)
 	, m_fonts(t_fonts)
 	, m_assets(t_assets)
@@ -435,13 +435,13 @@ auto AccountSearch::on_scroll(Vec2, float t_wheel_delta) -> bool
 	return true;
 }
 
-auto AccountSearch::on_key_down(u32 t_key) -> bool
+auto AccountSearch::on_key_down(os::Key t_key) -> bool
 {
 	if (!is_blocking()) return false;
 	if (!m_open) return true;
 
 	switch (t_key) {
-		case VK_ESCAPE:
+		case os::Key::Escape:
 			if (m_account) {
 				show_results();
 			} else {
@@ -450,35 +450,35 @@ auto AccountSearch::on_key_down(u32 t_key) -> bool
 
 			return true;
 
-		case VK_UP:
+		case os::Key::Up:
 			move_highlight(-1);
 			return true;
 
-		case VK_DOWN:
+		case os::Key::Down:
 			move_highlight(1);
 			return true;
 
-		case VK_PRIOR:
+		case os::Key::PageUp:
 			move_highlight(-static_cast<i32>(K_MAX_SHOWN_ROWS) + 1);
 			return true;
 
-		case VK_NEXT:
+		case os::Key::PageDown:
 			move_highlight(static_cast<i32>(K_MAX_SHOWN_ROWS) - 1);
 			return true;
 
-		case VK_RETURN:
+		case os::Key::Enter:
 			activate(m_highlighted);
 			return true;
 
-		case VK_TAB:
+		case os::Key::Tab:
 			if (!m_account) {
 				activate(m_highlighted);
 			}
 
 			return true;
 
-		case VK_LEFT:
-		case VK_BACK:
+		case os::Key::Left:
+		case os::Key::Backspace:
 			if (m_account) {
 				show_results();
 				return true;

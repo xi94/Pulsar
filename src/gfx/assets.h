@@ -5,7 +5,7 @@
 #include <thread>
 #include <vector>
 
-#include "gfx/renderer.h"
+#include "render/renderer.h"
 
 enum class Asset : u8 {
 	IconArrowBack,

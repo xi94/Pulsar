@@ -7,6 +7,7 @@
 #include <string_view>
 #include <vector>
 
+#include "os/input.h"
 #include "ui/scrollable.h"
 #include "ui/text_input.h"
 
@@ -47,7 +48,7 @@ class ListPopup {
 	[[nodiscard]] auto on_pointer_up(Vec2 t_point) -> std::optional<u32>;
 	[[nodiscard]] auto on_right_click(Vec2 t_point) -> TextInput*;
 	auto on_scroll(float t_wheel_delta) -> void;
-	[[nodiscard]] auto on_key_down(u32 t_key) -> std::optional<u32>;
+	[[nodiscard]] auto on_key_down(os::Key t_key) -> std::optional<u32>;
 	auto on_char(u32 t_character) -> void;
 
 	[[nodiscard]] auto cursor(Vec2 t_mouse) const -> CursorKind;

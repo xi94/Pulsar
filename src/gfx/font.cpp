@@ -7,81 +7,67 @@
 #include <span>
 #include <unordered_map>
 
-#include <Windows.h>
-
 #include "core/str.h"
-#include "gfx/renderer.h"
+#include "os/files.h"
+#include "os/fonts.h"
+#include "render/renderer.h"
 #include "stb/stb_truetype.h"
 
 namespace {
-constexpr float          K_COVERAGE_GAMMA         = 0.8f;
-constexpr float          K_SETTING_TO_PIXEL_SCALE = 1.5f;
-constexpr float          K_CAPTION_SIZE_RATIO     = 0.85f;
-constexpr const wchar_t* K_REGISTERED_FONTS_KEY   = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts";
-constexpr u32            K_ATLAS_PADDING          = 1;
-
-// Tried in order when the chosen font lacks a character. Japanese comes before Korean because Malgun Gothic also carries kana and kanji.
-constexpr const wchar_t* K_FALLBACK_FONT_FILES[]{
-	L"segoeui.ttf", L"LeelawUI.ttf", L"YuGothM.ttc", L"meiryo.ttc", L"malgun.ttf", L"msjh.ttc", L"msyh.ttc", L"seguisym.ttf", L"seguiemj.ttf",
-};
-
-constexpr usize K_FALLBACK_COUNT = std::size(K_FALLBACK_FONT_FILES);
+constexpr float K_COVERAGE_GAMMA         = 0.8f;
+constexpr float K_SETTING_TO_PIXEL_SCALE = 1.5f;
+constexpr float K_CAPTION_SIZE_RATIO     = 0.85f;
+constexpr u32   K_ATLAS_PADDING          = 1;
 
 struct FontFace {
-	std::wstring   path;
+	std::string    path;
 	const u8*      data = nullptr;
 	stbtt_fontinfo info{};
 	float          em_scale = 0.0f;
 };
 
 std::vector<std::unique_ptr<FontFace>> g_faces;
-const FontFace*                        g_fallbacks[K_FALLBACK_COUNT]{};
+std::vector<const FontFace*>           g_fallbacks;
 bool                                   g_fallbacks_opened = false;
-
-struct FontEntry {
-	std::string name;
-	std::string file;
-};
 
 [[nodiscard]] auto atlas_size_for(float t_baked_pixel_height) -> u32
 {
 	return t_baked_pixel_height <= 32.0f ? 1024 : 2048;
 }
 
-[[nodiscard]] auto fonts_folder() -> std::wstring
+[[nodiscard]] auto ascii_lowered(char t_character) -> char
 {
-	wchar_t    windows_directory[MAX_PATH];
-	const UINT length = GetWindowsDirectoryW(windows_directory, MAX_PATH);
-	if (length == 0 || length >= MAX_PATH) return {};
+	return t_character >= 'A' && t_character <= 'Z' ? static_cast<char>(t_character - 'A' + 'a') : t_character;
+}
 
-	return std::wstring{windows_directory, length} + L"\\Fonts\\";
+[[nodiscard]] auto equals_ignoring_case(std::string_view t_a, std::string_view t_b) -> bool
+{
+	return std::ranges::equal(t_a, t_b, [](char t_left, char t_right) { return ascii_lowered(t_left) == ascii_lowered(t_right); });
+}
+
+[[nodiscard]] auto sorts_before_ignoring_case(std::string_view t_a, std::string_view t_b) -> bool
+{
+	return std::ranges::lexicographical_compare(
+		t_a, t_b, [](char t_left, char t_right) { return static_cast<u8>(ascii_lowered(t_left)) < static_cast<u8>(ascii_lowered(t_right)); });
 }
 
 // Font files are mapped rather than read, so the large CJK fallbacks only cost the pages a glyph actually touches.
-[[nodiscard]] auto open_face(const std::wstring& t_path) -> const FontFace*
+[[nodiscard]] auto open_face(const std::string& t_path) -> const FontFace*
 {
 	for (const std::unique_ptr<FontFace>& face : g_faces) {
-		if (CompareStringOrdinal(face->path.c_str(), -1, t_path.c_str(), -1, TRUE) == CSTR_EQUAL) return face.get();
+		if (equals_ignoring_case(face->path, t_path)) return face.get();
 	}
 
-	const HANDLE file = CreateFileW(t_path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-	if (file == INVALID_HANDLE_VALUE) return nullptr;
-
-	const HANDLE mapping = CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, 0, nullptr);
-	CloseHandle(file);
-	if (mapping == nullptr) return nullptr;
-
-	const void* view = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
-	CloseHandle(mapping);
-	if (view == nullptr) return nullptr;
+	const std::span<const u8> mapping = os::map_file(t_path);
+	if (mapping.empty()) return nullptr;
 
 	auto face  = std::make_unique<FontFace>();
 	face->path = t_path;
-	face->data = static_cast<const u8*>(view);
+	face->data = mapping.data();
 
 	const int offset = stbtt_GetFontOffsetForIndex(face->data, 0);
 	if (offset < 0 || !stbtt_InitFont(&face->info, face->data, offset)) {
-		UnmapViewOfFile(view);
+		os::unmap_file(mapping);
 		return nullptr;
 	}
 
@@ -96,34 +82,12 @@ struct FontEntry {
 	if (!g_fallbacks_opened) {
 		g_fallbacks_opened = true;
 
-		const std::wstring folder = fonts_folder();
-		for (usize i = 0; i < K_FALLBACK_COUNT; i += 1) {
-			g_fallbacks[i] = folder.empty() ? nullptr : open_face(folder + K_FALLBACK_FONT_FILES[i]);
+		for (const std::string& path : os::fallback_font_paths()) {
+			g_fallbacks.push_back(open_face(path));
 		}
 	}
 
 	return g_fallbacks;
-}
-
-[[nodiscard]] auto equals_ignoring_case(std::string_view t_a, std::string_view t_b) -> bool
-{
-	return t_a.size() == t_b.size() && _strnicmp(t_a.data(), t_b.data(), t_a.size()) == 0;
-}
-
-[[nodiscard]] auto is_absolute_path(std::string_view t_file) -> bool
-{
-	return t_file.find(':') != std::string_view::npos || t_file.starts_with("\\\\");
-}
-
-[[nodiscard]] auto font_file_path(std::string_view t_file) -> std::string
-{
-	if (is_absolute_path(t_file)) return std::string{t_file};
-
-	char       windows_directory[MAX_PATH];
-	const UINT length = GetWindowsDirectoryA(windows_directory, MAX_PATH);
-	if (length == 0 || length >= MAX_PATH) return {};
-
-	return std::string{windows_directory, length} + "\\Fonts\\" + std::string{t_file};
 }
 
 [[nodiscard]] auto is_outline_font(std::string_view t_file) -> bool
@@ -134,52 +98,6 @@ struct FontEntry {
 	const std::string_view extension = t_file.substr(dot);
 
 	return equals_ignoring_case(extension, ".ttf") || equals_ignoring_case(extension, ".ttc") || equals_ignoring_case(extension, ".otf");
-}
-
-[[nodiscard]] auto display_name(std::string_view t_registered_name) -> std::string_view
-{
-	const usize suffix = t_registered_name.rfind(" (");
-	if (suffix != std::string_view::npos && t_registered_name.ends_with(')')) {
-		t_registered_name = t_registered_name.substr(0, suffix);
-	}
-
-	return t_registered_name.substr(0, t_registered_name.find(" & "));
-}
-
-auto add_registered_fonts(HKEY t_root, std::vector<FontEntry>* t_entries) -> void
-{
-	HKEY key = nullptr;
-	if (RegOpenKeyExW(t_root, K_REGISTERED_FONTS_KEY, 0, KEY_READ, &key) != ERROR_SUCCESS) return;
-
-	DWORD longest_name       = 0;
-	DWORD largest_file_bytes = 0;
-	RegQueryInfoKeyW(key, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &longest_name, &largest_file_bytes, nullptr, nullptr);
-
-	std::vector<wchar_t> name(longest_name + 1);
-	std::vector<wchar_t> file(largest_file_bytes / sizeof(wchar_t) + 1);
-
-	for (DWORD index = 0;; index += 1) {
-		DWORD name_length = static_cast<DWORD>(name.size());
-		DWORD file_bytes  = static_cast<DWORD>(file.size() * sizeof(wchar_t));
-		DWORD type        = 0;
-
-		const LSTATUS status = RegEnumValueW(key, index, name.data(), &name_length, nullptr, &type, reinterpret_cast<BYTE*>(file.data()), &file_bytes);
-		if (status == ERROR_NO_MORE_ITEMS) break;
-		if (status != ERROR_SUCCESS || type != REG_SZ) continue;
-
-		std::wstring_view file_view{file.data(), file_bytes / sizeof(wchar_t)};
-		while (!file_view.empty() && file_view.back() == L'\0') {
-			file_view.remove_suffix(1);
-		}
-
-		std::string file_utf8 = to_utf8(file_view);
-		if (!is_outline_font(file_utf8)) continue;
-
-		const std::string name_utf8 = to_utf8(std::wstring_view{name.data(), name_length});
-		t_entries->push_back(FontEntry{std::string{display_name(name_utf8)}, std::move(file_utf8)});
-	}
-
-	RegCloseKey(key);
 }
 }
 
@@ -322,7 +240,7 @@ auto Font::operator=(Font&&) noexcept -> Font& = default;
 
 auto Font::load(Renderer* t_renderer, const char* t_path, float t_pixel_height, float t_dpi_scale) -> bool
 {
-	const FontFace* face = open_face(to_wide(t_path));
+	const FontFace* face = open_face(t_path);
 	if (face == nullptr) {
 		std::println("Unsupported or unreadable font file: {}", t_path);
 		return false;
@@ -390,24 +308,22 @@ auto InstalledFonts::index_of_file(std::string_view t_file) const -> std::option
 	return std::nullopt;
 }
 
-[[nodiscard]] auto installed_fonts() -> InstalledFonts
+auto installed_fonts() -> InstalledFonts
 {
-	std::vector<FontEntry> entries;
-	entries.reserve(512);
+	std::vector<os::SystemFont> entries = os::system_fonts();
+	std::erase_if(entries, [](const os::SystemFont& t_font) { return !is_outline_font(t_font.file); });
 
-	add_registered_fonts(HKEY_LOCAL_MACHINE, &entries);
-	add_registered_fonts(HKEY_CURRENT_USER, &entries);
+	std::ranges::stable_sort(entries, [](const os::SystemFont& t_a, const os::SystemFont& t_b) { return sorts_before_ignoring_case(t_a.name, t_b.name); });
 
-	std::ranges::stable_sort(entries, [](const FontEntry& t_a, const FontEntry& t_b) { return _stricmp(t_a.name.c_str(), t_b.name.c_str()) < 0; });
-
-	const auto duplicates = std::ranges::unique(entries, [](const FontEntry& t_a, const FontEntry& t_b) { return equals_ignoring_case(t_a.name, t_b.name); });
+	const auto duplicates =
+		std::ranges::unique(entries, [](const os::SystemFont& t_a, const os::SystemFont& t_b) { return equals_ignoring_case(t_a.name, t_b.name); });
 	entries.erase(duplicates.begin(), duplicates.end());
 
 	InstalledFonts fonts;
 	fonts.names.reserve(entries.size());
 	fonts.files.reserve(entries.size());
 
-	for (FontEntry& entry : entries) {
+	for (os::SystemFont& entry : entries) {
 		fonts.names.push_back(std::move(entry.name));
 		fonts.files.push_back(std::move(entry.file));
 	}
@@ -419,7 +335,7 @@ auto Fonts::load(Renderer* t_renderer, std::string_view t_file, float t_body_siz
 {
 	if (t_file.empty()) return false;
 
-	const std::string path = font_file_path(t_file);
+	const std::string path = os::system_font_path(t_file);
 	if (path.empty()) return false;
 
 	Font loaded_body;

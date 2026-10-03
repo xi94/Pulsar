@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <cmath>
 
-#include <Windows.h>
-
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "ui/controls.h"
@@ -98,11 +96,11 @@ auto ContextMenu::on_right_click(Vec2) -> bool
 	return false;
 }
 
-auto ContextMenu::on_key_down(u32 t_key) -> bool
+auto ContextMenu::on_key_down(os::Key t_key) -> bool
 {
 	if (!m_open) return false;
 
-	if (t_key == VK_ESCAPE) {
+	if (t_key == os::Key::Escape) {
 		close();
 	}
 

@@ -2,18 +2,17 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <optional>
-
-#include <Windows.h>
 
 #include "core/animation.h"
 #include "core/str.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
-#include "platform/clipboard.h"
-#include "platform/window.h"
+#include "os/clipboard.h"
+#include "os/input.h"
 #include "ui/text.h"
 #include "ui/theme.h"
 
@@ -47,16 +46,21 @@ enum class CharClass : u8 {
 	return t_codepoint >= 0x20 && t_codepoint != 0x7F && (t_codepoint < 0x80 || t_codepoint >= 0xA0) && !is_blocked_script(t_codepoint);
 }
 
-[[nodiscard]] auto shortcut_for(u32 t_key) -> std::optional<TextEdit>
+[[nodiscard]] auto milliseconds_now() -> u64
+{
+	return static_cast<u64>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
+[[nodiscard]] auto shortcut_for(os::Key t_key) -> std::optional<TextEdit>
 {
 	switch (t_key) {
-		case 'A':
+		case os::Key::A:
 			return TextEdit::SelectAll;
-		case 'C':
+		case os::Key::C:
 			return TextEdit::Copy;
-		case 'X':
+		case os::Key::X:
 			return TextEdit::Cut;
-		case 'V':
+		case os::Key::V:
 			return TextEdit::Paste;
 		default:
 			return std::nullopt;
@@ -143,7 +147,7 @@ auto TextInput::can_apply(TextEdit t_edit) const -> bool
 		case TextEdit::Copy:
 			return has_selection() && !m_masked;
 		case TextEdit::Paste:
-			return clipboard_has_text();
+			return os::clipboard_has_text();
 		case TextEdit::SelectAll:
 			return m_length > 0;
 	}
@@ -160,16 +164,16 @@ auto TextInput::apply(TextEdit t_edit) -> void
 
 	switch (t_edit) {
 		case TextEdit::Cut:
-			set_clipboard_text(selected);
+			os::set_clipboard_text(selected);
 			erase(range);
 			break;
 
 		case TextEdit::Copy:
-			set_clipboard_text(selected);
+			os::set_clipboard_text(selected);
 			break;
 
 		case TextEdit::Paste:
-			insert(clipboard_text());
+			insert(os::clipboard_text());
 			break;
 
 		case TextEdit::SelectAll:
@@ -180,40 +184,23 @@ auto TextInput::apply(TextEdit t_edit) -> void
 	restart_caret_blink();
 }
 
-auto TextInput::on_char(u32 t_character) -> void
+auto TextInput::on_char(u32 t_codepoint) -> void
 {
-	if (!m_focused) return;
-
-	if (t_character >= 0xD800 && t_character <= 0xDBFF) {
-		m_high_surrogate = static_cast<u16>(t_character);
-		return;
-	}
-
-	u32 codepoint = t_character;
-
-	if (t_character >= 0xDC00 && t_character <= 0xDFFF) {
-		if (m_high_surrogate == 0) return;
-
-		codepoint = 0x10000 + ((static_cast<u32>(m_high_surrogate) - 0xD800) << 10) + (t_character - 0xDC00);
-	}
-
-	m_high_surrogate = 0;
-	if (!is_printable(codepoint)) return;
+	if (!m_focused || !is_printable(t_codepoint)) return;
 
 	char      encoded[4];
-	const u32 length = encode_utf8(codepoint, encoded);
+	const u32 length = encode_utf8(t_codepoint, encoded);
 	insert(std::string_view{encoded, length});
 	restart_caret_blink();
 }
 
-auto TextInput::on_key_down(u32 t_key) -> void
+auto TextInput::on_key_down(os::Key t_key) -> void
 {
 	if (!m_focused) return;
 
-	const bool control = is_key_down(VK_CONTROL);
-	const bool shift   = is_key_down(VK_SHIFT);
+	const os::Modifiers held = os::modifiers();
 
-	if (const std::optional<TextEdit> edit = control ? shortcut_for(t_key) : std::nullopt) {
+	if (const std::optional<TextEdit> edit = held.shortcut ? shortcut_for(t_key) : std::nullopt) {
 		apply(*edit);
 		return;
 	}
@@ -222,37 +209,37 @@ auto TextInput::on_key_down(u32 t_key) -> void
 	const std::string_view shown = shown_text(mask);
 	const TextRange        range = selection();
 
-	const u32  previous           = control ? previous_word_start(shown, m_cursor) : static_cast<u32>(previous_codepoint(value(), m_cursor));
-	const u32  next               = control ? next_word_start(shown, m_cursor) : static_cast<u32>(next_codepoint(value(), m_cursor));
-	const bool collapse_selection = has_selection() && !shift;
+	const u32  previous           = held.word_step ? previous_word_start(shown, m_cursor) : static_cast<u32>(previous_codepoint(value(), m_cursor));
+	const u32  next               = held.word_step ? next_word_start(shown, m_cursor) : static_cast<u32>(next_codepoint(value(), m_cursor));
+	const bool collapse_selection = has_selection() && !held.shift;
 
 	switch (t_key) {
-		case VK_BACK:
+		case os::Key::Backspace:
 			erase(has_selection() ? range : TextRange{previous, m_cursor});
 			break;
 
-		case VK_DELETE:
+		case os::Key::Delete:
 			erase(has_selection() ? range : TextRange{m_cursor, next});
 			break;
 
-		case VK_LEFT:
-			move_cursor(collapse_selection ? range.start : previous, shift);
+		case os::Key::Left:
+			move_cursor(collapse_selection ? range.start : previous, held.shift);
 			break;
 
-		case VK_RIGHT:
-			move_cursor(collapse_selection ? range.end : next, shift);
+		case os::Key::Right:
+			move_cursor(collapse_selection ? range.end : next, held.shift);
 			break;
 
-		case VK_HOME:
-			move_cursor(0, shift);
+		case os::Key::Home:
+			move_cursor(0, held.shift);
 			break;
 
-		case VK_END:
-			move_cursor(m_length, shift);
+		case os::Key::End:
+			move_cursor(m_length, held.shift);
 			break;
 
-		case 'E':
-			if (!control) return;
+		case os::Key::E:
+			if (!held.shortcut) return;
 
 			move_cursor(m_length, false);
 			break;
@@ -266,8 +253,8 @@ auto TextInput::on_key_down(u32 t_key) -> void
 
 auto TextInput::on_pointer_down(const Font& t_font, Rect t_field, float t_x) -> void
 {
-	const u64  now_ms       = GetTickCount64();
-	const bool quick_repeat = now_ms - m_last_click_ms <= GetDoubleClickTime();
+	const u64  now_ms       = milliseconds_now();
+	const bool quick_repeat = now_ms - m_last_click_ms <= os::double_click_ms();
 	const bool same_spot    = std::fabs(t_x - m_last_click_x) <= K_MULTI_CLICK_SLOP;
 
 	m_click_count   = quick_repeat && same_spot ? m_click_count % K_CLICKS_PER_CYCLE + 1 : 1;
@@ -278,7 +265,7 @@ auto TextInput::on_pointer_down(const Font& t_font, Rect t_field, float t_x) -> 
 	const u32 index = index_at(t_font, t_field, t_x);
 
 	if (m_click_count == 1) {
-		move_cursor(index, is_key_down(VK_SHIFT));
+		move_cursor(index, os::modifiers().shift);
 	} else if (m_click_count == 2) {
 		select(word_at(shown_text(mask), index));
 	} else {

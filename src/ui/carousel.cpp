@@ -6,18 +6,17 @@
 #include <numbers>
 #include <utility>
 
-#include <Windows.h>
-
 #include "core/animation.h"
 #include "core/profiler.h"
 #include "core/settings.h"
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
-#include "platform/window.h"
+#include "os/window.h"
 #include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
+#include "ui/window_layout.h"
 
 namespace {
 constexpr float K_CARD_WIDTH            = 220.0f;
@@ -1155,7 +1154,7 @@ auto Carousel::on_pointer_down(Vec2 t_point) -> bool
 
 	const i32 pressed = m_mode_transition <= 0.001f ? game_at(t_point) : -1;
 
-	if (pressed >= 0 && is_key_down(VK_CONTROL)) {
+	if (pressed >= 0 && os::modifiers().shortcut) {
 		begin_reorder(static_cast<u32>(pressed), t_point);
 		return true;
 	}
@@ -1269,7 +1268,7 @@ auto Carousel::on_scroll(Vec2, float t_wheel_delta) -> bool
 	m_keyboard_focus_shown = false;
 	if (m_reorder.active) return true;
 
-	if (is_key_down(VK_CONTROL)) {
+	if (os::modifiers().shortcut) {
 		if (t_wheel_delta != 0.0f) {
 			set_zoom_stop(m_zoom_stop + (t_wheel_delta > 0.0f ? 1 : -1));
 		}
@@ -1282,10 +1281,10 @@ auto Carousel::on_scroll(Vec2, float t_wheel_delta) -> bool
 	return true;
 }
 
-auto Carousel::on_key_down(u32 t_key) -> bool
+auto Carousel::on_key_down(os::Key t_key) -> bool
 {
 	if (m_reorder.active) {
-		if (t_key == VK_ESCAPE) {
+		if (t_key == os::Key::Escape) {
 			end_reorder(true);
 			m_release_ignored = true;
 		}
@@ -1300,31 +1299,31 @@ auto Carousel::on_key_down(u32 t_key) -> bool
 	const i32  row_step   = std::max(1, static_cast<i32>(wrap_columns()));
 
 	switch (t_key) {
-		case VK_LEFT:
+		case os::Key::Left:
 			if (!horizontal) return false;
 
 			move_focus(-1);
 			return true;
 
-		case VK_RIGHT:
+		case os::Key::Right:
 			if (!horizontal) return false;
 
 			move_focus(1);
 			return true;
 
-		case VK_UP:
+		case os::Key::Up:
 			if (!vertical) return false;
 
 			move_focus(-row_step);
 			return true;
 
-		case VK_DOWN:
+		case os::Key::Down:
 			if (!vertical) return false;
 
 			move_focus(row_step);
 			return true;
 
-		case VK_RETURN:
+		case os::Key::Enter:
 			if (m_mode != ViewMode::Carousel && !m_keyboard_focus_shown) {
 				move_focus(0);
 				return true;
@@ -1366,7 +1365,7 @@ auto Carousel::cursor() const -> CursorKind
 	}
 
 	if (const i32 game = game_at(m_mouse); game >= 0) {
-		return is_key_down(VK_CONTROL) ? CursorKind::Move : CursorKind::Hand;
+		return os::modifiers().shortcut ? CursorKind::Move : CursorKind::Hand;
 	}
 
 	const bool over_scrollbar = m_mode != ViewMode::Carousel && m_wrap_scroll.is_over_track(m_mouse, wrap_scroll_geometry());
@@ -1376,7 +1375,7 @@ auto Carousel::cursor() const -> CursorKind
 
 auto Carousel::update(float t_delta_seconds) -> void
 {
-	if (!is_key_down(VK_LBUTTON) || m_detached_game >= 0) {
+	if (!os::is_primary_button_down() || m_detached_game >= 0) {
 		drop_lost_press();
 	}
 

@@ -1,10 +1,10 @@
 #include "core/storage.h"
 
 #include <cstring>
+#include <filesystem>
 #include <span>
+#include <system_error>
 #include <vector>
-
-#include <Windows.h>
 
 #include <nlohmann/json.hpp>
 #include <sodium.h>
@@ -13,6 +13,7 @@
 #include "core/debug_log.h"
 #include "core/file.h"
 #include "core/str.h"
+#include "os/files.h"
 
 using nlohmann::json;
 
@@ -78,18 +79,21 @@ auto remember_saved_accounts(std::span<const u8> t_plaintext, const MasterKey* t
 
 [[nodiscard]] auto path_exists(const std::string& t_path) -> bool
 {
-	return GetFileAttributesA(t_path.c_str()) != INVALID_FILE_ATTRIBUTES;
+	std::error_code error;
+
+	return std::filesystem::exists(to_path(t_path), error);
 }
 
 auto migrate_legacy_file(const std::string& t_root, const std::string& t_directory, const char* t_file_name) -> void
 {
-	const std::string path = t_directory + "\\" + t_file_name;
+	const std::string path = joined_path(t_directory, t_file_name);
 	if (path_exists(path)) return;
 
 	for (const char* legacy_folder : K_LEGACY_DATA_FOLDER_NAMES) {
-		const std::string legacy_path = t_root + "\\" + legacy_folder + "\\" + t_file_name;
+		const std::string legacy_path = joined_path(joined_path(t_root, legacy_folder), t_file_name);
+		std::error_code   error;
 
-		if (path_exists(legacy_path) && CopyFileA(legacy_path.c_str(), path.c_str(), TRUE)) {
+		if (path_exists(legacy_path) && std::filesystem::copy_file(to_path(legacy_path), to_path(path), std::filesystem::copy_options::none, error)) {
 			debug_log::write("storage", "migrated %s from the %s folder", t_file_name, legacy_folder);
 			return;
 		}
@@ -100,7 +104,7 @@ auto migrate_legacy_file(const std::string& t_root, const std::string& t_directo
 {
 	const std::string directory = storage::data_directory();
 
-	return directory.empty() ? std::string{} : directory + "\\" + t_file_name;
+	return directory.empty() ? std::string{} : joined_path(directory, t_file_name);
 }
 
 [[nodiscard]] auto to_hex(std::span<const u8> t_bytes) -> std::string
@@ -146,7 +150,7 @@ auto from_hex(const std::string& t_hex, std::span<u8> t_out) -> bool
 [[nodiscard]] auto parse_json_file(const std::string& t_path, json* t_out) -> bool
 {
 	std::vector<u8> bytes;
-	if (!read_whole_file(t_path.c_str(), &bytes)) return false;
+	if (!read_whole_file(t_path, &bytes)) return false;
 
 	*t_out = json::parse(bytes.begin(), bytes.end(), nullptr, false);
 
@@ -448,11 +452,12 @@ struct WipedOnExit {
 
 auto storage::data_directory() -> std::string
 {
-	const std::string root = to_utf8(local_app_data_folder());
+	const std::string root = os::user_data_folder();
 	if (root.empty()) return {};
 
-	const std::string directory = root + "\\" + K_APP_DATA_FOLDER_NAME;
-	CreateDirectoryA(directory.c_str(), nullptr);
+	const std::string directory = joined_path(root, K_APP_DATA_FOLDER_NAME);
+	std::error_code   error;
+	std::filesystem::create_directory(to_path(directory), error);
 
 	migrate_legacy_file(root, directory, K_ACCOUNTS_FILE_NAME);
 	migrate_legacy_file(root, directory, K_SETTINGS_FILE_NAME);

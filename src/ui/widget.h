@@ -3,9 +3,9 @@
 #include <concepts>
 
 #include "core/types.h"
+#include "os/input.h"
 
 class DrawList;
-struct InputEvent;
 
 class Widget {
   public:
@@ -40,7 +40,7 @@ class Widget {
 		return false;
 	}
 
-	virtual auto on_key_down(u32) -> bool
+	virtual auto on_key_down(os::Key) -> bool
 	{
 		return false;
 	}
@@ -90,7 +90,7 @@ class WidgetStack {
 	auto update(Vec2 t_mouse, float t_delta_seconds) -> void;
 	auto draw(DrawList* t_draw_list) -> void;
 
-	[[nodiscard]] auto dispatch(const InputEvent& t_event) -> bool;
+	[[nodiscard]] auto dispatch(const os::InputEvent& t_event) -> bool;
 	[[nodiscard]] auto cursor() const -> CursorKind;
 
   private:

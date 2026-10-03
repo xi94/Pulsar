@@ -24,7 +24,7 @@ Checks: >
   readability-make-member-function-const,
   misc-redundant-expression,
   misc-unused-using-decls
-HeaderFilterRegex: 'src[/\\](core|gfx|platform|login|ui)[/\\]|src[/\\](app|setup_app|games)\.h'
+HeaderFilterRegex: 'src[/\\](core|gfx|os|render|login|ui)[/\\]|src[/\\](app|setup_app|games)\.h'
 FormatStyle: file
 CheckOptions:
   modernize-use-trailing-return-type.TransformLambdas: none

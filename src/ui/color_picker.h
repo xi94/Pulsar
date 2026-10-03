@@ -4,6 +4,7 @@
 #include <string_view>
 
 #include "core/types.h"
+#include "os/input.h"
 #include "ui/draggable.h"
 #include "ui/text_input.h"
 
@@ -48,7 +49,7 @@ class ColorPicker {
 	auto on_pointer_move(Vec2 t_point) -> void;
 	auto on_pointer_up(Vec2 t_point) -> bool;
 	auto on_right_click(Vec2 t_point) -> TextInput*;
-	auto on_key_down(u32 t_key) -> bool;
+	auto on_key_down(os::Key t_key) -> bool;
 	auto on_char(u32 t_character) -> bool;
 
 	[[nodiscard]] auto hint(Vec2 t_mouse) const -> std::optional<ColorPickerHint>;

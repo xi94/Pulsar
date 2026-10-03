@@ -3,8 +3,7 @@
 #ifdef PULSAR_PROFILING
 
 #include <algorithm>
-
-#include <Windows.h>
+#include <chrono>
 
 namespace {
 constexpr u32   K_MAX_SCOPES        = 64;
@@ -33,22 +32,12 @@ Profiler g_profiler;
 
 [[nodiscard]] auto current_ticks() -> i64
 {
-	LARGE_INTEGER counter;
-	QueryPerformanceCounter(&counter);
-
-	return counter.QuadPart;
+	return std::chrono::steady_clock::now().time_since_epoch().count();
 }
 
 [[nodiscard]] auto ticks_to_ms(i64 t_ticks) -> float
 {
-	static const double MS_PER_TICK = [] {
-		LARGE_INTEGER frequency;
-		QueryPerformanceFrequency(&frequency);
-
-		return 1000.0 / static_cast<double>(frequency.QuadPart);
-	}();
-
-	return static_cast<float>(static_cast<double>(t_ticks) * MS_PER_TICK);
+	return std::chrono::duration<float, std::milli>(std::chrono::steady_clock::duration{t_ticks}).count();
 }
 
 [[nodiscard]] auto find_or_add_scope(const char* t_name) -> Scope*

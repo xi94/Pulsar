@@ -4,8 +4,6 @@
 #include <cmath>
 #include <utility>
 
-#include <Windows.h>
-
 #include "core/animation.h"
 #include "core/settings.h"
 #include "core/str.h"
@@ -450,7 +448,7 @@ auto ListPopup::on_scroll(float t_wheel_delta) -> void
 	m_scroll.on_scroll(t_wheel_delta, list_scroll(layout()));
 }
 
-auto ListPopup::on_key_down(u32 t_key) -> std::optional<u32>
+auto ListPopup::on_key_down(os::Key t_key) -> std::optional<u32>
 {
 	if (!m_open) return std::nullopt;
 
@@ -458,26 +456,26 @@ auto ListPopup::on_key_down(u32 t_key) -> std::optional<u32>
 	refresh_matches();
 
 	switch (t_key) {
-		case VK_ESCAPE:
+		case os::Key::Escape:
 			close();
 			break;
 
-		case VK_RETURN:
+		case os::Key::Enter:
 			return choose_highlighted();
 
-		case VK_UP:
+		case os::Key::Up:
 			move_highlight(-1);
 			break;
 
-		case VK_DOWN:
+		case os::Key::Down:
 			move_highlight(1);
 			break;
 
-		case VK_PRIOR:
+		case os::Key::PageUp:
 			move_highlight(-page);
 			break;
 
-		case VK_NEXT:
+		case os::Key::PageDown:
 			move_highlight(page);
 			break;
 

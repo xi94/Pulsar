@@ -8,7 +8,9 @@
 #include "ui/widget.h"
 
 struct Fonts;
+namespace os {
 class Window;
+}
 struct Settings;
 
 struct Notification {
@@ -22,7 +24,7 @@ struct Notification {
 
 class Toasts : public Widget {
   public:
-	Toasts(const Settings* t_settings, const Fonts* t_fonts, const Assets* t_assets, const Window* t_window, CommandQueue* t_commands);
+	Toasts(const Settings* t_settings, const Fonts* t_fonts, const Assets* t_assets, const os::Window* t_window, CommandQueue* t_commands);
 
 	auto notify(const Notification& t_notification) -> void;
 	auto notify_countdown(std::string_view t_message, float t_seconds) -> void;
@@ -48,11 +50,11 @@ class Toasts : public Widget {
 	[[nodiscard]] auto is_clickable_at(Vec2 t_point) const -> bool;
 	auto draw_time_left_bar(DrawList* t_draw_list, Rect t_card, u8 t_alpha) const -> void;
 
-	const Settings* m_settings;
-	const Fonts*    m_fonts;
-	const Assets*   m_assets;
-	const Window*   m_window;
-	CommandQueue*   m_commands;
+	const Settings*   m_settings;
+	const Fonts*      m_fonts;
+	const Assets*     m_assets;
+	const os::Window* m_window;
+	CommandQueue*     m_commands;
 
 	char                   m_message[96]{};
 	std::optional<Asset>   m_icon;

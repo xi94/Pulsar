@@ -4,8 +4,6 @@
 
 #include <cstdio>
 
-#include <Windows.h>
-
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "ui/text.h"
@@ -31,14 +29,14 @@ ProfilerOverlay::ProfilerOverlay(const Fonts* t_fonts)
 {
 }
 
-auto ProfilerOverlay::on_key_down(u32 t_key) -> bool
+auto ProfilerOverlay::on_key_down(os::Key t_key) -> bool
 {
-	if (t_key == VK_F1) {
+	if (t_key == os::Key::F1) {
 		m_shown = !m_shown;
 		return true;
 	}
 
-	if (t_key == VK_F2 && m_shown) {
+	if (t_key == os::Key::F2 && m_shown) {
 		profiler::reset();
 		return true;
 	}

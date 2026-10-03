@@ -8,9 +8,6 @@
 #include <span>
 #include <utility>
 
-#include <Windows.h>
-#include <shellapi.h>
-
 #include "core/animation.h"
 #include "core/app_identity.h"
 #include "core/settings.h"
@@ -18,9 +15,11 @@
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
-#include "platform/window.h"
+#include "os/process.h"
+#include "os/window.h"
 #include "ui/text.h"
 #include "ui/theme.h"
+#include "ui/window_layout.h"
 
 namespace {
 constexpr float K_POPOVER_WIDTH   = 380.0f;
@@ -74,7 +73,7 @@ constexpr float K_MINIMUM_CHECKING_SECONDS    = 0.4f;
 constexpr float K_UP_TO_DATE_LINGER_SECONDS   = 2.5f;
 constexpr float K_CHECK_FAILED_LINGER_SECONDS = 5.0f;
 
-constexpr const wchar_t* K_RELEASES_URL = L"" PULSAR_RELEASE_REPO L"/releases/latest";
+constexpr const char* K_RELEASES_URL = PULSAR_RELEASE_REPO "/releases/latest";
 
 enum class NoteKind : u8 {
 	Heading,
@@ -195,7 +194,7 @@ auto layout_notes(const Font& t_font, std::string_view t_notes, std::span<NoteLi
 
 }
 
-UpdateOverlay::UpdateOverlay(Updater* t_updater, const Settings* t_settings, const Fonts* t_fonts, const Assets* t_assets, const Window* t_window)
+UpdateOverlay::UpdateOverlay(Updater* t_updater, const Settings* t_settings, const Fonts* t_fonts, const Assets* t_assets, const os::Window* t_window)
 	: m_updater(t_updater)
 	, m_settings(t_settings)
 	, m_fonts(t_fonts)
@@ -386,7 +385,7 @@ auto UpdateOverlay::content_height(const Content& t_content) const -> float
 
 auto UpdateOverlay::anchor_rect() const -> Rect
 {
-	return m_window->title_bar_button_rect(TitleBarButton::Update);
+	return TitleBarLayout{.width = static_cast<float>(m_window->width())}.button_rect(TitleBarButton::Update);
 }
 
 auto UpdateOverlay::layout(const Content& t_content) const -> UpdateOverlay::Layout
@@ -551,7 +550,7 @@ auto UpdateOverlay::run(Action t_action) -> void
 			break;
 
 		case Action::Releases:
-			ShellExecuteW(nullptr, L"open", K_RELEASES_URL, nullptr, nullptr, SW_SHOWNORMAL);
+			os::open_url(K_RELEASES_URL);
 			close();
 			break;
 
@@ -631,11 +630,11 @@ auto UpdateOverlay::on_scroll(Vec2 t_point, float t_wheel_delta) -> bool
 	return true;
 }
 
-auto UpdateOverlay::on_key_down(u32 t_key) -> bool
+auto UpdateOverlay::on_key_down(os::Key t_key) -> bool
 {
 	if (!is_shown()) return false;
 
-	if (t_key == VK_ESCAPE) {
+	if (t_key == os::Key::Escape) {
 		close();
 	}
 

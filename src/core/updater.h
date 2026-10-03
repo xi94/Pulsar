@@ -36,8 +36,6 @@ class Updater {
 	Updater(const Updater&)                    = delete;
 	auto operator=(const Updater&) -> Updater& = delete;
 
-	[[nodiscard]] static auto handed_off_to_repaired_copy() -> bool;
-
 	auto check_for_update() -> void;
 	auto start_download() -> void;
 	auto update() -> void;

@@ -8,7 +8,7 @@
 #include "core/animation.h"
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
-#include "gfx/renderer.h"
+#include "render/renderer.h"
 #include "ui/theme.h"
 
 namespace {

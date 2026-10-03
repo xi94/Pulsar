@@ -1,107 +1,90 @@
 #include "core/file.h"
 
-#include <cstdio>
 #include <cstring>
-
-#include <Windows.h>
-#include <shlobj.h>
+#include <fstream>
+#include <system_error>
 
 #include "core/app_identity.h"
+#include "os/files.h"
 
 namespace {
 [[nodiscard]] auto file_already_holds(const std::string& t_path, std::string_view t_contents) -> bool
 {
 	std::vector<u8> existing;
-	if (!read_whole_file(t_path.c_str(), &existing)) return false;
+	if (!read_whole_file(t_path, &existing)) return false;
 
 	return existing.size() == t_contents.size() && std::memcmp(existing.data(), t_contents.data(), existing.size()) == 0;
 }
+}
 
-[[nodiscard]] auto write_and_flush(const std::string& t_path, std::string_view t_contents) -> bool
+auto to_path(std::string_view t_utf8) -> std::filesystem::path
 {
-	const HANDLE file = CreateFileA(t_path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-	if (file == INVALID_HANDLE_VALUE) return false;
-
-	DWORD      written = 0;
-	const bool ok =
-		WriteFile(file, t_contents.data(), static_cast<DWORD>(t_contents.size()), &written, nullptr) && written == t_contents.size() && FlushFileBuffers(file);
-	CloseHandle(file);
-
-	return ok;
-}
+	return std::filesystem::path{std::u8string_view{reinterpret_cast<const char8_t*>(t_utf8.data()), t_utf8.size()}};
 }
 
-[[nodiscard]] auto read_whole_file(const char* t_path, std::vector<u8>* t_out_bytes) -> bool
+auto from_path(const std::filesystem::path& t_path) -> std::string
 {
-	FILE* file = nullptr;
-	if (fopen_s(&file, t_path, "rb") != 0 || file == nullptr) return false;
+	const std::u8string utf8 = t_path.u8string();
 
-	std::fseek(file, 0, SEEK_END);
-	const long size = std::ftell(file);
-	std::fseek(file, 0, SEEK_SET);
-
-	bool ok = false;
-	if (size > 0) {
-		t_out_bytes->resize(static_cast<usize>(size));
-		ok = std::fread(t_out_bytes->data(), 1, t_out_bytes->size(), file) == t_out_bytes->size();
-	}
-
-	std::fclose(file);
-
-	return ok;
+	return std::string{reinterpret_cast<const char*>(utf8.data()), utf8.size()};
 }
 
-[[nodiscard]] auto write_file_atomic(const std::string& t_path, std::string_view t_contents) -> bool
+auto joined_path(std::string_view t_folder, std::string_view t_name) -> std::string
+{
+	return from_path((to_path(t_folder) / to_path(t_name)).make_preferred());
+}
+
+auto read_whole_file(const std::string& t_path, std::vector<u8>* t_out_bytes) -> bool
+{
+	std::ifstream file(to_path(t_path), std::ios::binary | std::ios::ate);
+	if (!file) return false;
+
+	const std::streamoff size = file.tellg();
+	if (size <= 0) return false;
+
+	t_out_bytes->resize(static_cast<usize>(size));
+	file.seekg(0);
+
+	return static_cast<bool>(file.read(reinterpret_cast<char*>(t_out_bytes->data()), size));
+}
+
+auto write_file_atomic(const std::string& t_path, std::string_view t_contents) -> bool
 {
 	// Saves happen on nearly every click, so rewriting unchanged content would rotate the last good .bak away.
 	if (file_already_holds(t_path, t_contents)) return true;
 
 	const std::string temporary_path = t_path + ".tmp";
-	if (!write_and_flush(temporary_path, t_contents)) {
-		DeleteFileA(temporary_path.c_str());
+	std::error_code   error;
+
+	if (!os::write_file_durably(temporary_path, t_contents)) {
+		std::filesystem::remove(to_path(temporary_path), error);
 		return false;
 	}
 
-	MoveFileExA(t_path.c_str(), backup_path_for(t_path).c_str(), MOVEFILE_REPLACE_EXISTING);
+	os::replace_file(t_path, backup_path_for(t_path));
 
-	if (!MoveFileExA(temporary_path.c_str(), t_path.c_str(), MOVEFILE_REPLACE_EXISTING)) {
-		DeleteFileA(temporary_path.c_str());
+	if (!os::replace_file(temporary_path, t_path)) {
+		std::filesystem::remove(to_path(temporary_path), error);
 		return false;
 	}
 
 	return true;
 }
 
-[[nodiscard]] auto backup_path_for(const std::string& t_path) -> std::string
+auto backup_path_for(const std::string& t_path) -> std::string
 {
 	return t_path + ".bak";
 }
 
-[[nodiscard]] auto local_app_data_folder() -> std::wstring
+auto app_data_subdirectory(const char* t_subfolder) -> std::string
 {
-	wchar_t     from_environment[MAX_PATH];
-	const DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", from_environment, MAX_PATH);
-	if (length > 0 && length < MAX_PATH) return std::wstring{from_environment, length};
-
-	PWSTR        known_folder = nullptr;
-	std::wstring root;
-
-	if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &known_folder))) {
-		root = known_folder;
-	}
-
-	CoTaskMemFree(known_folder);
-
-	return root;
-}
-
-[[nodiscard]] auto app_data_subdirectory(const wchar_t* t_subfolder) -> std::wstring
-{
-	const std::wstring root = local_app_data_folder();
+	const std::string root = os::user_data_folder();
 	if (root.empty()) return {};
 
-	const std::wstring directory = root + L"\\" + K_APP_NAME_WIDE + L"\\" + t_subfolder;
-	SHCreateDirectoryExW(nullptr, directory.c_str(), nullptr);
+	const std::string directory = joined_path(joined_path(root, K_APP_NAME), t_subfolder);
+
+	std::error_code error;
+	std::filesystem::create_directories(to_path(directory), error);
 
 	return directory;
 }

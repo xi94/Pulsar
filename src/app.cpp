@@ -4,8 +4,6 @@
 #include <print>
 #include <utility>
 
-#include <Windows.h>
-#include <shellapi.h>
 #include <sodium.h>
 
 #include "core/animation.h"
@@ -15,22 +13,22 @@
 #include "core/str.h"
 #include "games.h"
 #include "login/riot_client.h"
-#include "login/ui_automation.h"
-#include "platform/clipboard.h"
-#include "platform/installation.h"
+#include "os/app_icon.h"
+#include "os/clipboard.h"
+#include "os/installation.h"
 #include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
+#include "ui/window_layout.h"
 
 namespace {
-constexpr u32            K_DRAW_LIST_VERTEX_CAPACITY = 1 << 16;
-constexpr u32            K_DRAW_LIST_INDEX_CAPACITY  = (1 << 16) * 3 / 2;
-constexpr auto           K_SAVE_DELAY                = std::chrono::milliseconds(500);
-constexpr float          K_IDLE_POLL_SECONDS         = 0.25f;
-constexpr auto           K_RESUME_FRAME_TIME         = std::chrono::microseconds(16667);
-constexpr auto           K_CLIPBOARD_SECRET_LIFETIME = std::chrono::seconds(30);
-constexpr float          K_PICKER_POLL_SECONDS       = 0.1f;
-constexpr const wchar_t* K_RIOT_CLIENT_START_FOLDER  = L"C:\\Riot Games\\Riot Client";
+constexpr u32   K_DRAW_LIST_VERTEX_CAPACITY = 1 << 16;
+constexpr u32   K_DRAW_LIST_INDEX_CAPACITY  = (1 << 16) * 3 / 2;
+constexpr auto  K_SAVE_DELAY                = std::chrono::milliseconds(500);
+constexpr float K_IDLE_POLL_SECONDS         = 0.25f;
+constexpr auto  K_RESUME_FRAME_TIME         = std::chrono::microseconds(16667);
+constexpr auto  K_CLIPBOARD_SECRET_LIFETIME = std::chrono::seconds(30);
+constexpr float K_PICKER_POLL_SECONDS       = 0.1f;
 
 constexpr float K_STATUS_PADDING        = 14.0f;
 constexpr float K_STATUS_MARK_SIZE      = 15.0f;
@@ -39,7 +37,7 @@ constexpr float K_STATUS_DOT_SIZE       = 3.0f;
 constexpr float K_STATUS_DOT_GAP        = 7.0f;
 constexpr float K_STATUS_BASELINE_NUDGE = 2.0f;
 
-static_assert(K_TRAY_MAX_GAMES >= K_MAX_GAMES);
+static_assert(os::K_TRAY_MAX_GAMES >= K_MAX_GAMES);
 
 auto log_startup_phase(const char* t_phase) -> void
 {
@@ -88,27 +86,27 @@ auto log_startup_phase(const char* t_phase) -> void
 
 auto guard_against_overlays(bool t_block_injection) -> void
 {
-	set_app_user_model_id();
+	os::register_app_identity();
 
 	if (!t_block_injection) {
 		debug_log::write("app", "overlay injection guard disabled by setting");
 		return;
 	}
 
-	switch (block_hook_injection()) {
-		case HookBlockResult::Blocked:
+	switch (os::block_injection()) {
+		case os::InjectionGuard::Blocked:
 			debug_log::write("app", "extension-point DLL injection blocked");
 			break;
-		case HookBlockResult::Refused:
-			debug_log::write("app", "extension-point block refused, err=%lu", GetLastError());
+		case os::InjectionGuard::Refused:
+			debug_log::write("app", "extension-point block refused, err=%u", os::last_error());
 			break;
-		case HookBlockResult::Unsupported:
-			debug_log::write("app", "extension-point block unsupported on this Windows build");
+		case os::InjectionGuard::Unsupported:
+			debug_log::write("app", "extension-point block unsupported on this system");
 			break;
 	}
 
-	if (const wchar_t* module = injected_overlay_module()) {
-		debug_log::write("app", "an overlay module was already loaded before the guard ran: %ls", module);
+	if (const std::optional<std::string> module = os::injected_overlay()) {
+		debug_log::write("app", "an overlay module was already loaded before the guard ran: %s", module->c_str());
 	}
 }
 }
@@ -134,21 +132,21 @@ App::App()
 auto App::start(bool t_from_startup) -> App::StartResult
 {
 	if (!m_instance_guard.is_first_instance()) {
-		const bool activated = Window::activate_existing_instance();
+		const bool activated = os::activate_running_instance();
 		debug_log::write("app", "another instance is already running (%s) - exiting", activated ? "brought it to the front" : "it never answered");
 
 		return StartResult::AlreadyRunning;
 	}
 
 	m_assets.begin_decode();
-	installation::refresh_registration();
+	os::installation::refresh_registration();
 
 	log_startup_phase("LoadSettings");
 	const storage::LoadResult settings_result = storage::load_settings(&m_settings);
 
 	log_startup_phase("GuardAgainstOverlays");
 	guard_against_overlays(m_settings.block_overlay_injection);
-	UiAutomation::keep_process_mta_alive();
+	RiotClient::prepare_automation();
 
 	if (sodium_init() < 0) {
 		std::println("Failed to initialize libsodium.");
@@ -159,7 +157,7 @@ auto App::start(bool t_from_startup) -> App::StartResult
 	if (!create_graphics()) return StartResult::Failed;
 
 	log_startup_phase("CreateTray");
-	m_tray.create(K_APP_NAME_WIDE);
+	m_tray.create(K_APP_NAME);
 	m_draw_list.init(K_DRAW_LIST_VERTEX_CAPACITY, K_DRAW_LIST_INDEX_CAPACITY);
 
 	log_startup_phase("AddGames");
@@ -203,10 +201,13 @@ auto App::create_graphics() -> bool
 	const u32 width  = std::max(m_settings.window_width, static_cast<u32>(K_MIN_WINDOW_WIDTH));
 	const u32 height = std::max(m_settings.window_height, static_cast<u32>(K_MIN_WINDOW_HEIGHT));
 
-	if (!m_window.create(K_APP_NAME_WIDE, width, height)) {
+	if (!m_window.create(K_APP_NAME, width, height)) {
 		std::println("Failed to create window.");
 		return false;
 	}
+
+	m_window.set_min_size(Vec2{K_MIN_WINDOW_WIDTH, K_MIN_WINDOW_HEIGHT});
+	m_window.set_title_bar(K_TITLE_BAR_HEIGHT, [this](Vec2 t_point) { return m_title_bar.layout().button_at(t_point) != TitleBarButton::None; });
 
 	if (!m_renderer.init(&m_window)) {
 		std::println("Failed to initialize renderer.");
@@ -243,7 +244,7 @@ auto App::add_games() -> void
 		m_library.game_count += 1;
 	}
 
-	m_tray.on_menu_open([this](TrayMenu* t_menu) { fill_tray_menu(t_menu); });
+	m_tray.on_menu_open([this](os::TrayMenu* t_menu) { fill_tray_menu(t_menu); });
 }
 
 auto App::stack_widgets() -> void
@@ -288,7 +289,7 @@ auto App::lock() -> void
 	m_locked = true;
 	m_carousel.set_visible(false);
 	m_account_search.close();
-	m_window.set_search_button_visible(false);
+	m_title_bar.set_search_visible(false);
 	m_tray.set_locked(true);
 }
 
@@ -296,7 +297,7 @@ auto App::unlock() -> void
 {
 	m_locked = false;
 	m_carousel.set_visible(true);
-	m_window.set_search_button_visible(true);
+	m_title_bar.set_search_visible(true);
 	m_unlock_screen.hide();
 	m_tray.set_locked(false);
 	m_last_activity = Clock::now();
@@ -399,8 +400,8 @@ auto App::commit_new_vault_key() -> void
 
 auto App::copy_password(std::string_view t_password) -> void
 {
-	set_clipboard_secret(t_password);
-	m_clipboard_secret = ClipboardSecret{clipboard_sequence(), Clock::now() + K_CLIPBOARD_SECRET_LIFETIME};
+	os::set_clipboard_secret(t_password);
+	m_clipboard_secret = ClipboardSecret{os::clipboard_sequence(), Clock::now() + K_CLIPBOARD_SECRET_LIFETIME};
 
 	constexpr auto LIFETIME_SECONDS = std::chrono::duration<float>(K_CLIPBOARD_SECRET_LIFETIME).count();
 	m_toasts.notify_countdown("Password copied - it clears itself in 30 seconds.", LIFETIME_SECONDS);
@@ -408,8 +409,8 @@ auto App::copy_password(std::string_view t_password) -> void
 
 auto App::open_setup() -> void
 {
-	if (!bring_window_to_front(K_SETUP_WINDOW_CLASS_NAME)) {
-		launch_process(executable_path(), L"--setup");
+	if (!os::bring_window_to_front(os::WindowKind::Dialog)) {
+		os::launch_process(os::executable_path(), "--setup");
 	}
 }
 
@@ -417,17 +418,17 @@ auto App::locate_riot_client(const Command& t_command) -> void
 {
 	if (m_client_picker.is_open()) return;
 
-	PathRequest request{
-		.kind              = PathKind::File,
-		.title             = L"Locate the Riot Client",
-		.ok_label          = L"Use this client",
-		.start_path        = m_settings.riot_client_path[0] != '\0' ? to_wide(m_settings.riot_client_path) : K_RIOT_CLIENT_START_FOLDER,
-		.file_type_name    = L"Riot Client",
-		.file_type_pattern = L"RiotClientServices.exe",
+	os::PathRequest request{
+		.kind              = os::PathKind::File,
+		.title             = "Locate the Riot Client",
+		.ok_label          = "Use this client",
+		.start_path        = m_settings.riot_client_path[0] != '\0' ? std::string{m_settings.riot_client_path} : RiotClient::default_install_folder(),
+		.file_type_name    = "Riot Client",
+		.file_type_pattern = RiotClient::executable_name(),
 	};
 
 	m_locate_request = t_command;
-	m_client_picker.open(m_window.handle(), std::move(request));
+	m_client_picker.open(&m_window, std::move(request));
 }
 
 auto App::take_picked_riot_client() -> void
@@ -437,17 +438,17 @@ auto App::take_picked_riot_client() -> void
 		return;
 	}
 
-	const std::optional<std::wstring> picked  = m_client_picker.take_result();
-	const std::optional<Command>      request = std::exchange(m_locate_request, std::nullopt);
+	const std::optional<std::string> picked  = m_client_picker.take_result();
+	const std::optional<Command>     request = std::exchange(m_locate_request, std::nullopt);
 	if (!picked || !request) return;
 
-	const std::wstring client = RiotClient::executable_near(*picked);
+	const std::string client = RiotClient::executable_near(*picked);
 	if (client.empty()) {
 		m_toasts.notify(Notification{.message = "That isn't the Riot Client - pick RiotClientServices.exe.", .always_show = true});
 		return;
 	}
 
-	copy_to(to_utf8(client), m_settings.riot_client_path);
+	copy_to(client, m_settings.riot_client_path);
 	request_save();
 
 	if (request->index >= 0 && account_for(request->account) != nullptr) {
@@ -479,20 +480,20 @@ auto App::clear_clipboard_secret() -> void
 {
 	if (!m_clipboard_secret) return;
 
-	clear_clipboard_if_unchanged(m_clipboard_secret->sequence);
+	os::clear_clipboard_if_unchanged(m_clipboard_secret->sequence);
 	m_clipboard_secret.reset();
 }
 
-auto App::fill_tray_menu(TrayMenu* t_menu) const -> void
+auto App::fill_tray_menu(os::TrayMenu* t_menu) const -> void
 {
 	if (m_locked) return;
 
 	for (const u8 game : m_carousel.order()) {
-		if (t_menu->game_count == K_TRAY_MAX_GAMES) break;
+		if (t_menu->game_count == os::K_TRAY_MAX_GAMES) break;
 
 		const VisibleAccounts visible = m_library.visible_accounts(game);
 
-		TrayGame* entry = &t_menu->games[t_menu->game_count];
+		os::TrayGame* entry = &t_menu->games[t_menu->game_count];
 		t_menu->game_count += 1;
 
 		copy_to(m_library.games[game].title, entry->title);
@@ -500,11 +501,11 @@ auto App::fill_tray_menu(TrayMenu* t_menu) const -> void
 		entry->first_account = t_menu->account_count;
 		entry->account_count = 0;
 
-		for (u32 row = 0; row < visible.count && t_menu->account_count < K_TRAY_MAX_ACCOUNTS; row += 1) {
+		for (u32 row = 0; row < visible.count && t_menu->account_count < os::K_TRAY_MAX_ACCOUNTS; row += 1) {
 			const Account*         account = m_library.account(visible.refs[row]);
 			const std::string_view note    = account->note;
 
-			TrayAccount* item = &t_menu->accounts[t_menu->account_count];
+			os::TrayAccount* item = &t_menu->accounts[t_menu->account_count];
 			copy_to(note.empty() ? std::string_view{account->username} : note, item->label);
 			item->game = static_cast<i32>(game);
 			item->row  = static_cast<i32>(row);
@@ -521,7 +522,7 @@ auto App::pump_input() -> void
 
 	m_window.pump_messages();
 	m_window.set_close_to_tray(m_settings.close_to_tray && m_tray.is_icon_visible());
-	m_tray.set_colors(TrayColors{
+	m_tray.set_colors(os::TrayColors{
 		.background    = g_theme.popup,
 		.hover         = mix(g_theme.popup, m_settings.accent, 0.42f),
 		.text          = g_theme.text,
@@ -531,28 +532,28 @@ auto App::pump_input() -> void
 
 	handle_tray_event();
 
-	for (const InputEvent& event : m_window.input_events()) {
+	for (const os::InputEvent& event : m_window.input_events()) {
 		handle_input(event);
 	}
 }
 
 auto App::handle_tray_event() -> void
 {
-	const TrayEvent event = m_tray.take_event();
-	if (event.type != TrayEventType::None) {
+	const os::TrayEvent event = m_tray.take_event();
+	if (event.type != os::TrayEventType::None) {
 		m_last_activity = Clock::now();
 	}
 
 	switch (event.type) {
-		case TrayEventType::Exit:
-			m_window.request_close();
+		case os::TrayEventType::Exit:
+			m_window.request_quit();
 			break;
 
-		case TrayEventType::ShowWindow:
+		case os::TrayEventType::ShowWindow:
 			m_window.restore();
 			break;
 
-		case TrayEventType::QuickLogin: {
+		case os::TrayEventType::QuickLogin: {
 			if (m_locked || event.game < 0 || event.row < 0) break;
 
 			const auto game = static_cast<u32>(event.game);
@@ -563,22 +564,22 @@ auto App::handle_tray_event() -> void
 			break;
 		}
 
-		case TrayEventType::None:
+		case os::TrayEventType::None:
 			break;
 	}
 }
 
-auto App::handle_input(const InputEvent& t_event) -> void
+auto App::handle_input(const os::InputEvent& t_event) -> void
 {
 	m_last_activity = Clock::now();
 
-	const bool control_down = is_key_down(VK_CONTROL);
-	if (t_event.type == InputEventType::KeyDown && t_event.key == 'L' && control_down && !m_locked) {
+	const bool shortcut_held = os::modifiers().shortcut;
+	if (t_event.type == os::InputEventType::KeyDown && t_event.key == os::Key::L && shortcut_held && !m_locked) {
 		lock_vault();
 		return;
 	}
 
-	if (t_event.type == InputEventType::KeyDown && t_event.key == 'S' && control_down && !m_locked) {
+	if (t_event.type == os::InputEventType::KeyDown && t_event.key == os::Key::S && shortcut_held && !m_locked) {
 		if (m_account_search.is_open()) {
 			m_account_search.close();
 			return;
@@ -590,24 +591,25 @@ auto App::handle_input(const InputEvent& t_event) -> void
 		}
 	}
 
-	if (t_event.type == InputEventType::KeyDown && t_event.key == VK_OEM_COMMA && control_down && !m_locked && !m_settings_panel.is_blocking()) {
+	if (t_event.type == os::InputEventType::KeyDown && t_event.key == os::Key::Comma && shortcut_held && !m_locked && !m_settings_panel.is_blocking()) {
 		m_app_menu.close();
 		m_settings_panel.open();
 		return;
 	}
 
-	if (t_event.type == InputEventType::MouseMove) {
+	if (t_event.type == os::InputEventType::MouseMove) {
 		m_mouse = t_event.position;
-	} else if (t_event.type == InputEventType::MouseDown) {
+	} else if (t_event.type == os::InputEventType::MouseDown) {
 		m_pointer_down = true;
-	} else if (t_event.type == InputEventType::MouseUp) {
+	} else if (t_event.type == os::InputEventType::MouseUp) {
 		m_pointer_down = false;
 	}
 
 	const bool consumed = m_widgets.dispatch(t_event);
 	process_commands();
 
-	const bool is_action = t_event.type == InputEventType::MouseUp || t_event.type == InputEventType::KeyDown || t_event.type == InputEventType::RightClick;
+	const bool is_action =
+		t_event.type == os::InputEventType::MouseUp || t_event.type == os::InputEventType::KeyDown || t_event.type == os::InputEventType::RightClick;
 	if (consumed && is_action) {
 		request_save();
 	}
@@ -659,7 +661,7 @@ auto App::process(const Command& t_command) -> void
 		case CommandType::OpenDataFolder: {
 			const std::string directory = storage::data_directory();
 			if (!directory.empty()) {
-				ShellExecuteA(nullptr, "open", directory.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+				os::open_path(directory);
 			}
 
 			break;
@@ -707,7 +709,7 @@ auto App::process(const Command& t_command) -> void
 
 		case CommandType::CopyUsername:
 			if (const Account* account = m_account_modal.account_at_row(t_command.index)) {
-				set_clipboard_text(account->username);
+				os::set_clipboard_text(account->username);
 			}
 
 			break;
@@ -757,7 +759,7 @@ auto App::process(const Command& t_command) -> void
 
 		case CommandType::CopyAccountUsername:
 			if (const Account* account = account_for(t_command.account)) {
-				set_clipboard_text(account->username);
+				os::set_clipboard_text(account->username);
 				m_toasts.notify(Notification{.message = "Username copied."});
 			}
 
@@ -869,8 +871,8 @@ auto App::relaunch_if_update_installed() -> void
 	// The replacement build would otherwise find this process's mutex and exit as a duplicate.
 	m_instance_guard.release();
 
-	launch_process(executable_path());
-	m_window.request_close();
+	os::launch_process(os::executable_path());
+	m_window.request_quit();
 }
 
 auto App::redraw_while_resizing() -> void
@@ -911,7 +913,7 @@ auto App::frame() -> void
 		m_settings.window_height = static_cast<u32>(std::lround(restored.y));
 	}
 
-	m_carousel.set_bounds(m_window.content_rect());
+	m_carousel.set_bounds(content_rect(m_window.size()));
 	set_pixel_scale(m_window.dpi_scale());
 	update_theme(delta_seconds);
 
@@ -941,7 +943,7 @@ auto App::frame() -> void
 	if (!m_settings.snow || !m_settings.animations_enabled) {
 		m_snowfall.clear();
 	} else if (shown) {
-		m_snowfall.update(delta_seconds, m_window.content_rect(), m_window.is_focused());
+		m_snowfall.update(delta_seconds, content_rect(m_window.size()), m_window.is_focused());
 	}
 
 	if (shown) {
@@ -1019,7 +1021,7 @@ auto App::render() -> void
 		PULSAR_PROFILE_SCOPE("Render.BuildGeometry");
 		m_widgets.draw(&m_draw_list);
 		m_truncation_hint.capture(&m_draw_list);
-		m_truncation_hint.draw(&m_draw_list, m_window.content_rect());
+		m_truncation_hint.draw(&m_draw_list, content_rect(m_window.size()));
 		m_draw_list.finish();
 	}
 
@@ -1035,7 +1037,7 @@ auto App::render() -> void
 
 auto App::run() -> void
 {
-	while (!m_window.should_close()) {
+	while (!m_window.should_quit()) {
 		pump_input();
 		announce_first_run_after_update();
 		announce_unreadable_storage();

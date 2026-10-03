@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-#include <Windows.h>
+#include "os/system.h"
 
 namespace {
 constexpr u32 K_REPLACEMENT_CHARACTER = 0xFFFD;
@@ -25,19 +25,6 @@ constexpr CodepointRange K_BLOCKED_SCRIPTS[]{
 [[nodiscard]] auto is_ascii(std::string_view t_text) -> bool
 {
 	return std::ranges::all_of(t_text, [](char t_byte) { return static_cast<u8>(t_byte) < 0x80; });
-}
-
-[[nodiscard]] auto find_ignoring_case_unicode(std::string_view t_text, std::string_view t_query) -> usize
-{
-	const std::wstring text  = to_wide(t_text);
-	const std::wstring query = to_wide(t_query);
-	if (query.empty()) return 0;
-
-	const int found = FindNLSStringEx(LOCALE_NAME_USER_DEFAULT, FIND_FROMSTART | LINGUISTIC_IGNORECASE, text.c_str(), static_cast<int>(text.size()),
-	                                  query.c_str(), static_cast<int>(query.size()), nullptr, nullptr, nullptr, 0);
-	if (found < 0) return std::string_view::npos;
-
-	return to_utf8(std::wstring_view{text}.substr(0, static_cast<usize>(found))).size();
 }
 }
 
@@ -145,7 +132,7 @@ constexpr CodepointRange K_BLOCKED_SCRIPTS[]{
 
 [[nodiscard]] auto find_ignoring_case(std::string_view t_text, std::string_view t_query) -> usize
 {
-	if (!is_ascii(t_text) || !is_ascii(t_query)) return find_ignoring_case_unicode(t_text, t_query);
+	if (!is_ascii(t_text) || !is_ascii(t_query)) return os::find_ignoring_case(t_text, t_query);
 	if (t_query.size() > t_text.size()) return std::string_view::npos;
 
 	for (usize start = 0; start + t_query.size() <= t_text.size(); start += 1) {
@@ -165,28 +152,4 @@ constexpr CodepointRange K_BLOCKED_SCRIPTS[]{
 	if (first == std::string_view::npos) return {};
 
 	return t_text.substr(first, t_text.find_last_not_of(BLANK) - first + 1);
-}
-
-[[nodiscard]] auto to_utf8(std::wstring_view t_wide) -> std::string
-{
-	const auto wide_length = static_cast<int>(t_wide.size());
-	const int  length      = WideCharToMultiByte(CP_UTF8, 0, t_wide.data(), wide_length, nullptr, 0, nullptr, nullptr);
-	if (length <= 0) return {};
-
-	std::string utf8(static_cast<usize>(length), '\0');
-	WideCharToMultiByte(CP_UTF8, 0, t_wide.data(), wide_length, utf8.data(), length, nullptr, nullptr);
-
-	return utf8;
-}
-
-[[nodiscard]] auto to_wide(std::string_view t_utf8) -> std::wstring
-{
-	const auto utf8_length = static_cast<int>(t_utf8.size());
-	const int  length      = MultiByteToWideChar(CP_UTF8, 0, t_utf8.data(), utf8_length, nullptr, 0);
-	if (length <= 0) return {};
-
-	std::wstring wide(static_cast<usize>(length), L'\0');
-	MultiByteToWideChar(CP_UTF8, 0, t_utf8.data(), utf8_length, wide.data(), length);
-
-	return wide;
 }

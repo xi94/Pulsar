@@ -11,7 +11,6 @@
 #include <string>
 #include <utility>
 
-#include <Windows.h>
 #include <sodium.h>
 
 #include "core/animation.h"
@@ -21,11 +20,12 @@
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
-#include "platform/window.h"
+#include "os/window.h"
 #include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
 #include "ui/toasts.h"
+#include "ui/window_layout.h"
 
 namespace {
 constexpr float K_OPEN_EASE_RATE = 14.0f;
@@ -269,11 +269,6 @@ auto draw_input_box(DrawList* t_draw_list, Rect t_rect, Color t_border, bool t_f
 	                               t_focused ? K_INPUT_FOCUS_BORDER : 1.0f);
 }
 
-[[nodiscard]] auto is_caps_lock_on() -> bool
-{
-	return (GetKeyState(VK_CAPITAL) & 1) != 0;
-}
-
 [[nodiscard]] auto caution_color() -> Color
 {
 	return luminance(g_theme.surface) > 0.3f ? Color{176, 112, 16, 255} : Color{240, 190, 90, 255};
@@ -432,13 +427,13 @@ struct StageSpan {
 }
 }
 
-AccountModal::AccountModal(Library*      t_library,
-                           Settings*     t_settings,
-                           const Fonts*  t_fonts,
-                           const Assets* t_assets,
-                           const Window* t_window,
-                           Toasts*       t_toasts,
-                           CommandQueue* t_commands)
+AccountModal::AccountModal(Library*          t_library,
+                           Settings*         t_settings,
+                           const Fonts*      t_fonts,
+                           const Assets*     t_assets,
+                           const os::Window* t_window,
+                           Toasts*           t_toasts,
+                           CommandQueue*     t_commands)
 	: m_library(t_library)
 	, m_settings(t_settings)
 	, m_fonts(t_fonts)
@@ -504,7 +499,7 @@ auto AccountModal::is_docked() const -> bool
 
 auto AccountModal::panel_rect() const -> Rect
 {
-	if (is_docked()) return m_window->content_rect().inset(0.0f, 1.0f);
+	if (is_docked()) return content_rect(m_window->size()).inset(0.0f, 1.0f);
 
 	const Vec2 size   = floating_panel_size();
 	const Vec2 window = m_window->size();
@@ -1949,17 +1944,17 @@ auto AccountModal::on_scroll(Vec2, float t_wheel_delta) -> bool
 	return true;
 }
 
-auto AccountModal::handle_list_key(u32 t_key) -> bool
+auto AccountModal::handle_list_key(os::Key t_key) -> bool
 {
 	if (m_drag.lifted) return true;
 
 	switch (t_key) {
-		case VK_UP:
-		case VK_DOWN:
-			select_step(t_key == VK_DOWN ? 1 : -1);
+		case os::Key::Up:
+		case os::Key::Down:
+			select_step(t_key == os::Key::Down ? 1 : -1);
 			return true;
 
-		case VK_RETURN:
+		case os::Key::Enter:
 			if (selected_row(displayed_accounts()) >= 0) {
 				request_login(static_cast<u32>(m_game), *m_selected);
 			}
@@ -1970,9 +1965,9 @@ auto AccountModal::handle_list_key(u32 t_key) -> bool
 			break;
 	}
 
-	const bool control = is_key_down(VK_CONTROL);
+	const bool control = os::modifiers().shortcut;
 
-	if (control && t_key == 'F' && is_search_visible()) {
+	if (control && t_key == os::Key::F && is_search_visible()) {
 		m_search.set_focused(true);
 		m_search.apply(TextEdit::SelectAll);
 		return true;
@@ -1983,7 +1978,7 @@ auto AccountModal::handle_list_key(u32 t_key) -> bool
 		return true;
 	}
 
-	if (t_key == VK_DELETE) {
+	if (t_key == os::Key::Delete) {
 		if (selected_row(displayed_accounts()) >= 0) {
 			arm_or_delete(*m_selected);
 		}
@@ -1991,7 +1986,7 @@ auto AccountModal::handle_list_key(u32 t_key) -> bool
 		return true;
 	}
 
-	if (t_key == VK_BACK && !m_search.value().empty() && is_search_visible()) {
+	if (t_key == os::Key::Backspace && !m_search.value().empty() && is_search_visible()) {
 		m_search.set_focused(true);
 		m_search.on_key_down(t_key);
 		return true;
@@ -2000,7 +1995,7 @@ auto AccountModal::handle_list_key(u32 t_key) -> bool
 	return false;
 }
 
-auto AccountModal::on_key_down(u32 t_key) -> bool
+auto AccountModal::on_key_down(os::Key t_key) -> bool
 {
 	if (!is_blocking()) return false;
 
@@ -2012,7 +2007,7 @@ auto AccountModal::on_key_down(u32 t_key) -> bool
 		return true;
 	}
 
-	if (t_key == VK_ESCAPE) {
+	if (t_key == os::Key::Escape) {
 		if (m_armed_delete) {
 			m_armed_delete.reset();
 		} else if (m_mode == Mode::EditAccount) {
@@ -2034,10 +2029,10 @@ auto AccountModal::on_key_down(u32 t_key) -> bool
 
 	if (m_mode == Mode::AccountList && has_game()) {
 		handle_list_key(t_key);
-	} else if (m_mode == Mode::EditAccount && t_key == VK_TAB) {
+	} else if (m_mode == Mode::EditAccount && t_key == os::Key::Tab) {
 		constexpr EditField ORDER[]{EditField::Username, EditField::Password, EditField::Note};
 		constexpr auto      COUNT    = static_cast<i32>(std::size(ORDER));
-		const i32           step     = is_key_down(VK_SHIFT) ? COUNT - 1 : 1;
+		const i32           step     = os::modifiers().shift ? COUNT - 1 : 1;
 		const i32           current  = focused_field();
 		i32                 position = -1;
 
@@ -2049,7 +2044,7 @@ auto AccountModal::on_key_down(u32 t_key) -> bool
 
 		focus_field(static_cast<i32>(ORDER[position < 0 ? 0 : (position + step) % COUNT]));
 		reveal_field(focused_field());
-	} else if (m_mode == Mode::EditAccount && t_key == VK_RETURN) {
+	} else if (m_mode == Mode::EditAccount && t_key == os::Key::Enter) {
 		if (has_changes() && can_save()) {
 			save_edit();
 		} else if (has_changes()) {
@@ -2823,7 +2818,7 @@ auto AccountModal::draw_edit_form(DrawList* t_draw_list, Rect t_main, u8 t_alpha
 
 		if (missing) {
 			draw_hint(i, "Required", g_theme.error);
-		} else if (i == static_cast<u32>(EditField::Password) && focused && is_caps_lock_on()) {
+		} else if (i == static_cast<u32>(EditField::Password) && focused && os::is_caps_lock_on()) {
 			draw_hint(i, "Caps Lock is on", caution_color());
 		}
 	}
@@ -2886,7 +2881,7 @@ auto AccountModal::draw_edit_footer(DrawList* t_draw_list, Rect t_footer, u8 t_a
 	float       x           = t_footer.x + K_ROW_PADDING;
 
 	if (x + hints_width <= cancel.x - K_HINT_GAP) {
-		for (const auto [key, action] : {std::pair{"Enter", "save"}, std::pair{"Esc", "cancel"}}) {
+		for (const auto& [key, action] : {std::pair{"Enter", "save"}, std::pair{"Esc", "cancel"}}) {
 			const float width = controls::keycap_width(secondary, key);
 
 			controls::draw_keycap(t_draw_list, secondary, Rect{snapped_to_pixel(x), cap_y, width, cap}, key, g_theme.surface, t_alpha);

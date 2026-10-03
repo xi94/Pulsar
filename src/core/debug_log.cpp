@@ -2,19 +2,23 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
-#include <share.h>
+#include <mutex>
 #include <span>
 #include <string>
-
-#include <Windows.h>
+#include <system_error>
+#include <thread>
 
 #include "core/app_identity.h"
-#include "core/crash_handler.h"
 #include "core/file.h"
-#include "core/str.h"
+#include "core/thread_util.h"
+#include "os/crash_handler.h"
+#include "os/files.h"
+#include "os/system.h"
 
 namespace {
 constexpr u64   K_SLOW_CALL_MS                 = 250;
@@ -22,14 +26,14 @@ constexpr u64   K_FIRST_STUCK_REPORT_MS        = 2000;
 constexpr u64   K_MAX_STUCK_REPORT_INTERVAL_MS = 60000;
 constexpr u64   K_HANG_DUMP_AFTER_MS           = 20000;
 constexpr u64   K_UI_STALL_MS                  = 2000;
-constexpr DWORD K_WATCHDOG_SCAN_INTERVAL_MS    = 500;
-constexpr DWORD K_WATCHDOG_SHUTDOWN_WAIT_MS    = 5000;
+constexpr auto  K_WATCHDOG_SCAN_INTERVAL       = std::chrono::milliseconds(500);
+constexpr auto  K_WATCHDOG_SHUTDOWN_WAIT       = std::chrono::milliseconds(5000);
 constexpr u32   K_MAX_OPEN_SCOPES              = 64;
 constexpr usize K_LABEL_CAPACITY               = 160;
 
 struct OpenScope {
 	bool        in_use             = false;
-	DWORD       thread_id          = 0;
+	u64         thread_id          = 0;
 	u64         start_ms           = 0;
 	u64         next_report_ms     = 0;
 	u64         report_interval_ms = 0;
@@ -39,7 +43,7 @@ struct OpenScope {
 
 struct StuckReport {
 	const char* category;
-	DWORD       thread_id;
+	u64         thread_id;
 	u64         age_ms;
 	char        label[K_LABEL_CAPACITY];
 };
@@ -48,54 +52,54 @@ std::atomic<bool> g_enabled{false};
 std::atomic<bool> g_initialized{false};
 u64               g_start_ms = 0;
 
-SRWLOCK     g_write_lock = SRWLOCK_INIT;
-FILE*       g_file       = nullptr;
+std::mutex  g_write_lock;
+FILE*       g_file = nullptr;
 std::string g_file_path;
 
-SRWLOCK   g_scope_lock = SRWLOCK_INIT;
-OpenScope g_open_scopes[K_MAX_OPEN_SCOPES];
+std::mutex g_scope_lock;
+OpenScope  g_open_scopes[K_MAX_OPEN_SCOPES];
 
 std::atomic<u64>  g_last_ui_alive_ms{0};
 std::atomic<bool> g_ui_stall_reported{false};
 std::atomic<bool> g_hang_dump_written{false};
 
-HANDLE g_watchdog_stop   = nullptr;
-HANDLE g_watchdog_thread = nullptr;
+std::thread             g_watchdog;
+std::atomic<bool>       g_watchdog_finished{false};
+std::mutex              g_watchdog_lock;
+std::condition_variable g_watchdog_wake;
+bool                    g_watchdog_stopping = false;
 
 [[nodiscard]] auto now_ms() -> u64
 {
-	return GetTickCount64();
+	return static_cast<u64>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
 }
 
 auto write_line(const char* t_category, const char* t_message) -> void
 {
-	SYSTEMTIME local_time;
-	GetLocalTime(&local_time);
-
-	const u64 elapsed_ms = now_ms() - g_start_ms;
+	const os::LocalTime time       = os::local_time();
+	const u64           elapsed_ms = now_ms() - g_start_ms;
 
 	char line[1400];
-	_snprintf_s(line, _TRUNCATE, "%02u:%02u:%02u.%03u  +%4llu.%03llus  t%-5lu  %-8s  %s\n", local_time.wHour, local_time.wMinute, local_time.wSecond,
-	            local_time.wMilliseconds, elapsed_ms / 1000, elapsed_ms % 1000, GetCurrentThreadId(), t_category != nullptr ? t_category : "-", t_message);
+	std::snprintf(line, sizeof(line), "%02u:%02u:%02u.%03u  +%4llu.%03llus  t%-5llu  %-8s  %s\n", time.hour, time.minute, time.second, time.millisecond,
+	              static_cast<unsigned long long>(elapsed_ms / 1000), static_cast<unsigned long long>(elapsed_ms % 1000),
+	              static_cast<unsigned long long>(os::current_thread_id()), t_category != nullptr ? t_category : "-", t_message);
 
-	AcquireSRWLockExclusive(&g_write_lock);
+	const std::lock_guard lock(g_write_lock);
 
 	if (g_file != nullptr) {
 		std::fputs(line, g_file);
 		std::fflush(g_file);
 	}
 
-	OutputDebugStringA(line);
+	os::write_to_debugger(line);
 	std::fputs(line, stdout);
 	std::fflush(stdout);
-
-	ReleaseSRWLockExclusive(&g_write_lock);
 }
 
 auto write_formatted(const char* t_category, const char* t_format, va_list t_args) -> void
 {
 	char message[1024];
-	_vsnprintf_s(message, sizeof(message), _TRUNCATE, t_format, t_args);
+	std::vsnprintf(message, sizeof(message), t_format, t_args);
 
 	write_line(t_category, message);
 }
@@ -115,7 +119,7 @@ auto write_hang_dump_once() -> void
 
 	write_line("watchdog", "past the hang threshold - writing a diagnostic minidump of every thread");
 
-	const std::string dump_path = to_utf8(write_diagnostic_dump(L"hang"));
+	const std::string dump_path = os::write_diagnostic_dump("hang");
 	if (dump_path.empty()) {
 		write_line("watchdog", "diagnostic minidump FAILED to write");
 	} else {
@@ -128,7 +132,7 @@ auto write_hang_dump_once() -> void
 	u32 report_count           = 0;
 	*t_out_past_hang_threshold = false;
 
-	AcquireSRWLockExclusive(&g_scope_lock);
+	const std::lock_guard lock(g_scope_lock);
 
 	for (OpenScope& scope : g_open_scopes) {
 		if (!scope.in_use || t_now < scope.next_report_ms) continue;
@@ -147,8 +151,6 @@ auto write_hang_dump_once() -> void
 		scope.next_report_ms     = t_now + scope.report_interval_ms;
 	}
 
-	ReleaseSRWLockExclusive(&g_scope_lock);
-
 	return report_count;
 }
 
@@ -159,8 +161,8 @@ auto report_stuck_scopes() -> void
 	const u32   report_count        = collect_stuck_scopes(now_ms(), reports, &past_hang_threshold);
 
 	for (const StuckReport& report : std::span{reports, report_count}) {
-		write_unchecked("watchdog", "STILL RUNNING after %llums on thread t%lu  [%s] %s", report.age_ms, report.thread_id,
-		                report.category != nullptr ? report.category : "-", report.label);
+		write_unchecked("watchdog", "STILL RUNNING after %llums on thread t%llu  [%s] %s", static_cast<unsigned long long>(report.age_ms),
+		                static_cast<unsigned long long>(report.thread_id), report.category != nullptr ? report.category : "-", report.label);
 	}
 
 	if (past_hang_threshold) {
@@ -178,7 +180,8 @@ auto report_ui_thread_stall() -> void
 	if (since_ms >= K_UI_STALL_MS) {
 		bool already_reported = false;
 		if (g_ui_stall_reported.compare_exchange_strong(already_reported, true)) {
-			write_unchecked("watchdog", "UI THREAD STALLED - no frame for %llums (the whole app is frozen, not just a worker)", since_ms);
+			write_unchecked("watchdog", "UI THREAD STALLED - no frame for %llums (the whole app is frozen, not just a worker)",
+			                static_cast<unsigned long long>(since_ms));
 		}
 
 		return;
@@ -190,60 +193,53 @@ auto report_ui_thread_stall() -> void
 	}
 }
 
-auto WINAPI watchdog_main(LPVOID) -> DWORD
+auto watchdog_main() -> void
 {
-	while (WaitForSingleObject(g_watchdog_stop, K_WATCHDOG_SCAN_INTERVAL_MS) != WAIT_OBJECT_0) {
+	std::unique_lock lock(g_watchdog_lock);
+
+	while (!g_watchdog_wake.wait_for(lock, K_WATCHDOG_SCAN_INTERVAL, [] { return g_watchdog_stopping; })) {
+		lock.unlock();
 		report_stuck_scopes();
 		report_ui_thread_stall();
+		lock.lock();
 	}
 
-	return 0;
+	g_watchdog_finished.store(true, std::memory_order_release);
 }
 
 auto open_log_file() -> void
 {
-	const std::wstring directory = app_data_subdirectory(L"logs");
+	const std::string directory = app_data_subdirectory("logs");
 	if (directory.empty()) return;
 
-	const std::wstring path          = directory + L"\\" + K_APP_NAME_WIDE + L"-debug.log";
-	const std::wstring previous_path = directory + L"\\" + K_APP_NAME_WIDE + L"-debug.prev.log";
-	MoveFileExW(path.c_str(), previous_path.c_str(), MOVEFILE_REPLACE_EXISTING);
+	const std::string path          = joined_path(directory, std::string{K_APP_NAME} + "-debug.log");
+	const std::string previous_path = joined_path(directory, std::string{K_APP_NAME} + "-debug.prev.log");
+	os::replace_file(path, previous_path);
 
-	// Shared for reading so the log of a run that is hung right now can still be opened.
-	g_file = _wfsopen(path.c_str(), L"wb", _SH_DENYWR);
+	g_file = os::open_log_file(path);
 	if (g_file != nullptr) {
-		g_file_path = to_utf8(path);
+		g_file_path = path;
 	}
 }
 
 auto start_watchdog() -> void
 {
-	g_watchdog_stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-	if (g_watchdog_stop != nullptr) {
-		g_watchdog_thread = CreateThread(nullptr, 0, watchdog_main, nullptr, 0, nullptr);
-	}
-
-	if (g_watchdog_thread == nullptr) {
+	try {
+		g_watchdog = std::thread(watchdog_main);
+	} catch (const std::system_error&) {
 		write_line("app", "watchdog thread could not be started - stuck-call reporting is off for this run");
 	}
 }
 
 auto stop_watchdog() -> void
 {
-	if (g_watchdog_stop != nullptr) {
-		SetEvent(g_watchdog_stop);
+	{
+		const std::lock_guard lock(g_watchdog_lock);
+		g_watchdog_stopping = true;
 	}
 
-	if (g_watchdog_thread != nullptr) {
-		WaitForSingleObject(g_watchdog_thread, K_WATCHDOG_SHUTDOWN_WAIT_MS);
-		CloseHandle(g_watchdog_thread);
-		g_watchdog_thread = nullptr;
-	}
-
-	if (g_watchdog_stop != nullptr) {
-		CloseHandle(g_watchdog_stop);
-		g_watchdog_stop = nullptr;
-	}
+	g_watchdog_wake.notify_all();
+	join_or_abandon(&g_watchdog, &g_watchdog_finished, K_WATCHDOG_SHUTDOWN_WAIT);
 }
 }
 
@@ -254,7 +250,7 @@ auto debug_log::init() -> void
 
 	g_start_ms = now_ms();
 
-	const bool forced_on = GetEnvironmentVariableW(K_DEBUG_LOG_ENVIRONMENT_VARIABLE, nullptr, 0) != 0;
+	const bool forced_on = os::environment_variable(K_DEBUG_LOG_ENVIRONMENT_VARIABLE).has_value();
 	if (!K_IS_DEBUG_BUILD && !forced_on) return;
 
 	open_log_file();
@@ -273,14 +269,12 @@ auto debug_log::shutdown() -> void
 
 	g_enabled.store(false, std::memory_order_release);
 
-	AcquireSRWLockExclusive(&g_write_lock);
+	const std::lock_guard lock(g_write_lock);
 
 	if (g_file != nullptr) {
 		std::fclose(g_file);
 		g_file = nullptr;
 	}
-
-	ReleaseSRWLockExclusive(&g_write_lock);
 }
 
 auto debug_log::is_enabled() -> bool
@@ -315,19 +309,19 @@ debug_log::Scope::Scope(const char* t_category, const char* t_format, ...)
 
 	va_list args;
 	va_start(args, t_format);
-	_vsnprintf_s(m_label, sizeof(m_label), _TRUNCATE, t_format, args);
+	std::vsnprintf(m_label, sizeof(m_label), t_format, args);
 	va_end(args);
 
 	m_start_ms = now_ms();
 
-	AcquireSRWLockExclusive(&g_scope_lock);
+	const std::lock_guard lock(g_scope_lock);
 
 	for (u32 i = 0; i < K_MAX_OPEN_SCOPES; i += 1) {
 		OpenScope* scope = &g_open_scopes[i];
 		if (scope->in_use) continue;
 
 		scope->in_use             = true;
-		scope->thread_id          = GetCurrentThreadId();
+		scope->thread_id          = os::current_thread_id();
 		scope->start_ms           = m_start_ms;
 		scope->report_interval_ms = K_FIRST_STUCK_REPORT_MS;
 		scope->next_report_ms     = m_start_ms + K_FIRST_STUCK_REPORT_MS;
@@ -336,23 +330,20 @@ debug_log::Scope::Scope(const char* t_category, const char* t_format, ...)
 		m_slot = static_cast<i32>(i);
 		break;
 	}
-
-	ReleaseSRWLockExclusive(&g_scope_lock);
 }
 
 debug_log::Scope::~Scope()
 {
 	if (m_slot >= 0) {
-		AcquireSRWLockExclusive(&g_scope_lock);
+		const std::lock_guard lock(g_scope_lock);
 		g_open_scopes[m_slot].in_use = false;
-		ReleaseSRWLockExclusive(&g_scope_lock);
 	}
 
 	if (m_start_ms == 0 || !is_enabled()) return;
 
 	const u64 elapsed = now_ms() - m_start_ms;
 	if (elapsed >= K_SLOW_CALL_MS) {
-		write_unchecked(m_category, "slow: %s took %llums", m_label, elapsed);
+		write_unchecked(m_category, "slow: %s took %llums", m_label, static_cast<unsigned long long>(elapsed));
 	}
 }
 

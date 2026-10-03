@@ -3,28 +3,28 @@
 #include <cassert>
 #include <span>
 
-#include "platform/window.h"
+#include "os/input.h"
 
 namespace {
 constexpr Vec2 K_MOUSE_OUTSIDE_WINDOW{-1.0f, -1.0f};
 
-[[nodiscard]] auto deliver(Widget* t_widget, const InputEvent& t_event) -> bool
+[[nodiscard]] auto deliver(Widget* t_widget, const os::InputEvent& t_event) -> bool
 {
 	switch (t_event.type) {
-		case InputEventType::MouseDown:
+		case os::InputEventType::MouseDown:
 			return t_widget->on_pointer_down(t_event.position);
-		case InputEventType::MouseMove:
+		case os::InputEventType::MouseMove:
 			return t_widget->on_pointer_move(t_event.position);
-		case InputEventType::MouseUp:
+		case os::InputEventType::MouseUp:
 			return t_widget->on_pointer_up(t_event.position);
-		case InputEventType::RightClick:
+		case os::InputEventType::RightClick:
 			return t_widget->on_right_click(t_event.position);
-		case InputEventType::MouseWheel:
+		case os::InputEventType::MouseWheel:
 			return t_widget->on_scroll(t_event.position, t_event.wheel_delta);
-		case InputEventType::KeyDown:
+		case os::InputEventType::KeyDown:
 			return t_widget->on_key_down(t_event.key);
-		case InputEventType::Character:
-			return t_widget->on_char(t_event.key);
+		case os::InputEventType::Character:
+			return t_widget->on_char(t_event.codepoint);
 	}
 
 	return false;
@@ -88,7 +88,7 @@ auto WidgetStack::draw(DrawList* t_draw_list) -> void
 	}
 }
 
-auto WidgetStack::dispatch(const InputEvent& t_event) -> bool
+auto WidgetStack::dispatch(const os::InputEvent& t_event) -> bool
 {
 	return visit_top_down([&](Widget* t_widget) { return t_widget->is_visible() && (deliver(t_widget, t_event) || t_widget->is_blocking()); });
 }

@@ -11,11 +11,13 @@
 
 class Assets;
 struct Fonts;
+namespace os {
 class Window;
+}
 
 class AccountSearch : public Widget {
   public:
-	AccountSearch(const Library* t_library, const Fonts* t_fonts, const Assets* t_assets, const Window* t_window, CommandQueue* t_commands);
+	AccountSearch(const Library* t_library, const Fonts* t_fonts, const Assets* t_assets, const os::Window* t_window, CommandQueue* t_commands);
 
 	auto open() -> void;
 	auto close() -> void;
@@ -33,7 +35,7 @@ class AccountSearch : public Widget {
 	auto on_pointer_up(Vec2 t_point) -> bool override;
 	auto on_right_click(Vec2 t_point) -> bool override;
 	auto on_scroll(Vec2 t_point, float t_wheel_delta) -> bool override;
-	auto on_key_down(u32 t_key) -> bool override;
+	auto on_key_down(os::Key t_key) -> bool override;
 	auto on_char(u32 t_character) -> bool override;
 
 	[[nodiscard]] auto is_blocking() const -> bool override
@@ -88,11 +90,11 @@ class AccountSearch : public Widget {
 	auto draw_action(DrawList* t_draw_list, Rect t_row, const Action& t_action, bool t_highlighted, u8 t_alpha) const -> void;
 	auto draw_footer(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void;
 
-	const Library* m_library;
-	const Fonts*   m_fonts;
-	const Assets*  m_assets;
-	const Window*  m_window;
-	CommandQueue*  m_commands;
+	const Library*    m_library;
+	const Fonts*      m_fonts;
+	const Assets*     m_assets;
+	const os::Window* m_window;
+	CommandQueue*     m_commands;
 
 	bool                      m_open        = false;
 	float                     m_open_amount = 0.0f;

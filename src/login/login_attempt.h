@@ -30,11 +30,11 @@ struct LoginWork {
 	char launch_product[32]{};
 	char message[160]{};
 
-	std::wstring remembered_client_path;
-	std::wstring found_client_path;
-	bool         client_missing = false;
+	std::string remembered_client_path;
+	std::string found_client_path;
+	bool        client_missing = false;
 
-	RiotClient riot_client;
+	RiotClient riot_client{&cancel_requested};
 };
 
 class LoginAttempt {
@@ -63,6 +63,7 @@ class LoginAttempt {
 
   private:
 	auto abandon_worker() -> void;
+	auto join_worker(std::chrono::milliseconds t_timeout) -> void;
 
 	std::shared_ptr<LoginWork>            m_work;
 	std::thread                           m_worker;

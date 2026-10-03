@@ -8,18 +8,17 @@
 #include <optional>
 #include <span>
 
-#include <Windows.h>
-
 #include "core/animation.h"
 #include "core/profiler.h"
 #include "core/str.h"
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
-#include "platform/window.h"
+#include "os/window.h"
 #include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
+#include "ui/window_layout.h"
 
 namespace {
 constexpr float K_OPEN_EASE_RATE    = 16.0f;
@@ -527,12 +526,12 @@ const SettingsPanel::PercentSlider SettingsPanel::K_PERCENT_SLIDERS[K_PERCENT_SL
 	{&Rows::background_grain, &Settings::background_grain_intensity, [](const Settings* t_settings) { return t_settings->background_grain; }},
 };
 
-SettingsPanel::SettingsPanel(Settings*     t_settings,
-                             Fonts*        t_fonts,
-                             Renderer*     t_renderer,
-                             const Window* t_window,
-                             const Assets* t_assets,
-                             CommandQueue* t_commands)
+SettingsPanel::SettingsPanel(Settings*         t_settings,
+                             Fonts*            t_fonts,
+                             Renderer*         t_renderer,
+                             const os::Window* t_window,
+                             const Assets*     t_assets,
+                             CommandQueue*     t_commands)
 	: m_settings(t_settings)
 	, m_fonts(t_fonts)
 	, m_renderer(t_renderer)
@@ -654,7 +653,7 @@ auto SettingsPanel::layout() const -> SettingsPanel::Layout
 
 	Layout result{};
 	result.docked = width < K_PANEL_MIN_SIZE.x * size_scale || height < K_PANEL_MIN_SIZE.y * size_scale;
-	result.panel  = result.docked ? m_window->content_rect().inset(0.0f, 1.0f) : Rect{0.0f, 0.0f, window.x, window.y}.centered(width, height);
+	result.panel  = result.docked ? content_rect(m_window->size()).inset(0.0f, 1.0f) : Rect{0.0f, 0.0f, window.x, window.y}.centered(width, height);
 	result.inner  = result.panel.inset(K_PANEL_BORDER);
 
 	Rect remaining     = result.inner;
@@ -936,7 +935,7 @@ auto SettingsPanel::pattern_popup_rect(const Rows& t_rows) const -> Rect
 		K_PATTERN_POPUP_PADDING * 2.0f + static_cast<float>(K_PATTERN_COLUMNS) * tile.x + static_cast<float>(K_PATTERN_COLUMNS - 1) * K_TILE_GAP;
 	const float height = K_PATTERN_POPUP_PADDING * 2.0f + static_cast<float>(lines) * tile.y + static_cast<float>(lines - 1) * K_TILE_ROW_GAP;
 	const Rect  anchor = pattern_select_rect(t_rows.background, m_fonts);
-	const Rect  bounds = m_window->content_rect().inset(K_PATTERN_POPUP_MARGIN);
+	const Rect  bounds = content_rect(m_window->size()).inset(K_PATTERN_POPUP_MARGIN);
 
 	float y = anchor.bottom() + K_PATTERN_POPUP_GAP;
 	if (y + height > bounds.bottom()) {
@@ -1506,7 +1505,7 @@ auto SettingsPanel::update(float t_delta_seconds) -> void
 	update_hover_hints(t_delta_seconds);
 
 	const Rows current_rows = rows(layout());
-	const Rect popup_bounds = m_window->content_rect();
+	const Rect popup_bounds = content_rect(m_window->size());
 
 	m_font_list.update(t_delta_seconds, dropdown_rect(current_rows.font, m_fonts), popup_bounds);
 	m_theme_list.update(t_delta_seconds, dropdown_rect(current_rows.theme, m_fonts), popup_bounds);
@@ -1764,7 +1763,7 @@ auto SettingsPanel::handle_click(Vec2 t_point) -> void
 		if (m_color_picker.is_open()) {
 			m_color_picker.close();
 		} else {
-			m_color_picker.open(m_settings->accent, swatch, m_window->content_rect());
+			m_color_picker.open(m_settings->accent, swatch, content_rect(m_window->size()));
 		}
 
 		return;
@@ -1831,7 +1830,7 @@ auto SettingsPanel::on_scroll(Vec2 t_point, float t_wheel_delta) -> bool
 	const Layout current      = layout();
 	const Rows   current_rows = rows(current);
 
-	if (is_key_down(VK_CONTROL) && hits(current, current_rows.theme, dropdown_rect(current_rows.theme, m_fonts), t_point)) {
+	if (os::modifiers().shortcut && hits(current, current_rows.theme, dropdown_rect(current_rows.theme, m_fonts), t_point)) {
 		m_theme_wheel += t_wheel_delta;
 
 		while (std::fabs(m_theme_wheel) >= 1.0f) {
@@ -1848,7 +1847,7 @@ auto SettingsPanel::on_scroll(Vec2 t_point, float t_wheel_delta) -> bool
 	return true;
 }
 
-auto SettingsPanel::on_key_down(u32 t_key) -> bool
+auto SettingsPanel::on_key_down(os::Key t_key) -> bool
 {
 	if (!is_blocking()) return false;
 
@@ -1861,20 +1860,20 @@ auto SettingsPanel::on_key_down(u32 t_key) -> bool
 			choose_theme(static_cast<ThemeKind>(*chosen));
 		}
 	} else if (m_pattern_open) {
-		m_pattern_open = t_key != VK_ESCAPE;
+		m_pattern_open = t_key != os::Key::Escape;
 	} else if (m_color_picker.on_key_down(t_key)) {
 		pull_picked_color();
-	} else if (t_key == VK_ESCAPE && is_searching()) {
+	} else if (t_key == os::Key::Escape && is_searching()) {
 		clear_search();
-	} else if (t_key == VK_ESCAPE && m_search.is_focused()) {
+	} else if (t_key == os::Key::Escape && m_search.is_focused()) {
 		m_search.set_focused(false);
-	} else if (t_key == VK_ESCAPE) {
+	} else if (t_key == os::Key::Escape) {
 		close();
-	} else if (t_key == VK_TAB && is_key_down(VK_CONTROL)) {
-		const u32 step = is_key_down(VK_SHIFT) ? K_SETTINGS_TAB_COUNT - 1 : 1;
+	} else if (t_key == os::Key::Tab && os::modifiers().shortcut) {
+		const u32 step = os::modifiers().shift ? K_SETTINGS_TAB_COUNT - 1 : 1;
 		clear_search();
 		select_tab(static_cast<SettingsTab>((static_cast<u32>(m_tab) + step) % K_SETTINGS_TAB_COUNT));
-	} else if (t_key == 'F' && is_key_down(VK_CONTROL)) {
+	} else if (t_key == os::Key::F && os::modifiers().shortcut) {
 		focus_search();
 	} else if (m_search.is_focused()) {
 		m_search.on_key_down(t_key);

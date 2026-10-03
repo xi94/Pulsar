@@ -26,7 +26,7 @@ class ContextMenu : public Widget {
 
 	auto on_pointer_up(Vec2 t_point) -> bool override;
 	auto on_right_click(Vec2 t_point) -> bool override;
-	auto on_key_down(u32 t_key) -> bool override;
+	auto on_key_down(os::Key t_key) -> bool override;
 
 	[[nodiscard]] auto is_blocking() const -> bool override
 	{

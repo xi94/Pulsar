@@ -9,4 +9,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project ("Pulsar")
 add_subdirectory ("src")
-add_subdirectory ("tools")
+if (WIN32)
+  add_subdirectory ("tools")
+endif()
