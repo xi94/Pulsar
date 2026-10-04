@@ -79,6 +79,11 @@ class Window {
 		return m_dpi_scale;
 	}
 
+	[[nodiscard]] auto native_controls_width() const -> float
+	{
+		return m_native_controls_width;
+	}
+
 	[[nodiscard]] auto should_quit() const -> bool
 	{
 		return m_should_quit;
@@ -125,7 +130,8 @@ class Window {
 	float m_dpi_scale       = 1.0f;
 	Vec2  m_min_size{};
 
-	float                     m_title_bar_height = 0.0f;
+	float                     m_title_bar_height      = 0.0f;
+	float                     m_native_controls_width = 0.0f;
 	std::function<bool(Vec2)> m_is_title_bar_button;
 
 	bool       m_should_quit              = false;

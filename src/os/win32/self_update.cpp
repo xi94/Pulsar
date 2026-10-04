@@ -50,6 +50,11 @@ auto delete_stale_backup(const std::wstring& t_backup_path) -> void
 
 namespace os {
 
+auto can_self_update() -> bool
+{
+	return true;
+}
+
 auto install_update(const std::vector<u8>& t_new_build, std::string_view t_running_version, std::string* t_out_error) -> bool
 {
 	const std::wstring self_path = win32::to_wide(executable_path());

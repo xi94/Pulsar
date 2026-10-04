@@ -45,7 +45,7 @@ auto SetupApp::create() -> bool
 	if (!m_window.create("Pulsar setup", K_WINDOW_WIDTH, K_WINDOW_HEIGHT, os::WindowKind::Dialog)) return false;
 	m_window.set_title_bar(K_TITLE_BAR_HEIGHT, [this](Vec2 t_point) { return title_bar().button_at(t_point) != TitleBarButton::None; });
 
-	if (!m_renderer.init(&m_window)) return false;
+	if (!m_renderer.init(&m_window, m_settings.renderer)) return false;
 
 	if (!m_assets.finish_upload(&m_renderer)) return false;
 	if (!reload_fonts()) return false;
@@ -83,7 +83,7 @@ auto SetupApp::reload_fonts() -> bool
 
 auto SetupApp::title_bar() const -> TitleBarLayout
 {
-	return TitleBarLayout{.width = static_cast<float>(m_window.width()), .dialog = true};
+	return TitleBarLayout{.width = static_cast<float>(m_window.width()), .native_controls_width = m_window.native_controls_width(), .dialog = true};
 }
 
 auto SetupApp::run() -> SetupOutcome
@@ -227,7 +227,9 @@ auto SetupApp::draw_window_controls() -> void
 	const TitleBarButton hovered_button = m_pressed_button != TitleBarButton::None ? m_pressed_button : title_bar().button_at(m_mouse);
 
 	for (const TitleBarButton button : {TitleBarButton::Minimize, TitleBarButton::Close}) {
-		const Rect rect       = title_bar().button_rect(button);
+		const Rect rect = title_bar().button_rect(button);
+		if (rect.w <= 0.0f) continue;
+
 		const bool close      = button == TitleBarButton::Close;
 		const bool is_hovered = hovered_button == button && rect.contains(m_mouse);
 

@@ -39,3 +39,4 @@ BraceWrapping:
   AfterFunction: false
   BeforeLambdaBody: false
 FixNamespaceComments: false
+ObjCBlockIndentWidth: 4

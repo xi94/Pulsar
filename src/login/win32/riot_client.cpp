@@ -37,6 +37,8 @@ constexpr const wchar_t*    K_PROTOCOL_COMMAND_KEY        = L"Software\\Classes\
 constexpr const wchar_t*    K_UNINSTALL_KEY               = L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
 constexpr std::wstring_view K_RIOT_UNINSTALL_PREFIX       = L"Riot Game ";
 
+constexpr const char* K_AUTOMATION_FAILED_MESSAGE = "Couldn't start Windows UI Automation - try again.";
+
 constexpr const wchar_t* K_CLIENT_WINDOW_TITLE        = L"Riot Client";
 constexpr const wchar_t* K_USERNAME_FIELD_NAME        = L"USERNAME";
 constexpr const wchar_t* K_PASSWORD_FIELD_NAME        = L"PASSWORD";
@@ -524,6 +526,16 @@ auto RiotClient::kill_all_client_processes(const std::atomic<bool>* t_cancel) ->
 	}
 
 	debug_log::write(K_LOG_CATEGORY, "killed client processes gone after %llums", scope.elapsed_ms());
+}
+
+auto RiotClient::automation_failure_message() -> const char*
+{
+	return K_AUTOMATION_FAILED_MESSAGE;
+}
+
+auto RiotClient::supports_product(std::string_view) -> bool
+{
+	return true;
 }
 
 auto RiotClient::executable_name() -> const char*

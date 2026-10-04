@@ -1,4 +1,4 @@
-#include "render/renderer.h"
+#include "render/render_backend.h"
 
 #include <algorithm>
 #include <chrono>
@@ -26,44 +26,6 @@ constexpr const char* K_LOG_CATEGORY = "gfx";
 constexpr u32  K_INITIAL_VERTEX_CAPACITY = 1024;
 constexpr u32  K_INITIAL_INDEX_CAPACITY  = 1536;
 constexpr UINT K_MSAA_SAMPLE_COUNT       = 4;
-
-struct ViewportConstants {
-	float width;
-	float height;
-	float padding[2];
-};
-
-struct BannerGlowConstants {
-	float            time_seconds;
-	RoundedBoxParams params;
-	float            padding[3];
-};
-
-struct ShadowConstants {
-	RoundedBoxParams params;
-};
-
-static_assert(sizeof(ViewportConstants) == 16);
-static_assert(sizeof(BannerGlowConstants) == 32);
-static_assert(sizeof(ShadowConstants) == 16);
-struct OutlineCountdownConstants {
-	OutlineCountdownParams params;
-};
-
-static_assert(sizeof(OutlineCountdownConstants) == 48);
-
-struct BackdropConstants {
-	float target_width;
-	float target_height;
-	float intensity;
-	float style;
-	float pixel_scale;
-	float light;
-	float grain;
-	float padding;
-};
-
-static_assert(sizeof(BackdropConstants) == 32);
 
 constexpr const char* K_PIXEL_SHADER_ENTRY_POINTS[]{
 	"ps_solid", "ps_textured", "ps_banner_glow", "ps_color_picker", "ps_shadow", "ps_outline_countdown", "ps_backdrop", "ps_backdrop_plain",
@@ -121,15 +83,12 @@ auto upload(ID3D11DeviceContext* t_context, ID3D11Buffer* t_buffer, const void* 
 	std::memcpy(mapped.pData, t_data, t_bytes);
 	t_context->Unmap(t_buffer, 0);
 }
-}
 
-struct Renderer::Backend {
+struct D3D11Backend final : RenderBackend {
 	struct TextureSlot {
 		ComPtr<ID3D11Texture2D>          texture;
 		ComPtr<ID3D11ShaderResourceView> view;
 	};
-
-	Renderer* owner = nullptr;
 
 	ComPtr<ID3D11Device>           device;
 	ComPtr<ID3D11DeviceContext>    context;
@@ -155,7 +114,15 @@ struct Renderer::Backend {
 	u32                  vertex_capacity = 0;
 	u32                  index_capacity  = 0;
 
-	TextureSlot textures[K_MAX_TEXTURES];
+	TextureSlot textures[Renderer::K_MAX_TEXTURES];
+
+	[[nodiscard]] auto init(const os::Window* t_window) -> bool override;
+	auto resize(u32 t_physical_width, u32 t_physical_height) -> void override;
+	auto render(const RenderFrame& t_frame) -> void override;
+
+	[[nodiscard]] auto create_texture(u32 t_slot, std::span<const TextureLevel> t_levels, bool t_updatable) -> bool override;
+	auto update_texture(u32 t_slot, u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rgba_pixels) -> void override;
+	auto destroy_texture(u32 t_slot) -> void override;
 
 	auto create_render_target_view() -> bool;
 	[[nodiscard]] auto create_shaders() -> bool;
@@ -163,26 +130,16 @@ struct Renderer::Backend {
 	[[nodiscard]] auto create_pipeline_states() -> bool;
 	auto create_vertex_buffer(u32 t_capacity) -> bool;
 	auto create_index_buffer(u32 t_capacity) -> bool;
-	auto set_viewport(u32 t_width, u32 t_height, float t_logical_width, float t_logical_height) const -> void;
+	auto set_viewport(u32 t_width, u32 t_height) const -> void;
 
 	auto upload_geometry(const DrawList* t_draw_list) -> void;
-	auto bind_shared_state() const -> void;
-	auto apply_clip(const DrawCommand& t_command) const -> void;
-	auto draw_command(const DrawCommand& t_command) -> void;
+	auto bind_shared_state(const RenderFrame& t_frame) const -> void;
+	auto apply_clip(const RenderFrame& t_frame, const DrawCommand& t_command) const -> void;
+	auto draw_command(const RenderFrame& t_frame, const DrawCommand& t_command) -> void;
 };
 
-Renderer::Renderer()
-	: m_backend(std::make_unique<Backend>())
+auto D3D11Backend::init(const os::Window* t_window) -> bool
 {
-	m_backend->owner = this;
-}
-
-Renderer::~Renderer() = default;
-
-auto Renderer::init(const os::Window* t_window) -> bool
-{
-	Backend* backend = m_backend.get();
-
 	DXGI_SWAP_CHAIN_DESC swap_chain_desc{
 		.BufferDesc =
 			{
@@ -211,73 +168,63 @@ auto Renderer::init(const os::Window* t_window) -> bool
 	const auto              device_start  = std::chrono::steady_clock::now();
 
 	if (FAILED(D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, device_flags, &feature_level, 1, D3D11_SDK_VERSION, &swap_chain_desc,
-	                                         &backend->swap_chain, &backend->device, nullptr, &backend->context))) {
+	                                         &swap_chain, &device, nullptr, &context))) {
 		return false;
 	}
 
 	const auto pipeline_start = std::chrono::steady_clock::now();
 
-	const bool ready = backend->create_render_target_view() && backend->create_shaders() && backend->create_constant_buffers() &&
-	                   backend->create_pipeline_states() && backend->create_vertex_buffer(K_INITIAL_VERTEX_CAPACITY) &&
-	                   backend->create_index_buffer(K_INITIAL_INDEX_CAPACITY);
+	const bool ready = create_render_target_view() && create_shaders() && create_constant_buffers() && create_pipeline_states() &&
+	                   create_vertex_buffer(K_INITIAL_VERTEX_CAPACITY) && create_index_buffer(K_INITIAL_INDEX_CAPACITY);
 	if (!ready) return false;
 
 	debug_log::write(K_LOG_CATEGORY, "device %.1f ms, pipeline %.1f ms", std::chrono::duration<float, std::milli>(pipeline_start - device_start).count(),
 	                 std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - pipeline_start).count());
 
-	backend->set_viewport(t_window->physical_width(), t_window->physical_height(), static_cast<float>(t_window->width()),
-	                      static_cast<float>(t_window->height()));
+	set_viewport(t_window->physical_width(), t_window->physical_height());
 
 	return true;
 }
 
-auto Renderer::resize(const os::Window* t_window) -> void
+auto D3D11Backend::resize(u32 t_physical_width, u32 t_physical_height) -> void
 {
-	const u32 width  = t_window->physical_width();
-	const u32 height = t_window->physical_height();
-	if (width == 0 || height == 0 || (width == m_physical_width && height == m_physical_height)) return;
+	render_target_view.Reset();
+	swap_chain->ResizeBuffers(0, t_physical_width, t_physical_height, DXGI_FORMAT_UNKNOWN, 0);
+	create_render_target_view();
 
-	m_backend->render_target_view.Reset();
-	m_backend->swap_chain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
-	m_backend->create_render_target_view();
-
-	m_backend->set_viewport(width, height, static_cast<float>(t_window->width()), static_cast<float>(t_window->height()));
+	set_viewport(t_physical_width, t_physical_height);
 }
 
-auto Renderer::render(const DrawList* t_draw_list, Color t_clear_color) -> void
+auto D3D11Backend::render(const RenderFrame& t_frame) -> void
 {
-	Backend* backend = m_backend.get();
+	ID3D11RenderTargetView* const render_target = render_target_view.Get();
+	context->OMSetRenderTargets(1, &render_target, nullptr);
 
-	ID3D11RenderTargetView* const render_target = backend->render_target_view.Get();
-	backend->context->OMSetRenderTargets(1, &render_target, nullptr);
-
-	const float clear_color[4]{t_clear_color.r / 255.0f, t_clear_color.g / 255.0f, t_clear_color.b / 255.0f, t_clear_color.a / 255.0f};
-	backend->context->ClearRenderTargetView(render_target, clear_color);
+	const Color clear = t_frame.clear_color;
+	const float clear_color[4]{clear.r / 255.0f, clear.g / 255.0f, clear.b / 255.0f, clear.a / 255.0f};
+	context->ClearRenderTargetView(render_target, clear_color);
 
 	{
 		PULSAR_PROFILE_SCOPE("Render.Submit");
 
-		if (!t_draw_list->commands().empty()) {
-			backend->upload_geometry(t_draw_list);
-			backend->bind_shared_state();
+		if (!t_frame.draw_list->commands().empty()) {
+			upload_geometry(t_frame.draw_list);
+			bind_shared_state(t_frame);
 
-			for (const DrawCommand& command : t_draw_list->commands()) {
-				backend->draw_command(command);
+			for (const DrawCommand& command : t_frame.draw_list->commands()) {
+				draw_command(t_frame, command);
 			}
 		}
 	}
 
 	{
 		PULSAR_PROFILE_SCOPE("Render.Present");
-		backend->swap_chain->Present(1, 0);
+		swap_chain->Present(1, 0);
 	}
 }
 
-auto Renderer::create_texture(std::span<const TextureLevel> t_levels, bool t_updatable) -> u32
+auto D3D11Backend::create_texture(u32 t_slot, std::span<const TextureLevel> t_levels, bool t_updatable) -> bool
 {
-	const u32 slot = allocate_texture_slot();
-	if (slot == K_INVALID_TEXTURE_SLOT) return K_INVALID_TEXTURE_SLOT;
-
 	const D3D11_TEXTURE2D_DESC desc{
 		.Width      = t_levels.front().width,
 		.Height     = t_levels.front().height,
@@ -296,36 +243,30 @@ auto Renderer::create_texture(std::span<const TextureLevel> t_levels, bool t_upd
 		pixels.push_back(D3D11_SUBRESOURCE_DATA{.pSysMem = level.rgba_pixels, .SysMemPitch = level.width * 4});
 	}
 
-	Backend::TextureSlot* texture = &m_backend->textures[slot];
-	if (FAILED(m_backend->device->CreateTexture2D(&desc, pixels.data(), &texture->texture)) ||
-	    FAILED(m_backend->device->CreateShaderResourceView(texture->texture.Get(), nullptr, &texture->view))) {
-		destroy_texture(slot);
-		return K_INVALID_TEXTURE_SLOT;
+	TextureSlot* texture = &textures[t_slot];
+	if (FAILED(device->CreateTexture2D(&desc, pixels.data(), &texture->texture)) ||
+	    FAILED(device->CreateShaderResourceView(texture->texture.Get(), nullptr, &texture->view))) {
+		*texture = TextureSlot{};
+		return false;
 	}
 
-	return slot;
+	return true;
 }
 
-auto Renderer::update_texture(u32 t_slot, u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rgba_pixels) -> void
+auto D3D11Backend::update_texture(u32 t_slot, u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rgba_pixels) -> void
 {
 	const D3D11_BOX region{.left = t_x, .top = t_y, .front = 0, .right = t_x + t_width, .bottom = t_y + t_height, .back = 1};
 
-	m_backend->context->UpdateSubresource(m_backend->textures[t_slot].texture.Get(), 0, &region, t_rgba_pixels, t_width * 4, 0);
+	context->UpdateSubresource(textures[t_slot].texture.Get(), 0, &region, t_rgba_pixels, t_width * 4, 0);
 }
 
-auto Renderer::destroy_texture(u32 t_slot) -> void
+auto D3D11Backend::destroy_texture(u32 t_slot) -> void
 {
-	m_backend->textures[t_slot] = Backend::TextureSlot{};
-	release_texture_slot(t_slot);
+	textures[t_slot] = TextureSlot{};
 }
 
-auto Renderer::Backend::set_viewport(u32 t_width, u32 t_height, float t_logical_width, float t_logical_height) const -> void
+auto D3D11Backend::set_viewport(u32 t_width, u32 t_height) const -> void
 {
-	owner->m_physical_width  = t_width;
-	owner->m_physical_height = t_height;
-	owner->m_logical_width   = t_logical_width;
-	owner->m_logical_height  = t_logical_height;
-
 	const D3D11_VIEWPORT viewport{
 		.Width    = static_cast<float>(t_width),
 		.Height   = static_cast<float>(t_height),
@@ -335,7 +276,7 @@ auto Renderer::Backend::set_viewport(u32 t_width, u32 t_height, float t_logical_
 	context->RSSetViewports(1, &viewport);
 }
 
-auto Renderer::Backend::create_render_target_view() -> bool
+auto D3D11Backend::create_render_target_view() -> bool
 {
 	ComPtr<ID3D11Texture2D> back_buffer;
 	if (FAILED(swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer)))) return false;
@@ -343,7 +284,7 @@ auto Renderer::Backend::create_render_target_view() -> bool
 	return SUCCEEDED(device->CreateRenderTargetView(back_buffer.Get(), nullptr, &render_target_view));
 }
 
-auto Renderer::Backend::create_shaders() -> bool
+auto D3D11Backend::create_shaders() -> bool
 {
 	struct CompileJob {
 		const char*      entry_point;
@@ -397,7 +338,7 @@ auto Renderer::Backend::create_shaders() -> bool
 		device->CreateInputLayout(vertex_layout, ARRAYSIZE(vertex_layout), vertex_blob->GetBufferPointer(), vertex_blob->GetBufferSize(), &input_layout));
 }
 
-auto Renderer::Backend::create_constant_buffers() -> bool
+auto D3D11Backend::create_constant_buffers() -> bool
 {
 	return create_constant_buffer<ViewportConstants>(device.Get(), &viewport_constants) &&
 	       create_constant_buffer<BannerGlowConstants>(device.Get(), &banner_glow_constants) &&
@@ -406,7 +347,7 @@ auto Renderer::Backend::create_constant_buffers() -> bool
 	       create_constant_buffer<BackdropConstants>(device.Get(), &backdrop_constants);
 }
 
-auto Renderer::Backend::create_pipeline_states() -> bool
+auto D3D11Backend::create_pipeline_states() -> bool
 {
 	D3D11_BLEND_DESC blend_desc{};
 	blend_desc.RenderTarget[0] = {
@@ -439,7 +380,7 @@ auto Renderer::Backend::create_pipeline_states() -> bool
 	       SUCCEEDED(device->CreateSamplerState(&sampler_desc, &sampler_state));
 }
 
-auto Renderer::Backend::create_vertex_buffer(u32 t_capacity) -> bool
+auto D3D11Backend::create_vertex_buffer(u32 t_capacity) -> bool
 {
 	if (!create_dynamic_buffer(device.Get(), t_capacity * sizeof(Vertex2D), D3D11_BIND_VERTEX_BUFFER, &vertex_buffer)) {
 		return false;
@@ -450,7 +391,7 @@ auto Renderer::Backend::create_vertex_buffer(u32 t_capacity) -> bool
 	return true;
 }
 
-auto Renderer::Backend::create_index_buffer(u32 t_capacity) -> bool
+auto D3D11Backend::create_index_buffer(u32 t_capacity) -> bool
 {
 	if (!create_dynamic_buffer(device.Get(), t_capacity * sizeof(u32), D3D11_BIND_INDEX_BUFFER, &index_buffer)) {
 		return false;
@@ -461,7 +402,7 @@ auto Renderer::Backend::create_index_buffer(u32 t_capacity) -> bool
 	return true;
 }
 
-auto Renderer::Backend::upload_geometry(const DrawList* t_draw_list) -> void
+auto D3D11Backend::upload_geometry(const DrawList* t_draw_list) -> void
 {
 	const auto vertices = t_draw_list->vertices();
 	const auto indices  = t_draw_list->indices();
@@ -478,9 +419,9 @@ auto Renderer::Backend::upload_geometry(const DrawList* t_draw_list) -> void
 	upload(context.Get(), index_buffer.Get(), indices.data(), indices.size_bytes());
 }
 
-auto Renderer::Backend::bind_shared_state() const -> void
+auto D3D11Backend::bind_shared_state(const RenderFrame& t_frame) const -> void
 {
-	const ViewportConstants viewport{.width = owner->m_logical_width, .height = owner->m_logical_height};
+	const ViewportConstants viewport = ::viewport_constants(t_frame);
 	context->UpdateSubresource(viewport_constants.Get(), 0, nullptr, &viewport, 0, 0);
 
 	const UINT                stride    = sizeof(Vertex2D);
@@ -500,27 +441,20 @@ auto Renderer::Backend::bind_shared_state() const -> void
 	context->RSSetState(rasterizer_state.Get());
 }
 
-auto Renderer::Backend::apply_clip(const DrawCommand& t_command) const -> void
+auto D3D11Backend::apply_clip(const RenderFrame& t_frame, const DrawCommand& t_command) const -> void
 {
-	D3D11_RECT scissor{0, 0, static_cast<LONG>(owner->m_physical_width), static_cast<LONG>(owner->m_physical_height)};
-
-	if (t_command.clipped) {
-		const float scale = owner->m_logical_width > 0.0f ? static_cast<float>(owner->m_physical_width) / owner->m_logical_width : 1.0f;
-		const Rect& clip  = t_command.clip;
-
-		scissor.left   = std::clamp(static_cast<LONG>(clip.x * scale), 0L, scissor.right);
-		scissor.top    = std::clamp(static_cast<LONG>(clip.y * scale), 0L, scissor.bottom);
-		scissor.right  = std::clamp(static_cast<LONG>(clip.right() * scale), scissor.left, scissor.right);
-		scissor.bottom = std::clamp(static_cast<LONG>(clip.bottom() * scale), scissor.top, scissor.bottom);
-	}
+	const ScissorRect clip = scissor_for(t_frame, t_command);
+	const D3D11_RECT  scissor{clip.left, clip.top, clip.right, clip.bottom};
 
 	context->RSSetScissorRects(1, &scissor);
 }
 
-auto Renderer::Backend::draw_command(const DrawCommand& t_command) -> void
+auto D3D11Backend::draw_command(const RenderFrame& t_frame, const DrawCommand& t_command) -> void
 {
 	ID3D11ShaderResourceView* image           = nullptr;
 	ID3D11Buffer*             extra_constants = nullptr;
+	EffectConstants           effect{};
+	const usize               effect_size = effect_constants(t_frame, t_command, &effect);
 
 	switch (t_command.shader) {
 		case ShaderKind::Solid:
@@ -534,41 +468,26 @@ auto Renderer::Backend::draw_command(const DrawCommand& t_command) -> void
 			image = textures[t_command.texture->slot()].view.Get();
 			break;
 
-		case ShaderKind::BannerGlow: {
-			const BannerGlowConstants constants{.time_seconds = owner->m_effect_time_seconds, .params = t_command.box};
-			context->UpdateSubresource(banner_glow_constants.Get(), 0, nullptr, &constants, 0, 0);
+		case ShaderKind::BannerGlow:
 			extra_constants = banner_glow_constants.Get();
 			break;
-		}
 
-		case ShaderKind::Shadow: {
-			const ShadowConstants constants{.params = t_command.box};
-			context->UpdateSubresource(shadow_constants.Get(), 0, nullptr, &constants, 0, 0);
+		case ShaderKind::Shadow:
 			extra_constants = shadow_constants.Get();
 			break;
-		}
 
-		case ShaderKind::OutlineCountdown: {
-			const OutlineCountdownConstants constants{.params = t_command.outline};
-			context->UpdateSubresource(outline_countdown_constants.Get(), 0, nullptr, &constants, 0, 0);
+		case ShaderKind::OutlineCountdown:
 			extra_constants = outline_countdown_constants.Get();
 			break;
-		}
 
 		case ShaderKind::Backdrop:
-		case ShaderKind::BackdropPlain: {
-			const float             pixel_scale = owner->m_logical_width > 0.0f ? static_cast<float>(owner->m_physical_width) / owner->m_logical_width : 1.0f;
-			const BackdropConstants constants{.target_width  = static_cast<float>(owner->m_physical_width),
-			                                  .target_height = static_cast<float>(owner->m_physical_height),
-			                                  .intensity     = owner->m_backdrop_intensity,
-			                                  .style         = static_cast<float>(owner->m_backdrop_style),
-			                                  .pixel_scale   = pixel_scale,
-			                                  .light         = owner->m_backdrop_light,
-			                                  .grain         = owner->m_backdrop_grain};
-			context->UpdateSubresource(backdrop_constants.Get(), 0, nullptr, &constants, 0, 0);
+		case ShaderKind::BackdropPlain:
 			extra_constants = backdrop_constants.Get();
 			break;
-		}
+	}
+
+	if (extra_constants != nullptr && effect_size > 0) {
+		context->UpdateSubresource(extra_constants, 0, nullptr, &effect, 0, 0);
 	}
 
 	context->PSSetShader(pixel_shaders[static_cast<u32>(t_command.shader)].Get(), nullptr, 0);
@@ -578,6 +497,17 @@ auto Renderer::Backend::draw_command(const DrawCommand& t_command) -> void
 		context->PSSetConstantBuffers(1, 1, &extra_constants);
 	}
 
-	apply_clip(t_command);
+	apply_clip(t_frame, t_command);
 	context->DrawIndexed(t_command.index_count, t_command.index_offset, 0);
+}
+}
+
+auto create_native_render_backend() -> std::unique_ptr<RenderBackend>
+{
+	return std::make_unique<D3D11Backend>();
+}
+
+auto native_render_backend_name() -> std::string_view
+{
+	return "Direct3D 11";
 }

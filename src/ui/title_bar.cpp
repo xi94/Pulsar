@@ -27,7 +27,7 @@ constexpr float            K_SEARCH_PILL_PADDING   = 10.0f;
 constexpr float            K_SEARCH_PILL_ICON_SIZE = 13.0f;
 constexpr float            K_SEARCH_PILL_ICON_GAP  = 8.0f;
 constexpr std::string_view K_SEARCH_PILL_TEXT      = "Search all accounts";
-constexpr std::string_view K_SEARCH_PILL_SHORTCUT  = "Ctrl+S";
+constexpr std::string_view K_SEARCH_PILL_SHORTCUT  = PULSAR_SHORTCUT_KEY "+S";
 
 [[nodiscard]] auto is_update_worth_showing(UpdateStage t_stage) -> bool
 {
@@ -160,10 +160,11 @@ auto TitleBar::update(float t_delta_seconds) -> void
 auto TitleBar::layout() const -> TitleBarLayout
 {
 	return TitleBarLayout{
-		.width          = static_cast<float>(m_window->width()),
-		.update_visible = m_update_visible,
-		.update_width   = m_status_width > 0.0f ? m_status_width : K_UPDATE_BUTTON_WIDTH,
-		.search_visible = m_search_visible,
+		.width                 = static_cast<float>(m_window->width()),
+		.native_controls_width = m_window->native_controls_width(),
+		.update_visible        = m_update_visible,
+		.update_width          = m_status_width > 0.0f ? m_status_width : K_UPDATE_BUTTON_WIDTH,
+		.search_visible        = m_search_visible,
 	};
 }
 
@@ -325,6 +326,8 @@ auto TitleBar::draw(DrawList* t_draw_list) -> void
 	}
 
 	draw_search_pill(t_draw_list, hovered);
+
+	if (m_window->native_controls_width() > 0.0f) return;
 
 	draw_hover(t_draw_list, TitleBarButton::Minimize, hovered);
 	t_draw_list->add_image(icon_rect(TitleBarButton::Minimize), m_assets->get(Asset::IconMinimize), glyph_color(TitleBarButton::Minimize));

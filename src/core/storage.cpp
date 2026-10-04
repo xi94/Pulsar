@@ -240,6 +240,17 @@ auto read_appearance(const json& t_json, Settings* t_settings) -> void
 	}
 }
 
+[[nodiscard]] auto read_graphics_api(const json& t_json, GraphicsApi t_fallback) -> GraphicsApi
+{
+	const std::string id = t_json.value("renderer", std::string{});
+
+	for (u32 i = 0; i < std::size(K_GRAPHICS_API_IDS); i += 1) {
+		if (id == K_GRAPHICS_API_IDS[i]) return static_cast<GraphicsApi>(i);
+	}
+
+	return t_fallback;
+}
+
 auto read_game_order(const json& t_json, Settings* t_settings) -> void
 {
 	const auto order = t_json.find("carousel_order");
@@ -284,6 +295,7 @@ auto read_game_order(const json& t_json, Settings* t_settings) -> void
 		t_settings->auto_lock_minutes = settings.value("auto_lock_minutes", t_settings->auto_lock_minutes);
 		t_settings->zoom_stop         = read_zoom_stop(settings, t_settings->zoom_stop);
 		t_settings->selected_game     = settings.value("carousel_selected_banner", t_settings->selected_game);
+		t_settings->renderer          = read_graphics_api(settings, t_settings->renderer);
 		copy_to(settings.value("riot_client_path", std::string{}), t_settings->riot_client_path);
 		copy_to(settings.value("last_run_version", std::string{}), t_settings->last_run_version);
 		copy_to(settings.value("release_notes_version", std::string{}), t_settings->release_notes_version);
@@ -501,6 +513,7 @@ auto storage::save_settings(const Settings* t_settings) -> bool
 		{"accent_color", json::array({accent.r, accent.g, accent.b, accent.a})},
 		{"font_name", t_settings->font_name},
 		{"theme", K_THEME_LABELS[static_cast<u32>(t_settings->theme)].id},
+		{"renderer", K_GRAPHICS_API_IDS[static_cast<u32>(t_settings->renderer)]},
 		{"auto_lock_minutes", t_settings->auto_lock_minutes},
 		{"riot_client_path", t_settings->riot_client_path},
 		{"last_run_version", t_settings->last_run_version},

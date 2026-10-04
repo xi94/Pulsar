@@ -24,6 +24,7 @@ struct Installed {
 	Options     options;
 };
 
+[[nodiscard]] auto is_supported() -> bool;
 [[nodiscard]] auto default_location() -> std::string;
 [[nodiscard]] auto with_app_folder(std::string_view t_folder) -> std::string;
 [[nodiscard]] auto find_installation() -> std::optional<Installed>;

@@ -381,6 +381,11 @@ auto delete_data_folder(const std::wstring& t_folder) -> void
 
 namespace os::installation {
 
+auto is_supported() -> bool
+{
+	return true;
+}
+
 auto default_location() -> std::string
 {
 	const std::wstring programs = known_folder(FOLDERID_UserProgramFiles);

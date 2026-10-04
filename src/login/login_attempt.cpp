@@ -24,7 +24,6 @@ constexpr const char* K_GAME_IN_PROGRESS_MESSAGE    = "A game is already running
 constexpr const char* K_NO_RIOT_CLIENT_MESSAGE      = "Couldn't find the Riot Client - set its location in Settings.";
 constexpr const char* K_LAUNCH_FAILED_MESSAGE       = "Couldn't launch the Riot Client.";
 constexpr const char* K_UNRESPONSIVE_CLIENT_MESSAGE = "The Riot Client stopped responding - try again.";
-constexpr const char* K_AUTOMATION_FAILED_MESSAGE   = "Couldn't start Windows UI Automation - try again.";
 
 [[nodiscard]] auto stage_name(LoginStage t_stage) -> const char*
 {
@@ -191,7 +190,7 @@ auto run_login(LoginWork* t_work) -> void
 		sign_in_and_play(t_work);
 	} else {
 		debug_log::write(K_LOG_CATEGORY, "UI automation failed to start - see the uia lines just above for the HRESULT");
-		fail(t_work, K_AUTOMATION_FAILED_MESSAGE);
+		fail(t_work, RiotClient::automation_failure_message());
 	}
 
 	t_work->riot_client.stop_automation();

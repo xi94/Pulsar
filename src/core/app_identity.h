@@ -12,6 +12,7 @@
 	"." PULSAR_STRINGIFY(PULSAR_VERSION_MINOR) "." PULSAR_STRINGIFY(PULSAR_VERSION_PATCH)
 
 #define PULSAR_APP_NAME          "Pulsar"
+#define PULSAR_BUNDLE_IDENTIFIER "io.github.xi94.Pulsar"
 #define PULSAR_EXE_NAME          "Pulsar.exe"
 #define PULSAR_RELEASE_REPO      "https://github.com/xi94/Pulsar"
 #define PULSAR_APP_ICON_RESOURCE 101

@@ -181,3 +181,8 @@ enum class CursorKind : u8 {
 	Drag,
 	Move,
 };
+
+enum class GraphicsApi : u8 {
+	Native,
+	OpenGl,
+};

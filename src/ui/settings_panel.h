@@ -1,6 +1,8 @@
 #pragma once
 
 #include <iterator>
+#include <span>
+#include <string_view>
 
 #include "core/settings.h"
 #include "gfx/font.h"
@@ -42,6 +44,7 @@ enum class ResettableSetting : u8 {
 	BackgroundGrainIntensity,
 	AnimationSpeed,
 	CloseToTray,
+	Renderer,
 	AutoLock,
 	RiotClient,
 	Count,
@@ -114,6 +117,7 @@ class SettingsPanel : public Widget {
 		Rect  hide_from_capture;
 		Rect  block_overlay_injection;
 		Rect  close_to_tray;
+		Rect  renderer;
 		Rect  riot_client;
 		Rect  auto_lock;
 		Rect  master_password;
@@ -210,8 +214,8 @@ class SettingsPanel : public Widget {
 	[[nodiscard]] auto pattern_tile(Rect t_popup, u32 t_index) const -> Rect;
 	[[nodiscard]] auto pattern_at(Rect t_popup, Vec2 t_point) const -> std::optional<u32>;
 
-	[[nodiscard]] auto close_choice_rect(Rect t_row) const -> Rect;
-	[[nodiscard]] auto close_segment(Rect t_choice, u32 t_index) const -> Rect;
+	[[nodiscard]] auto segment_choice_rect(Rect t_row, std::span<const std::string_view> t_labels) const -> Rect;
+	[[nodiscard]] auto choice_segment(Rect t_choice, std::span<const std::string_view> t_labels, u32 t_index) const -> Rect;
 	[[nodiscard]] auto search_rect(const Layout& t_layout) const -> Rect;
 	auto refresh_search() -> void;
 	auto clear_search() -> void;
@@ -246,6 +250,7 @@ class SettingsPanel : public Widget {
 
 	auto draw_chrome(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void;
 	auto draw_rail(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void;
+	[[nodiscard]] auto renderer_note(char (&t_buffer)[96]) const -> const char*;
 	auto draw_label(DrawList* t_draw_list, const Rows& t_rows, Rect Rows::* t_row, Rect t_control, u8 t_alpha) const -> void;
 	auto draw_dropdown_row(DrawList*     t_draw_list,
 	                       const Layout& t_layout,
@@ -261,7 +266,13 @@ class SettingsPanel : public Widget {
 	auto draw_appearance(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
 	auto draw_pattern_row(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
 	auto draw_pattern_popup(DrawList* t_draw_list, const Rows& t_rows, u8 t_alpha) const -> void;
-	auto draw_close_choice(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
+	auto draw_segment_choice(DrawList*     t_draw_list,
+	                         const Layout& t_layout,
+	                         const Rows&   t_rows,
+	                         Rect Rows::*                      t_row,
+	                         std::span<const std::string_view> t_labels,
+	                         float                             t_selected,
+	                         u8                                t_alpha) const -> void;
 	auto draw_toggles(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
 	auto draw_sliders(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
 	auto draw_riot_client(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
@@ -298,9 +309,12 @@ class SettingsPanel : public Widget {
 	float m_toggles_shown[K_TOGGLE_COUNT]{};
 	float m_slider_hover[K_SLIDER_COUNT]{};
 	float m_pattern_ring[K_BACKGROUND_COUNT]{};
-	bool  m_pattern_open        = false;
-	float m_pattern_open_amount = 0.0f;
-	float m_close_choice_shown  = 0.0f;
+	bool  m_pattern_open          = false;
+	float m_pattern_open_amount   = 0.0f;
+	float m_close_choice_shown    = 0.0f;
+	float m_renderer_choice_shown = 0.0f;
+
+	std::string_view m_renderer_labels[2];
 
 	float m_font_size_shown           = 0.0f;
 	float m_secondary_font_size_shown = 0.0f;

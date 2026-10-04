@@ -68,6 +68,8 @@ constexpr OptionLabel K_BACKGROUND_LABELS[]{
 
 constexpr u32 K_BACKGROUND_COUNT = static_cast<u32>(std::size(K_BACKGROUND_LABELS));
 
+constexpr std::string_view K_GRAPHICS_API_IDS[]{"native", "opengl"};
+
 constexpr float K_ANIMATION_SPEED_MIN     = 0.25f;
 constexpr float K_ANIMATION_SPEED_MAX     = 3.0f;
 constexpr float K_CORNER_ROUNDNESS_MIN    = 0.0f;
@@ -95,16 +97,17 @@ struct Settings {
 	float font_size           = 13.0f;
 	float secondary_font_size = 12.0f;
 	// Braces, not `= "..."`: MSVC zeroes that form whenever a Settings is constant-initialized.
-	char      font_name[260]{"segoeui.ttf"};
+	char      font_name[260]{PULSAR_DEFAULT_FONT_FILE};
 	ThemeKind theme = ThemeKind::Dark;
 	Color     accent{203, 166, 247, 255};
 
-	bool show_notifications      = true;
-	bool hide_from_capture       = true;
-	bool block_overlay_injection = true;
-	bool close_to_tray           = false;
-	u32  auto_lock_minutes       = 0;
-	char riot_client_path[K_PATH_CAPACITY]{};
+	bool        show_notifications      = true;
+	bool        hide_from_capture       = true;
+	bool        block_overlay_injection = true;
+	bool        close_to_tray           = false;
+	GraphicsApi renderer                = GraphicsApi::Native;
+	u32         auto_lock_minutes       = 0;
+	char        riot_client_path[K_PATH_CAPACITY]{};
 
 	i32  zoom_stop     = 0;
 	i32  selected_game = 0;

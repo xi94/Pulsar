@@ -15,6 +15,7 @@
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "os/window.h"
+#include "render/renderer.h"
 #include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
@@ -498,24 +499,25 @@ const SettingsPanel::RowSpec SettingsPanel::K_ROW_SPECS[]{
 	{&Rows::accent, SettingsTab::Appearance, 0, "Accent color", "", "colour highlight buttons"},
 	{&Rows::corner_roundness, SettingsTab::Appearance, 0, "Corner roundness", "", "radius rounded corners"},
 	{&Rows::background, SettingsTab::Appearance, 1, "Pattern", "",
-     "background backdrop texture dots grid lines polka topography starfield stars scanlines crosshatch wallpaper "
-     "strength intensity opacity subtle"},
+	 "background backdrop texture dots grid lines polka topography starfield stars scanlines crosshatch wallpaper "
+	 "strength intensity opacity subtle"},
 	{&Rows::background_light, SettingsTab::Appearance, 1, "Soft light", "", "background backdrop glow gradient top light depth strength intensity"},
 	{&Rows::background_grain, SettingsTab::Appearance, 1, "Grain", "", "background backdrop noise film texture strength intensity"},
 	{&Rows::snow, SettingsTab::Appearance, 1, "Snow", "Gently falling snow behind your games. Uses a bit more power.",
-     "weather winter snowfall seasonal christmas effect"},
+	 "weather winter snowfall seasonal christmas effect"},
 	{&Rows::font, SettingsTab::Appearance, 2, "Font", "", "typeface family text"},
 	{&Rows::font_size, SettingsTab::Appearance, 2, "Font size", "", "text scale zoom bigger interface"},
 	{&Rows::secondary_font_size, SettingsTab::Appearance, 2, "Small text size", "", "secondary font labels hints scale smaller"},
 	{&Rows::animations, SettingsTab::Behavior, 3, "Animations", "", "motion effects reduce animate popups speed fast slow"},
 	{&Rows::notifications, SettingsTab::Behavior, 4, "Notifications", "", "toast popup alert confirmation messages"},
 	{&Rows::close_to_tray, SettingsTab::Behavior, 4, "When closing", "", "close to tray minimize quit exit background system tray hide"},
+	{&Rows::renderer, SettingsTab::Behavior, 4, "Renderer", "Restart Pulsar to switch.", "graphics gpu direct3d directx metal opengl driver"},
 	{&Rows::riot_client, SettingsTab::Behavior, 5, "Location", "Found automatically when you log in.",
-     "riot client path folder install location exe riotclientservices browse locate find launcher"},
+	 "riot client path folder install location exe riotclientservices browse locate find launcher"},
 	{&Rows::hide_from_capture, SettingsTab::Privacy, 6, "Hide from screen capture", "Hide Pulsar from screenshares, recordings and screenshots.",
-     "stream record share obs discord"},
+	 "stream record share obs discord"},
 	{&Rows::block_overlay_injection, SettingsTab::Privacy, 6, "Block overlay injection", "Block overlays and keyloggers. Restart to apply.",
-     "security inject dll"},
+	 "security inject dll"},
 	{&Rows::auto_lock, SettingsTab::Security, 7, "Auto-lock", "Lock the vault after being idle.", "timeout idle inactive away"},
 	{&Rows::master_password, SettingsTab::Security, 7, "Master password", "Encrypts saved passwords.", "change reset vault encryption"},
 };
@@ -539,17 +541,17 @@ SettingsPanel::SettingsPanel(Settings*         t_settings,
 	, m_assets(t_assets)
 	, m_commands(t_commands)
 	, m_font_list(t_fonts,
-                  t_assets,
-                  t_settings,
-                  ListPopupOptions{
+	              t_assets,
+	              t_settings,
+	              ListPopupOptions{
 					  .search_placeholder = "Search fonts...",
 					  .empty_message      = "No fonts match your search",
 					  .min_width          = K_FONT_LIST_WIDTH,
 				  })
 	, m_theme_list(t_fonts,
-                   t_assets,
-                   t_settings,
-                   ListPopupOptions{
+	               t_assets,
+	               t_settings,
+	               ListPopupOptions{
 					   .search_placeholder = "Search themes",
 					   .empty_message      = "No themes match your search",
 					   .min_width          = K_THEME_LIST_WIDTH,
@@ -561,6 +563,7 @@ SettingsPanel::SettingsPanel(Settings*         t_settings,
 					   .hover_preview_seconds = K_THEME_HOVER_PREVIEW_SECONDS,
 				   })
 	, m_color_picker(t_fonts, t_assets)
+	, m_renderer_labels{graphics_api_name(GraphicsApi::Native), graphics_api_name(GraphicsApi::OpenGl)}
 {
 	m_search.set_max_length(K_SEARCH_MAX_LENGTH);
 	m_search.set_placeholder("Search settings");
@@ -595,7 +598,8 @@ auto SettingsPanel::sync_with_settings() -> void
 		m_pattern_ring[i] = i == static_cast<u32>(m_settings->background_style) ? 1.0f : 0.0f;
 	}
 
-	m_close_choice_shown = m_settings->close_to_tray ? 0.0f : 1.0f;
+	m_close_choice_shown    = m_settings->close_to_tray ? 0.0f : 1.0f;
+	m_renderer_choice_shown = m_settings->renderer == GraphicsApi::OpenGl ? 1.0f : 0.0f;
 }
 
 auto SettingsPanel::restore_committed_previews(Settings* t_settings) const -> void
@@ -967,22 +971,29 @@ auto SettingsPanel::pattern_at(Rect t_popup, Vec2 t_point) const -> std::optiona
 	return std::nullopt;
 }
 
-auto SettingsPanel::close_choice_rect(Rect t_row) const -> Rect
+auto SettingsPanel::segment_choice_rect(Rect t_row, std::span<const std::string_view> t_labels) const -> Rect
 {
 	float width = K_SEGMENT_INSET * 2.0f;
-	for (const std::string_view label : K_CLOSE_CHOICE_LABELS) {
+	for (const std::string_view label : t_labels) {
 		width += text_width(m_fonts->body, label) + K_SEGMENT_PADDING_X * 2.0f;
 	}
 
 	return right_aligned_control(t_row, width, control_height(m_fonts));
 }
 
-auto SettingsPanel::close_segment(Rect t_choice, u32 t_index) const -> Rect
+auto SettingsPanel::choice_segment(Rect t_choice, std::span<const std::string_view> t_labels, u32 t_index) const -> Rect
 {
-	const float first_width = text_width(m_fonts->body, K_CLOSE_CHOICE_LABELS[0]) + K_SEGMENT_PADDING_X * 2.0f;
-	const Rect  inner       = t_choice.inset(K_SEGMENT_INSET);
+	const Rect inner = t_choice.inset(K_SEGMENT_INSET);
+	float      x     = inner.x;
 
-	return t_index == 0 ? Rect{inner.x, inner.y, first_width, inner.h} : Rect{inner.x + first_width, inner.y, inner.w - first_width, inner.h};
+	for (u32 i = 0; i < t_index; i += 1) {
+		x += text_width(m_fonts->body, t_labels[i]) + K_SEGMENT_PADDING_X * 2.0f;
+	}
+
+	const bool  last  = t_index + 1 == t_labels.size();
+	const float width = last ? inner.right() - x : text_width(m_fonts->body, t_labels[t_index]) + K_SEGMENT_PADDING_X * 2.0f;
+
+	return Rect{x, inner.y, width, inner.h};
 }
 
 auto SettingsPanel::search_rect(const Layout& t_layout) const -> Rect
@@ -1131,6 +1142,8 @@ auto SettingsPanel::reset_row(const Rows& t_rows, u32 t_setting) const -> Rect
 			return t_rows.animations;
 		case ResettableSetting::CloseToTray:
 			return t_rows.close_to_tray;
+		case ResettableSetting::Renderer:
+			return t_rows.renderer;
 		case ResettableSetting::AutoLock:
 			return t_rows.auto_lock;
 		case ResettableSetting::RiotClient:
@@ -1164,7 +1177,9 @@ auto SettingsPanel::reset_control(const Rows& t_rows, u32 t_setting) const -> Re
 		case ResettableSetting::AutoLock:
 			return slider_control_rect(row, m_fonts);
 		case ResettableSetting::CloseToTray:
-			return close_choice_rect(row);
+			return segment_choice_rect(row, K_CLOSE_CHOICE_LABELS);
+		case ResettableSetting::Renderer:
+			return segment_choice_rect(row, m_renderer_labels);
 		case ResettableSetting::RiotClient:
 			return riot_client_button_rect(row, m_fonts);
 		case ResettableSetting::BackgroundIntensity:
@@ -1247,6 +1262,8 @@ auto SettingsPanel::is_default(u32 t_setting) const -> bool
 			return same(m_settings->animation_speed, defaults.animation_speed);
 		case ResettableSetting::CloseToTray:
 			return m_settings->close_to_tray == defaults.close_to_tray;
+		case ResettableSetting::Renderer:
+			return m_settings->renderer == defaults.renderer;
 		case ResettableSetting::AutoLock:
 			return m_settings->auto_lock_minutes == defaults.auto_lock_minutes;
 		case ResettableSetting::RiotClient:
@@ -1312,6 +1329,9 @@ auto SettingsPanel::reset_to_default(u32 t_setting) -> void
 			break;
 		case ResettableSetting::CloseToTray:
 			m_settings->close_to_tray = defaults.close_to_tray;
+			break;
+		case ResettableSetting::Renderer:
+			m_settings->renderer = defaults.renderer;
 			break;
 		case ResettableSetting::AutoLock:
 			m_settings->auto_lock_minutes = defaults.auto_lock_minutes;
@@ -1484,6 +1504,8 @@ auto SettingsPanel::update(float t_delta_seconds) -> void
 	}
 
 	m_close_choice_shown  = animation::ease_toward(m_close_choice_shown, m_settings->close_to_tray ? 0.0f : 1.0f, K_SEGMENT_SLIDE_RATE, t_delta_seconds);
+	m_renderer_choice_shown =
+		animation::ease_toward(m_renderer_choice_shown, m_settings->renderer == GraphicsApi::OpenGl ? 1.0f : 0.0f, K_SEGMENT_SLIDE_RATE, t_delta_seconds);
 	m_pattern_open_amount = animation::ease_toward(m_pattern_open_amount, m_pattern_open ? 1.0f : 0.0f, K_PATTERN_POPUP_RATE, t_delta_seconds);
 
 	set_corner_roundness(m_corner_roundness_shown);
@@ -1734,9 +1756,14 @@ auto SettingsPanel::handle_click(Vec2 t_point) -> void
 		return;
 	}
 
-	const Rect close_choice = close_choice_rect(current_rows.close_to_tray);
+	const Rect renderer_choice = segment_choice_rect(current_rows.renderer, m_renderer_labels);
+	if (hits(current, current_rows.renderer, renderer_choice, t_point)) {
+		m_settings->renderer = t_point.x < choice_segment(renderer_choice, m_renderer_labels, 1).x ? GraphicsApi::Native : GraphicsApi::OpenGl;
+	}
+
+	const Rect close_choice = segment_choice_rect(current_rows.close_to_tray, K_CLOSE_CHOICE_LABELS);
 	if (hits(current, current_rows.close_to_tray, close_choice, t_point)) {
-		m_settings->close_to_tray = t_point.x < close_segment(close_choice, 1).x;
+		m_settings->close_to_tray = t_point.x < choice_segment(close_choice, K_CLOSE_CHOICE_LABELS, 1).x;
 		return;
 	}
 
@@ -1869,7 +1896,7 @@ auto SettingsPanel::on_key_down(os::Key t_key) -> bool
 		m_search.set_focused(false);
 	} else if (t_key == os::Key::Escape) {
 		close();
-	} else if (t_key == os::Key::Tab && os::modifiers().shortcut) {
+	} else if (t_key == os::Key::Tab && os::modifiers().control) {
 		const u32 step = os::modifiers().shift ? K_SETTINGS_TAB_COUNT - 1 : 1;
 		clear_search();
 		select_tab(static_cast<SettingsTab>((static_cast<u32>(m_tab) + step) % K_SETTINGS_TAB_COUNT));
@@ -1960,7 +1987,8 @@ auto SettingsPanel::cursor() const -> CursorKind
 		{current_rows.font_size, stepper_plus(font_size)},
 		{current_rows.secondary_font_size, stepper_minus(secondary_size)},
 		{current_rows.secondary_font_size, stepper_plus(secondary_size)},
-		{current_rows.close_to_tray, close_choice_rect(current_rows.close_to_tray)},
+		{current_rows.close_to_tray, segment_choice_rect(current_rows.close_to_tray, K_CLOSE_CHOICE_LABELS)},
+		{current_rows.renderer, segment_choice_rect(current_rows.renderer, m_renderer_labels)},
 		{current_rows.accent, swatch_rect(current_rows.accent)},
 		{current_rows.riot_client, riot_client_button_rect(current_rows.riot_client, m_fonts)},
 		{current_rows.master_password, master_password_button_rect(current_rows.master_password, m_fonts)},
@@ -2044,12 +2072,32 @@ auto SettingsPanel::draw_rail(DrawList* t_draw_list, const Layout& t_layout, u8 
 	}
 }
 
+auto SettingsPanel::renderer_note(char (&t_buffer)[96]) const -> const char*
+{
+	const GraphicsApi running   = m_renderer->api();
+	const GraphicsApi requested = m_renderer->requested_api();
+	const GraphicsApi chosen    = m_settings->renderer;
+
+	if (running != requested && chosen == requested) {
+		std::snprintf(t_buffer, sizeof(t_buffer), "%s isn't available, so Pulsar uses %s.", graphics_api_name(requested).data(),
+		              graphics_api_name(running).data());
+	} else if (chosen != running) {
+		std::snprintf(t_buffer, sizeof(t_buffer), "Restart Pulsar to switch to %s.", graphics_api_name(chosen).data());
+	} else {
+		return spec_of(&Rows::renderer).description;
+	}
+
+	return t_buffer;
+}
+
 auto SettingsPanel::draw_label(DrawList* t_draw_list, const Rows& t_rows, Rect Rows::* t_row, Rect t_control, u8 t_alpha) const -> void
 {
 	const RowSpec& spec = spec_of(t_row);
 	const Rect     row  = t_rows.*t_row;
+	char           note[96];
+	const char*    description = t_row == &Rows::renderer ? renderer_note(note) : spec.description;
 
-	draw_row_label(t_draw_list, m_fonts, row, spec.title, spec.description, label_right_edge(t_control), t_alpha);
+	draw_row_label(t_draw_list, m_fonts, row, spec.title, description, label_right_edge(t_control), t_alpha);
 }
 
 auto SettingsPanel::draw_dropdown_row(DrawList*     t_draw_list,
@@ -2158,30 +2206,37 @@ auto SettingsPanel::draw_pattern_popup(DrawList* t_draw_list, const Rows& t_rows
 	}
 }
 
-auto SettingsPanel::draw_close_choice(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void
+auto SettingsPanel::draw_segment_choice(DrawList*     t_draw_list,
+                                        const Layout& t_layout,
+                                        const Rows&   t_rows,
+                                        Rect Rows::*                      t_row,
+                                        std::span<const std::string_view> t_labels,
+                                        float                             t_selected,
+                                        u8                                t_alpha) const -> void
 {
-	const Rect row = t_rows.close_to_tray;
+	const Rect row = t_rows.*t_row;
 	if (!is_on_screen(t_layout, row)) return;
 
 	const Font& body   = m_fonts->body;
-	const Rect  choice = close_choice_rect(row);
-	const Rect  first  = close_segment(choice, 0);
-	const Rect  second = close_segment(choice, 1);
-	const float slide  = m_close_choice_shown;
+	const Rect  choice = segment_choice_rect(row, t_labels);
+	const auto  from   = static_cast<u32>(t_selected);
+	const Rect  first  = choice_segment(choice, t_labels, from);
+	const Rect  second = choice_segment(choice, t_labels, std::min(from + 1, static_cast<u32>(t_labels.size()) - 1));
+	const float slide  = t_selected - static_cast<float>(from);
 	const Rect  thumb{first.x + (second.x - first.x) * slide, first.y, first.w + (second.w - first.w) * slide, first.h};
 	const bool  pointer_live = !has_popup_open() && t_layout.rows_region.contains(m_mouse);
 
-	draw_label(t_draw_list, t_rows, &Rows::close_to_tray, choice, t_alpha);
+	draw_label(t_draw_list, t_rows, t_row, choice, t_alpha);
 	draw_inset_control(t_draw_list, choice, g_theme.separator, t_alpha);
 	t_draw_list->add_bordered_rect(thumb, rounded(K_CONTROL_RADIUS - K_SEGMENT_INSET), faded(g_theme.popup, t_alpha), faded(g_theme.separator, t_alpha), 1.0f);
 
-	for (u32 i = 0; i < std::size(K_CLOSE_CHOICE_LABELS); i += 1) {
-		const Rect  segment  = close_segment(choice, i);
-		const float selected = i == 0 ? 1.0f - slide : slide;
+	for (u32 i = 0; i < t_labels.size(); i += 1) {
+		const Rect  segment  = choice_segment(choice, t_labels, i);
+		const float selected = std::max(0.0f, 1.0f - std::fabs(static_cast<float>(i) - t_selected));
 		const bool  hovered  = pointer_live && segment.contains(m_mouse);
 		const Color idle     = hovered ? mix(g_theme.text_dim, g_theme.text, K_HOVERED_TAB_BRIGHTENING) : g_theme.text_dim;
 
-		draw_text_centered(t_draw_list, body, segment, K_CLOSE_CHOICE_LABELS[i], faded(mix(idle, g_theme.text, selected), t_alpha));
+		draw_text_centered(t_draw_list, body, segment, t_labels[i], faded(mix(idle, g_theme.text, selected), t_alpha));
 	}
 }
 
@@ -2353,7 +2408,8 @@ auto SettingsPanel::draw(DrawList* t_draw_list) -> void
 	draw_captions(t_draw_list, current, current_rows, alpha);
 	draw_appearance(t_draw_list, current, current_rows, alpha);
 	draw_pattern_row(t_draw_list, current, current_rows, alpha);
-	draw_close_choice(t_draw_list, current, current_rows, alpha);
+	draw_segment_choice(t_draw_list, current, current_rows, &Rows::close_to_tray, K_CLOSE_CHOICE_LABELS, m_close_choice_shown, alpha);
+	draw_segment_choice(t_draw_list, current, current_rows, &Rows::renderer, m_renderer_labels, m_renderer_choice_shown, alpha);
 	draw_toggles(t_draw_list, current, current_rows, alpha);
 	draw_riot_client(t_draw_list, current, current_rows, alpha);
 	draw_master_password(t_draw_list, current, current_rows, alpha);

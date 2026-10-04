@@ -209,7 +209,7 @@ auto App::create_graphics() -> bool
 	m_window.set_min_size(Vec2{K_MIN_WINDOW_WIDTH, K_MIN_WINDOW_HEIGHT});
 	m_window.set_title_bar(K_TITLE_BAR_HEIGHT, [this](Vec2 t_point) { return m_title_bar.layout().button_at(t_point) != TitleBarButton::None; });
 
-	if (!m_renderer.init(&m_window)) {
+	if (!m_renderer.init(&m_window, m_settings.renderer)) {
 		std::println("Failed to initialize renderer.");
 		return false;
 	}
@@ -232,6 +232,8 @@ auto App::create_graphics() -> bool
 auto App::add_games() -> void
 {
 	for (const GameInfo& info : K_GAME_INFOS) {
+		if (!RiotClient::supports_product(info.launch_product)) continue;
+
 		m_tray.set_game_icon(m_library.game_count, Assets::encoded_bytes(info.icon));
 		m_library.games[m_library.game_count] = Game{
 			.title          = info.title,
@@ -632,7 +634,7 @@ auto App::process(const Command& t_command) -> void
 				m_app_menu.close();
 			} else {
 				m_update_overlay.close();
-				m_app_menu.open(!m_locked, update_status(m_updater.stage()));
+				m_app_menu.open(!m_locked, update_status(m_updater.stage()), m_title_bar.layout().button_rect(TitleBarButton::Menu).x);
 			}
 
 			break;
@@ -803,10 +805,10 @@ auto App::open_text_menu(const Command& t_command) -> void
 	};
 
 	const ContextMenuItem items[]{
-		item("Cut", TextEdit::Cut, "Ctrl+X"),
-		item("Copy", TextEdit::Copy, "Ctrl+C"),
-		item("Paste", TextEdit::Paste, "Ctrl+V"),
-		item("Select all", TextEdit::SelectAll, "Ctrl+A"),
+		item("Cut", TextEdit::Cut, PULSAR_SHORTCUT_KEY "+X"),
+		item("Copy", TextEdit::Copy, PULSAR_SHORTCUT_KEY "+C"),
+		item("Paste", TextEdit::Paste, PULSAR_SHORTCUT_KEY "+V"),
+		item("Select all", TextEdit::SelectAll, PULSAR_SHORTCUT_KEY "+A"),
 	};
 
 	m_context_menu.open(t_command.position, items, m_window.size());

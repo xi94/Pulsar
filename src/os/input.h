@@ -50,11 +50,13 @@ enum class Key : u8 {
 	Z,
 };
 
-// shortcut is Ctrl on Windows and Command on macOS; word_step is the key that moves the caret a word at a time (Ctrl or Option).
+// shortcut is Ctrl on Windows and Command on macOS; word_step is the key that moves the caret a word at a time (Ctrl or Option);
+// control is the physical Ctrl key on both.
 struct Modifiers {
 	bool shift     = false;
 	bool shortcut  = false;
 	bool word_step = false;
+	bool control   = false;
 };
 
 enum class InputEventType : u8 {

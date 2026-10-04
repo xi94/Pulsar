@@ -24,6 +24,8 @@ class RiotClient {
 	static auto prepare_automation() -> void;
 	[[nodiscard]] static auto is_game_in_progress() -> bool;
 	static auto kill_all_client_processes(const std::atomic<bool>* t_cancel) -> void;
+	[[nodiscard]] static auto automation_failure_message() -> const char*;
+	[[nodiscard]] static auto supports_product(std::string_view t_launch_product) -> bool;
 
 	[[nodiscard]] static auto executable_name() -> const char*;
 	[[nodiscard]] static auto default_install_folder() -> std::string;

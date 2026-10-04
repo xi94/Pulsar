@@ -87,7 +87,7 @@ auto register_window_class(HINSTANCE t_instance, const wchar_t* t_class_name, WN
 {
 	const WNDCLASSEXW window_class{
 		.cbSize        = sizeof(WNDCLASSEXW),
-		.style         = CS_HREDRAW | CS_VREDRAW,
+		.style         = CS_HREDRAW | CS_VREDRAW | CS_OWNDC,
 		.lpfnWndProc   = t_procedure,
 		.hInstance     = t_instance,
 		.hIcon         = os::win32::load_app_icon(os::win32::AppIconSize::LargeIcon),

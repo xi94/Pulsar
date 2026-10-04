@@ -1,5 +1,6 @@
 #pragma once
 
+#include <span>
 #include <string_view>
 
 #include "ui/commands.h"
@@ -12,7 +13,7 @@ class AppMenu : public Widget {
   public:
 	AppMenu(const Fonts* t_fonts, const Assets* t_assets, CommandQueue* t_commands);
 
-	auto open(bool t_unlocked, std::string_view t_update_status) -> void;
+	auto open(bool t_unlocked, std::string_view t_update_status, float t_anchor_x) -> void;
 	auto close() -> void;
 
 	[[nodiscard]] auto is_open() const -> bool
@@ -35,6 +36,8 @@ class AppMenu : public Widget {
   private:
 	static constexpr u32 K_MAX_ITEMS = 8;
 
+	[[nodiscard]] auto items() const -> std::span<const u32>;
+	[[nodiscard]] auto menu() const -> Rect;
 	[[nodiscard]] auto is_enabled(u32 t_item) const -> bool;
 
 	const Fonts*  m_fonts;
@@ -45,5 +48,8 @@ class AppMenu : public Widget {
 	bool             m_unlocked = false;
 	std::string_view m_update_status;
 	float            m_open_amount = 0.0f;
+	float            m_anchor_x    = 0.0f;
 	float            m_item_hover[K_MAX_ITEMS]{};
+	u32              m_items[K_MAX_ITEMS]{};
+	u32              m_item_count = 0;
 };

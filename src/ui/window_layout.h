@@ -27,11 +27,12 @@ enum class TitleBarButton : u8 {
 };
 
 struct TitleBarLayout {
-	float width          = 0.0f;
-	bool  dialog         = false;
-	bool  update_visible = false;
-	float update_width   = K_UPDATE_BUTTON_WIDTH;
-	bool  search_visible = false;
+	float width                 = 0.0f;
+	float native_controls_width = 0.0f;
+	bool  dialog                = false;
+	bool  update_visible        = false;
+	float update_width          = K_UPDATE_BUTTON_WIDTH;
+	bool  search_visible        = false;
 
 	[[nodiscard]] auto button_rect(TitleBarButton t_button) const -> Rect;
 	[[nodiscard]] auto button_at(Vec2 t_point) const -> TitleBarButton;

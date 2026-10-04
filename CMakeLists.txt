@@ -7,6 +7,9 @@ endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# std::to_chars for floating point, which std::format relies on, first shipped in macOS 13.3.
+set(CMAKE_OSX_DEPLOYMENT_TARGET "13.3" CACHE STRING "Oldest macOS version Pulsar runs on")
+
 project ("Pulsar")
 add_subdirectory ("src")
 if (WIN32)

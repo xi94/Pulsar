@@ -15,7 +15,7 @@ auto modifiers() -> Modifiers
 {
 	const bool control = is_held(VK_CONTROL);
 
-	return Modifiers{.shift = is_held(VK_SHIFT), .shortcut = control, .word_step = control};
+	return Modifiers{.shift = is_held(VK_SHIFT), .shortcut = control, .word_step = control, .control = control};
 }
 
 auto is_caps_lock_on() -> bool

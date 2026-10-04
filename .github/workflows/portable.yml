@@ -1,4 +1,4 @@
-name: Portable build
+name: Build
 
 on:
   push:
@@ -7,14 +7,35 @@ on:
 
 jobs:
   macos:
-    name: Portable code on macOS
+    name: macOS app (universal)
     runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v5
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
 
-      - name: Build the portable code
-        run: cmake --build build --target pulsar_portable --parallel
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Package
+        run: cmake --build build --target package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pulsar-macOS
+          path: build/Pulsar-*.dmg
+
+  windows:
+    name: Windows app
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configure
+        run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --target Pulsar --parallel

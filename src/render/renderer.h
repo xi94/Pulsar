@@ -2,11 +2,13 @@
 
 #include <memory>
 #include <span>
+#include <string_view>
 
 #include "core/types.h"
 #include "gfx/draw_list.h"
 
 class Renderer;
+class RenderBackend;
 
 namespace os {
 class Window;
@@ -56,6 +58,8 @@ class Texture {
 	u32       m_height;
 };
 
+[[nodiscard]] auto graphics_api_name(GraphicsApi t_api) -> std::string_view;
+
 class Renderer {
   public:
 	static constexpr u32 K_INVALID_TEXTURE_SLOT = 0xFFFFFFFFu;
@@ -67,8 +71,18 @@ class Renderer {
 	Renderer(const Renderer&)                    = delete;
 	auto operator=(const Renderer&) -> Renderer& = delete;
 
-	[[nodiscard]] auto init(const os::Window* t_window) -> bool;
+	[[nodiscard]] auto init(const os::Window* t_window, GraphicsApi t_preferred_api) -> bool;
 	auto resize(const os::Window* t_window) -> void;
+
+	[[nodiscard]] auto api() const -> GraphicsApi
+	{
+		return m_api;
+	}
+
+	[[nodiscard]] auto requested_api() const -> GraphicsApi
+	{
+		return m_requested_api;
+	}
 
 	auto set_effect_time(float t_seconds) -> void
 	{
@@ -90,12 +104,13 @@ class Renderer {
 	auto destroy_texture(u32 t_slot) -> void;
 
   private:
-	struct Backend;
-
 	[[nodiscard]] auto allocate_texture_slot() -> u32;
 	auto release_texture_slot(u32 t_slot) -> void;
+	auto remember_size(const os::Window* t_window) -> void;
 
-	std::unique_ptr<Backend> m_backend;
+	std::unique_ptr<RenderBackend> m_backend;
+	GraphicsApi                    m_api           = GraphicsApi::Native;
+	GraphicsApi                    m_requested_api = GraphicsApi::Native;
 
 	u32 m_free_texture_slots[K_MAX_TEXTURES]{};
 	u32 m_free_texture_count = 0;

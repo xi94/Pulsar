@@ -199,7 +199,7 @@ auto Updater::check_for_update_on_worker() -> void
 
 	if (*latest <= current) {
 		finish_worker(UpdateStage::UpToDate);
-	} else if (current < minimum_for_auto_update) {
+	} else if (current < minimum_for_auto_update || !os::can_self_update()) {
 		finish_worker(UpdateStage::ManualUpgradeRequired);
 	} else {
 		finish_worker(UpdateStage::Available);
