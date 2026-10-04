@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-informational" alt="Windows and macOS">
 </p>
 
-<img width="958" height="627" alt="Pulsar_TGMpSRtwqa" src="https://github.com/user-attachments/assets/da4aa925-80a8-4d67-8336-516d114356d4" />
+<img width="958" height="627" alt="image" src="https://github.com/user-attachments/assets/f0cab3a2-859f-4ae6-abbb-789c807ad91d" />
 
 ## Features
 
