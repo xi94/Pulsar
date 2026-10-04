@@ -5,7 +5,7 @@
 <h1 align="center">Pulsar</h1>
 
 <p align="center">
-  An encrypted account manager for Riot games. Pick an account and Pulsar signs you in.
+  An account manager for the Riot Client. Pick an account and sign in and the selected game will automatically launch.
 </p>
 
 <p align="center">
