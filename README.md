@@ -5,10 +5,6 @@
 <h1 align="center">Pulsar</h1>
 
 <p align="center">
-  An account manager for the Riot Client. Pick an account and sign in and the selected game will automatically launch.
-</p>
-
-<p align="center">
   <a href="https://github.com/xi94/Pulsar/releases/latest"><img src="https://img.shields.io/github/v/release/xi94/Pulsar?label=release" alt="Latest release"></a>
   <a href="https://github.com/xi94/Pulsar/actions/workflows/portable.yml"><img src="https://github.com/xi94/Pulsar/actions/workflows/portable.yml/badge.svg" alt="Build status"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-informational" alt="Windows and macOS">
