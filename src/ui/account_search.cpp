@@ -195,18 +195,25 @@ auto AccountSearch::activate(u32 t_row) -> void
 	const AccountRef account = *m_account;
 
 	switch (action.kind) {
-		case ActionKind::Edit:
+		case ActionKind::Edit: {
 			m_commands->push(Command{.type = CommandType::EditAccount, .account = account});
 			break;
-		case ActionKind::CopyUsername:
+		}
+
+		case ActionKind::CopyUsername: {
 			m_commands->push(Command{.type = CommandType::CopyAccountUsername, .account = account});
 			break;
-		case ActionKind::CopyPassword:
+		}
+
+		case ActionKind::CopyPassword: {
 			m_commands->push(Command{.type = CommandType::CopyAccountPassword, .account = account});
 			break;
-		case ActionKind::Login:
+		}
+
+		case ActionKind::Login: {
 			m_commands->push(Command{.type = CommandType::LoginAccount, .index = static_cast<i32>(action.game), .account = account});
 			break;
+		}
 	}
 
 	close();
@@ -441,7 +448,7 @@ auto AccountSearch::on_key_down(os::Key t_key) -> bool
 	if (!m_open) return true;
 
 	switch (t_key) {
-		case os::Key::Escape:
+		case os::Key::Escape: {
 			if (m_account) {
 				show_results();
 			} else {
@@ -449,45 +456,54 @@ auto AccountSearch::on_key_down(os::Key t_key) -> bool
 			}
 
 			return true;
+		}
 
-		case os::Key::Up:
+		case os::Key::Up: {
 			move_highlight(-1);
 			return true;
+		}
 
-		case os::Key::Down:
+		case os::Key::Down: {
 			move_highlight(1);
 			return true;
+		}
 
-		case os::Key::PageUp:
+		case os::Key::PageUp: {
 			move_highlight(-static_cast<i32>(K_MAX_SHOWN_ROWS) + 1);
 			return true;
+		}
 
-		case os::Key::PageDown:
+		case os::Key::PageDown: {
 			move_highlight(static_cast<i32>(K_MAX_SHOWN_ROWS) - 1);
 			return true;
+		}
 
-		case os::Key::Enter:
+		case os::Key::Enter: {
 			activate(m_highlighted);
 			return true;
+		}
 
-		case os::Key::Tab:
+		case os::Key::Tab: {
 			if (!m_account) {
 				activate(m_highlighted);
 			}
 
 			return true;
+		}
 
 		case os::Key::Left:
-		case os::Key::Backspace:
+		case os::Key::Backspace: {
 			if (m_account) {
 				show_results();
 				return true;
 			}
 
 			break;
+		}
 
-		default:
+		default: {
 			break;
+		}
 	}
 
 	if (!m_account) {
@@ -624,18 +640,24 @@ auto AccountSearch::draw_action(DrawList* t_draw_list, Rect t_row, const Action&
 	std::string_view text;
 
 	switch (t_action.kind) {
-		case ActionKind::Edit:
+		case ActionKind::Edit: {
 			t_draw_list->add_image(icon, m_assets->get(Asset::IconEdit), icon_color);
 			text = "Edit account";
 			break;
-		case ActionKind::CopyUsername:
+		}
+
+		case ActionKind::CopyUsername: {
 			t_draw_list->add_image(icon, m_assets->get(Asset::IconUsername), icon_color);
 			text = "Copy username";
 			break;
-		case ActionKind::CopyPassword:
+		}
+
+		case ActionKind::CopyPassword: {
 			t_draw_list->add_image(icon, m_assets->get(Asset::IconLock), icon_color);
 			text = "Copy password";
 			break;
+		}
+
 		case ActionKind::Login: {
 			const Game& game = m_library->games[t_action.game];
 

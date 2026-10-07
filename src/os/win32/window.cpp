@@ -64,15 +64,22 @@ constexpr ULONGLONG K_ACTIVATE_EXISTING_TIMEOUT_MS = 3000;
 [[nodiscard]] auto system_cursor(CursorKind t_cursor) -> HCURSOR
 {
 	switch (t_cursor) {
-		case CursorKind::Hand:
+		case CursorKind::Hand: {
 			return LoadCursorW(nullptr, IDC_HAND);
-		case CursorKind::IBeam:
+		}
+
+		case CursorKind::IBeam: {
 			return LoadCursorW(nullptr, IDC_IBEAM);
-		case CursorKind::Move:
+		}
+
+		case CursorKind::Move: {
 			return LoadCursorW(nullptr, IDC_SIZEALL);
+		}
+
 		case CursorKind::Arrow:
-		case CursorKind::Drag:
+		case CursorKind::Drag: {
 			break;
+		}
 	}
 
 	return LoadCursorW(nullptr, IDC_ARROW);
@@ -483,29 +490,35 @@ auto Window::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lp
 			return 0;
 		}
 
-		case WM_NCHITTEST:
+		case WM_NCHITTEST: {
 			return handle_hit_test(t_lparam);
+		}
 
-		case WM_CLOSE:
+		case WM_CLOSE: {
 			owner->close();
 			return 0;
+		}
 
-		case WM_SETCURSOR:
+		case WM_SETCURSOR: {
 			if (LOWORD(t_lparam) != HTCLIENT) break;
 
 			SetCursor(system_cursor(owner->m_cursor));
 			return TRUE;
+		}
 
-		case WM_DPICHANGED:
+		case WM_DPICHANGED: {
 			handle_dpi_changed(t_wparam, t_lparam);
 			return 0;
+		}
 
-		case WM_SIZE:
+		case WM_SIZE: {
 			handle_size(t_wparam, t_lparam);
 			return 0;
+		}
 
-		case WM_ERASEBKGND:
+		case WM_ERASEBKGND: {
 			return 1;
+		}
 
 		case WM_PAINT: {
 			PAINTSTRUCT paint;
@@ -515,43 +528,50 @@ auto Window::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lp
 			return 0;
 		}
 
-		case WM_GETMINMAXINFO:
+		case WM_GETMINMAXINFO: {
 			handle_min_max_info(t_lparam);
 			return 0;
+		}
 
 		case WM_ENTERSIZEMOVE:
-		case WM_EXITSIZEMOVE:
+		case WM_EXITSIZEMOVE: {
 			owner->m_input_event_count = 0;
 			return 0;
+		}
 
-		case WM_LBUTTONDOWN:
+		case WM_LBUTTONDOWN: {
 			push_mouse(InputEventType::MouseDown, t_lparam);
 			SetCapture(window);
 			mouse_captured = true;
 			return 0;
+		}
 
-		case WM_LBUTTONUP:
+		case WM_LBUTTONUP: {
 			push_mouse(InputEventType::MouseUp, t_lparam);
 			mouse_captured = false;
 			ReleaseCapture();
 			return 0;
+		}
 
-		case WM_CAPTURECHANGED:
+		case WM_CAPTURECHANGED: {
 			if (mouse_captured) {
 				mouse_captured = false;
 				owner->push_input(InputEvent{.type = InputEventType::MouseUp, .position = last_mouse});
 			}
 
 			return 0;
+		}
 
-		case WM_RBUTTONUP:
+		case WM_RBUTTONUP: {
 			push_mouse(InputEventType::RightClick, t_lparam);
 			return 0;
+		}
 
-		case WM_MOUSEMOVE:
+		case WM_MOUSEMOVE: {
 			push_mouse(InputEventType::MouseMove, t_lparam);
 			track_mouse_leave(false);
 			return 0;
+		}
 
 		case WM_NCMOUSEMOVE: {
 			POINT cursor{GET_X_LPARAM(t_lparam), GET_Y_LPARAM(t_lparam)};
@@ -561,13 +581,15 @@ auto Window::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lp
 			break;
 		}
 
-		case WM_MOUSELEAVE:
+		case WM_MOUSELEAVE: {
 			handle_mouse_leave();
 			return 0;
+		}
 
-		case WM_NCMOUSELEAVE:
+		case WM_NCMOUSELEAVE: {
 			handle_mouse_leave();
 			break;
+		}
 
 		case WM_MOUSEWHEEL: {
 			POINT cursor{GET_X_LPARAM(t_lparam), GET_Y_LPARAM(t_lparam)};
@@ -581,24 +603,28 @@ auto Window::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lp
 			return 0;
 		}
 
-		case WM_KEYDOWN:
+		case WM_KEYDOWN: {
 			owner->push_input(InputEvent{.type = InputEventType::KeyDown, .key = win32::key_from_virtual_key(t_wparam)});
 			return 0;
+		}
 
-		case WM_CHAR:
+		case WM_CHAR: {
 			handle_character(t_wparam);
 			return 0;
+		}
 
-		case WM_DESTROY:
+		case WM_DESTROY: {
 			// The setup window closes before the main window opens, and a quit message would end that one too.
 			if (owner->m_kind == WindowKind::Main) {
 				PostQuitMessage(0);
 			}
 
 			return 0;
+		}
 
-		default:
+		default: {
 			break;
+		}
 	}
 
 	return DefWindowProcW(window, t_message, t_wparam, t_lparam);

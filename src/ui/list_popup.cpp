@@ -400,30 +400,34 @@ auto ListPopup::on_pointer_up(Vec2 t_point) -> std::optional<u32>
 	const Layout current = layout();
 
 	switch (press) {
-		case Press::Outside:
+		case Press::Outside: {
 			if (!current.popup.contains(t_point)) {
 				close();
 			}
 			break;
+		}
 
-		case Press::Clear:
+		case Press::Clear: {
 			if (clear_button_rect(current).contains(t_point)) {
 				m_search.set_value("");
 				refresh_matches();
 			}
 			break;
+		}
 
-		case Press::Row:
+		case Press::Row: {
 			if (m_pressed_match && match_at(current, t_point) == m_pressed_match) {
 				m_highlighted = *m_pressed_match;
 				return choose_highlighted();
 			}
 			break;
+		}
 
 		case Press::None:
 		case Press::Search:
-		case Press::Scrollbar:
+		case Press::Scrollbar: {
 			break;
+		}
 	}
 
 	return std::nullopt;
@@ -456,33 +460,40 @@ auto ListPopup::on_key_down(os::Key t_key) -> std::optional<u32>
 	refresh_matches();
 
 	switch (t_key) {
-		case os::Key::Escape:
+		case os::Key::Escape: {
 			close();
 			break;
+		}
 
-		case os::Key::Enter:
+		case os::Key::Enter: {
 			return choose_highlighted();
+		}
 
-		case os::Key::Up:
+		case os::Key::Up: {
 			move_highlight(-1);
 			break;
+		}
 
-		case os::Key::Down:
+		case os::Key::Down: {
 			move_highlight(1);
 			break;
+		}
 
-		case os::Key::PageUp:
+		case os::Key::PageUp: {
 			move_highlight(-page);
 			break;
+		}
 
-		case os::Key::PageDown:
+		case os::Key::PageDown: {
 			move_highlight(page);
 			break;
+		}
 
-		default:
+		default: {
 			m_search.on_key_down(t_key);
 			refresh_matches();
 			break;
+		}
 	}
 
 	return std::nullopt;

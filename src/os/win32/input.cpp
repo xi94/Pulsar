@@ -44,40 +44,73 @@ auto key_from_virtual_key(WPARAM t_virtual_key) -> Key
 	}
 
 	switch (t_virtual_key) {
-		case VK_BACK:
+		case VK_BACK: {
 			return Key::Backspace;
-		case VK_TAB:
+		}
+
+		case VK_TAB: {
 			return Key::Tab;
-		case VK_RETURN:
+		}
+
+		case VK_RETURN: {
 			return Key::Enter;
-		case VK_ESCAPE:
+		}
+
+		case VK_ESCAPE: {
 			return Key::Escape;
-		case VK_DELETE:
+		}
+
+		case VK_DELETE: {
 			return Key::Delete;
-		case VK_LEFT:
+		}
+
+		case VK_LEFT: {
 			return Key::Left;
-		case VK_RIGHT:
+		}
+
+		case VK_RIGHT: {
 			return Key::Right;
-		case VK_UP:
+		}
+
+		case VK_UP: {
 			return Key::Up;
-		case VK_DOWN:
+		}
+
+		case VK_DOWN: {
 			return Key::Down;
-		case VK_HOME:
+		}
+
+		case VK_HOME: {
 			return Key::Home;
-		case VK_END:
+		}
+
+		case VK_END: {
 			return Key::End;
-		case VK_PRIOR:
+		}
+
+		case VK_PRIOR: {
 			return Key::PageUp;
-		case VK_NEXT:
+		}
+
+		case VK_NEXT: {
 			return Key::PageDown;
-		case VK_OEM_COMMA:
+		}
+
+		case VK_OEM_COMMA: {
 			return Key::Comma;
-		case VK_F1:
+		}
+
+		case VK_F1: {
 			return Key::F1;
-		case VK_F2:
+		}
+
+		case VK_F2: {
 			return Key::F2;
-		default:
+		}
+
+		default: {
 			return Key::None;
+		}
 	}
 }
 

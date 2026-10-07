@@ -87,15 +87,18 @@ auto main(int t_argument_count, char** t_arguments) -> int
 	const auto app = std::make_unique<App>();
 
 	switch (app->start(flags.startup)) {
-		case App::StartResult::Ok:
+		case App::StartResult::Ok: {
 			app->run();
 			return 0;
+		}
 
-		case App::StartResult::AlreadyRunning:
+		case App::StartResult::AlreadyRunning: {
 			return 0;
+		}
 
-		case App::StartResult::Failed:
+		case App::StartResult::Failed: {
 			return 1;
+		}
 	}
 
 	return 1;

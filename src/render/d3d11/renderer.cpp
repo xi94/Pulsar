@@ -459,31 +459,37 @@ auto D3D11Backend::draw_command(const RenderFrame& t_frame, const DrawCommand& t
 	switch (t_command.shader) {
 		case ShaderKind::Solid:
 		case ShaderKind::ColorPicker:
-		case ShaderKind::Count:
+		case ShaderKind::Count: {
 			break;
+		}
 
-		case ShaderKind::Textured:
+		case ShaderKind::Textured: {
 			if (!t_command.texture->is_valid()) return;
 
 			image = textures[t_command.texture->slot()].view.Get();
 			break;
+		}
 
-		case ShaderKind::BannerGlow:
+		case ShaderKind::BannerGlow: {
 			extra_constants = banner_glow_constants.Get();
 			break;
+		}
 
-		case ShaderKind::Shadow:
+		case ShaderKind::Shadow: {
 			extra_constants = shadow_constants.Get();
 			break;
+		}
 
-		case ShaderKind::OutlineCountdown:
+		case ShaderKind::OutlineCountdown: {
 			extra_constants = outline_countdown_constants.Get();
 			break;
+		}
 
 		case ShaderKind::Backdrop:
-		case ShaderKind::BackdropPlain:
+		case ShaderKind::BackdropPlain: {
 			extra_constants = backdrop_constants.Get();
 			break;
+		}
 	}
 
 	if (extra_constants != nullptr && effect_size > 0) {

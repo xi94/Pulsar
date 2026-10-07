@@ -673,7 +673,7 @@ auto Tray::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lpar
 	}
 
 	switch (t_message) {
-		case K_TRAY_CALLBACK_MESSAGE:
+		case K_TRAY_CALLBACK_MESSAGE: {
 			if (LOWORD(t_lparam) == WM_LBUTTONUP) {
 				pending_event = TrayEvent{.type = TrayEventType::ShowWindow};
 			} else if (LOWORD(t_lparam) == WM_RBUTTONUP || LOWORD(t_lparam) == WM_CONTEXTMENU) {
@@ -681,13 +681,15 @@ auto Tray::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lpar
 			}
 
 			return 0;
+		}
 
-		case WM_TIMER:
+		case WM_TIMER: {
 			if (t_wparam == K_ADD_ICON_RETRY_TIMER) {
 				add_icon();
 			}
 
 			return 0;
+		}
 
 		case WM_MEASUREITEM: {
 			auto* measure = reinterpret_cast<MEASUREITEMSTRUCT*>(t_lparam);
@@ -705,12 +707,14 @@ auto Tray::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lpar
 			return TRUE;
 		}
 
-		case WM_COMMAND:
+		case WM_COMMAND: {
 			handle_command(LOWORD(t_wparam));
 			return 0;
+		}
 
-		default:
+		default: {
 			break;
+		}
 	}
 
 	return DefWindowProcW(window, t_message, t_wparam, t_lparam);

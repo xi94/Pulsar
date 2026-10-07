@@ -61,24 +61,35 @@ auto log_startup_phase(const char* t_phase) -> void
 [[nodiscard]] auto update_status(UpdateStage t_stage) -> std::string_view
 {
 	switch (t_stage) {
-		case UpdateStage::UpToDate:
+		case UpdateStage::UpToDate: {
 			return "Up to date";
+		}
+
 		case UpdateStage::Available:
-		case UpdateStage::ManualUpgradeRequired:
+		case UpdateStage::ManualUpgradeRequired: {
 			return "Update available";
-		case UpdateStage::Checking:
+		}
+
+		case UpdateStage::Checking: {
 			return "Checking...";
+		}
+
 		case UpdateStage::Downloading:
 		case UpdateStage::Verifying:
-		case UpdateStage::Installing:
+		case UpdateStage::Installing: {
 			return "Updating...";
-		case UpdateStage::ReadyToRelaunch:
+		}
+
+		case UpdateStage::ReadyToRelaunch: {
 			return "Restart to update";
+		}
+
 		case UpdateStage::Idle:
 		case UpdateStage::CheckFailed:
 		case UpdateStage::Error:
-		case UpdateStage::Cancelled:
+		case UpdateStage::Cancelled: {
 			break;
+		}
 	}
 
 	return "";
@@ -94,15 +105,20 @@ auto guard_against_overlays(bool t_block_injection) -> void
 	}
 
 	switch (os::block_injection()) {
-		case os::InjectionGuard::Blocked:
+		case os::InjectionGuard::Blocked: {
 			debug_log::write("app", "extension-point DLL injection blocked");
 			break;
-		case os::InjectionGuard::Refused:
+		}
+
+		case os::InjectionGuard::Refused: {
 			debug_log::write("app", "extension-point block refused, err=%u", os::last_error());
 			break;
-		case os::InjectionGuard::Unsupported:
+		}
+
+		case os::InjectionGuard::Unsupported: {
 			debug_log::write("app", "extension-point block unsupported on this system");
 			break;
+		}
 	}
 
 	if (const std::optional<std::string> module = os::injected_overlay()) {
@@ -547,13 +563,15 @@ auto App::handle_tray_event() -> void
 	}
 
 	switch (event.type) {
-		case os::TrayEventType::Exit:
+		case os::TrayEventType::Exit: {
 			m_window.request_quit();
 			break;
+		}
 
-		case os::TrayEventType::ShowWindow:
+		case os::TrayEventType::ShowWindow: {
 			m_window.restore();
 			break;
+		}
 
 		case os::TrayEventType::QuickLogin: {
 			if (m_locked || event.game < 0 || event.row < 0) break;
@@ -566,8 +584,9 @@ auto App::handle_tray_event() -> void
 			break;
 		}
 
-		case os::TrayEventType::None:
+		case os::TrayEventType::None: {
 			break;
+		}
 	}
 }
 
@@ -629,7 +648,7 @@ auto App::process(const Command& t_command) -> void
 	animation::request_frame();
 
 	switch (t_command.type) {
-		case CommandType::ToggleAppMenu:
+		case CommandType::ToggleAppMenu: {
 			if (m_app_menu.is_open()) {
 				m_app_menu.close();
 			} else {
@@ -638,8 +657,9 @@ auto App::process(const Command& t_command) -> void
 			}
 
 			break;
+		}
 
-		case CommandType::ToggleUpdateOverlay:
+		case CommandType::ToggleUpdateOverlay: {
 			if (m_update_overlay.is_open()) {
 				m_update_overlay.close();
 			} else {
@@ -647,18 +667,22 @@ auto App::process(const Command& t_command) -> void
 			}
 
 			break;
+		}
 
-		case CommandType::OpenUpdateOverlay:
+		case CommandType::OpenUpdateOverlay: {
 			m_update_overlay.open();
 			break;
+		}
 
-		case CommandType::OpenSettings:
+		case CommandType::OpenSettings: {
 			m_settings_panel.open();
 			break;
+		}
 
-		case CommandType::OpenSetup:
+		case CommandType::OpenSetup: {
 			open_setup();
 			break;
+		}
 
 		case CommandType::OpenDataFolder: {
 			const std::string directory = storage::data_directory();
@@ -669,114 +693,134 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case CommandType::CheckForUpdates:
+		case CommandType::CheckForUpdates: {
 			m_updater.check_for_update();
 			m_update_overlay.begin_check();
 			break;
+		}
 
-		case CommandType::OpenGame:
+		case CommandType::OpenGame: {
 			m_account_modal.open(t_command.index);
 			m_account_modal.set_art_source(m_carousel.art_source(static_cast<u32>(t_command.index)));
 			break;
+		}
 
-		case CommandType::SaveChanges:
+		case CommandType::SaveChanges: {
 			request_save();
 			break;
+		}
 
-		case CommandType::RequestNewMasterPassword:
+		case CommandType::RequestNewMasterPassword: {
 			m_replaced_vault_key.emplace();
 			m_replaced_vault_key->key.swap(&m_master_key);
 			m_replaced_vault_key->params = m_settings.master_key;
 			lock();
 			m_unlock_screen.show_setup();
 			break;
+		}
 
-		case CommandType::VaultUnlocked:
+		case CommandType::VaultUnlocked: {
 			storage::load_accounts(&m_library, &m_master_key);
 			unlock();
 			break;
+		}
 
-		case CommandType::VaultCreated:
+		case CommandType::VaultCreated: {
 			commit_new_vault_key();
 			unlock();
 			break;
+		}
 
-		case CommandType::ShowAccountMenu:
+		case CommandType::ShowAccountMenu: {
 			open_account_menu(t_command);
 			break;
+		}
 
-		case CommandType::ShowTextMenu:
+		case CommandType::ShowTextMenu: {
 			open_text_menu(t_command);
 			break;
+		}
 
-		case CommandType::CopyUsername:
+		case CommandType::CopyUsername: {
 			if (const Account* account = m_account_modal.account_at_row(t_command.index)) {
 				os::set_clipboard_text(account->username);
 			}
 
 			break;
+		}
 
-		case CommandType::CopyPassword:
+		case CommandType::CopyPassword: {
 			if (const Account* account = m_account_modal.account_at_row(t_command.index)) {
 				copy_password(account->password);
 			}
 
 			break;
+		}
 
-		case CommandType::EditText:
+		case CommandType::EditText: {
 			t_command.text_input->apply(t_command.text_edit);
 			break;
+		}
 
-		case CommandType::UndoDelete:
+		case CommandType::UndoDelete: {
 			m_account_modal.undo_delete();
 			break;
+		}
 
-		case CommandType::ToggleFavorite:
+		case CommandType::ToggleFavorite: {
 			m_account_modal.toggle_favorite(t_command.index);
 			break;
+		}
 
-		case CommandType::LockVault:
+		case CommandType::LockVault: {
 			lock_vault();
 			break;
+		}
 
-		case CommandType::OpenAccountSearch:
+		case CommandType::OpenAccountSearch: {
 			open_account_search();
 			break;
+		}
 
-		case CommandType::EditAccount:
+		case CommandType::EditAccount: {
 			if (account_for(t_command.account) != nullptr) {
 				m_settings_panel.close();
 				m_account_modal.edit_account(t_command.account);
 			}
 
 			break;
+		}
 
-		case CommandType::LoginAccount:
+		case CommandType::LoginAccount: {
 			if (account_for(t_command.account) != nullptr && t_command.index >= 0) {
 				m_settings_panel.close();
 				m_account_modal.quick_login(static_cast<u32>(t_command.index), t_command.account);
 			}
 
 			break;
+		}
 
-		case CommandType::CopyAccountUsername:
+		case CommandType::CopyAccountUsername: {
 			if (const Account* account = account_for(t_command.account)) {
 				os::set_clipboard_text(account->username);
 				m_toasts.notify(Notification{.message = "Username copied."});
 			}
 
 			break;
+		}
 
-		case CommandType::CopyAccountPassword:
+		case CommandType::CopyAccountPassword: {
 			if (const Account* account = account_for(t_command.account)) {
 				copy_password(account->password);
 			}
 
 			break;
+		}
 
-		case CommandType::LocateRiotClient:
+		case CommandType::LocateRiotClient: {
 			locate_riot_client(t_command);
 			break;
+		}
 	}
 }
 

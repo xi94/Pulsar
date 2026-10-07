@@ -119,10 +119,11 @@ auto SetupApp::run() -> SetupOutcome
 auto SetupApp::handle_input(const os::InputEvent& t_event) -> void
 {
 	switch (t_event.type) {
-		case os::InputEventType::MouseMove:
+		case os::InputEventType::MouseMove: {
 			m_mouse = t_event.position;
 			m_screen.on_pointer_move(m_mouse);
 			break;
+		}
 
 		case os::InputEventType::MouseDown: {
 			m_mouse        = t_event.position;
@@ -159,17 +160,20 @@ auto SetupApp::handle_input(const os::InputEvent& t_event) -> void
 			break;
 		}
 
-		case os::InputEventType::KeyDown:
+		case os::InputEventType::KeyDown: {
 			m_screen.on_key_down(t_event.key);
 			break;
+		}
 
-		case os::InputEventType::Character:
+		case os::InputEventType::Character: {
 			m_screen.on_char(t_event.codepoint);
 			break;
+		}
 
 		case os::InputEventType::MouseWheel:
-		case os::InputEventType::RightClick:
+		case os::InputEventType::RightClick: {
 			break;
+		}
 	}
 }
 

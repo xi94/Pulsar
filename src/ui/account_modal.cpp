@@ -361,21 +361,34 @@ struct StageSpan {
 [[nodiscard]] auto stage_span(LoginStage t_stage) -> std::optional<StageSpan>
 {
 	switch (t_stage) {
-		case LoginStage::Idle:
+		case LoginStage::Idle: {
 			return StageSpan{0.02f, 0.1f};
-		case LoginStage::WaitingForProcess:
+		}
+
+		case LoginStage::WaitingForProcess: {
 			return StageSpan{0.08f, 0.3f};
-		case LoginStage::Connecting:
+		}
+
+		case LoginStage::Connecting: {
 			return StageSpan{0.32f, 0.55f};
-		case LoginStage::Authenticating:
+		}
+
+		case LoginStage::Authenticating: {
 			return StageSpan{0.58f, 0.82f};
-		case LoginStage::Launching:
+		}
+
+		case LoginStage::Launching: {
 			return StageSpan{0.85f, 0.97f};
-		case LoginStage::Success:
+		}
+
+		case LoginStage::Success: {
 			return StageSpan{1.0f, 1.0f};
+		}
+
 		case LoginStage::Error:
-		case LoginStage::Cancelled:
+		case LoginStage::Cancelled: {
 			break;
+		}
 	}
 
 	return std::nullopt;
@@ -384,19 +397,28 @@ struct StageSpan {
 [[nodiscard]] auto stage_step(LoginStage t_stage) -> u32
 {
 	switch (t_stage) {
-		case LoginStage::WaitingForProcess:
+		case LoginStage::WaitingForProcess: {
 			return 1;
-		case LoginStage::Connecting:
+		}
+
+		case LoginStage::Connecting: {
 			return 2;
-		case LoginStage::Authenticating:
+		}
+
+		case LoginStage::Authenticating: {
 			return 3;
-		case LoginStage::Launching:
+		}
+
+		case LoginStage::Launching: {
 			return 4;
+		}
+
 		case LoginStage::Idle:
 		case LoginStage::Success:
 		case LoginStage::Error:
-		case LoginStage::Cancelled:
+		case LoginStage::Cancelled: {
 			break;
+		}
 	}
 
 	return 0;
@@ -405,22 +427,37 @@ struct StageSpan {
 [[nodiscard]] auto stage_message(LoginStage t_stage) -> std::string_view
 {
 	switch (t_stage) {
-		case LoginStage::Idle:
+		case LoginStage::Idle: {
 			return "";
-		case LoginStage::WaitingForProcess:
+		}
+
+		case LoginStage::WaitingForProcess: {
 			return "Launching Riot Client...";
-		case LoginStage::Connecting:
+		}
+
+		case LoginStage::Connecting: {
 			return "Waiting for Riot Client...";
-		case LoginStage::Authenticating:
+		}
+
+		case LoginStage::Authenticating: {
 			return "Logging in...";
-		case LoginStage::Launching:
+		}
+
+		case LoginStage::Launching: {
 			return "Launching game...";
-		case LoginStage::Success:
+		}
+
+		case LoginStage::Success: {
 			return "Logged in!";
-		case LoginStage::Error:
+		}
+
+		case LoginStage::Error: {
 			return "Something went wrong.";
-		case LoginStage::Cancelled:
+		}
+
+		case LoginStage::Cancelled: {
 			return "Cancelled.";
+		}
 	}
 
 	return "";
@@ -1554,7 +1591,7 @@ auto AccountModal::update(float t_delta_seconds) -> void
 	}
 
 	switch (m_mode) {
-		case Mode::AccountList:
+		case Mode::AccountList: {
 			m_search.update(t_delta_seconds);
 
 			if (has_game()) {
@@ -1564,14 +1601,16 @@ auto AccountModal::update(float t_delta_seconds) -> void
 			m_rows_scroll.update(t_delta_seconds);
 			update_row_drag(t_delta_seconds);
 			break;
+		}
 
-		case Mode::LoginProgress:
+		case Mode::LoginProgress: {
 			m_login_seconds += t_delta_seconds;
 			update_login_progress(t_delta_seconds);
 			animation::request_frame();
 			break;
+		}
 
-		case Mode::EditAccount:
+		case Mode::EditAccount: {
 			m_form_scroll.update(t_delta_seconds);
 
 			for (TextInput& input : m_fields) {
@@ -1579,6 +1618,7 @@ auto AccountModal::update(float t_delta_seconds) -> void
 			}
 
 			break;
+		}
 	}
 
 	const float show_in_before = m_show_in_amount;
@@ -1757,24 +1797,27 @@ auto AccountModal::on_pointer_up(Vec2 t_point) -> bool
 	}
 
 	switch (m_mode) {
-		case Mode::AccountList:
+		case Mode::AccountList: {
 			if (has_game()) {
 				handle_list_click(current, t_point);
 			}
 
 			break;
+		}
 
-		case Mode::LoginProgress:
+		case Mode::LoginProgress: {
 			if (primary_button_rect(current.footer).contains(t_point)) {
 				cancel_login();
 				m_mode = Mode::AccountList;
 			}
 
 			break;
+		}
 
-		case Mode::EditAccount:
+		case Mode::EditAccount: {
 			handle_edit_click(current, t_point);
 			break;
+		}
 	}
 
 	return true;
@@ -1950,19 +1993,22 @@ auto AccountModal::handle_list_key(os::Key t_key) -> bool
 
 	switch (t_key) {
 		case os::Key::Up:
-		case os::Key::Down:
+		case os::Key::Down: {
 			select_step(t_key == os::Key::Down ? 1 : -1);
 			return true;
+		}
 
-		case os::Key::Enter:
+		case os::Key::Enter: {
 			if (selected_row(displayed_accounts()) >= 0) {
 				request_login(static_cast<u32>(m_game), *m_selected);
 			}
 
 			return true;
+		}
 
-		default:
+		default: {
 			break;
+		}
 	}
 
 	const bool control = os::modifiers().shortcut;
@@ -2153,14 +2199,17 @@ auto AccountModal::cursor() const -> CursorKind
 	if (m_mode != Mode::LoginProgress && back_badge_rect(current).contains(m_mouse)) return CursorKind::Hand;
 
 	switch (m_mode) {
-		case Mode::AccountList:
+		case Mode::AccountList: {
 			return has_game() ? list_cursor(current) : CursorKind::Arrow;
+		}
 
-		case Mode::LoginProgress:
+		case Mode::LoginProgress: {
 			return primary_button_rect(current.footer).contains(m_mouse) ? CursorKind::Hand : CursorKind::Arrow;
+		}
 
-		case Mode::EditAccount:
+		case Mode::EditAccount: {
 			return edit_cursor(current);
+		}
 	}
 
 	return CursorKind::Arrow;
@@ -2907,9 +2956,10 @@ auto AccountModal::draw_footer(DrawList* t_draw_list, Rect t_footer, u8 t_alpha)
 	t_draw_list->add_rect(Rect{t_footer.x, t_footer.y, t_footer.w, 1.0f}, faded(g_theme.separator, t_alpha));
 
 	switch (m_mode) {
-		case Mode::EditAccount:
+		case Mode::EditAccount: {
 			draw_edit_footer(t_draw_list, t_footer, t_alpha);
 			break;
+		}
 
 		case Mode::LoginProgress: {
 			const bool finished = !m_queued_login && LoginAttempt::is_terminal(m_login.stage());
@@ -2961,17 +3011,20 @@ auto AccountModal::draw(DrawList* t_draw_list) -> void
 	draw_back_badge(t_draw_list, current, alpha);
 
 	switch (m_mode) {
-		case Mode::AccountList:
+		case Mode::AccountList: {
 			draw_account_list(t_draw_list, current, alpha);
 			break;
+		}
 
-		case Mode::LoginProgress:
+		case Mode::LoginProgress: {
 			draw_login_progress(t_draw_list, current.main_column, alpha);
 			break;
+		}
 
-		case Mode::EditAccount:
+		case Mode::EditAccount: {
 			draw_edit_form(t_draw_list, current.main_column, alpha);
 			break;
+		}
 	}
 
 	draw_footer(t_draw_list, current.footer, alpha);

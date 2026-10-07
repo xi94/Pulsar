@@ -54,16 +54,25 @@ enum class CharClass : u8 {
 [[nodiscard]] auto shortcut_for(os::Key t_key) -> std::optional<TextEdit>
 {
 	switch (t_key) {
-		case os::Key::A:
+		case os::Key::A: {
 			return TextEdit::SelectAll;
-		case os::Key::C:
+		}
+
+		case os::Key::C: {
 			return TextEdit::Copy;
-		case os::Key::X:
+		}
+
+		case os::Key::X: {
 			return TextEdit::Cut;
-		case os::Key::V:
+		}
+
+		case os::Key::V: {
 			return TextEdit::Paste;
-		default:
+		}
+
+		default: {
 			return std::nullopt;
+		}
 	}
 }
 
@@ -144,12 +153,17 @@ auto TextInput::can_apply(TextEdit t_edit) const -> bool
 {
 	switch (t_edit) {
 		case TextEdit::Cut:
-		case TextEdit::Copy:
+		case TextEdit::Copy: {
 			return has_selection() && !m_masked;
-		case TextEdit::Paste:
+		}
+
+		case TextEdit::Paste: {
 			return os::clipboard_has_text();
-		case TextEdit::SelectAll:
+		}
+
+		case TextEdit::SelectAll: {
 			return m_length > 0;
+		}
 	}
 
 	return false;
@@ -163,22 +177,26 @@ auto TextInput::apply(TextEdit t_edit) -> void
 	const std::string_view selected{m_text + range.start, range.end - range.start};
 
 	switch (t_edit) {
-		case TextEdit::Cut:
+		case TextEdit::Cut: {
 			os::set_clipboard_text(selected);
 			erase(range);
 			break;
+		}
 
-		case TextEdit::Copy:
+		case TextEdit::Copy: {
 			os::set_clipboard_text(selected);
 			break;
+		}
 
-		case TextEdit::Paste:
+		case TextEdit::Paste: {
 			insert(os::clipboard_text());
 			break;
+		}
 
-		case TextEdit::SelectAll:
+		case TextEdit::SelectAll: {
 			select(TextRange{0, m_length});
 			break;
+		}
 	}
 
 	restart_caret_blink();
@@ -214,38 +232,46 @@ auto TextInput::on_key_down(os::Key t_key) -> void
 	const bool collapse_selection = has_selection() && !held.shift;
 
 	switch (t_key) {
-		case os::Key::Backspace:
+		case os::Key::Backspace: {
 			erase(has_selection() ? range : TextRange{previous, m_cursor});
 			break;
+		}
 
-		case os::Key::Delete:
+		case os::Key::Delete: {
 			erase(has_selection() ? range : TextRange{m_cursor, next});
 			break;
+		}
 
-		case os::Key::Left:
+		case os::Key::Left: {
 			move_cursor(collapse_selection ? range.start : previous, held.shift);
 			break;
+		}
 
-		case os::Key::Right:
+		case os::Key::Right: {
 			move_cursor(collapse_selection ? range.end : next, held.shift);
 			break;
+		}
 
-		case os::Key::Home:
+		case os::Key::Home: {
 			move_cursor(0, held.shift);
 			break;
+		}
 
-		case os::Key::End:
+		case os::Key::End: {
 			move_cursor(m_length, held.shift);
 			break;
+		}
 
-		case os::Key::E:
+		case os::Key::E: {
 			if (!held.shortcut) return;
 
 			move_cursor(m_length, false);
 			break;
+		}
 
-		default:
+		default: {
 			return;
+		}
 	}
 
 	restart_caret_blink();

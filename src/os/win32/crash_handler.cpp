@@ -129,26 +129,45 @@ auto show_crash_dialog(const std::wstring& t_reason, const std::wstring& t_locat
 [[nodiscard]] auto exception_name(DWORD t_code) -> const wchar_t*
 {
 	switch (t_code) {
-		case EXCEPTION_ACCESS_VIOLATION:
+		case EXCEPTION_ACCESS_VIOLATION: {
 			return L"Access violation";
-		case EXCEPTION_STACK_OVERFLOW:
+		}
+
+		case EXCEPTION_STACK_OVERFLOW: {
 			return L"Stack overflow";
-		case EXCEPTION_ILLEGAL_INSTRUCTION:
+		}
+
+		case EXCEPTION_ILLEGAL_INSTRUCTION: {
 			return L"Illegal instruction";
-		case EXCEPTION_INT_DIVIDE_BY_ZERO:
+		}
+
+		case EXCEPTION_INT_DIVIDE_BY_ZERO: {
 			return L"Integer divide by zero";
-		case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
+		}
+
+		case EXCEPTION_ARRAY_BOUNDS_EXCEEDED: {
 			return L"Array bounds exceeded";
-		case EXCEPTION_DATATYPE_MISALIGNMENT:
+		}
+
+		case EXCEPTION_DATATYPE_MISALIGNMENT: {
 			return L"Datatype misalignment";
-		case EXCEPTION_PRIV_INSTRUCTION:
+		}
+
+		case EXCEPTION_PRIV_INSTRUCTION: {
 			return L"Privileged instruction";
-		case EXCEPTION_IN_PAGE_ERROR:
+		}
+
+		case EXCEPTION_IN_PAGE_ERROR: {
 			return L"In-page I/O error";
-		case EXCEPTION_BREAKPOINT:
+		}
+
+		case EXCEPTION_BREAKPOINT: {
 			return L"Breakpoint (unhandled)";
-		default:
+		}
+
+		default: {
 			return L"Unknown exception";
+		}
 	}
 }
 

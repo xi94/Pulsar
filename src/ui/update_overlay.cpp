@@ -269,76 +269,87 @@ auto UpdateOverlay::describe() const -> UpdateOverlay::Content
 
 	switch (stage) {
 		case UpdateStage::Idle:
-		case UpdateStage::Checking:
+		case UpdateStage::Checking: {
 			set("Checking for updates", "This only takes a moment.");
 			content.spinning = true;
 			break;
+		}
 
-		case UpdateStage::UpToDate:
+		case UpdateStage::UpToDate: {
 			set("You're up to date", "");
 			std::snprintf(content.detail, sizeof(content.detail), "%s %s is the latest version.", K_APP_NAME, K_APP_VERSION);
 			content.primary = Button{"Check again", Action::Check, controls::ButtonStyle::Neutral};
 			break;
+		}
 
-		case UpdateStage::CheckFailed:
+		case UpdateStage::CheckFailed: {
 			set("Couldn't check for updates", m_updater->error_message());
 			content.detail_is_error = true;
 			content.primary         = Button{"Try again", Action::Check, controls::ButtonStyle::Accent};
 			break;
+		}
 
-		case UpdateStage::Available:
+		case UpdateStage::Available: {
 			copy_to("Update available", content.title);
 			std::snprintf(content.detail, sizeof(content.detail), "Version %s is ready to install.", version);
 			content.notes     = true;
 			content.secondary = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
 			content.primary   = Button{"Install update", Action::Download, controls::ButtonStyle::Accent};
 			break;
+		}
 
-		case UpdateStage::ManualUpgradeRequired:
+		case UpdateStage::ManualUpgradeRequired: {
 			copy_to("Update available", content.title);
 			std::snprintf(content.detail, sizeof(content.detail), "Version %s has to be downloaded from GitHub.", version);
 			content.secondary = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
 			content.primary   = Button{"Open GitHub", Action::Releases, controls::ButtonStyle::Accent};
 			break;
+		}
 
-		case UpdateStage::Downloading:
+		case UpdateStage::Downloading: {
 			std::snprintf(content.title, sizeof(content.title), "Downloading %s", version);
 			copy_to("You can keep using Pulsar meanwhile.", content.detail);
 			content.progress = true;
 			content.primary  = Button{"Cancel", Action::Cancel, controls::ButtonStyle::Neutral};
 			break;
+		}
 
-		case UpdateStage::Verifying:
+		case UpdateStage::Verifying: {
 			std::snprintf(content.title, sizeof(content.title), "Verifying %s", version);
 			copy_to("Making sure the download is genuine.", content.detail);
 			content.spinning = true;
 			content.progress = true;
 			break;
+		}
 
-		case UpdateStage::Installing:
+		case UpdateStage::Installing: {
 			std::snprintf(content.title, sizeof(content.title), "Installing %s", version);
 			copy_to("Pulsar restarts when it's done.", content.detail);
 			content.spinning = true;
 			content.progress = true;
 			break;
+		}
 
-		case UpdateStage::ReadyToRelaunch:
+		case UpdateStage::ReadyToRelaunch: {
 			set("Restarting", "Pulsar will be right back.");
 			content.spinning = true;
 			break;
+		}
 
-		case UpdateStage::Error:
+		case UpdateStage::Error: {
 			set("Update failed", m_updater->error_message());
 			content.detail_is_error = true;
 			content.secondary       = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
 			content.primary         = Button{"Try again", Action::Download, controls::ButtonStyle::Accent};
 			break;
+		}
 
-		case UpdateStage::Cancelled:
+		case UpdateStage::Cancelled: {
 			set("Update cancelled", "The download was stopped.");
 			content.secondary = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
 			content.primary   = Button{"Try again", Action::Download, controls::ButtonStyle::Accent};
 			break;
+		}
 	}
 
 	return content;
@@ -385,7 +396,8 @@ auto UpdateOverlay::content_height(const Content& t_content) const -> float
 
 auto UpdateOverlay::anchor_rect() const -> Rect
 {
-	return TitleBarLayout{.width = static_cast<float>(m_window->width())}.button_rect(TitleBarButton::Update);
+	return TitleBarLayout{.width = static_cast<float>(m_window->width()), .native_controls_width = m_window->native_controls_width()}.button_rect(
+		TitleBarButton::Update);
 }
 
 auto UpdateOverlay::layout(const Content& t_content) const -> UpdateOverlay::Layout
@@ -531,31 +543,37 @@ auto UpdateOverlay::update(float t_delta_seconds) -> void
 auto UpdateOverlay::run(Action t_action) -> void
 {
 	switch (t_action) {
-		case Action::Check:
+		case Action::Check: {
 			m_updater->check_for_update();
 			close();
 			begin_check();
 			break;
+		}
 
-		case Action::Download:
+		case Action::Download: {
 			m_updater->start_download();
 			break;
+		}
 
-		case Action::Cancel:
+		case Action::Cancel: {
 			m_updater->request_cancel();
 			break;
+		}
 
-		case Action::Close:
+		case Action::Close: {
 			close();
 			break;
+		}
 
-		case Action::Releases:
+		case Action::Releases: {
 			os::open_url(K_RELEASES_URL);
 			close();
 			break;
+		}
 
-		case Action::None:
+		case Action::None: {
 			break;
+		}
 	}
 }
 
@@ -713,13 +731,15 @@ auto UpdateOverlay::draw_notes(DrawList* t_draw_list, Rect t_box, const ScrollGe
 				break;
 			}
 
-			case NoteKind::Continuation:
+			case NoteKind::Continuation: {
 				draw_text(t_draw_list, font, Vec2{left + K_NOTE_BULLET_INDENT, baseline}, line.text, faded(g_theme.text, t_alpha));
 				break;
+			}
 
-			case NoteKind::Text:
+			case NoteKind::Text: {
 				draw_text(t_draw_list, font, Vec2{left, baseline}, line.text, faded(g_theme.text_dim, t_alpha));
 				break;
+			}
 		}
 	}
 

@@ -26,8 +26,10 @@ auto TitleBarLayout::button_rect(TitleBarButton t_button) const -> Rect
 	}
 
 	switch (t_button) {
-		case TitleBarButton::Menu:
+		case TitleBarButton::Menu: {
 			return Rect{leading, 0.0f, K_TITLE_BAR_BUTTON_WIDTH, K_TITLE_BAR_HEIGHT};
+		}
+
 		case TitleBarButton::Search: {
 			const float side       = update_visible ? update_width + K_SEARCH_BUTTON_MARGIN : 0.0f;
 			const float left       = leading + K_TITLE_BAR_BUTTON_WIDTH + std::max(K_SEARCH_BUTTON_SIDE_ROOM, side);
@@ -39,16 +41,26 @@ auto TitleBarLayout::button_rect(TitleBarButton t_button) const -> Rect
 
 			return Rect{std::floor(x), 0.0f, pill_width, K_TITLE_BAR_HEIGHT};
 		}
-		case TitleBarButton::Update:
+
+		case TitleBarButton::Update: {
 			return Rect{leading + K_TITLE_BAR_BUTTON_WIDTH, 0.0f, update_width, K_TITLE_BAR_HEIGHT};
-		case TitleBarButton::Minimize:
+		}
+
+		case TitleBarButton::Minimize: {
 			return Rect{right - K_TITLE_BAR_BUTTON_WIDTH * 3.0f, 0.0f, K_TITLE_BAR_BUTTON_WIDTH, K_TITLE_BAR_HEIGHT};
-		case TitleBarButton::Maximize:
+		}
+
+		case TitleBarButton::Maximize: {
 			return Rect{right - K_TITLE_BAR_BUTTON_WIDTH * 2.0f, 0.0f, K_TITLE_BAR_BUTTON_WIDTH, K_TITLE_BAR_HEIGHT};
-		case TitleBarButton::Close:
+		}
+
+		case TitleBarButton::Close: {
 			return Rect{right - K_TITLE_BAR_BUTTON_WIDTH, 0.0f, K_TITLE_BAR_BUTTON_WIDTH, K_TITLE_BAR_HEIGHT};
-		case TitleBarButton::None:
+		}
+
+		case TitleBarButton::None: {
 			break;
+		}
 	}
 
 	return Rect{};

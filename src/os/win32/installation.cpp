@@ -297,16 +297,23 @@ auto apply_options(const std::wstring& t_location, const std::wstring& t_executa
 {
 	switch (t_error) {
 		case ERROR_ACCESS_DENIED:
-		case ERROR_PRIVILEGE_NOT_HELD:
+		case ERROR_PRIVILEGE_NOT_HELD: {
 			return "Pulsar can't write to that folder. Pick another one.";
+		}
+
 		case ERROR_SHARING_VIOLATION:
-		case ERROR_LOCK_VIOLATION:
+		case ERROR_LOCK_VIOLATION: {
 			return "Pulsar is open from that folder. Close it and try again.";
+		}
+
 		case ERROR_DISK_FULL:
-		case ERROR_HANDLE_DISK_FULL:
+		case ERROR_HANDLE_DISK_FULL: {
 			return "There isn't enough space on that drive.";
-		default:
+		}
+
+		default: {
 			break;
+		}
 	}
 
 	char message[96];
@@ -551,12 +558,17 @@ auto Job::finish(bool t_succeeded, std::string t_error) -> void
 auto Job::step_count() const -> u32
 {
 	switch (m_task) {
-		case Task::Install:
+		case Task::Install: {
 			return static_cast<u32>(std::size(K_INSTALL_STEPS));
-		case Task::Apply:
+		}
+
+		case Task::Apply: {
 			return static_cast<u32>(std::size(K_APPLY_STEPS));
-		case Task::Uninstall:
+		}
+
+		case Task::Uninstall: {
 			return static_cast<u32>(std::size(K_UNINSTALL_STEPS));
+		}
 	}
 
 	return 1;
@@ -567,12 +579,17 @@ auto Job::step_label() const -> std::string_view
 	const u32 index = std::min(step(), step_count() - 1);
 
 	switch (m_task) {
-		case Task::Install:
+		case Task::Install: {
 			return K_INSTALL_STEPS[index];
-		case Task::Apply:
+		}
+
+		case Task::Apply: {
 			return K_APPLY_STEPS[index];
-		case Task::Uninstall:
+		}
+
+		case Task::Uninstall: {
 			return K_UNINSTALL_STEPS[index];
+		}
 	}
 
 	return {};

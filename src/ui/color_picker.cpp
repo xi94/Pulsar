@@ -66,30 +66,41 @@ struct Hsv {
 	float b = 0.0f;
 
 	switch (static_cast<int>(sector)) {
-		case 0:
+		case 0: {
 			r = chroma;
 			g = secondary;
 			break;
-		case 1:
+		}
+
+		case 1: {
 			r = secondary;
 			g = chroma;
 			break;
-		case 2:
+		}
+
+		case 2: {
 			g = chroma;
 			b = secondary;
 			break;
-		case 3:
+		}
+
+		case 3: {
 			g = secondary;
 			b = chroma;
 			break;
-		case 4:
+		}
+
+		case 4: {
 			r = secondary;
 			b = chroma;
 			break;
-		default:
+		}
+
+		default: {
 			r = chroma;
 			b = secondary;
 			break;
+		}
 	}
 
 	const float lift    = t_value - chroma;
@@ -611,28 +622,32 @@ auto ColorPicker::on_pointer_up(Vec2 t_point) -> bool
 	const Layout current = layout();
 
 	switch (press) {
-		case Press::Revert:
+		case Press::Revert: {
 			if (current.swatch.contains(t_point) && t_point.x < current.swatch.center().x) {
 				set_color(m_initial);
 				sync_fields(-1);
 			}
 			break;
+		}
 
-		case Press::Copy:
+		case Press::Copy: {
 			if (current.copy.contains(t_point)) {
 				copy_hex();
 			}
 			break;
+		}
 
-		case Press::Paste:
+		case Press::Paste: {
 			if (current.paste.contains(t_point)) {
 				paste_color();
 			}
 			break;
+		}
 
 		case Press::None:
-		case Press::Field:
+		case Press::Field: {
 			break;
+		}
 	}
 
 	return true;
@@ -680,9 +695,10 @@ auto ColorPicker::on_key_down(os::Key t_key) -> bool
 
 	switch (t_key) {
 		case os::Key::Enter:
-		case os::Key::Escape:
+		case os::Key::Escape: {
 			focus_field(-1);
 			return true;
+		}
 
 		case os::Key::Tab: {
 			const auto count = static_cast<i32>(K_FIELD_COUNT);
@@ -694,9 +710,10 @@ auto ColorPicker::on_key_down(os::Key t_key) -> bool
 			return true;
 		}
 
-		default:
+		default: {
 			m_fields[focused].on_key_down(t_key);
 			return true;
+		}
 	}
 }
 

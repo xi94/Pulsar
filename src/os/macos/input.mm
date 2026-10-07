@@ -80,39 +80,70 @@ auto key_from_event(NSEvent* t_event) -> Key
 	const bool command = (t_event.modifierFlags & NSEventModifierFlagCommand) != 0;
 
 	switch (t_event.keyCode) {
-		case kVK_Delete:
+		case kVK_Delete: {
 			return Key::Backspace;
-		case kVK_Tab:
+		}
+
+		case kVK_Tab: {
 			return Key::Tab;
+		}
+
 		case kVK_Return:
-		case kVK_ANSI_KeypadEnter:
+		case kVK_ANSI_KeypadEnter: {
 			return Key::Enter;
-		case kVK_Escape:
+		}
+
+		case kVK_Escape: {
 			return Key::Escape;
-		case kVK_ForwardDelete:
+		}
+
+		case kVK_ForwardDelete: {
 			return Key::Delete;
-		case kVK_LeftArrow:
+		}
+
+		case kVK_LeftArrow: {
 			return command ? Key::Home : Key::Left;
-		case kVK_RightArrow:
+		}
+
+		case kVK_RightArrow: {
 			return command ? Key::End : Key::Right;
-		case kVK_UpArrow:
+		}
+
+		case kVK_UpArrow: {
 			return Key::Up;
-		case kVK_DownArrow:
+		}
+
+		case kVK_DownArrow: {
 			return Key::Down;
-		case kVK_Home:
+		}
+
+		case kVK_Home: {
 			return Key::Home;
-		case kVK_End:
+		}
+
+		case kVK_End: {
 			return Key::End;
-		case kVK_PageUp:
+		}
+
+		case kVK_PageUp: {
 			return Key::PageUp;
-		case kVK_PageDown:
+		}
+
+		case kVK_PageDown: {
 			return Key::PageDown;
-		case kVK_F1:
+		}
+
+		case kVK_F1: {
 			return Key::F1;
-		case kVK_F2:
+		}
+
+		case kVK_F2: {
 			return Key::F2;
-		default:
+		}
+
+		default: {
 			break;
+		}
 	}
 
 	const Key typed = key_from_character(t_event);

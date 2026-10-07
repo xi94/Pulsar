@@ -39,10 +39,13 @@ constexpr std::string_view K_SEARCH_PILL_SHORTCUT  = PULSAR_SHORTCUT_KEY "+S";
 		case UpdateStage::Installing:
 		case UpdateStage::ReadyToRelaunch:
 		case UpdateStage::Error:
-		case UpdateStage::Cancelled:
+		case UpdateStage::Cancelled: {
 			return true;
-		default:
+		}
+
+		default: {
 			return false;
+		}
 	}
 }
 
@@ -72,18 +75,22 @@ struct StatusLook {
 
 	switch (t_stage) {
 		case UpdateStage::Idle:
-		case UpdateStage::Checking:
+		case UpdateStage::Checking: {
 			return StatusLook{"Checking for updates", "Checking for updates", Asset::IconUpdate, g_theme.text_dim, g_theme.text_dim, true};
+		}
 
-		case UpdateStage::UpToDate:
+		case UpdateStage::UpToDate: {
 			return StatusLook{"Up to date", "Up to date", Asset::IconCheck, g_theme.text_dim, g_theme.text_dim, false, true};
+		}
 
-		case UpdateStage::CheckFailed:
+		case UpdateStage::CheckFailed: {
 			return StatusLook{"Couldn't check", "Couldn't check", Asset::IconUpdate, g_theme.error, g_theme.error};
+		}
 
 		case UpdateStage::Available:
-		case UpdateStage::ManualUpgradeRequired:
+		case UpdateStage::ManualUpgradeRequired: {
 			return StatusLook{"Update available", "Update available", Asset::IconDownload, g_theme.success, g_theme.text};
+		}
 
 		case UpdateStage::Downloading: {
 			const u64 total   = t_updater->total_bytes();
@@ -94,20 +101,25 @@ struct StatusLook {
 			                  g_theme.text};
 		}
 
-		case UpdateStage::Verifying:
+		case UpdateStage::Verifying: {
 			return StatusLook{"Verifying", "Verifying", Asset::IconUpdate, g_theme.text_dim, g_theme.text_dim, true};
+		}
 
-		case UpdateStage::Installing:
+		case UpdateStage::Installing: {
 			return StatusLook{"Installing", "Installing", Asset::IconUpdate, g_theme.text_dim, g_theme.text_dim, true};
+		}
 
-		case UpdateStage::ReadyToRelaunch:
+		case UpdateStage::ReadyToRelaunch: {
 			return StatusLook{"Restarting", "Restarting", Asset::IconUpdate, g_theme.text_dim, g_theme.text_dim, true};
+		}
 
-		case UpdateStage::Error:
+		case UpdateStage::Error: {
 			return StatusLook{"Update failed", "Update failed", Asset::IconUpdate, g_theme.error, g_theme.error};
+		}
 
-		case UpdateStage::Cancelled:
+		case UpdateStage::Cancelled: {
 			return StatusLook{"Update cancelled", "Update cancelled", Asset::IconUpdate, g_theme.text_dim, g_theme.text_dim};
+		}
 	}
 
 	return StatusLook{};
@@ -176,32 +188,39 @@ auto TitleBar::on_pointer_down(Vec2 t_point) -> bool
 auto TitleBar::on_pointer_up(Vec2 t_point) -> bool
 {
 	switch (layout().button_at(t_point)) {
-		case TitleBarButton::None:
+		case TitleBarButton::None: {
 			return false;
+		}
 
-		case TitleBarButton::Menu:
+		case TitleBarButton::Menu: {
 			m_commands->push(Command{.type = CommandType::ToggleAppMenu});
 			break;
+		}
 
-		case TitleBarButton::Search:
+		case TitleBarButton::Search: {
 			m_commands->push(Command{.type = CommandType::OpenAccountSearch});
 			break;
+		}
 
-		case TitleBarButton::Update:
+		case TitleBarButton::Update: {
 			m_commands->push(Command{.type = CommandType::ToggleUpdateOverlay});
 			break;
+		}
 
-		case TitleBarButton::Minimize:
+		case TitleBarButton::Minimize: {
 			m_window->minimize();
 			break;
+		}
 
-		case TitleBarButton::Maximize:
+		case TitleBarButton::Maximize: {
 			m_window->toggle_maximized();
 			break;
+		}
 
-		case TitleBarButton::Close:
+		case TitleBarButton::Close: {
 			m_window->close();
 			break;
+		}
 	}
 
 	return true;

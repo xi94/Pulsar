@@ -90,28 +90,33 @@ auto backdrop_constants(const RenderFrame& t_frame) -> BackdropConstants
 auto effect_constants(const RenderFrame& t_frame, const DrawCommand& t_command, EffectConstants* t_out) -> usize
 {
 	switch (t_command.shader) {
-		case ShaderKind::BannerGlow:
+		case ShaderKind::BannerGlow: {
 			t_out->banner_glow = BannerGlowConstants{.time_seconds = t_frame.effect_time_seconds, .params = t_command.box};
 			return sizeof(BannerGlowConstants);
+		}
 
-		case ShaderKind::Shadow:
+		case ShaderKind::Shadow: {
 			t_out->shadow = ShadowConstants{.params = t_command.box};
 			return sizeof(ShadowConstants);
+		}
 
-		case ShaderKind::OutlineCountdown:
+		case ShaderKind::OutlineCountdown: {
 			t_out->outline_countdown = OutlineCountdownConstants{.params = t_command.outline};
 			return sizeof(OutlineCountdownConstants);
+		}
 
 		case ShaderKind::Backdrop:
-		case ShaderKind::BackdropPlain:
+		case ShaderKind::BackdropPlain: {
 			t_out->backdrop = backdrop_constants(t_frame);
 			return sizeof(BackdropConstants);
+		}
 
 		case ShaderKind::Solid:
 		case ShaderKind::Textured:
 		case ShaderKind::ColorPicker:
-		case ShaderKind::Count:
+		case ShaderKind::Count: {
 			break;
+		}
 	}
 
 	return 0;

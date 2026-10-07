@@ -48,20 +48,29 @@ constexpr const char* K_USAGE = "sign_release --exe <Pulsar.exe> [--notes <text>
 
 	for (const char character : t_text) {
 		switch (character) {
-			case '"':
+			case '"': {
 				escaped += "\\\"";
 				break;
-			case '\\':
+			}
+
+			case '\\': {
 				escaped += "\\\\";
 				break;
-			case '\n':
+			}
+
+			case '\n': {
 				escaped += "\\n";
 				break;
-			case '\r':
+			}
+
+			case '\r': {
 				break;
-			default:
+			}
+
+			default: {
 				escaped += character;
 				break;
+			}
 		}
 	}
 
