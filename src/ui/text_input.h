@@ -67,7 +67,7 @@ class TextInput {
 	auto apply(TextEdit t_edit) -> void;
 
 	auto on_char(u32 t_codepoint) -> void;
-	auto on_key_down(os::Key t_key) -> void;
+	auto on_key_down(os::Key t_key, os::Modifiers t_held = os::modifiers()) -> void;
 
 	auto on_pointer_down(const Font& t_font, Rect t_field, float t_x) -> void;
 	auto on_pointer_move(const Font& t_font, Rect t_field, float t_x) -> void;

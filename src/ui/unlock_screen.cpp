@@ -23,8 +23,8 @@
 
 namespace {
 constexpr float K_FORM_WIDTH       = 300.0f;
-constexpr float K_ICON_SIZE        = 48.0f;
-constexpr float K_ICON_GAP         = 18.0f;
+constexpr float K_ICON_SIZE        = 64.0f;
+constexpr float K_ICON_GAP         = 20.0f;
 constexpr float K_TITLE_GAP        = 6.0f;
 constexpr float K_FIELDS_GAP       = 22.0f;
 constexpr float K_FIELD_HEIGHT     = 40.0f;

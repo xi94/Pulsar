@@ -1,6 +1,7 @@
 #include "core/str.h"
 
 #include <algorithm>
+#include <cstdio>
 
 #include "os/system.h"
 
@@ -26,6 +27,22 @@ constexpr CodepointRange K_BLOCKED_SCRIPTS[]{
 {
 	return std::ranges::all_of(t_text, [](char t_byte) { return static_cast<u8>(t_byte) < 0x80; });
 }
+
+struct TimeUnit {
+	i64         seconds;
+	const char* name;
+};
+
+constexpr i64 K_SECONDS_PER_DAY = 86400;
+
+constexpr TimeUnit K_TIME_UNITS[]{
+	{365 * K_SECONDS_PER_DAY, "year"},
+	{30 * K_SECONDS_PER_DAY, "month"},
+	{7 * K_SECONDS_PER_DAY, "week"},
+	{K_SECONDS_PER_DAY, "day"},
+	{3600, "hour"},
+	{60, "minute"},
+};
 }
 
 [[nodiscard]] auto decode_utf8(std::string_view t_text, usize t_index) -> Utf8Codepoint
@@ -152,4 +169,21 @@ constexpr CodepointRange K_BLOCKED_SCRIPTS[]{
 	if (first == std::string_view::npos) return {};
 
 	return t_text.substr(first, t_text.find_last_not_of(BLANK) - first + 1);
+}
+
+[[nodiscard]] auto relative_time(i64 t_then, i64 t_now, char (&t_buffer)[32]) -> std::string_view
+{
+	const i64 elapsed = std::max<i64>(0, t_now - t_then);
+
+	for (const TimeUnit& unit : K_TIME_UNITS) {
+		const i64 count = elapsed / unit.seconds;
+		if (count == 0) continue;
+		if (unit.seconds == K_SECONDS_PER_DAY && count == 1) return "yesterday";
+
+		const int written = std::snprintf(t_buffer, sizeof(t_buffer), "%lld %s%s ago", static_cast<long long>(count), unit.name, count == 1 ? "" : "s");
+
+		return std::string_view{t_buffer, static_cast<usize>(std::max(written, 0))};
+	}
+
+	return "just now";
 }

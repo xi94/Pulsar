@@ -282,13 +282,11 @@ auto TextInput::on_char(u32 t_codepoint) -> void
 	restart_caret_blink();
 }
 
-auto TextInput::on_key_down(os::Key t_key) -> void
+auto TextInput::on_key_down(os::Key t_key, os::Modifiers t_held) -> void
 {
 	if (!m_focused) return;
 
-	const os::Modifiers held = os::modifiers();
-
-	if (const std::optional<TextEdit> edit = held.shortcut ? shortcut_for(t_key) : std::nullopt) {
+	if (const std::optional<TextEdit> edit = t_held.shortcut ? shortcut_for(t_key) : std::nullopt) {
 		apply(*edit);
 		return;
 	}
@@ -297,9 +295,9 @@ auto TextInput::on_key_down(os::Key t_key) -> void
 	const std::string_view shown = shown_text(mask);
 	const TextRange        range = selection();
 
-	const u32  previous           = held.word_step ? previous_word_start(shown, m_cursor) : static_cast<u32>(previous_codepoint(value(), m_cursor));
-	const u32  next               = held.word_step ? next_word_start(shown, m_cursor) : static_cast<u32>(next_codepoint(value(), m_cursor));
-	const bool collapse_selection = has_selection() && !held.shift;
+	const u32  previous           = t_held.word_step ? previous_word_start(shown, m_cursor) : static_cast<u32>(previous_codepoint(value(), m_cursor));
+	const u32  next               = t_held.word_step ? next_word_start(shown, m_cursor) : static_cast<u32>(next_codepoint(value(), m_cursor));
+	const bool collapse_selection = has_selection() && !t_held.shift;
 
 	switch (t_key) {
 		using enum os::Key;
@@ -315,27 +313,27 @@ auto TextInput::on_key_down(os::Key t_key) -> void
 		}
 
 		case LEFT: {
-			move_cursor(collapse_selection ? range.start : previous, held.shift);
+			move_cursor(collapse_selection ? range.start : previous, t_held.shift);
 			break;
 		}
 
 		case RIGHT: {
-			move_cursor(collapse_selection ? range.end : next, held.shift);
+			move_cursor(collapse_selection ? range.end : next, t_held.shift);
 			break;
 		}
 
 		case HOME: {
-			move_cursor(0, held.shift);
+			move_cursor(0, t_held.shift);
 			break;
 		}
 
 		case END: {
-			move_cursor(m_length, held.shift);
+			move_cursor(m_length, t_held.shift);
 			break;
 		}
 
 		case E: {
-			if (!held.shortcut) return;
+			if (!t_held.shortcut) return;
 
 			move_cursor(m_length, false);
 			break;

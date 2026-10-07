@@ -4,7 +4,6 @@
 #include <string_view>
 
 #include "core/library.h"
-#include "login/login_attempt.h"
 #include "ui/commands.h"
 #include "ui/list_popup.h"
 #include "ui/scrollable.h"
@@ -14,6 +13,7 @@
 
 class Assets;
 struct Fonts;
+class LoginSession;
 class Toasts;
 namespace os {
 class Window;
@@ -35,6 +35,7 @@ class AccountModal : public Widget {
 	             const Assets*     t_assets,
 	             const os::Window* t_window,
 	             Toasts*           t_toasts,
+	             LoginSession*     t_session,
 	             CommandQueue*     t_commands);
 
 	auto open(i32 t_game) -> void;
@@ -114,11 +115,6 @@ class AccountModal : public Widget {
 		Rect  tiles;
 		u32   tile_columns;
 		float content_height;
-	};
-
-	struct PendingLogin {
-		u32        game;
-		AccountRef account;
 	};
 
 	struct DeletedAccount {
@@ -218,9 +214,7 @@ class AccountModal : public Widget {
 	auto follow_removal(AccountRef t_removed) -> void;
 
 	auto request_login(u32 t_game, AccountRef t_account) -> void;
-	auto start_login(PendingLogin t_login) -> void;
 	auto cancel_login() -> void;
-	auto record_login_result() -> void;
 
 	auto refresh_search() -> void;
 	auto clear_search() -> void;
@@ -263,9 +257,6 @@ class AccountModal : public Widget {
 	                      bool           t_raised,
 	                      float          t_delete_countdown,
 	                      u8             t_alpha) const -> void;
-	auto draw_row_details(DrawList* t_draw_list, Rect t_row, float t_baseline, float t_max_width, const Account* t_account, u8 t_alpha) const -> void;
-	[[nodiscard]] auto login_status() const -> std::string_view;
-	auto update_login_progress(float t_delta_seconds) -> void;
 	auto draw_login_progress(DrawList* t_draw_list, Rect t_main, u8 t_alpha) const -> void;
 	auto draw_edit_header(DrawList* t_draw_list, Rect t_main, u8 t_alpha) const -> void;
 	auto draw_show_in(DrawList* t_draw_list, const FormLayout& t_form, u8 t_alpha) const -> void;
@@ -279,6 +270,7 @@ class AccountModal : public Widget {
 	const Assets*     m_assets;
 	const os::Window* m_window;
 	Toasts*           m_toasts;
+	LoginSession*     m_session;
 	CommandQueue*     m_commands;
 
 	bool                      m_open        = false;
@@ -304,19 +296,6 @@ class AccountModal : public Widget {
 	std::optional<DeletedAccount> m_deleted;
 	std::optional<AccountRef>     m_armed_delete;
 	float                         m_armed_seconds = 0.0f;
-
-	LoginAttempt                m_login;
-	std::optional<PendingLogin> m_queued_login;
-	std::optional<AccountRef>   m_login_account;
-	u32                         m_login_game     = 0;
-	float                       m_login_seconds  = 0.0f;
-	LoginStage                  m_progress_stage = LoginStage::IDLE;
-	float                       m_stage_seconds  = 0.0f;
-	float                       m_login_progress = 0.0f;
-	float                       m_login_outcome  = 0.0f;
-	float                       m_status_change  = 1.0f;
-	char                        m_status_from[160]{};
-	char                        m_status_to[160]{};
 
 	TextInput                 m_fields[K_FIELD_COUNT];
 	std::optional<AccountRef> m_edited;

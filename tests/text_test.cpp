@@ -70,3 +70,17 @@ TEST_CASE("trimmed drops surrounding whitespace only")
 	CHECK(trimmed("two words") == "two words");
 	CHECK(trimmed(" \t ").empty());
 }
+
+TEST_CASE("relative times use the largest whole unit")
+{
+	char buffer[32];
+
+	CHECK(relative_time(1000, 1000, buffer) == "just now");
+	CHECK(relative_time(1000, 1059, buffer) == "just now");
+	CHECK(relative_time(1000, 500, buffer) == "just now");
+	CHECK(relative_time(0, 60, buffer) == "1 minute ago");
+	CHECK(relative_time(0, 2 * 3600 + 5, buffer) == "2 hours ago");
+	CHECK(relative_time(0, 86400 + 3600, buffer) == "yesterday");
+	CHECK(relative_time(0, 3 * 86400, buffer) == "3 days ago");
+	CHECK(relative_time(0, 365 * 86400, buffer) == "1 year ago");
+}

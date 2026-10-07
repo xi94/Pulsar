@@ -24,6 +24,7 @@
 #include "ui/carousel.h"
 #include "ui/commands.h"
 #include "ui/context_menu.h"
+#include "ui/login_session.h"
 #include "ui/profiler_overlay.h"
 #include "ui/settings_panel.h"
 #include "ui/snowfall.h"
@@ -71,6 +72,7 @@ class App {
 	auto unlock() -> void;
 	auto lock_vault() -> void;
 	auto lock_if_idle() -> void;
+	auto wipe_locked_accounts(bool t_now) -> void;
 
 	auto apply_game_order() -> void;
 	auto save_settings() -> void;
@@ -92,6 +94,7 @@ class App {
 	auto process_commands() -> void;
 	auto process(const Command& t_command) -> void;
 	auto open_account_menu(const Command& t_command) -> void;
+	auto open_library_account_menu(const Command& t_command) -> void;
 	auto open_text_menu(const Command& t_command) -> void;
 	auto fill_tray_menu(os::TrayMenu* t_menu) const -> void;
 
@@ -112,6 +115,7 @@ class App {
 	MasterKey               m_master_key;
 	Updater                 m_updater;
 	CommandQueue            m_commands;
+	LoginSession            m_login_session;
 
 	os::Window               m_window;
 	Renderer                 m_renderer;
@@ -149,9 +153,11 @@ class App {
 	std::chrono::steady_clock::time_point m_start_time;
 	std::chrono::steady_clock::time_point m_last_frame_time;
 	float                                 m_effect_seconds = 0.0f;
+	float                                 m_intro          = 0.0f;
 	Clock::time_point                     m_last_activity;
 
 	std::optional<Clock::time_point> m_save_due;
+	std::optional<Clock::time_point> m_wipe_due;
 	std::optional<VaultKey>          m_replaced_vault_key;
 	std::optional<ClipboardSecret>   m_clipboard_secret;
 

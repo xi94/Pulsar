@@ -1,5 +1,7 @@
 #include "app.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <print>
 #include <utility>
@@ -26,11 +28,15 @@ namespace {
 constexpr u32   K_DRAW_LIST_VERTEX_CAPACITY = 1 << 16;
 constexpr u32   K_DRAW_LIST_INDEX_CAPACITY  = (1 << 16) * 3 / 2;
 constexpr auto  K_SAVE_DELAY                = std::chrono::milliseconds(500);
+constexpr auto  K_WIPE_GRACE                = std::chrono::milliseconds(600);
 constexpr float K_IDLE_POLL_SECONDS         = 0.25f;
 constexpr auto  K_RESUME_FRAME_TIME         = std::chrono::microseconds(16667);
 constexpr auto  K_CLIPBOARD_SECRET_LIFETIME = std::chrono::seconds(30);
 constexpr float K_PICKER_POLL_SECONDS       = 0.1f;
 constexpr u32   K_APP_ICON_TEXTURE_SIZE     = 256;
+constexpr float K_INTRO_SECONDS             = 0.5f;
+constexpr float K_INTRO_MAX_STEP            = 1.0f / 30.0f;
+constexpr float K_INTRO_START_SCALE         = 0.97f;
 
 constexpr float K_STATUS_PADDING        = 14.0f;
 constexpr float K_STATUS_MARK_SIZE      = 15.0f;
@@ -139,9 +145,10 @@ auto guard_against_overlays(bool t_block_injection) -> void
 }
 
 App::App()
-	: m_carousel(&m_library, &m_settings, &m_fonts, &m_assets, &m_commands)
+	: m_login_session(&m_library, &m_settings, &m_commands)
+	, m_carousel(&m_library, &m_settings, &m_fonts, &m_assets, &m_toasts, &m_login_session, &m_commands)
 	, m_toasts(&m_settings, &m_fonts, &m_assets, &m_window, &m_commands)
-	, m_account_modal(&m_library, &m_settings, &m_fonts, &m_assets, &m_window, &m_toasts, &m_commands)
+	, m_account_modal(&m_library, &m_settings, &m_fonts, &m_assets, &m_window, &m_toasts, &m_login_session, &m_commands)
 	, m_settings_panel(&m_settings, &m_fonts, &m_renderer, &m_window, &m_assets, &m_commands)
 	, m_unlock_screen(&m_settings, &m_master_key, &m_fonts, &m_assets, &m_window, &m_commands)
 	, m_app_menu(&m_window, &m_fonts, &m_assets, &m_commands)
@@ -349,16 +356,28 @@ auto App::lock_vault() -> void
 	clear_clipboard_secret();
 
 	m_account_modal.forget_secrets();
+	m_carousel.library_view()->forget_secrets();
 	m_settings_panel.close();
 	m_app_menu.close();
 	m_context_menu.close();
 	m_toasts.dismiss();
 
-	m_library.wipe_accounts();
 	m_master_key.lock();
+	m_wipe_due = Clock::now() + K_WIPE_GRACE;
 
 	lock();
 	m_unlock_screen.show_unlock(true);
+	wipe_locked_accounts(m_window.is_hidden() || m_window.is_minimized());
+}
+
+// The accounts stay in memory until the lock screen covers the window, so what's on screen fades under it instead of emptying first.
+auto App::wipe_locked_accounts(bool t_now) -> void
+{
+	if (!m_wipe_due) return;
+	if (!t_now && !m_unlock_screen.covers_window() && Clock::now() < *m_wipe_due) return;
+
+	m_wipe_due.reset();
+	m_library.wipe_accounts();
 }
 
 auto App::lock_if_idle() -> void
@@ -489,7 +508,11 @@ auto App::take_picked_riot_client() -> void
 	request_save();
 
 	if (request->index >= 0 && account_for(request->account) != nullptr) {
-		m_account_modal.quick_login(static_cast<u32>(request->index), request->account);
+		if (m_carousel.is_library() && !m_account_modal.is_blocking()) {
+			m_login_session.request(static_cast<u32>(request->index), request->account);
+		} else {
+			m_account_modal.quick_login(static_cast<u32>(request->index), request->account);
+		}
 	} else {
 		m_toasts.notify(Notification{.message = "Riot Client location saved."});
 	}
@@ -756,6 +779,7 @@ auto App::process(const Command& t_command) -> void
 		}
 
 		case VAULT_UNLOCKED: {
+			wipe_locked_accounts(true);
 			storage::load_accounts(&m_library, &m_master_key);
 			unlock();
 			break;
@@ -836,6 +860,27 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
+		case UNDO_LIBRARY_DELETE: {
+			m_carousel.library_view()->undo_delete();
+			break;
+		}
+
+		case TOGGLE_ACCOUNT_FAVORITE: {
+			if (account_for(t_command.account) != nullptr) {
+				m_carousel.library_view()->toggle_favorite(t_command.account);
+			}
+
+			break;
+		}
+
+		case EDIT_ACCOUNT_IN_PLACE: {
+			if (account_for(t_command.account) != nullptr) {
+				m_carousel.library_view()->edit(t_command.account);
+			}
+
+			break;
+		}
+
 		case COPY_ACCOUNT_USERNAME: {
 			if (const Account* account = account_for(t_command.account)) {
 				os::set_clipboard_text(account->username);
@@ -862,6 +907,11 @@ auto App::process(const Command& t_command) -> void
 
 auto App::open_account_menu(const Command& t_command) -> void
 {
+	if (t_command.index < 0) {
+		open_library_account_menu(t_command);
+		return;
+	}
+
 	const Account* account = m_account_modal.account_at_row(t_command.index);
 	if (account == nullptr) return;
 
@@ -869,6 +919,22 @@ auto App::open_account_menu(const Command& t_command) -> void
 		{account->favorite ? "Unpin" : "Pin to top", Command{.type = CommandType::TOGGLE_FAVORITE, .index = t_command.index}},
 		{"Copy username", Command{.type = CommandType::COPY_USERNAME, .index = t_command.index}},
 		{"Copy password", Command{.type = CommandType::COPY_PASSWORD, .index = t_command.index}},
+	};
+
+	m_context_menu.open(t_command.position, items, m_window.size());
+}
+
+// The library's rows name their account directly rather than by a row in the account list.
+auto App::open_library_account_menu(const Command& t_command) -> void
+{
+	const Account* account = account_for(t_command.account);
+	if (account == nullptr) return;
+
+	const ContextMenuItem items[]{
+		{account->favorite ? "Unpin" : "Pin to top", Command{.type = CommandType::TOGGLE_ACCOUNT_FAVORITE, .account = t_command.account}},
+		{"Edit", Command{.type = CommandType::EDIT_ACCOUNT_IN_PLACE, .account = t_command.account}},
+		{"Copy username", Command{.type = CommandType::COPY_ACCOUNT_USERNAME, .account = t_command.account}},
+		{"Copy password", Command{.type = CommandType::COPY_ACCOUNT_PASSWORD, .account = t_command.account}},
 	};
 
 	m_context_menu.open(t_command.position, items, m_window.size());
@@ -988,6 +1054,7 @@ auto App::frame() -> void
 	const auto  now           = std::chrono::steady_clock::now();
 	const float delta_seconds = std::chrono::duration<float>(now - m_last_frame_time).count();
 	m_last_frame_time         = now;
+	m_intro                   = animation::step_toward(m_intro, 1.0f, K_INTRO_SECONDS, std::min(delta_seconds, K_INTRO_MAX_STEP));
 
 	const Vec2 restored = m_window.restored_size();
 	if (restored.x >= K_MIN_WINDOW_WIDTH && restored.y >= K_MIN_WINDOW_HEIGHT) {
@@ -1004,6 +1071,7 @@ auto App::frame() -> void
 
 	{
 		PULSAR_PROFILE_SCOPE("Widgets.Update");
+		m_login_session.update(delta_seconds);
 		m_widgets.update(m_mouse, delta_seconds);
 	}
 
@@ -1098,6 +1166,13 @@ auto App::render() -> void
 	const Color backdrop = g_theme.window;
 	m_draw_list.add_backdrop(Rect{0.0f, 0.0f, window.x, window.y}, backdrop, backdrop, backdrop, backdrop);
 
+	// When Pulsar opens, everything on the backdrop eases up from slightly smaller while a cover in the window colour fades off it.
+	const float intro    = 1.0f - std::pow(1.0f - m_intro, 3.0f);
+	const bool  in_intro = intro < 1.0f;
+	if (in_intro) {
+		m_draw_list.push_scale(Vec2{window.x * 0.5f, window.y * 0.5f}, K_INTRO_START_SCALE + (1.0f - K_INTRO_START_SCALE) * intro);
+	}
+
 	begin_truncation_probe(&m_draw_list, m_mouse);
 	draw_status_bar();
 	m_snowfall.draw(&m_draw_list);
@@ -1107,6 +1182,12 @@ auto App::render() -> void
 		m_widgets.draw(&m_draw_list);
 		m_truncation_hint.capture(&m_draw_list);
 		m_truncation_hint.draw(&m_draw_list, content_rect(m_window.size()));
+
+		if (in_intro) {
+			m_draw_list.pop_scale();
+			m_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y}, faded(backdrop, to_alpha(1.0f - intro)));
+		}
+
 		m_draw_list.finish();
 	}
 
@@ -1135,6 +1216,7 @@ auto App::run() -> void
 		relaunch_if_update_installed();
 		save_if_due();
 		lock_if_idle();
+		wipe_locked_accounts(m_window.is_hidden() || m_window.is_minimized());
 		if (m_clipboard_secret && Clock::now() >= m_clipboard_secret->clear_at) {
 			clear_clipboard_secret();
 		}

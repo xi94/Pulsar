@@ -66,12 +66,20 @@ constexpr float K_GRID_PADDING    = 24.0f;
 constexpr float K_HOVER_GROWTH    = 0.06f;
 constexpr float K_HOVER_EASE_RATE = 14.0f;
 
-constexpr float K_LIST_THUMB_MIN_SIZE = 56.0f;
-constexpr float K_LIST_THUMB_MAX_SIZE = 96.0f;
-constexpr float K_LIST_ROW_PADDING_Y  = 14.0f;
-constexpr float K_LIST_PADDING        = 16.0f;
-constexpr float K_LIST_GAP            = 8.0f;
-constexpr float K_LIST_CORNER_RADIUS  = 10.0f;
+constexpr float K_SIDEBAR_WIDTH       = 184.0f;
+constexpr float K_SIDEBAR_PADDING_X   = 8.0f;
+constexpr float K_SIDEBAR_PADDING_TOP = 12.0f;
+constexpr float K_SIDEBAR_ROW_PADDING = 7.0f;
+constexpr float K_SIDEBAR_ROW_GAP     = 2.0f;
+constexpr float K_SIDEBAR_ROW_RADIUS  = 8.0f;
+constexpr float K_SIDEBAR_ICON_SIZE   = 22.0f;
+constexpr float K_SIDEBAR_ICON_RADIUS = 6.0f;
+constexpr float K_SIDEBAR_ICON_INSET  = 8.0f;
+constexpr float K_SIDEBAR_TEXT_GAP    = 10.0f;
+constexpr float K_SIDEBAR_COUNT_INSET = 10.0f;
+constexpr float K_SIDEBAR_SCROLLBAR   = 2.0f;
+constexpr float K_SIDEBAR_HOVER_FILL  = 0.55f;
+constexpr float K_SIDEBAR_COUNT_LIFT  = 0.25f;
 
 constexpr float K_ICON_ART_MIN_SIZE        = 48.0f;
 constexpr float K_ICON_ART_MAX_SIZE        = 96.0f;
@@ -121,15 +129,14 @@ constexpr Color K_COLOR_IMAGE{255, 255, 255, 255};
 constexpr u8    K_CARD_BORDER_ALPHA             = 160;
 constexpr u8    K_CARD_BORDER_HIGHLIGHTED_ALPHA = 235;
 
-constexpr i32 K_ZOOM_STOP_COUNT  = 12;
+constexpr i32 K_ZOOM_STOP_COUNT  = 10;
 constexpr i32 K_SHELF_STOP       = 1;
 constexpr i32 K_SPREAD_STOP      = 2;
 constexpr i32 K_GRID_FIRST_STOP  = 3;
 constexpr i32 K_GRID_LAST_STOP   = 5;
 constexpr i32 K_ICONS_FIRST_STOP = 6;
 constexpr i32 K_ICONS_LAST_STOP  = 8;
-constexpr i32 K_LIST_FIRST_STOP  = 9;
-constexpr i32 K_LIST_LAST_STOP   = 11;
+constexpr i32 K_LIBRARY_STOP     = 9;
 
 struct SwitcherRow {
 	std::string_view name;
@@ -139,7 +146,7 @@ struct SwitcherRow {
 };
 
 constexpr SwitcherRow K_SWITCHER_ROWS[]{
-	{"List", Asset::ICON_LIST, K_LIST_FIRST_STOP, K_LIST_LAST_STOP},
+	{"Library", Asset::ICON_LIBRARY, K_LIBRARY_STOP, K_LIBRARY_STOP},
 	{"Icons", Asset::ICON_ICONS, K_ICONS_FIRST_STOP, K_ICONS_LAST_STOP},
 	{"Grid", Asset::ICON_GRID, K_GRID_FIRST_STOP, K_GRID_LAST_STOP},
 	{"Shelf", Asset::ICON_SHELF, K_SHELF_STOP, K_SPREAD_STOP},
@@ -177,12 +184,12 @@ constexpr u32 K_SWITCHER_ROW_COUNT = static_cast<u32>(std::size(K_SWITCHER_ROWS)
 	if (t_stop <= K_GRID_LAST_STOP) return ViewMode::GRID;
 	if (t_stop <= K_ICONS_LAST_STOP) return ViewMode::ICONS;
 
-	return ViewMode::LIST;
+	return ViewMode::LIBRARY;
 }
 
 [[nodiscard]] auto uses_frame(ViewMode t_mode) -> bool
 {
-	return t_mode == ViewMode::LIST || t_mode == ViewMode::ICONS;
+	return t_mode == ViewMode::LIBRARY || t_mode == ViewMode::ICONS;
 }
 
 [[nodiscard]] auto stop_percent(i32 t_stop) -> float
@@ -213,13 +220,6 @@ constexpr u32 K_SWITCHER_ROW_COUNT = static_cast<u32>(std::size(K_SWITCHER_ROWS)
 	            (K_GRID_CARD_MIN_SIZE.y + (K_GRID_CARD_MAX_SIZE.y - K_GRID_CARD_MIN_SIZE.y) * t) * t_view_scale};
 }
 
-[[nodiscard]] auto list_thumb_size(float t_zoom_percent, float t_view_scale) -> float
-{
-	const float t = zoom_within(t_zoom_percent, K_LIST_FIRST_STOP, K_LIST_LAST_STOP);
-
-	return snapped_to_pixel((K_LIST_THUMB_MIN_SIZE + (K_LIST_THUMB_MAX_SIZE - K_LIST_THUMB_MIN_SIZE) * t) * t_view_scale);
-}
-
 [[nodiscard]] auto icon_art_size(float t_zoom_percent, float t_view_scale) -> float
 {
 	const float t = zoom_within(t_zoom_percent, K_ICONS_FIRST_STOP, K_ICONS_LAST_STOP);
@@ -232,8 +232,8 @@ constexpr u32 K_SWITCHER_ROW_COUNT = static_cast<u32>(std::size(K_SWITCHER_ROWS)
 	switch (t_mode) {
 		using enum ViewMode;
 
-		case LIST: {
-			return K_LIST_CORNER_RADIUS;
+		case LIBRARY: {
+			return K_SIDEBAR_ICON_RADIUS;
 		}
 
 		case ICONS: {
@@ -262,9 +262,20 @@ auto draw_centered_label(DrawList*        t_draw_list,
 	draw_text_truncated(t_draw_list, t_font, Vec2{snapped_to_pixel(t_center_x - width * 0.5f), t_baseline}, t_text, t_max_width, t_color);
 }
 
-[[nodiscard]] auto list_row_height(float t_zoom_percent, float t_view_scale) -> float
+[[nodiscard]] auto visible_account_count(const Library& t_library, u32 t_game) -> u32
 {
-	return list_thumb_size(t_zoom_percent, t_view_scale) + K_LIST_ROW_PADDING_Y * 2.0f;
+	const auto target = static_cast<u16>(1u << t_game);
+	u32        count  = 0;
+
+	for (u32 game = 0; game < t_library.game_count; game += 1) {
+		for (u32 i = 0; i < t_library.games[game].account_count; i += 1) {
+			if ((t_library.games[game].accounts[i].visible_games(game) & target) != 0) {
+				count += 1;
+			}
+		}
+	}
+
+	return count;
 }
 
 [[nodiscard]] auto grid_columns(float t_width, float t_zoom_percent, float t_view_scale) -> u32
@@ -389,12 +400,19 @@ auto draw_framed_art(DrawList* t_draw_list, Rect t_rect, const Game& t_game, con
 }
 }
 
-Carousel::Carousel(const Library* t_library, const Settings* t_settings, const Fonts* t_fonts, const Assets* t_assets, CommandQueue* t_commands)
+Carousel::Carousel(Library*        t_library,
+                   const Settings* t_settings,
+                   const Fonts*    t_fonts,
+                   const Assets*   t_assets,
+                   Toasts*         t_toasts,
+                   LoginSession*   t_session,
+                   CommandQueue*   t_commands)
 	: m_library(t_library)
 	, m_settings(t_settings)
 	, m_fonts(t_fonts)
 	, m_assets(t_assets)
 	, m_commands(t_commands)
+	, m_library_view(t_library, t_settings, t_fonts, t_assets, t_toasts, t_session, t_commands)
 {
 	for (u32 i = 0; i < K_MAX_GAMES; i += 1) {
 		m_order[i]   = static_cast<u8>(i);
@@ -524,12 +542,40 @@ auto Carousel::grid_slot(u32 t_slot) const -> Rect
 	return Rect{x, y, size.x, size.y};
 }
 
-auto Carousel::list_slot(u32 t_slot) const -> Rect
+auto Carousel::sidebar_column() const -> Rect
 {
-	const float height = list_row_height(m_zoom_percent, view_scale());
-	const float y      = m_bounds.y + K_LIST_PADDING + t_slot * (height + K_LIST_GAP) - m_wrap_scroll.offset();
+	return Rect{m_bounds.x, m_bounds.y, std::min(K_SIDEBAR_WIDTH, m_bounds.w), m_bounds.h};
+}
 
-	return Rect{m_bounds.x + K_LIST_PADDING, y, m_bounds.w - K_LIST_PADDING * 2.0f, height};
+auto Carousel::library_pane() const -> Rect
+{
+	const Rect column = sidebar_column();
+
+	return Rect{column.right(), m_bounds.y, std::max(0.0f, m_bounds.right() - column.right()), m_bounds.h};
+}
+
+auto Carousel::sidebar_row_height() const -> float
+{
+	return snapped_to_pixel(std::max(K_SIDEBAR_ICON_SIZE, m_fonts->body.line_height()) + K_SIDEBAR_ROW_PADDING * 2.0f);
+}
+
+auto Carousel::library_slot(float t_position) const -> Rect
+{
+	const Rect  column = sidebar_column();
+	const float height = sidebar_row_height();
+	const float y      = column.y + K_SIDEBAR_PADDING_TOP + t_position * (height + K_SIDEBAR_ROW_GAP) - m_wrap_scroll.offset();
+
+	return Rect{column.x + K_SIDEBAR_PADDING_X, y, std::max(0.0f, column.w - K_SIDEBAR_PADDING_X * 2.0f), height};
+}
+
+auto Carousel::sidebar_icon(Rect t_row) const -> Rect
+{
+	return Rect{t_row.x + K_SIDEBAR_ICON_INSET, snapped_to_pixel(t_row.center().y - K_SIDEBAR_ICON_SIZE * 0.5f), K_SIDEBAR_ICON_SIZE, K_SIDEBAR_ICON_SIZE};
+}
+
+auto Carousel::is_library_shown() const -> bool
+{
+	return m_mode == ViewMode::LIBRARY || (m_previous_mode == ViewMode::LIBRARY && m_mode_transition > 0.0f);
 }
 
 auto Carousel::icon_tile_size() const -> Vec2
@@ -577,12 +623,17 @@ auto Carousel::wrap_columns() const -> u32
 		}
 
 		case CAROUSEL:
-		case LIST: {
+		case LIBRARY: {
 			break;
 		}
 	}
 
 	return 0;
+}
+
+auto Carousel::wrap_area() const -> Rect
+{
+	return m_mode == ViewMode::LIBRARY ? sidebar_column() : m_bounds;
 }
 
 auto Carousel::slot_rect(ViewMode t_mode, u32 t_slot) const -> Rect
@@ -594,8 +645,8 @@ auto Carousel::slot_rect(ViewMode t_mode, u32 t_slot) const -> Rect
 			return grid_slot(t_slot);
 		}
 
-		case LIST: {
-			return list_slot(t_slot);
+		case LIBRARY: {
+			return library_slot(static_cast<float>(t_slot));
 		}
 
 		case ICONS: {
@@ -650,13 +701,6 @@ auto Carousel::card_state(ViewMode t_mode, u32 t_game, Rect t_card) const -> Car
 	return CardState{centered || hovered, centered};
 }
 
-auto Carousel::list_thumb(Rect t_row) const -> Rect
-{
-	const float size = list_thumb_size(m_zoom_percent, view_scale());
-
-	return Rect{t_row.x + 12.0f, t_row.y + (t_row.h - size) * 0.5f, size, size};
-}
-
 auto Carousel::grown(Rect t_card, u32 t_game) const -> Rect
 {
 	const float growth = 1.0f + K_HOVER_GROWTH * m_card_hover[t_game];
@@ -671,8 +715,8 @@ auto Carousel::art_rect(ViewMode t_mode, u32 t_game) const -> Rect
 	switch (t_mode) {
 		using enum ViewMode;
 
-		case LIST: {
-			return list_thumb(card);
+		case LIBRARY: {
+			return sidebar_icon(card);
 		}
 
 		case ICONS: {
@@ -708,7 +752,7 @@ auto Carousel::art_source(u32 t_game) const -> ArtSource
 
 	if (uses_frame(m_mode)) {
 		const Rect lifted = card.scaled_from_center(scale);
-		const Rect art    = m_mode == ViewMode::LIST ? list_thumb(lifted) : grown(icon_tile_art(lifted), t_game);
+		const Rect art    = m_mode == ViewMode::LIBRARY ? sidebar_icon(lifted) : grown(icon_tile_art(lifted), t_game);
 
 		return ArtSource{.rect = art, .radius = art_radius(m_mode, art), .is_icon = game.icon != nullptr};
 	}
@@ -737,8 +781,8 @@ auto Carousel::wrap_content_height() const -> float
 		return K_GRID_PADDING * 2.0f + rows * grid_card_size(m_zoom_percent, view_scale()).y + (rows - 1) * K_GRID_GAP;
 	}
 
-	if (m_mode == ViewMode::LIST) {
-		return K_LIST_PADDING * 2.0f + m_library->game_count * list_row_height(m_zoom_percent, view_scale()) + (m_library->game_count - 1) * K_LIST_GAP;
+	if (m_mode == ViewMode::LIBRARY) {
+		return K_SIDEBAR_PADDING_TOP * 2.0f + m_library->game_count * sidebar_row_height() + (m_library->game_count - 1) * K_SIDEBAR_ROW_GAP;
 	}
 
 	if (m_mode == ViewMode::ICONS) {
@@ -752,9 +796,11 @@ auto Carousel::wrap_content_height() const -> float
 
 auto Carousel::wrap_scroll_geometry() const -> ScrollGeometry
 {
-	const Rect track{m_bounds.right() - K_SCROLLBAR_WIDTH - 8.0f, m_bounds.y + 8.0f, K_SCROLLBAR_WIDTH, m_bounds.h - 16.0f};
+	const Rect  area   = wrap_area();
+	const float margin = m_mode == ViewMode::LIBRARY ? K_SIDEBAR_SCROLLBAR : 8.0f;
+	const Rect  track{area.right() - K_SCROLLBAR_WIDTH - margin, area.y + 8.0f, K_SCROLLBAR_WIDTH, area.h - 16.0f};
 
-	return ScrollGeometry{track, wrap_content_height(), m_bounds.h};
+	return ScrollGeometry{track, wrap_content_height(), area.h};
 }
 
 auto Carousel::game_at(Vec2 t_point) const -> i32
@@ -860,6 +906,12 @@ auto Carousel::set_zoom_stop(i32 t_stop) -> void
 			m_mode            = mode;
 			m_mode_transition = 1.0f;
 			m_wrap_scroll     = Scrollable{};
+
+			if (mode == ViewMode::LIBRARY) {
+				m_library_view.restart();
+			} else {
+				m_library_view.blur();
+			}
 		}
 
 		m_commands->push(Command{.type = CommandType::SAVE_CHANGES});
@@ -870,7 +922,7 @@ auto Carousel::set_zoom_stop(i32 t_stop) -> void
 
 auto Carousel::focused_game() const -> i32
 {
-	return m_mode == ViewMode::CAROUSEL ? selected_game() : m_focused_game;
+	return m_mode == ViewMode::CAROUSEL || m_mode == ViewMode::LIBRARY ? selected_game() : m_focused_game;
 }
 
 auto Carousel::is_focus_shown(u32 t_game) const -> bool
@@ -893,6 +945,10 @@ auto Carousel::move_focus(i32 t_delta) -> void
 		return;
 	}
 
+	if (m_mode == ViewMode::LIBRARY) {
+		m_target_scroll = static_cast<float>(slot);
+	}
+
 	const Rect card = slot_rect(m_mode, static_cast<u32>(slot));
 	m_wrap_scroll.reveal(card.y, card.bottom(), m_bounds.y + K_GRID_PADDING, m_bounds.bottom() - K_GRID_PADDING, wrap_scroll_geometry());
 }
@@ -902,9 +958,17 @@ auto Carousel::open_game(i32 t_game) -> void
 	m_commands->push(Command{.type = CommandType::OPEN_GAME, .index = t_game});
 }
 
+// In the library a click picks the game whose accounts fill the pane.
+auto Carousel::choose_game(i32 t_game) -> void
+{
+	m_target_scroll = static_cast<float>(m_slot_of[t_game]);
+	m_focused_game  = t_game;
+}
+
 auto Carousel::drop_lost_press() -> void
 {
 	m_long_press.game = -1;
+	m_library_view.drop_press();
 
 	if (m_reorder.active) {
 		end_reorder(false);
@@ -947,7 +1011,8 @@ auto Carousel::end_reorder(bool t_cancel) -> void
 {
 	if (!m_reorder.active) return;
 
-	const auto game = static_cast<u32>(m_reorder.game);
+	const auto game     = static_cast<u32>(m_reorder.game);
+	const i32  selected = selected_game();
 
 	Vec2 centers[K_MAX_GAMES];
 	capture_centers(centers);
@@ -960,6 +1025,8 @@ auto Carousel::end_reorder(bool t_cancel) -> void
 	if (m_mode == ViewMode::CAROUSEL) {
 		m_scroll        = static_cast<float>(m_slot_of[game]);
 		m_target_scroll = m_scroll;
+	} else if (m_mode == ViewMode::LIBRARY) {
+		m_target_scroll = static_cast<float>(m_slot_of[selected]);
 	}
 
 	restore_centers(centers);
@@ -972,6 +1039,8 @@ auto Carousel::end_reorder(bool t_cancel) -> void
 
 auto Carousel::move_to_slot(u32 t_game, u32 t_slot) -> void
 {
+	const i32 selected = selected_game();
+
 	Vec2 centers[K_MAX_GAMES];
 	capture_centers(centers);
 
@@ -987,6 +1056,11 @@ auto Carousel::move_to_slot(u32 t_game, u32 t_slot) -> void
 
 	set_order({order, m_library->game_count});
 	restore_centers(centers);
+
+	// The library keeps showing the same game while its row moves.
+	if (m_mode == ViewMode::LIBRARY) {
+		m_target_scroll = static_cast<float>(m_slot_of[selected]);
+	}
 }
 
 auto Carousel::capture_centers(Vec2 (&t_centers)[K_MAX_GAMES]) const -> void
@@ -1014,7 +1088,7 @@ auto Carousel::retarget_reorder() -> void
 
 	for (u32 slot = 0; slot < m_library->game_count; slot += 1) {
 		const Vec2  cell     = slot_rect(m_mode, slot).center();
-		const float dx       = m_mode == ViewMode::LIST ? 0.0f : cell.x - center.x;
+		const float dx       = m_mode == ViewMode::LIBRARY ? 0.0f : cell.x - center.x;
 		const float dy       = m_mode == ViewMode::CAROUSEL ? 0.0f : cell.y - center.y;
 		const float distance = dx * dx + dy * dy;
 
@@ -1182,6 +1256,13 @@ auto Carousel::on_pointer_down(Vec2 t_point) -> bool
 	if (switcher_pointer_down(t_point)) return true;
 	if (m_reorder.active) return true;
 
+	if (m_mode == ViewMode::LIBRARY && m_mode_transition <= 0.001f && library_pane().contains(t_point)) {
+		m_library_view.on_pointer_down(t_point);
+		return true;
+	}
+
+	m_library_view.blur();
+
 	const i32 pressed = m_mode_transition <= 0.001f ? game_at(t_point) : -1;
 
 	if (pressed >= 0 && os::modifiers().shortcut) {
@@ -1212,6 +1293,7 @@ auto Carousel::on_pointer_move(Vec2 t_point) -> bool
 
 	if (switcher_pointer_move(t_point)) return true;
 	if (m_reorder.active) return true;
+	if (m_library_view.on_pointer_move(t_point)) return true;
 
 	if (m_long_press.game >= 0) {
 		const float dx = t_point.x - m_long_press.origin.x;
@@ -1249,6 +1331,8 @@ auto Carousel::on_pointer_up(Vec2 t_point) -> bool
 		return true;
 	}
 
+	if (m_library_view.on_pointer_up(t_point)) return true;
+
 	if (m_mode != ViewMode::CAROUSEL) {
 		if (m_wrap_scroll.is_dragging()) {
 			m_wrap_scroll.on_pointer_up();
@@ -1256,7 +1340,11 @@ auto Carousel::on_pointer_up(Vec2 t_point) -> bool
 		}
 
 		if (const i32 game = game_at(t_point); game >= 0) {
-			open_game(game);
+			if (m_mode == ViewMode::LIBRARY) {
+				choose_game(game);
+			} else {
+				open_game(game);
+			}
 		}
 
 		return true;
@@ -1293,7 +1381,21 @@ auto Carousel::on_pointer_up(Vec2 t_point) -> bool
 	return true;
 }
 
-auto Carousel::on_scroll(Vec2, float t_wheel_delta) -> bool
+auto Carousel::on_right_click(Vec2 t_point) -> bool
+{
+	if (m_mode != ViewMode::LIBRARY || m_mode_transition > 0.001f || !library_pane().contains(t_point)) return false;
+
+	m_library_view.on_right_click(t_point);
+
+	return true;
+}
+
+auto Carousel::on_char(u32 t_character) -> bool
+{
+	return m_mode == ViewMode::LIBRARY && m_mode_transition <= 0.001f && m_library_view.on_char(t_character);
+}
+
+auto Carousel::on_scroll(Vec2 t_point, float t_wheel_delta) -> bool
 {
 	m_keyboard_focus_shown = false;
 	if (m_reorder.active) return true;
@@ -1304,6 +1406,8 @@ auto Carousel::on_scroll(Vec2, float t_wheel_delta) -> bool
 		}
 	} else if (m_mode == ViewMode::CAROUSEL) {
 		m_target_scroll = clamp_scroll(m_target_scroll + t_wheel_delta);
+	} else if (m_mode == ViewMode::LIBRARY && library_pane().contains(t_point)) {
+		m_library_view.on_scroll(t_wheel_delta);
 	} else {
 		m_wrap_scroll.on_scroll(t_wheel_delta, wrap_scroll_geometry());
 	}
@@ -1322,9 +1426,10 @@ auto Carousel::on_key_down(os::Key t_key) -> bool
 		return true;
 	}
 
+	if (m_mode == ViewMode::LIBRARY && m_mode_transition <= 0.001f && m_library_view.on_key_down(t_key)) return true;
 	if (m_library->game_count == 0) return false;
 
-	const bool horizontal = m_mode != ViewMode::LIST;
+	const bool horizontal = m_mode != ViewMode::LIBRARY;
 	const bool vertical   = m_mode != ViewMode::CAROUSEL;
 	const i32  row_step   = std::max(1, static_cast<i32>(wrap_columns()));
 
@@ -1360,6 +1465,8 @@ auto Carousel::on_key_down(os::Key t_key) -> bool
 		}
 
 		case ENTER: {
+			if (m_mode == ViewMode::LIBRARY) return false;
+
 			if (m_mode != ViewMode::CAROUSEL && !m_keyboard_focus_shown) {
 				move_focus(0);
 				return true;
@@ -1402,6 +1509,8 @@ auto Carousel::cursor() const -> CursorKind
 		}
 	}
 
+	if (m_mode == ViewMode::LIBRARY && library_pane().contains(m_mouse)) return m_library_view.cursor();
+
 	if (const i32 game = game_at(m_mouse); game >= 0) {
 		return os::modifiers().shortcut ? CursorKind::MOVE : CursorKind::HAND;
 	}
@@ -1427,7 +1536,7 @@ auto Carousel::update(float t_delta_seconds) -> void
 	m_wrap_scroll.update(t_delta_seconds);
 	smooth_grid_reflow();
 
-	const i32 hovered_card = m_mode != ViewMode::LIST && !m_reorder.active ? game_at(m_mouse) : -1;
+	const i32 hovered_card = m_mode != ViewMode::LIBRARY && !m_reorder.active ? game_at(m_mouse) : -1;
 
 	for (u32 game = 0; game < m_library->game_count; game += 1) {
 		const bool raised  = static_cast<i32>(game) == hovered_card || is_focus_shown(game);
@@ -1456,6 +1565,16 @@ auto Carousel::update(float t_delta_seconds) -> void
 
 	for (u32 game = 0; game < m_library->game_count; game += 1) {
 		m_last_centers[game] = shown_card(m_mode, game).center();
+	}
+
+	if (is_library_shown()) {
+		const bool settled       = m_mode == ViewMode::LIBRARY && m_mode_transition <= 0.0f && !m_reorder.active;
+		const bool over_switcher = is_switcher_shown() && switcher_panel_rect().contains(m_mouse);
+
+		m_library_view.set_bounds(library_pane());
+		m_library_view.set_mouse(settled && !over_switcher ? m_mouse : Vec2{-1.0f, -1.0f});
+		m_library_view.show_game(selected_game());
+		m_library_view.update(t_delta_seconds);
 	}
 }
 
@@ -1534,7 +1653,7 @@ auto Carousel::fade_cards(DrawList* t_draw_list, Rect t_band, Color t_top_left, 
 auto Carousel::draw_wrap_scroll(DrawList* t_draw_list, u8 t_alpha) const -> void
 {
 	const ScrollGeometry        geometry = wrap_scroll_geometry();
-	const Scrollable::EdgeFades fades    = m_wrap_scroll.edge_fades(m_bounds, geometry);
+	const Scrollable::EdgeFades fades    = m_wrap_scroll.edge_fades(wrap_area(), geometry);
 	const Color                 edge     = faded(g_theme.window, t_alpha);
 	const Color                 clear    = faded(g_theme.window, 0);
 
@@ -1566,23 +1685,52 @@ auto Carousel::draw_grid_mode(DrawList* t_draw_list) const -> void
 	draw_wrap_scroll(t_draw_list, 255);
 }
 
-auto Carousel::draw_list_row_frame(DrawList* t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const -> void
+auto Carousel::draw_sidebar_row_frame(DrawList* t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const -> void
 {
-	const Font& font  = m_fonts->body;
-	const Rect  thumb = list_thumb(t_row);
+	const Font& body      = m_fonts->body;
+	const Font& secondary = m_fonts->secondary;
+	const bool  selected  = static_cast<i32>(t_game) == selected_game();
 
-	t_draw_list->add_rounded_rect(t_row, rounded(K_LIST_CORNER_RADIUS), faded(t_highlighted ? g_theme.control : g_theme.popup, t_alpha));
-	draw_text_truncated(t_draw_list, font, Vec2{thumb.right() + 16.0f, font.centered_baseline(t_row)}, m_library->games[t_game].title,
-	                    t_row.right() - 16.0f - (thumb.right() + 16.0f), faded(g_theme.text, t_alpha));
+	if (t_highlighted && !selected) {
+		t_draw_list->add_rounded_rect(t_row, rounded(K_SIDEBAR_ROW_RADIUS), faded(mix(g_theme.surface, g_theme.row_hover, K_SIDEBAR_HOVER_FILL), t_alpha));
+	}
+
+	char                   digits[12];
+	const int              written  = std::snprintf(digits, sizeof(digits), "%u", visible_account_count(*m_library, t_game));
+	const std::string_view count    = {digits, static_cast<usize>(std::max(written, 0))};
+	const float            baseline = body.centered_baseline(t_row);
+	const float            count_x  = t_row.right() - K_SIDEBAR_COUNT_INSET - text_width(secondary, count);
+	const float            title_x  = sidebar_icon(t_row).right() + K_SIDEBAR_TEXT_GAP;
+	const Color            title    = selected || t_highlighted ? g_theme.text : g_theme.text_dim;
+	const Color            counted  = selected ? mix(g_theme.text_dim, g_theme.text, K_SIDEBAR_COUNT_LIFT) : g_theme.text_faint;
+
+	draw_text_truncated(t_draw_list, body, Vec2{title_x, baseline}, m_library->games[t_game].short_title,
+	                    std::max(0.0f, count_x - K_SIDEBAR_TEXT_GAP - title_x), faded(title, t_alpha));
+	draw_text(t_draw_list, secondary, Vec2{count_x, baseline}, count, faded(counted, t_alpha));
 }
 
-auto Carousel::draw_list_row(DrawList* t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const -> void
+auto Carousel::draw_sidebar_row(DrawList* t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const -> void
 {
-	draw_list_row_frame(t_draw_list, t_row, t_game, t_highlighted, t_alpha);
+	draw_sidebar_row_frame(t_draw_list, t_row, t_game, t_highlighted, t_alpha);
 
 	if (static_cast<i32>(t_game) == m_detached_game) return;
 
-	draw_framed_art(t_draw_list, list_thumb(t_row), m_library->games[t_game], CardLook{}, K_LIST_CORNER_RADIUS, 1.0f, t_alpha);
+	const Rect icon = sidebar_icon(t_row);
+	draw_framed_art(t_draw_list, icon, m_library->games[t_game], CardLook{}, art_radius(ViewMode::LIBRARY, icon), 1.0f, t_alpha);
+}
+
+auto Carousel::draw_sidebar_chrome(DrawList* t_draw_list, Rect t_selection, u8 t_alpha) const -> void
+{
+	const Rect column = sidebar_column();
+
+	t_draw_list->add_rect(Rect{column.x, column.y, column.w - 1.0f, column.h}, faded(g_theme.surface, t_alpha));
+	t_draw_list->add_rect(Rect{column.right() - 1.0f, column.y, 1.0f, column.h}, faded(g_theme.separator, t_alpha));
+
+	if (m_library->game_count == 0) return;
+
+	t_draw_list->push_clip(column);
+	t_draw_list->add_bordered_rect(t_selection, rounded(K_SIDEBAR_ROW_RADIUS), faded(g_theme.row_hover, t_alpha), faded(g_theme.control_hover, t_alpha), 1.0f);
+	t_draw_list->pop_clip();
 }
 
 auto Carousel::draw_icon_tile_frame(DrawList* t_draw_list, Rect t_tile, u32 t_game, bool t_highlighted, u8 t_alpha) const -> void
@@ -1619,7 +1767,7 @@ auto Carousel::draw_frame(DrawList* t_draw_list, ViewMode t_mode, Rect t_frame, 
 	if (t_mode == ViewMode::ICONS) {
 		draw_icon_tile_frame(t_draw_list, t_frame, t_game, t_highlighted, t_alpha);
 	} else {
-		draw_list_row_frame(t_draw_list, t_frame, t_game, t_highlighted, t_alpha);
+		draw_sidebar_row_frame(t_draw_list, t_frame, t_game, t_highlighted, t_alpha);
 	}
 }
 
@@ -1645,21 +1793,24 @@ auto Carousel::draw_icons_mode(DrawList* t_draw_list) const -> void
 	draw_wrap_scroll(t_draw_list, 255);
 }
 
-auto Carousel::draw_list_mode(DrawList* t_draw_list) const -> void
+auto Carousel::draw_library_mode(DrawList* t_draw_list) const -> void
 {
-	t_draw_list->push_clip(m_bounds);
+	// The selection slides between rows by following the carousel's eased scroll, which tracks the picked slot.
+	draw_sidebar_chrome(t_draw_list, library_slot(m_scroll), 255);
+
+	t_draw_list->push_clip(sidebar_column());
 
 	for (u32 game = 0; game < m_library->game_count; game += 1) {
-		if (is_raised(ViewMode::LIST, game)) continue;
+		if (is_raised(ViewMode::LIBRARY, game)) continue;
 
-		const Rect row = shown_card(ViewMode::LIST, game);
+		const Rect row = shown_card(ViewMode::LIBRARY, game);
 		if (!row.overlaps_vertically(m_bounds)) continue;
 
-		draw_list_row(t_draw_list, row, game, card_state(ViewMode::LIST, game, row).highlighted, 255);
+		draw_sidebar_row(t_draw_list, row, game, card_state(ViewMode::LIBRARY, game, row).highlighted, 255);
 	}
 
 	if (!m_reorder.lifted) {
-		draw_raised(t_draw_list, ViewMode::LIST);
+		draw_raised(t_draw_list, ViewMode::LIBRARY);
 	}
 
 	t_draw_list->pop_clip();
@@ -1673,7 +1824,7 @@ auto Carousel::draw_raised(DrawList* t_draw_list, ViewMode t_mode) const -> void
 
 	const auto  game   = static_cast<u32>(m_reorder.game);
 	const bool  framed = uses_frame(t_mode);
-	const float radius = t_mode == ViewMode::LIST ? K_LIST_CORNER_RADIUS : t_mode == ViewMode::ICONS ? K_ICON_TILE_RADIUS : K_CARD_CORNER_RADIUS;
+	const float radius = t_mode == ViewMode::LIBRARY ? K_SIDEBAR_ROW_RADIUS : t_mode == ViewMode::ICONS ? K_ICON_TILE_RADIUS : K_CARD_CORNER_RADIUS;
 
 	if (!framed && m_reorder.game == m_detached_game) return;
 
@@ -1692,8 +1843,9 @@ auto Carousel::draw_raised(DrawList* t_draw_list, ViewMode t_mode) const -> void
 
 	controls::draw_panel_shadow(t_draw_list, lifted, radius, m_lift);
 
-	if (t_mode == ViewMode::LIST) {
-		draw_list_row(t_draw_list, lifted, game, state.highlighted, 255);
+	if (t_mode == ViewMode::LIBRARY) {
+		t_draw_list->add_rounded_rect(lifted, rounded(radius), faded(g_theme.popup, to_alpha(std::min(m_lift, 1.0f))));
+		draw_sidebar_row(t_draw_list, lifted, game, state.highlighted, 255);
 	} else if (t_mode == ViewMode::ICONS) {
 		draw_icon_tile(t_draw_list, lifted, game, state.highlighted, 255);
 	} else {
@@ -1745,8 +1897,8 @@ auto Carousel::draw_mode(DrawList* t_draw_list, ViewMode t_mode) const -> void
 			break;
 		}
 
-		case LIST: {
-			draw_list_mode(t_draw_list);
+		case LIBRARY: {
+			draw_library_mode(t_draw_list);
 			break;
 		}
 
@@ -1775,6 +1927,14 @@ auto Carousel::draw_mode_morph(DrawList* t_draw_list) const -> void
 	};
 
 	t_draw_list->push_clip(m_bounds);
+
+	if (m_previous_mode == ViewMode::LIBRARY) {
+		draw_sidebar_chrome(t_draw_list, m_morph_from_frame[selected_game()], outgoing);
+	}
+
+	if (m_mode == ViewMode::LIBRARY) {
+		draw_sidebar_chrome(t_draw_list, library_slot(m_scroll), incoming);
+	}
 
 	for (u32 game = 0; game < m_library->game_count; game += 1) {
 		if (from_framed) {
@@ -1943,6 +2103,11 @@ auto Carousel::draw(DrawList* t_draw_list) -> void
 		draw_mode_morph(t_draw_list);
 	} else {
 		draw_mode(t_draw_list, m_mode);
+	}
+
+	if (is_library_shown()) {
+		const float amount = m_mode_transition > 0.0f ? mode_morph() : 1.0f;
+		m_library_view.draw(t_draw_list, to_alpha(m_mode == ViewMode::LIBRARY ? amount : 1.0f - amount));
 	}
 
 	if (m_reorder.lifted) {

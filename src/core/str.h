@@ -41,3 +41,4 @@ auto copy_to(std::string_view t_text, char (&t_destination)[Capacity]) -> void
 
 [[nodiscard]] auto find_ignoring_case(std::string_view t_text, std::string_view t_query) -> usize;
 [[nodiscard]] auto trimmed(std::string_view t_text) -> std::string_view;
+[[nodiscard]] auto relative_time(i64 t_then, i64 t_now, char (&t_buffer)[32]) -> std::string_view;

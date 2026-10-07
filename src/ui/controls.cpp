@@ -2,9 +2,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <ctime>
 #include <numbers>
 #include <span>
 
+#include "core/library.h"
+#include "core/str.h"
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
@@ -27,6 +31,10 @@ constexpr float K_KEYCAP_GAP             = 3.0f;
 constexpr float K_SEARCH_ICON_SIZE       = 13.0f;
 constexpr float K_SEARCH_ICON_GAP        = 7.0f;
 constexpr float K_SEARCH_CLEAR_MARGIN    = 8.0f;
+constexpr float K_REGION_CHIP_PADDING    = 6.0f;
+constexpr u8    K_REGION_CHIP_ALPHA      = 22;
+constexpr float K_DETAIL_DOT_SIZE        = 3.0f;
+constexpr float K_DETAIL_DOT_GAP         = 7.0f;
 
 struct ButtonLook {
 	Color fill;
@@ -452,4 +460,56 @@ auto controls::draw_search_field(DrawList*   t_draw_list,
 
 	const Rect clear = search_clear_rect(t_search);
 	draw_x(t_draw_list, clear.inset(1.5f), faded(clear.contains(t_mouse) ? g_theme.text : g_theme.text_faint, t_alpha));
+}
+
+auto controls::region_chip_width(const Font& t_font, std::string_view t_region) -> float
+{
+	return t_region.empty() ? 0.0f : text_width(t_font, t_region) + K_REGION_CHIP_PADDING * 2.0f;
+}
+
+auto controls::draw_region_chip(DrawList* t_draw_list, const Font& t_font, float t_x, float t_center_y, std::string_view t_region, u8 t_alpha) -> void
+{
+	const float height = t_font.line_height() + 2.0f;
+	const Rect  chip{t_x, t_center_y - height * 0.5f, region_chip_width(t_font, t_region), height};
+
+	t_draw_list->add_rounded_rect(chip, rounded(height * 0.5f), faded(with_alpha(g_theme.text, K_REGION_CHIP_ALPHA), t_alpha));
+	draw_text_centered(t_draw_list, t_font, chip, t_region, faded(g_theme.text_dim, t_alpha));
+}
+
+auto controls::draw_account_details(DrawList* t_draw_list, const Font& t_font, Vec2 t_baseline, float t_max_width, const Account& t_account, u8 t_alpha) -> void
+{
+	const std::string_view note = t_account.note;
+
+	char             relative[32];
+	char             last_used[48];
+	std::string_view when;
+
+	if (t_account.last_used != 0) {
+		when = relative_time(t_account.last_used, std::time(nullptr), relative);
+
+		if (note.empty()) {
+			const int written = std::snprintf(last_used, sizeof(last_used), "Last used %.*s", static_cast<int>(when.size()), when.data());
+			when              = std::string_view{last_used, static_cast<usize>(std::max(written, 0))};
+		}
+	}
+
+	if (note.empty()) {
+		draw_text_truncated(t_draw_list, t_font, t_baseline, when, t_max_width, faded(g_theme.text_faint, t_alpha));
+		return;
+	}
+
+	const float when_width = when.empty() ? 0.0f : text_width(t_font, when) + K_DETAIL_DOT_GAP * 2.0f + K_DETAIL_DOT_SIZE;
+	const float note_width = std::min(text_width(t_font, note), std::max(0.0f, t_max_width - when_width));
+
+	draw_text_truncated(t_draw_list, t_font, t_baseline, note, note_width + 0.5f, faded(g_theme.text_dim, t_alpha));
+
+	if (when.empty()) return;
+
+	const float dot_x  = t_baseline.x + note_width + K_DETAIL_DOT_GAP;
+	const float dot_y  = t_baseline.y - t_font.ascent * 0.33f - K_DETAIL_DOT_SIZE * 0.5f;
+	const float when_x = dot_x + K_DETAIL_DOT_SIZE + K_DETAIL_DOT_GAP;
+
+	t_draw_list->add_rounded_rect(Rect{dot_x, dot_y, K_DETAIL_DOT_SIZE, K_DETAIL_DOT_SIZE}, rounded(K_DETAIL_DOT_SIZE * 0.5f),
+	                              faded(g_theme.text_faint, t_alpha));
+	draw_text_truncated(t_draw_list, t_font, Vec2{when_x, t_baseline.y}, when, t_baseline.x + t_max_width - when_x, faded(g_theme.text_faint, t_alpha));
 }

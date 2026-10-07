@@ -167,7 +167,8 @@ auto DrawList::clear() -> void
 	m_command_count        = 0;
 	m_has_open_command     = false;
 	m_clip_depth           = 0;
-	m_scale                = Scale{};
+	m_transform            = Transform{};
+	m_transform_depth      = 0;
 }
 
 auto DrawList::finish() -> void
@@ -218,26 +219,36 @@ auto DrawList::pop_clip() -> void
 
 auto DrawList::push_scale(Vec2 t_origin, float t_factor) -> void
 {
-	assert(m_scale.factor == 1.0f);
+	assert(m_transform_depth < K_MAX_TRANSFORM_DEPTH);
 
-	m_scale = Scale{t_origin, t_factor};
+	m_transform_stack[m_transform_depth] = m_transform;
+	m_transform_depth += 1;
+
+	const float pull = (1.0f - t_factor) * m_transform.factor;
+	m_transform      = Transform{
+		.offset = Vec2{m_transform.offset.x + t_origin.x * pull, m_transform.offset.y + t_origin.y * pull},
+		.factor = m_transform.factor * t_factor,
+	};
 }
 
 auto DrawList::pop_scale() -> void
 {
-	m_scale = Scale{};
+	assert(m_transform_depth > 0);
+
+	m_transform_depth -= 1;
+	m_transform = m_transform_stack[m_transform_depth];
 }
 
 auto DrawList::scaled(Vec2 t_point) const -> Vec2
 {
-	return Vec2{m_scale.origin.x + (t_point.x - m_scale.origin.x) * m_scale.factor, m_scale.origin.y + (t_point.y - m_scale.origin.y) * m_scale.factor};
+	return Vec2{t_point.x * m_transform.factor + m_transform.offset.x, t_point.y * m_transform.factor + m_transform.offset.y};
 }
 
 auto DrawList::scaled(Rect t_rect) const -> Rect
 {
 	const Vec2 top_left = scaled(Vec2{t_rect.x, t_rect.y});
 
-	return Rect{top_left.x, top_left.y, t_rect.w * m_scale.factor, t_rect.h * m_scale.factor};
+	return Rect{top_left.x, top_left.y, t_rect.w * m_transform.factor, t_rect.h * m_transform.factor};
 }
 
 auto DrawList::target(ShaderKind t_shader, const Texture* t_texture, RoundedBoxParams t_box, OutlineCountdownParams t_outline) -> void

@@ -55,6 +55,9 @@ struct VisibleAccounts {
 	}
 };
 
+auto shift_after_insert(std::optional<AccountRef>* t_ref, AccountRef t_inserted) -> void;
+auto shift_after_removal(std::optional<AccountRef>* t_ref, AccountRef t_removed) -> void;
+
 struct Library {
 	Game        games[K_MAX_GAMES];
 	u32         game_count = 0;

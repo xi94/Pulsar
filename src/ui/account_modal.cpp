@@ -21,7 +21,9 @@
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "os/window.h"
+#include "core/regions.h"
 #include "ui/controls.h"
+#include "ui/login_session.h"
 #include "ui/text.h"
 #include "ui/theme.h"
 #include "ui/toasts.h"
@@ -66,8 +68,6 @@ constexpr float K_ROW_BOTTOM_PADDING = 10.0f;
 constexpr float K_ROW_BUTTON_GAP     = 10.0f;
 constexpr float K_ROW_ICON_INSET     = 5.0f;
 constexpr float K_ROW_RADIUS         = 10.0f;
-constexpr float K_DETAIL_DOT_SIZE    = 3.0f;
-constexpr float K_DETAIL_DOT_GAP     = 7.0f;
 constexpr float K_SCROLLBAR_MARGIN   = 4.0f;
 
 constexpr float K_DRAG_THRESHOLD      = 4.0f;
@@ -135,26 +135,19 @@ constexpr float K_PROGRESS_BAR_HEIGHT     = 6.0f;
 constexpr float K_PROGRESS_TEXT_GAP       = 18.0f;
 constexpr float K_CAP_HEIGHT_SHARE        = 0.66f;
 constexpr float K_PROGRESS_TEXT_RISE      = 8.0f;
-constexpr float K_PROGRESS_EASE_RATE      = 5.0f;
-constexpr float K_PROGRESS_CREEP_SECONDS  = 2.5f;
-constexpr float K_STATUS_EASE_RATE        = 10.0f;
-constexpr float K_OUTCOME_EASE_RATE       = 8.0f;
 constexpr float K_PROGRESS_GLOW_BLUR      = 8.0f;
 constexpr u8    K_PROGRESS_GLOW_ALPHA     = 70;
 constexpr float K_SHEEN_WIDTH             = 60.0f;
 constexpr float K_SHEEN_PASSES_PER_SECOND = 0.7f;
 constexpr u8    K_SHEEN_ALPHA             = 90;
-constexpr u32   K_LOGIN_STEP_COUNT        = 4;
 constexpr u32   K_MAX_MESSAGE_LINES       = 3;
 
 constexpr Color K_COLOR_ON_ART{255, 255, 255, 255};
 constexpr Color K_COLOR_ART_BADGE{20, 20, 22, 255};
 constexpr Color K_COLOR_TOP_HIGHLIGHT{255, 255, 255, 22};
-constexpr float K_DANGER_TINT         = 0.22f;
-constexpr float K_REGION_CHIP_PADDING = 6.0f;
-constexpr float K_REGION_CHIP_GAP     = 8.0f;
-constexpr u8    K_REGION_CHIP_ALPHA   = 22;
-constexpr float K_ARMED_DANGER_TINT   = 0.4f;
+constexpr float K_DANGER_TINT       = 0.22f;
+constexpr float K_REGION_CHIP_GAP   = 8.0f;
+constexpr float K_ARMED_DANGER_TINT = 0.4f;
 
 struct FieldSpec {
 	const char* label;
@@ -167,34 +160,6 @@ constexpr FieldSpec K_FIELD_SPECS[]{
 	{"Password", sizeof(Account::password) - 1},
 };
 
-struct RegionOption {
-	std::string_view code;
-	std::string_view label;
-};
-
-constexpr RegionOption K_REGION_OPTIONS[]{
-	{"", "None"},
-	{"NA", "North America (NA)"},
-	{"EUW", "Europe West (EUW)"},
-	{"EUNE", "Europe Nordic & East (EUNE)"},
-	{"KR", "Korea (KR)"},
-	{"JP", "Japan (JP)"},
-	{"BR", "Brazil (BR)"},
-	{"LAN", "Latin America North (LAN)"},
-	{"LAS", "Latin America South (LAS)"},
-	{"OCE", "Oceania (OCE)"},
-	{"TR", "Turkiye (TR)"},
-	{"RU", "Russia (RU)"},
-	{"ME", "Middle East (ME)"},
-	{"PH", "Philippines (PH)"},
-	{"SG", "Singapore (SG)"},
-	{"TH", "Thailand (TH)"},
-	{"TW", "Taiwan (TW)"},
-	{"VN", "Vietnam (VN)"},
-};
-
-constexpr usize K_REGION_COUNT = std::size(K_REGION_OPTIONS);
-
 constexpr auto K_REGION_LABELS = [] {
 	std::array<std::string_view, K_REGION_COUNT> labels{};
 	for (usize i = 0; i < K_REGION_COUNT; i += 1) {
@@ -203,22 +168,6 @@ constexpr auto K_REGION_LABELS = [] {
 
 	return labels;
 }();
-
-struct TimeUnit {
-	i64         seconds;
-	const char* name;
-};
-
-constexpr i64 K_SECONDS_PER_DAY = 86400;
-
-constexpr TimeUnit K_TIME_UNITS[]{
-	{365 * K_SECONDS_PER_DAY, "year"},
-	{30 * K_SECONDS_PER_DAY, "month"},
-	{7 * K_SECONDS_PER_DAY, "week"},
-	{K_SECONDS_PER_DAY, "day"},
-	{3600, "hour"},
-	{60, "minute"},
-};
 
 [[nodiscard]] auto scaled_about(Rect t_rect, Vec2 t_origin, float t_scale) -> Rect
 {
@@ -290,179 +239,10 @@ auto draw_input_box(DrawList* t_draw_list, Rect t_rect, Color t_border, bool t_f
 	return Rect{t_row.x - 8.0f, t_row.y + 3.0f, t_row.w + 16.0f, t_row.h - 6.0f};
 }
 
-[[nodiscard]] auto region_chip_width(const Font& t_font, std::string_view t_region) -> float
-{
-	return t_region.empty() ? 0.0f : text_width(t_font, t_region) + K_REGION_CHIP_PADDING * 2.0f;
-}
-
-auto draw_region_chip(DrawList* t_draw_list, const Font& t_font, float t_x, float t_center_y, std::string_view t_region, u8 t_alpha) -> void
-{
-	const float height = t_font.line_height() + 2.0f;
-	const Rect  chip{t_x, t_center_y - height * 0.5f, region_chip_width(t_font, t_region), height};
-
-	t_draw_list->add_rounded_rect(chip, rounded(height * 0.5f), faded(with_alpha(g_theme.text, K_REGION_CHIP_ALPHA), t_alpha));
-	draw_text_centered(t_draw_list, t_font, chip, t_region, faded(g_theme.text_dim, t_alpha));
-}
-
 [[nodiscard]] auto matches_query(const Account* t_account, std::string_view t_query) -> bool
 {
 	return find_ignoring_case(t_account->username, t_query) != std::string_view::npos ||
 	       find_ignoring_case(t_account->note, t_query) != std::string_view::npos || find_ignoring_case(t_account->region, t_query) != std::string_view::npos;
-}
-
-[[nodiscard]] auto relative_time(i64 t_then, i64 t_now, char (&t_buffer)[32]) -> std::string_view
-{
-	const i64 elapsed = std::max<i64>(0, t_now - t_then);
-
-	for (const TimeUnit& unit : K_TIME_UNITS) {
-		const i64 count = elapsed / unit.seconds;
-		if (count == 0) continue;
-		if (unit.seconds == 86400 && count == 1) return "yesterday";
-
-		const int written = std::snprintf(t_buffer, sizeof(t_buffer), "%lld %s%s ago", static_cast<long long>(count), unit.name, count == 1 ? "" : "s");
-
-		return std::string_view{t_buffer, static_cast<usize>(std::max(written, 0))};
-	}
-
-	return "just now";
-}
-
-auto shift_after_insert(std::optional<AccountRef>* t_ref, AccountRef t_inserted) -> void
-{
-	if (!t_ref->has_value()) return;
-
-	AccountRef* ref = &t_ref->value();
-	if (ref->game == t_inserted.game && ref->index >= t_inserted.index) {
-		ref->index += 1;
-	}
-}
-
-auto shift_after_removal(std::optional<AccountRef>* t_ref, AccountRef t_removed) -> void
-{
-	if (!t_ref->has_value() || t_ref->value().game != t_removed.game) return;
-
-	AccountRef* ref = &t_ref->value();
-	if (ref->index == t_removed.index) {
-		t_ref->reset();
-	} else if (ref->index > t_removed.index) {
-		ref->index -= 1;
-	}
-}
-
-struct StageSpan {
-	float start;
-	float end;
-};
-
-[[nodiscard]] auto stage_span(LoginStage t_stage) -> std::optional<StageSpan>
-{
-	switch (t_stage) {
-		using enum LoginStage;
-
-		case IDLE: {
-			return StageSpan{0.02f, 0.1f};
-		}
-
-		case WAITING_FOR_PROCESS: {
-			return StageSpan{0.08f, 0.3f};
-		}
-
-		case CONNECTING: {
-			return StageSpan{0.32f, 0.55f};
-		}
-
-		case AUTHENTICATING: {
-			return StageSpan{0.58f, 0.82f};
-		}
-
-		case LAUNCHING: {
-			return StageSpan{0.85f, 0.97f};
-		}
-
-		case SUCCESS: {
-			return StageSpan{1.0f, 1.0f};
-		}
-
-		case FAILED:
-		case CANCELLED: {
-			break;
-		}
-	}
-
-	return std::nullopt;
-}
-
-[[nodiscard]] auto stage_step(LoginStage t_stage) -> u32
-{
-	switch (t_stage) {
-		using enum LoginStage;
-
-		case WAITING_FOR_PROCESS: {
-			return 1;
-		}
-
-		case CONNECTING: {
-			return 2;
-		}
-
-		case AUTHENTICATING: {
-			return 3;
-		}
-
-		case LAUNCHING: {
-			return 4;
-		}
-
-		case IDLE:
-		case SUCCESS:
-		case FAILED:
-		case CANCELLED: {
-			break;
-		}
-	}
-
-	return 0;
-}
-
-[[nodiscard]] auto stage_message(LoginStage t_stage) -> std::string_view
-{
-	switch (t_stage) {
-		using enum LoginStage;
-
-		case IDLE: {
-			return "";
-		}
-
-		case WAITING_FOR_PROCESS: {
-			return "Launching Riot Client...";
-		}
-
-		case CONNECTING: {
-			return "Waiting for Riot Client...";
-		}
-
-		case AUTHENTICATING: {
-			return "Logging in...";
-		}
-
-		case LAUNCHING: {
-			return "Launching game...";
-		}
-
-		case SUCCESS: {
-			return "Logged in!";
-		}
-
-		case FAILED: {
-			return "Something went wrong.";
-		}
-
-		case CANCELLED: {
-			return "Cancelled.";
-		}
-	}
-
-	return "";
 }
 }
 
@@ -472,6 +252,7 @@ AccountModal::AccountModal(Library*          t_library,
                            const Assets*     t_assets,
                            const os::Window* t_window,
                            Toasts*           t_toasts,
+                           LoginSession*     t_session,
                            CommandQueue*     t_commands)
 	: m_library(t_library)
 	, m_settings(t_settings)
@@ -479,6 +260,7 @@ AccountModal::AccountModal(Library*          t_library,
 	, m_assets(t_assets)
 	, m_window(t_window)
 	, m_toasts(t_toasts)
+	, m_session(t_session)
 	, m_commands(t_commands)
 	, m_region_list(t_fonts, t_assets, t_settings, ListPopupOptions{.empty_message = "No regions"})
 {
@@ -692,7 +474,7 @@ auto AccountModal::primary_button_rect(Rect t_footer) const -> Rect
 
 auto AccountModal::asks_for_permission() const -> bool
 {
-	return m_mode == Mode::LOGIN_PROGRESS && !m_queued_login && m_login.is_permission_missing();
+	return m_mode == Mode::LOGIN_PROGRESS && m_session->asks_for_permission();
 }
 
 auto AccountModal::cancel_button_rect(Rect t_primary) const -> Rect
@@ -1205,33 +987,16 @@ auto AccountModal::follow_insert(AccountRef t_inserted) -> void
 {
 	shift_after_insert(&m_selected, t_inserted);
 	shift_after_insert(&m_edited, t_inserted);
-	shift_after_insert(&m_login_account, t_inserted);
 	shift_after_insert(&m_armed_delete, t_inserted);
-
-	if (m_queued_login) {
-		std::optional<AccountRef> queued = m_queued_login->account;
-		shift_after_insert(&queued, t_inserted);
-		m_queued_login->account = *queued;
-	}
+	m_session->follow_insert(t_inserted);
 }
 
 auto AccountModal::follow_removal(AccountRef t_removed) -> void
 {
 	shift_after_removal(&m_selected, t_removed);
 	shift_after_removal(&m_edited, t_removed);
-	shift_after_removal(&m_login_account, t_removed);
 	shift_after_removal(&m_armed_delete, t_removed);
-
-	if (m_queued_login) {
-		std::optional<AccountRef> queued = m_queued_login->account;
-		shift_after_removal(&queued, t_removed);
-
-		if (queued) {
-			m_queued_login->account = *queued;
-		} else {
-			m_queued_login.reset();
-		}
-	}
+	m_session->follow_removal(t_removed);
 }
 
 auto AccountModal::notify(std::string_view t_message) -> void
@@ -1242,67 +1007,15 @@ auto AccountModal::notify(std::string_view t_message) -> void
 auto AccountModal::request_login(u32 t_game, AccountRef t_account) -> void
 {
 	m_armed_delete.reset();
-	m_selected       = t_account;
-	m_mode           = Mode::LOGIN_PROGRESS;
-	m_login_seconds  = 0.0f;
-	m_login_progress = 0.0f;
-	m_login_outcome  = 0.0f;
-	m_stage_seconds  = 0.0f;
-	m_status_from[0] = '\0';
-	m_status_to[0]   = '\0';
-	m_status_change  = 1.0f;
+	m_selected = t_account;
+	m_mode     = Mode::LOGIN_PROGRESS;
 	m_search.set_focused(false);
-
-	const PendingLogin login{t_game, t_account};
-
-	if (m_login.is_active() && !LoginAttempt::is_terminal(m_login.stage())) {
-		m_login.cancel();
-		m_login_account.reset();
-		m_queued_login = login;
-		return;
-	}
-
-	m_queued_login.reset();
-	start_login(login);
-}
-
-auto AccountModal::start_login(PendingLogin t_login) -> void
-{
-	if (t_login.game >= m_library->game_count) return;
-	if (t_login.account.index >= m_library->games[t_login.account.game].account_count) return;
-
-	const Account* account = m_library->account(t_login.account);
-	m_login_account        = t_login.account;
-	m_login_game           = t_login.game;
-	m_login.start(account->username, account->password, m_library->games[t_login.game].launch_product, m_settings->riot_client_path);
+	m_session->request(t_game, t_account);
 }
 
 auto AccountModal::cancel_login() -> void
 {
-	m_queued_login.reset();
-	m_login_account.reset();
-	m_login.cancel();
-}
-
-auto AccountModal::record_login_result() -> void
-{
-	if (!m_login_account || !LoginAttempt::is_terminal(m_login.stage())) return;
-
-	if (m_login.stage() == LoginStage::SUCCESS) {
-		m_library->account(*m_login_account)->last_used = std::time(nullptr);
-		m_commands->push(Command{.type = CommandType::SAVE_CHANGES});
-	}
-
-	if (const std::string found = m_login.found_client_path(); !found.empty()) {
-		copy_to(found, m_settings->riot_client_path);
-		m_commands->push(Command{.type = CommandType::SAVE_CHANGES});
-	}
-
-	if (m_login.is_client_missing()) {
-		m_commands->push(Command{.type = CommandType::LOCATE_RIOT_CLIENT, .index = static_cast<i32>(m_login_game), .account = *m_login_account});
-	}
-
-	m_login_account.reset();
+	m_session->cancel();
 }
 
 auto AccountModal::refresh_search() -> void
@@ -1613,8 +1326,6 @@ auto AccountModal::update(float t_delta_seconds) -> void
 		}
 
 		case LOGIN_PROGRESS: {
-			m_login_seconds += t_delta_seconds;
-			update_login_progress(t_delta_seconds);
 			animation::request_frame();
 			break;
 		}
@@ -1643,15 +1354,6 @@ auto AccountModal::update(float t_delta_seconds) -> void
 	m_region_list.update(t_delta_seconds, region_rect(layout().main_column), layout().inner);
 	request_tooltip();
 	m_tooltip.update(t_delta_seconds);
-	m_login.update();
-	record_login_result();
-
-	if (m_queued_login && !m_login.is_active()) {
-		const PendingLogin login = *std::exchange(m_queued_login, std::nullopt);
-
-		m_login_seconds = 0.0f;
-		start_login(login);
-	}
 }
 
 auto AccountModal::on_pointer_down(Vec2 t_point) -> bool
@@ -2172,7 +1874,7 @@ auto AccountModal::list_cursor(const Layout& t_layout) const -> CursorKind
 	}
 
 	const bool over_login = primary_button_rect(t_layout.footer).contains(m_mouse);
-	const bool can_login  = selected_row(rows.accounts) >= 0 && !m_login.is_active();
+	const bool can_login  = selected_row(rows.accounts) >= 0 && !m_session->is_busy();
 
 	return can_login && over_login ? CursorKind::HAND : CursorKind::ARROW;
 }
@@ -2344,45 +2046,6 @@ auto AccountModal::draw_search(DrawList* t_draw_list, Rect t_main, u8 t_alpha) -
 	controls::draw_search_field(t_draw_list, m_fonts->secondary, search, K_SEARCH_INSET, &m_search, m_mouse, m_settings->accent, t_alpha);
 }
 
-auto AccountModal::draw_row_details(DrawList* t_draw_list, Rect t_row, float t_baseline, float t_max_width, const Account* t_account, u8 t_alpha) const -> void
-{
-	const Font&            secondary = m_fonts->secondary;
-	const std::string_view note      = t_account->note;
-
-	char             relative[32];
-	char             last_used[48];
-	std::string_view when;
-
-	if (t_account->last_used != 0) {
-		when = relative_time(t_account->last_used, std::time(nullptr), relative);
-
-		if (note.empty()) {
-			const int written = std::snprintf(last_used, sizeof(last_used), "Last used %.*s", static_cast<int>(when.size()), when.data());
-			when              = std::string_view{last_used, static_cast<usize>(std::max(written, 0))};
-		}
-	}
-
-	if (note.empty()) {
-		draw_text_truncated(t_draw_list, secondary, Vec2{t_row.x, t_baseline}, when, t_max_width, faded(g_theme.text_faint, t_alpha));
-		return;
-	}
-
-	const float when_width = when.empty() ? 0.0f : text_width(secondary, when) + K_DETAIL_DOT_GAP * 2.0f + K_DETAIL_DOT_SIZE;
-	const float note_width = std::min(text_width(secondary, note), std::max(0.0f, t_max_width - when_width));
-
-	draw_text_truncated(t_draw_list, secondary, Vec2{t_row.x, t_baseline}, note, note_width + 0.5f, faded(g_theme.text_dim, t_alpha));
-
-	if (when.empty()) return;
-
-	const float dot_x  = t_row.x + note_width + K_DETAIL_DOT_GAP;
-	const float dot_y  = t_baseline - secondary.ascent * 0.33f - K_DETAIL_DOT_SIZE * 0.5f;
-	const float when_x = dot_x + K_DETAIL_DOT_SIZE + K_DETAIL_DOT_GAP;
-
-	t_draw_list->add_rounded_rect(Rect{dot_x, dot_y, K_DETAIL_DOT_SIZE, K_DETAIL_DOT_SIZE}, rounded(K_DETAIL_DOT_SIZE * 0.5f),
-	                              faded(g_theme.text_faint, t_alpha));
-	draw_text_truncated(t_draw_list, secondary, Vec2{when_x, t_baseline}, when, t_row.x + t_max_width - when_x, faded(g_theme.text_faint, t_alpha));
-}
-
 auto AccountModal::draw_account_row(DrawList*      t_draw_list,
                                     Rect           t_main,
                                     Rect           t_row,
@@ -2421,7 +2084,7 @@ auto AccountModal::draw_account_row(DrawList*      t_draw_list,
 	const float username_baseline = has_details ? block_y + body.ascent : body.centered_baseline(t_row);
 
 	const std::string_view region         = t_account->region;
-	const float            chip_space     = region.empty() ? 0.0f : region_chip_width(secondary, region) + K_REGION_CHIP_GAP;
+	const float            chip_space     = region.empty() ? 0.0f : controls::region_chip_width(secondary, region) + K_REGION_CHIP_GAP;
 	const float            username_limit = std::max(0.0f, text_limit - chip_space);
 
 	draw_text_truncated(t_draw_list, body, Vec2{t_row.x, username_baseline}, t_account->username, username_limit, faded(g_theme.text, t_alpha));
@@ -2429,12 +2092,12 @@ auto AccountModal::draw_account_row(DrawList*      t_draw_list,
 	if (!region.empty()) {
 		const float username_width = std::min(text_width(body, t_account->username), username_limit);
 		const float line_center    = username_baseline - body.ascent + body.line_height() * 0.5f;
-		draw_region_chip(t_draw_list, secondary, t_row.x + username_width + K_REGION_CHIP_GAP, line_center, region, t_alpha);
+		controls::draw_region_chip(t_draw_list, secondary, t_row.x + username_width + K_REGION_CHIP_GAP, line_center, region, t_alpha);
 	}
 
 	if (has_details) {
 		const float details_baseline = block_y + body.line_height() + K_ROW_LINE_GAP + secondary.ascent;
-		draw_row_details(t_draw_list, t_row, details_baseline, text_limit, t_account, t_alpha);
+		controls::draw_account_details(t_draw_list, secondary, Vec2{t_row.x, details_baseline}, text_limit, *t_account, t_alpha);
 	}
 
 	const auto separator_alpha = static_cast<u8>(t_alpha * (t_raised ? 1.0f - m_lift_amount : 1.0f));
@@ -2591,49 +2254,10 @@ auto AccountModal::draw_account_list(DrawList* t_draw_list, const Layout& t_layo
 	m_rows_scroll.draw(t_draw_list, rows.scroll, m_mouse, t_alpha);
 }
 
-auto AccountModal::login_status() const -> std::string_view
-{
-	if (m_queued_login) return "Switching account...";
-
-	const LoginStage stage = m_login.stage();
-	if (LoginAttempt::is_terminal(stage) && !m_login.terminal_message().empty()) return m_login.terminal_message();
-
-	return stage_message(stage);
-}
-
-auto AccountModal::update_login_progress(float t_delta_seconds) -> void
-{
-	const LoginStage stage    = m_queued_login ? LoginStage::IDLE : m_login.stage();
-	const bool       finished = !m_queued_login && LoginAttempt::is_terminal(stage);
-
-	if (stage != m_progress_stage) {
-		m_progress_stage = stage;
-		m_stage_seconds  = 0.0f;
-	}
-
-	m_stage_seconds += t_delta_seconds;
-
-	const std::string_view status = login_status();
-	if (status != std::string_view{m_status_to}) {
-		copy_to(m_status_to, m_status_from);
-		copy_to(status, m_status_to);
-		m_status_change = 0.0f;
-	}
-
-	if (const std::optional<StageSpan> span = stage_span(stage)) {
-		const float creep  = 1.0f - std::exp(-m_stage_seconds / K_PROGRESS_CREEP_SECONDS);
-		const float target = span->start + (span->end - span->start) * creep;
-		m_login_progress   = animation::ease_toward(m_login_progress, std::max(target, m_login_progress), K_PROGRESS_EASE_RATE, t_delta_seconds);
-	}
-
-	m_status_change = animation::ease_toward(m_status_change, 1.0f, K_STATUS_EASE_RATE, t_delta_seconds);
-	m_login_outcome = animation::ease_toward(m_login_outcome, finished ? 1.0f : 0.0f, K_OUTCOME_EASE_RATE, t_delta_seconds);
-}
-
 auto AccountModal::draw_login_progress(DrawList* t_draw_list, Rect t_main, u8 t_alpha) const -> void
 {
-	const LoginStage stage     = m_login.stage();
-	const bool       finished  = !m_queued_login && LoginAttempt::is_terminal(stage);
+	const LoginStage stage     = m_session->stage();
+	const bool       finished  = m_session->is_finished();
 	const Font&      body      = m_fonts->body;
 	const Font&      secondary = m_fonts->secondary;
 
@@ -2657,12 +2281,13 @@ auto AccountModal::draw_login_progress(DrawList* t_draw_list, Rect t_main, u8 t_
 		}
 	};
 
-	draw_status(m_status_from, 1.0f - m_status_change, -K_PROGRESS_TEXT_RISE * m_status_change);
-	draw_status(m_status_to, m_status_change, K_PROGRESS_TEXT_RISE * (1.0f - m_status_change));
+	const float change = m_session->status_change();
+	draw_status(m_session->previous_status(), 1.0f - change, -K_PROGRESS_TEXT_RISE * change);
+	draw_status(m_session->status(), change, K_PROGRESS_TEXT_RISE * (1.0f - change));
 
 	const Color outcome    = stage == LoginStage::SUCCESS ? g_theme.success : g_theme.error;
-	const Color fill_color = finished ? mix(m_settings->accent, outcome, m_login_outcome) : m_settings->accent;
-	const Rect  fill{bar.x, bar.y, bar.w * std::clamp(m_login_progress, 0.0f, 1.0f), bar.h};
+	const Color fill_color = finished ? mix(m_settings->accent, outcome, m_session->outcome()) : m_settings->accent;
+	const Rect  fill{bar.x, bar.y, bar.w * std::clamp(m_session->progress(), 0.0f, 1.0f), bar.h};
 
 	t_draw_list->add_rounded_rect(bar, rounded(bar.h * 0.5f), faded(g_theme.control, t_alpha));
 
@@ -2671,7 +2296,7 @@ auto AccountModal::draw_login_progress(DrawList* t_draw_list, Rect t_main, u8 t_
 		t_draw_list->add_rounded_rect(fill, rounded(bar.h * 0.5f), faded(fill_color, t_alpha));
 
 		if (!finished) {
-			const float travel  = std::fmod(m_login_seconds * K_SHEEN_PASSES_PER_SECOND, 1.0f);
+			const float travel  = std::fmod(m_session->seconds() * K_SHEEN_PASSES_PER_SECOND, 1.0f);
 			const float sheen_x = fill.x - K_SHEEN_WIDTH + travel * (fill.w + K_SHEEN_WIDTH);
 			const float half    = K_SHEEN_WIDTH * 0.5f;
 			const Color edge    = with_alpha(lightened(fill_color, 80), 0);
@@ -2684,15 +2309,15 @@ auto AccountModal::draw_login_progress(DrawList* t_draw_list, Rect t_main, u8 t_
 		}
 	}
 
-	const u32 step = m_queued_login ? 0 : stage_step(stage);
+	const u32 step = m_session->step();
 	if (step == 0) return;
 
 	char                   label[24];
-	const int              written = std::snprintf(label, sizeof(label), "Step %u of %u", step, K_LOGIN_STEP_COUNT);
+	const int              written = std::snprintf(label, sizeof(label), "Step %u of %u", step, LoginSession::K_STEP_COUNT);
 	const std::string_view step_text{label, static_cast<usize>(std::max(written, 0))};
 
 	draw_text(t_draw_list, secondary, Vec2{snapped_to_pixel(bar.center().x - text_width(secondary, step_text) * 0.5f), step_baseline}, step_text,
-	          faded(g_theme.text_faint, static_cast<u8>(t_alpha * (1.0f - m_login_outcome))));
+	          faded(g_theme.text_faint, static_cast<u8>(t_alpha * (1.0f - m_session->outcome()))));
 }
 
 auto AccountModal::draw_edit_header(DrawList* t_draw_list, Rect t_main, u8 t_alpha) const -> void
@@ -2986,7 +2611,7 @@ auto AccountModal::draw_footer(DrawList* t_draw_list, Rect t_footer, u8 t_alpha)
 		}
 
 		case LOGIN_PROGRESS: {
-			const bool finished = !m_queued_login && LoginAttempt::is_terminal(m_login.stage());
+			const bool finished = m_session->is_finished();
 
 			draw_text_truncated(t_draw_list, secondary, Vec2{t_footer.x + K_ROW_PADDING, hint_baseline}, "", hint_width, faded(g_theme.text_faint, t_alpha));
 

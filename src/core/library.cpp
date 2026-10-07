@@ -167,3 +167,25 @@ auto Library::visible_account(u32 t_game, u32 t_row) const -> std::optional<Acco
 
 	return visible.refs[t_row];
 }
+
+auto shift_after_insert(std::optional<AccountRef>* t_ref, AccountRef t_inserted) -> void
+{
+	if (!t_ref->has_value()) return;
+
+	AccountRef* ref = &t_ref->value();
+	if (ref->game == t_inserted.game && ref->index >= t_inserted.index) {
+		ref->index += 1;
+	}
+}
+
+auto shift_after_removal(std::optional<AccountRef>* t_ref, AccountRef t_removed) -> void
+{
+	if (!t_ref->has_value() || t_ref->value().game != t_removed.game) return;
+
+	AccountRef* ref = &t_ref->value();
+	if (ref->index == t_removed.index) {
+		t_ref->reset();
+	} else if (ref->index > t_removed.index) {
+		ref->index -= 1;
+	}
+}

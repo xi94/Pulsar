@@ -182,10 +182,15 @@ class DrawList {
 	u32  m_probe_cover_count    = 0;
 	bool m_has_animated_effects = false;
 
-	struct Scale {
-		Vec2  origin{};
+	// Scales nest: each one maps a point to point * factor + offset, already combined with the scales around it.
+	struct Transform {
+		Vec2  offset{};
 		float factor = 1.0f;
 	};
 
-	Scale m_scale;
+	static constexpr u32 K_MAX_TRANSFORM_DEPTH = 4;
+
+	Transform m_transform;
+	Transform m_transform_stack[K_MAX_TRANSFORM_DEPTH];
+	u32       m_transform_depth = 0;
 };

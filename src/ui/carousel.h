@@ -5,24 +5,33 @@
 #include "core/library.h"
 #include "ui/commands.h"
 #include "ui/draggable.h"
+#include "ui/library_view.h"
 #include "ui/scrollable.h"
 #include "ui/widget.h"
 
 class Assets;
 struct Fonts;
 struct Game;
+class LoginSession;
 struct Settings;
+class Toasts;
 
 enum class ViewMode : u8 {
 	CAROUSEL,
 	GRID,
-	LIST,
 	ICONS,
+	LIBRARY,
 };
 
 class Carousel : public Widget {
   public:
-	Carousel(const Library* t_library, const Settings* t_settings, const Fonts* t_fonts, const Assets* t_assets, CommandQueue* t_commands);
+	Carousel(Library*        t_library,
+	         const Settings* t_settings,
+	         const Fonts*    t_fonts,
+	         const Assets*   t_assets,
+	         Toasts*         t_toasts,
+	         LoginSession*   t_session,
+	         CommandQueue*   t_commands);
 
 	auto set_bounds(Rect t_bounds) -> void
 	{
@@ -35,6 +44,16 @@ class Carousel : public Widget {
 	}
 
 	[[nodiscard]] auto selected_game() const -> i32;
+
+	[[nodiscard]] auto is_library() const -> bool
+	{
+		return m_mode == ViewMode::LIBRARY;
+	}
+
+	[[nodiscard]] auto library_view() -> LibraryView*
+	{
+		return &m_library_view;
+	}
 
 	auto restore(i32 t_zoom_stop, i32 t_selected_game) -> void;
 	auto set_order(std::span<const u8> t_order) -> void;
@@ -58,8 +77,10 @@ class Carousel : public Widget {
 	auto on_pointer_down(Vec2 t_point) -> bool override;
 	auto on_pointer_move(Vec2 t_point) -> bool override;
 	auto on_pointer_up(Vec2 t_point) -> bool override;
+	auto on_right_click(Vec2 t_point) -> bool override;
 	auto on_scroll(Vec2 t_point, float t_wheel_delta) -> bool override;
 	auto on_key_down(os::Key t_key) -> bool override;
+	auto on_char(u32 t_character) -> bool override;
 
 	[[nodiscard]] auto cursor() const -> CursorKind override;
 
@@ -93,16 +114,21 @@ class Carousel : public Widget {
 	[[nodiscard]] auto carousel_slot(float t_offset) const -> Rect;
 	[[nodiscard]] auto overview_slot(u32 t_slot) const -> Rect;
 	[[nodiscard]] auto grid_slot(u32 t_slot) const -> Rect;
-	[[nodiscard]] auto list_slot(u32 t_slot) const -> Rect;
+	[[nodiscard]] auto sidebar_column() const -> Rect;
+	[[nodiscard]] auto library_pane() const -> Rect;
+	[[nodiscard]] auto sidebar_row_height() const -> float;
+	[[nodiscard]] auto library_slot(float t_position) const -> Rect;
+	[[nodiscard]] auto sidebar_icon(Rect t_row) const -> Rect;
+	[[nodiscard]] auto is_library_shown() const -> bool;
 	[[nodiscard]] auto icon_tile_size() const -> Vec2;
 	[[nodiscard]] auto icon_columns() const -> u32;
 	[[nodiscard]] auto icon_slot(u32 t_slot) const -> Rect;
 	[[nodiscard]] auto icon_tile_art(Rect t_tile) const -> Rect;
 	[[nodiscard]] auto wrap_columns() const -> u32;
+	[[nodiscard]] auto wrap_area() const -> Rect;
 	[[nodiscard]] auto slot_rect(ViewMode t_mode, u32 t_slot) const -> Rect;
 	[[nodiscard]] auto shown_card(ViewMode t_mode, u32 t_game) const -> Rect;
 	[[nodiscard]] auto dragged_rect() const -> Rect;
-	[[nodiscard]] auto list_thumb(Rect t_row) const -> Rect;
 	[[nodiscard]] auto grown(Rect t_card, u32 t_game) const -> Rect;
 	[[nodiscard]] auto art_rect(ViewMode t_mode, u32 t_game) const -> Rect;
 	[[nodiscard]] auto morph_art(u32 t_game) const -> Rect;
@@ -128,6 +154,7 @@ class Carousel : public Widget {
 	[[nodiscard]] auto is_focus_shown(u32 t_game) const -> bool;
 	auto move_focus(i32 t_delta) -> void;
 	auto open_game(i32 t_game) -> void;
+	auto choose_game(i32 t_game) -> void;
 
 	auto drop_lost_press() -> void;
 	auto start_press(i32 t_game, Vec2 t_point) -> void;
@@ -146,8 +173,9 @@ class Carousel : public Widget {
 	[[nodiscard]] auto switcher_pointer_up() -> bool;
 
 	auto draw_card(DrawList* t_draw_list, Rect t_rect, const Game& t_game, bool t_highlighted, bool t_centered, u8 t_alpha) const -> void;
-	auto draw_list_row_frame(DrawList* t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const -> void;
-	auto draw_list_row(DrawList* t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const -> void;
+	auto draw_sidebar_row_frame(DrawList* t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const -> void;
+	auto draw_sidebar_row(DrawList* t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const -> void;
+	auto draw_sidebar_chrome(DrawList* t_draw_list, Rect t_selection, u8 t_alpha) const -> void;
 	auto draw_icon_tile_frame(DrawList* t_draw_list, Rect t_tile, u32 t_game, bool t_highlighted, u8 t_alpha) const -> void;
 	auto draw_icon_tile(DrawList* t_draw_list, Rect t_tile, u32 t_game, bool t_highlighted, u8 t_alpha) const -> void;
 	auto draw_frame(DrawList* t_draw_list, ViewMode t_mode, Rect t_frame, u32 t_game, bool t_highlighted, u8 t_alpha) const -> void;
@@ -159,7 +187,7 @@ class Carousel : public Widget {
 	[[nodiscard]] auto faded_rect(u32 t_game) const -> Rect;
 	auto fade_cards(DrawList* t_draw_list, Rect t_band, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right) const -> void;
 	auto draw_grid_mode(DrawList* t_draw_list) const -> void;
-	auto draw_list_mode(DrawList* t_draw_list) const -> void;
+	auto draw_library_mode(DrawList* t_draw_list) const -> void;
 	auto draw_wrap_scroll(DrawList* t_draw_list, u8 t_alpha) const -> void;
 	auto draw_raised(DrawList* t_draw_list, ViewMode t_mode) const -> void;
 	auto draw_reorder_hint(DrawList* t_draw_list) const -> void;
@@ -214,4 +242,6 @@ class Carousel : public Widget {
 	float     m_overview        = 0.0f;
 	float     m_lift            = 0.0f;
 	float     m_reorder_hint    = 0.0f;
+
+	LibraryView m_library_view;
 };

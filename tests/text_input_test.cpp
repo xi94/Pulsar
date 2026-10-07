@@ -4,8 +4,6 @@
 #include "test.h"
 #include "ui/text_input.h"
 
-// These tests press keys without modifiers; os::modifiers() reads the real keyboard, so don't hold Shift or Ctrl while they run.
-
 namespace {
 auto type(TextInput* t_input, std::string_view t_text) -> void
 {
@@ -20,7 +18,7 @@ TEST_CASE("typing inserts at the cursor")
 	TextInput input;
 	input.set_focused(true);
 	input.set_value("ac");
-	input.on_key_down(os::Key::LEFT);
+	input.on_key_down(os::Key::LEFT, os::Modifiers{});
 	type(&input, "b");
 
 	CHECK(input.value() == "abc");
@@ -32,11 +30,11 @@ TEST_CASE("backspace and forward delete remove one whole character")
 	input.set_focused(true);
 	input.set_value("aé€");
 
-	input.on_key_down(os::Key::BACKSPACE);
+	input.on_key_down(os::Key::BACKSPACE, os::Modifiers{});
 	CHECK(input.value() == "aé");
 
-	input.on_key_down(os::Key::HOME);
-	input.on_key_down(os::Key::FORWARD_DELETE);
+	input.on_key_down(os::Key::HOME, os::Modifiers{});
+	input.on_key_down(os::Key::FORWARD_DELETE, os::Modifiers{});
 	CHECK(input.value() == "é");
 }
 
@@ -46,9 +44,9 @@ TEST_CASE("Home and End jump to either end")
 	input.set_focused(true);
 	input.set_value("middle");
 
-	input.on_key_down(os::Key::HOME);
+	input.on_key_down(os::Key::HOME, os::Modifiers{});
 	type(&input, "<");
-	input.on_key_down(os::Key::END);
+	input.on_key_down(os::Key::END, os::Modifiers{});
 	type(&input, ">");
 
 	CHECK(input.value() == "<middle>");

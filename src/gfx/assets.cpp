@@ -31,8 +31,8 @@
 #include "embeds/icons/IconsIcon.hpp"
 #include "embeds/icons/ImageIcon.hpp"
 #include "embeds/icons/LeagueIcon.hpp"
+#include "embeds/icons/LibraryIcon.hpp"
 #include "embeds/icons/ListArrow.hpp"
-#include "embeds/icons/ListIcon.hpp"
 #include "embeds/icons/LockIcon.hpp"
 #include "embeds/icons/MenuIcon.hpp"
 #include "embeds/icons/Minimize.hpp"
@@ -97,7 +97,7 @@ constexpr EncodedAsset K_ENCODED_ASSETS[]{
 	{Asset::ICON_EDIT, icon::edit_icon, "EditIcon"},
 	{Asset::ICON_FOLDER_OPEN, icon::folder_open_icon, "FolderOpenIcon"},
 	{Asset::ICON_GRID, icon::grid_icon, "GridIcon"},
-	{Asset::ICON_LIST, icon::list_icon, "ListIcon"},
+	{Asset::ICON_LIBRARY, icon::library_icon, "LibraryIcon"},
 	{Asset::ICON_CAROUSEL, icon::carousel_icon, "CarouselIcon"},
 	{Asset::ICON_SHELF, icon::shelf_icon, "ShelfIcon"},
 	{Asset::ICON_ICONS, icon::icons_icon, "IconsIcon"},
