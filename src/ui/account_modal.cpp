@@ -270,11 +270,6 @@ auto draw_input_box(DrawList* t_draw_list, Rect t_rect, Color t_border, bool t_f
 	                               t_focused ? K_INPUT_FOCUS_BORDER : 1.0f);
 }
 
-[[nodiscard]] auto caution_color() -> Color
-{
-	return luminance(g_theme.surface) > 0.3f ? Color{176, 112, 16, 255} : Color{240, 190, 90, 255};
-}
-
 [[nodiscard]] auto row_button_size(const Fonts* t_fonts) -> float
 {
 	return std::max(28.0f, t_fonts->secondary.line_height() + 8.0f);
@@ -2859,10 +2854,9 @@ auto AccountModal::draw_edit_form(DrawList* t_draw_list, Rect t_main, u8 t_alpha
 		return at.x + text_width(secondary, t_label);
 	};
 
-	const auto draw_hint = [&](u32 t_row, std::string_view t_hint, Color t_color) {
+	const auto draw_hint = [&](u32 t_row, controls::NoticeKind t_kind, std::string_view t_hint, Color t_color) {
 		const Rect input = form.inputs[t_row];
-		draw_text_truncated(t_draw_list, secondary, Vec2{input.x + 2.0f, input.bottom() + K_FORM_HINT_GAP + secondary.ascent}, t_hint, input.w - 2.0f,
-		                    faded(t_color, t_alpha));
+		controls::draw_notice(t_draw_list, secondary, Vec2{input.x + 2.0f, input.bottom() + K_FORM_HINT_GAP}, t_kind, t_hint, faded(t_color, t_alpha));
 	};
 
 	for (u32 i = 0; i < K_FIELD_COUNT; i += 1) {
@@ -2894,9 +2888,9 @@ auto AccountModal::draw_edit_form(DrawList* t_draw_list, Rect t_main, u8 t_alpha
 		input->draw(t_draw_list, body, field_text_rect(t_main, i), text, caret);
 
 		if (missing) {
-			draw_hint(i, "Required", g_theme.error);
+			draw_hint(i, controls::NoticeKind::ALERT, "Required", g_theme.error);
 		} else if (i == static_cast<u32>(EditField::PASSWORD) && focused && os::is_caps_lock_on()) {
-			draw_hint(i, "Caps Lock is on", caution_color());
+			draw_hint(i, controls::NoticeKind::CAPS_LOCK, "Caps Lock is on", controls::caution_color());
 		}
 	}
 

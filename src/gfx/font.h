@@ -62,6 +62,7 @@ struct InstalledFonts {
 [[nodiscard]] auto installed_fonts() -> InstalledFonts;
 
 struct Fonts {
+	Font title;
 	Font body;
 	Font secondary;
 	Font caption;

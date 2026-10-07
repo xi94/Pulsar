@@ -21,6 +21,13 @@ enum class ButtonStyle : u8 {
 };
 
 [[nodiscard]] auto confirm_red() -> Color;
+[[nodiscard]] auto caution_color() -> Color;
+[[nodiscard]] auto ink_on(Color t_background) -> Color;
+
+enum class NoticeKind : u8 {
+	CAPS_LOCK,
+	ALERT,
+};
 
 auto draw_x(DrawList* t_draw_list, Rect t_rect, Color t_color) -> void;
 auto draw_check(DrawList* t_draw_list, const Assets* t_assets, Rect t_rect, Color t_color) -> void;
@@ -36,6 +43,10 @@ auto draw_mouse_keycap(DrawList* t_draw_list, Rect t_cap, Color t_backdrop, u8 t
 [[nodiscard]] auto shortcut_width(const Font& t_font, std::string_view t_combo) -> float;
 auto draw_shortcut(DrawList* t_draw_list, const Font& t_font, Vec2 t_right_center, std::string_view t_combo, Color t_backdrop, u8 t_alpha) -> void;
 auto draw_magnifier(DrawList* t_draw_list, Rect t_rect, Color t_color) -> void;
+auto draw_caps_lock(DrawList* t_draw_list, Rect t_rect, Color t_color) -> void;
+auto draw_alert(DrawList* t_draw_list, Rect t_rect, Color t_color) -> void;
+[[nodiscard]] auto notice_width(const Font& t_font, std::string_view t_text) -> float;
+auto draw_notice(DrawList* t_draw_list, const Font& t_font, Vec2 t_top_left, NoticeKind t_kind, std::string_view t_text, Color t_color) -> void;
 auto draw_eye(DrawList* t_draw_list, const Assets* t_assets, Rect t_rect, bool t_revealed, Color t_color) -> void;
 auto draw_favorite(DrawList* t_draw_list, const Assets* t_assets, Rect t_rect, bool t_filled, Color t_color) -> void;
 

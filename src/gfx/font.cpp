@@ -17,6 +17,7 @@ namespace {
 constexpr float K_COVERAGE_GAMMA         = 0.8f;
 constexpr float K_SETTING_TO_PIXEL_SCALE = 1.5f;
 constexpr float K_CAPTION_SIZE_RATIO     = 0.85f;
+constexpr float K_TITLE_SIZE_RATIO       = 1.5f;
 constexpr u32   K_ATLAS_PADDING          = 1;
 
 struct FontFace {
@@ -338,15 +339,18 @@ auto Fonts::load(Renderer* t_renderer, std::string_view t_file, float t_body_siz
 	const std::string path = os::system_font_path(t_file);
 	if (path.empty()) return false;
 
+	Font loaded_title;
 	Font loaded_body;
 	Font loaded_secondary;
 	Font loaded_caption;
-	if (!loaded_body.load(t_renderer, path.c_str(), t_body_size * K_SETTING_TO_PIXEL_SCALE, t_dpi_scale) ||
+	if (!loaded_title.load(t_renderer, path.c_str(), t_body_size * K_TITLE_SIZE_RATIO * K_SETTING_TO_PIXEL_SCALE, t_dpi_scale) ||
+	    !loaded_body.load(t_renderer, path.c_str(), t_body_size * K_SETTING_TO_PIXEL_SCALE, t_dpi_scale) ||
 	    !loaded_secondary.load(t_renderer, path.c_str(), t_secondary_size * K_SETTING_TO_PIXEL_SCALE, t_dpi_scale) ||
 	    !loaded_caption.load(t_renderer, path.c_str(), t_secondary_size * K_CAPTION_SIZE_RATIO * K_SETTING_TO_PIXEL_SCALE, t_dpi_scale)) {
 		return false;
 	}
 
+	title     = std::move(loaded_title);
 	body      = std::move(loaded_body);
 	secondary = std::move(loaded_secondary);
 	caption   = std::move(loaded_caption);

@@ -30,6 +30,7 @@ constexpr float K_IDLE_POLL_SECONDS         = 0.25f;
 constexpr auto  K_RESUME_FRAME_TIME         = std::chrono::microseconds(16667);
 constexpr auto  K_CLIPBOARD_SECRET_LIFETIME = std::chrono::seconds(30);
 constexpr float K_PICKER_POLL_SECONDS       = 0.1f;
+constexpr u32   K_APP_ICON_TEXTURE_SIZE     = 256;
 
 constexpr float K_STATUS_PADDING        = 14.0f;
 constexpr float K_STATUS_MARK_SIZE      = 15.0f;
@@ -196,9 +197,9 @@ auto App::start(bool t_from_startup) -> App::StartResult
 	lock();
 
 	if (m_settings.master_password_enabled) {
-		m_unlock_screen.show_unlock();
+		m_unlock_screen.show_unlock(false);
 	} else {
-		m_unlock_screen.show_setup();
+		m_unlock_screen.show_setup(false);
 	}
 
 	m_window.on_redraw([this] { redraw_while_resizing(); });
@@ -251,6 +252,11 @@ auto App::create_graphics() -> bool
 	}
 
 	m_snowfall.create_texture(&m_renderer);
+
+	if (const std::vector<u8> icon = os::app_icon_pixels(K_APP_ICON_TEXTURE_SIZE); !icon.empty()) {
+		m_app_icon = Assets::create_texture(&m_renderer, icon.data(), K_APP_ICON_TEXTURE_SIZE, K_APP_ICON_TEXTURE_SIZE);
+		m_unlock_screen.set_app_icon(m_app_icon.get());
+	}
 
 	if (!reload_fonts()) {
 		std::println("Failed to load the UI font.");
@@ -320,7 +326,6 @@ auto App::apply_settings(storage::LoadResult t_load_result) -> void
 auto App::lock() -> void
 {
 	m_locked = true;
-	m_carousel.set_visible(false);
 	m_account_search.close();
 	m_title_bar.set_search_visible(false);
 	m_tray.set_locked(true);
@@ -329,7 +334,6 @@ auto App::lock() -> void
 auto App::unlock() -> void
 {
 	m_locked = false;
-	m_carousel.set_visible(true);
 	m_title_bar.set_search_visible(true);
 	m_unlock_screen.hide();
 	m_tray.set_locked(false);
@@ -354,7 +358,7 @@ auto App::lock_vault() -> void
 	m_master_key.lock();
 
 	lock();
-	m_unlock_screen.show_unlock();
+	m_unlock_screen.show_unlock(true);
 }
 
 auto App::lock_if_idle() -> void
@@ -747,7 +751,7 @@ auto App::process(const Command& t_command) -> void
 			m_replaced_vault_key->key.swap(&m_master_key);
 			m_replaced_vault_key->params = m_settings.master_key;
 			lock();
-			m_unlock_screen.show_setup();
+			m_unlock_screen.show_setup(true);
 			break;
 		}
 
@@ -991,6 +995,8 @@ auto App::frame() -> void
 		m_settings.window_height = static_cast<u32>(std::lround(restored.y));
 	}
 
+	// The games stay drawn under the lock screen until it covers them, so locking fades over them instead of blanking first.
+	m_carousel.set_visible(!m_locked || !m_unlock_screen.covers_window());
 	m_carousel.set_bounds(content_rect(m_window.size()));
 	set_pixel_scale(m_window.dpi_scale());
 	set_caret_style(m_settings.caret_style, m_settings.caret_trail, m_settings.caret_trail_strength);

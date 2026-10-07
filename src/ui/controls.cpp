@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <span>
 
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
@@ -61,6 +62,20 @@ struct ButtonLook {
 	}
 
 	return ButtonLook{};
+}
+
+// Strokes are stretched by half their thickness at both ends so the corners of an outline close up.
+auto stroke_closed(DrawList* t_draw_list, std::span<const Vec2> t_points, float t_thickness, Color t_color) -> void
+{
+	for (usize i = 0; i < t_points.size(); i += 1) {
+		const Vec2  from   = t_points[i];
+		const Vec2  to     = t_points[(i + 1) % t_points.size()];
+		const float length = std::hypot(to.x - from.x, to.y - from.y);
+		if (length <= 0.0f) continue;
+
+		const Vec2 reach{(to.x - from.x) / length * t_thickness * 0.5f, (to.y - from.y) / length * t_thickness * 0.5f};
+		t_draw_list->add_line(Vec2{from.x - reach.x, from.y - reach.y}, Vec2{to.x + reach.x, to.y + reach.y}, t_thickness, t_color);
+	}
 }
 
 [[nodiscard]] auto disabled_button_look() -> ButtonLook
@@ -231,6 +246,74 @@ auto controls::draw_magnifier(DrawList* t_draw_list, Rect t_rect, Color t_color)
 
 	const float handle_start = radius * std::numbers::sqrt2_v<float> * 0.5f;
 	t_draw_list->add_line({center.x + handle_start, center.y + handle_start}, {t_rect.x + size, t_rect.y + size}, thickness, t_color);
+}
+
+auto controls::caution_color() -> Color
+{
+	return luminance(g_theme.surface) > 0.3f ? Color{176, 112, 16, 255} : Color{240, 190, 90, 255};
+}
+
+// The theme's window or text colour, whichever reads on the background: the darker one on a light colour, the lighter one on a dark one.
+auto controls::ink_on(Color t_background) -> Color
+{
+	const bool window_is_darker = luminance(g_theme.window) < luminance(g_theme.text);
+	const bool light_background = luminance(t_background) > 0.35f;
+
+	return light_background == window_is_darker ? g_theme.window : g_theme.text;
+}
+
+// An outlined arrow standing on a bar: the symbol keyboards print on Caps Lock. Drawn on a 24-unit grid.
+auto controls::draw_caps_lock(DrawList* t_draw_list, Rect t_rect, Color t_color) -> void
+{
+	const float size      = std::min(t_rect.w, t_rect.h);
+	const float unit      = size / 24.0f;
+	const float thickness = std::max(1.25f, size * 0.09f);
+	const auto  at        = [&](float t_x, float t_y) { return Vec2{t_rect.x + t_x * unit, t_rect.y + t_y * unit}; };
+
+	const Vec2 arrow[]{at(9.0f, 11.5f), at(5.0f, 11.5f), at(12.0f, 4.0f), at(19.0f, 11.5f), at(15.0f, 11.5f), at(15.0f, 16.0f), at(9.0f, 16.0f)};
+	stroke_closed(t_draw_list, arrow, thickness, t_color);
+	t_draw_list->add_line(at(9.0f - thickness * 0.5f / unit, 20.0f), at(15.0f + thickness * 0.5f / unit, 20.0f), thickness, t_color);
+}
+
+auto controls::draw_alert(DrawList* t_draw_list, Rect t_rect, Color t_color) -> void
+{
+	constexpr u32 RING_SEGMENTS = 24;
+
+	const float size      = std::min(t_rect.w, t_rect.h);
+	const float thickness = std::max(1.25f, size * 0.09f);
+	const float radius    = size * 0.5f - thickness * 0.5f;
+	const Vec2  center    = t_rect.center();
+
+	Vec2 ring[RING_SEGMENTS]{};
+	for (u32 i = 0; i < RING_SEGMENTS; i += 1) {
+		const float angle = static_cast<float>(i) / RING_SEGMENTS * 2.0f * std::numbers::pi_v<float>;
+		ring[i]           = Vec2{center.x + radius * std::cos(angle), center.y + radius * std::sin(angle)};
+	}
+
+	stroke_closed(t_draw_list, ring, thickness, t_color);
+	t_draw_list->add_line(Vec2{center.x, center.y - radius * 0.5f}, Vec2{center.x, center.y + radius * 0.12f}, thickness, t_color);
+	t_draw_list->add_rect(Rect{center.x - thickness * 0.5f, center.y + radius * 0.38f, thickness, thickness}, t_color);
+}
+
+auto controls::notice_width(const Font& t_font, std::string_view t_text) -> float
+{
+	return std::round(t_font.line_height() * 0.9f) + 6.0f + text_width(t_font, t_text);
+}
+
+// An icon and a line of text: the Caps Lock warning and error lines under password fields.
+auto controls::draw_notice(DrawList* t_draw_list, const Font& t_font, Vec2 t_top_left, NoticeKind t_kind, std::string_view t_text, Color t_color) -> void
+{
+	const float line = t_font.line_height();
+	const float size = std::round(line * 0.9f);
+	const Rect  icon{t_top_left.x, std::round(t_top_left.y + (line - size) * 0.5f), size, size};
+
+	if (t_kind == NoticeKind::CAPS_LOCK) {
+		draw_caps_lock(t_draw_list, icon, t_color);
+	} else {
+		draw_alert(t_draw_list, icon.inset(size * 0.06f), t_color);
+	}
+
+	draw_text(t_draw_list, t_font, Vec2{icon.right() + 6.0f, t_top_left.y + t_font.ascent}, t_text, t_color);
 }
 
 auto controls::draw_eye(DrawList* t_draw_list, const Assets* t_assets, Rect t_rect, bool t_revealed, Color t_color) -> void

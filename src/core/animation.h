@@ -18,6 +18,7 @@ auto request_frame_after(float t_seconds) -> void;
 [[nodiscard]] auto take_idle_wait(float t_limit_seconds) -> float;
 
 auto set_enabled(bool t_enabled) -> void;
+[[nodiscard]] auto is_enabled() -> bool;
 auto set_speed(float t_speed) -> void;
 
 }

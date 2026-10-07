@@ -106,6 +106,11 @@ auto animation::set_enabled(bool t_enabled) -> void
 	g_enabled = t_enabled;
 }
 
+auto animation::is_enabled() -> bool
+{
+	return g_enabled;
+}
+
 auto animation::set_speed(float t_speed) -> void
 {
 	g_speed = t_speed * K_BASE_SPEED;

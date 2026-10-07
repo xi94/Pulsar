@@ -15,6 +15,7 @@
 #include "gfx/font.h"
 #include "os/clipboard.h"
 #include "os/input.h"
+#include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
 
@@ -87,16 +88,6 @@ CaretMark  g_last_caret{};
 	}
 
 	return count - 1;
-}
-
-// The colour that reads best on top of a block caret: the theme's window or text colour, whichever is darker on a light caret and
-// whichever is lighter on a dark one.
-[[nodiscard]] auto ink_on(Color t_background) -> Color
-{
-	const bool window_is_darker = luminance(g_theme.window) < luminance(g_theme.text);
-	const bool light_background = luminance(t_background) > 0.35f;
-
-	return light_background == window_is_darker ? g_theme.window : g_theme.text;
 }
 
 enum class CharClass : u8 {
@@ -489,7 +480,7 @@ auto TextInput::draw(DrawList* t_draw_list, const Font& t_font, Rect t_field, Co
 	// A block caret shows the character under it in a contrasting colour, as a terminal does.
 	if (caret_shown && g_caret_style == CaretStyle::BLOCK) {
 		t_draw_list->push_clip(Rect{caret_origin.x + m_caret_head.x, caret_origin.y + m_caret_head.y, caret_extent.x, caret_extent.y});
-		draw_text(t_draw_list, t_font, Vec2{origin_x, baseline}, shown, ink_on(t_caret_color));
+		draw_text(t_draw_list, t_font, Vec2{origin_x, baseline}, shown, controls::ink_on(t_caret_color));
 		t_draw_list->pop_clip();
 	}
 
