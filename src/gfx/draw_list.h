@@ -129,7 +129,7 @@ class DrawList {
 	auto add_triangle(Vec2 t_a, Vec2 t_b, Vec2 t_c, Color t_color) -> void;
 	auto add_rect_outline(Rect t_rect, float t_thickness, Color t_color) -> void;
 	auto add_gradient(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right) -> void;
-	auto add_quad(const Vec2 (&t_corners)[4], const Color (&t_colors)[4]) -> void;
+	auto add_convex_polygon(std::span<const Vec2> t_points, std::span<const Color> t_colors) -> void;
 	auto add_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right) -> void;
 	auto add_plain_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right) -> void;
 	auto add_pattern_swatch(Rect t_rect, CornerRadii t_radii, Color t_color, u32 t_style) -> void;

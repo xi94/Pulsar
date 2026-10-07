@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstring>
 #include <optional>
+#include <span>
 #include <utility>
 
 #include "core/animation.h"
@@ -37,9 +38,13 @@ constexpr float            K_TRAIL_FAINT_ALPHA_MAX = 80.0f;
 constexpr float            K_TRAIL_MIN_LENGTH      = 0.5f;
 constexpr float            K_TRAIL_MAX_STEP        = 0.1f;
 constexpr auto             K_HOP_WINDOW            = std::chrono::milliseconds(250);
-constexpr u8               K_BLOCK_ALPHA           = 110;
 constexpr float            K_UNDERLINE_HEIGHT      = 2.0f;
 constexpr std::string_view K_END_OF_TEXT_CELL      = "0";
+
+struct TrailPoint {
+	Vec2  position;
+	Color color;
+};
 
 struct CaretMark {
 	Vec2                                  position;
@@ -50,6 +55,49 @@ CaretStyle g_caret_style    = CaretStyle::BAR;
 bool       g_caret_trail    = true;
 float      g_trail_strength = 0.5f;
 CaretMark  g_last_caret{};
+
+// The outline around a set of points (Andrew's monotone chain), so the trail is one shape however the caret moves.
+[[nodiscard]] auto convex_hull(std::span<TrailPoint> t_points, std::span<TrailPoint> t_out) -> u32
+{
+	std::ranges::sort(t_points, [](const TrailPoint& t_a, const TrailPoint& t_b) {
+		return t_a.position.x < t_b.position.x || (t_a.position.x == t_b.position.x && t_a.position.y < t_b.position.y);
+	});
+
+	const auto turn = [](Vec2 t_origin, Vec2 t_a, Vec2 t_b) {
+		return (t_a.x - t_origin.x) * (t_b.y - t_origin.y) - (t_a.y - t_origin.y) * (t_b.x - t_origin.x);
+	};
+
+	u32        count = 0;
+	const auto add   = [&](const TrailPoint& t_point, u32 t_floor) {
+		while (count >= t_floor && turn(t_out[count - 2].position, t_out[count - 1].position, t_point.position) <= 0.0f) {
+			count -= 1;
+		}
+
+		t_out[count] = t_point;
+		count += 1;
+	};
+
+	for (const TrailPoint& point : t_points) {
+		add(point, 2);
+	}
+
+	const u32 lower_end = count + 1;
+	for (usize i = t_points.size() - 1; i > 0; i -= 1) {
+		add(t_points[i - 1], lower_end);
+	}
+
+	return count - 1;
+}
+
+// The colour that reads best on top of a block caret: the theme's window or text colour, whichever is darker on a light caret and
+// whichever is lighter on a dark one.
+[[nodiscard]] auto ink_on(Color t_background) -> Color
+{
+	const bool window_is_darker = luminance(g_theme.window) < luminance(g_theme.text);
+	const bool light_background = luminance(t_background) > 0.35f;
+
+	return light_background == window_is_darker ? g_theme.window : g_theme.text;
+}
 
 enum class CharClass : u8 {
 	SPACE,
@@ -427,13 +475,25 @@ auto TextInput::draw(DrawList* t_draw_list, const Font& t_font, Rect t_field, Co
 		draw_text(t_draw_list, t_font, Vec2{placeholder_x, baseline}, m_placeholder, faded(g_theme.text_faint, t_text_color.a));
 	}
 
-	draw_text(t_draw_list, t_font, Vec2{origin_x, baseline}, shown, t_text_color);
 	t_draw_list->pop_clip();
 
-	// Outside the field's clip, so a caret hopping in from another field shows on its way over.
-	if (m_focused && m_caret_blink_seconds < K_CARET_BLINK_PERIOD * 0.5f) {
-		draw_caret(t_draw_list, caret_origin, caret_extent, g_caret_style == CaretStyle::BLOCK ? faded(t_caret_color, K_BLOCK_ALPHA) : t_caret_color);
+	// Outside the field's clip, so a caret hopping in from another field shows on its way over. The text goes on top of it.
+	const bool caret_shown = m_focused && m_caret_blink_seconds < K_CARET_BLINK_PERIOD * 0.5f;
+	if (caret_shown) {
+		draw_caret(t_draw_list, caret_origin, caret_extent, t_caret_color);
 	}
+
+	t_draw_list->push_clip(content);
+	draw_text(t_draw_list, t_font, Vec2{origin_x, baseline}, shown, t_text_color);
+
+	// A block caret shows the character under it in a contrasting colour, as a terminal does.
+	if (caret_shown && g_caret_style == CaretStyle::BLOCK) {
+		t_draw_list->push_clip(Rect{caret_origin.x + m_caret_head.x, caret_origin.y + m_caret_head.y, caret_extent.x, caret_extent.y});
+		draw_text(t_draw_list, t_font, Vec2{origin_x, baseline}, shown, ink_on(t_caret_color));
+		t_draw_list->pop_clip();
+	}
+
+	t_draw_list->pop_clip();
 }
 
 auto TextInput::selection() const -> TextRange
@@ -559,31 +619,43 @@ auto TextInput::move_caret(Vec2 t_target, Vec2 t_origin, float t_line_height) ->
 	}
 }
 
+// The trail is the outline around the caret and a shrunken copy of it where the tail is: the area the caret sweeps through. The caret is
+// that outline's front edge, so nothing pokes out of it whichever way the caret moves.
 auto TextInput::draw_caret(DrawList* t_draw_list, Vec2 t_origin, Vec2 t_size, Color t_color) const -> void
 {
-	const Vec2  head{t_origin.x + m_caret_head.x + t_size.x * 0.5f, t_origin.y + m_caret_head.y + t_size.y * 0.5f};
-	const Vec2  tail{t_origin.x + m_caret_tail.x + t_size.x * 0.5f, t_origin.y + m_caret_tail.y + t_size.y * 0.5f};
-	const float length = std::hypot(head.x - tail.x, head.y - tail.y);
+	const Rect head{t_origin.x + m_caret_head.x, t_origin.y + m_caret_head.y, t_size.x, t_size.y};
+	const Vec2 tail{t_origin.x + m_caret_tail.x + t_size.x * 0.5f, t_origin.y + m_caret_tail.y + t_size.y * 0.5f};
 
-	if (length > K_TRAIL_MIN_LENGTH) {
-		// The ribbon's ends stand across its direction of travel, as wide as the caret is along that line.
-		const Vec2  across{(tail.y - head.y) / length, (head.x - tail.x) / length};
-		const float head_half = (std::fabs(across.x) * t_size.x + std::fabs(across.y) * t_size.y) * 0.5f;
-		const float tail_half = head_half * K_TRAIL_TAIL_SPREAD;
-		const auto  alpha     = static_cast<u8>(K_TRAIL_FAINT_ALPHA_MIN + (K_TRAIL_FAINT_ALPHA_MAX - K_TRAIL_FAINT_ALPHA_MIN) * g_trail_strength);
-		const Color faint     = faded(t_color, alpha);
-		const Vec2  corners[4]{
-			{tail.x - across.x * tail_half, tail.y - across.y * tail_half},
-			{head.x - across.x * head_half, head.y - across.y * head_half},
-			{head.x + across.x * head_half, head.y + across.y * head_half},
-			{tail.x + across.x * tail_half, tail.y + across.y * tail_half},
+	if (std::hypot(head.center().x - tail.x, head.center().y - tail.y) > K_TRAIL_MIN_LENGTH) {
+		const auto  alpha = static_cast<u8>(K_TRAIL_FAINT_ALPHA_MIN + (K_TRAIL_FAINT_ALPHA_MAX - K_TRAIL_FAINT_ALPHA_MIN) * g_trail_strength);
+		const Color faint = faded(t_color, alpha);
+		const Vec2  tail_half{t_size.x * 0.5f * K_TRAIL_TAIL_SPREAD, t_size.y * 0.5f * K_TRAIL_TAIL_SPREAD};
+
+		TrailPoint corners[8]{
+			{{head.x, head.y}, t_color},
+			{{head.right(), head.y}, t_color},
+			{{head.right(), head.bottom()}, t_color},
+			{{head.x, head.bottom()}, t_color},
+			{{tail.x - tail_half.x, tail.y - tail_half.y}, faint},
+			{{tail.x + tail_half.x, tail.y - tail_half.y}, faint},
+			{{tail.x + tail_half.x, tail.y + tail_half.y}, faint},
+			{{tail.x - tail_half.x, tail.y + tail_half.y}, faint},
 		};
-		const Color colors[4]{faint, t_color, t_color, faint};
 
-		t_draw_list->add_quad(corners, colors);
+		TrailPoint outline[16]{};
+		const u32  count = convex_hull(corners, outline);
+
+		Vec2  points[16]{};
+		Color colors[16]{};
+		for (u32 i = 0; i < count; i += 1) {
+			points[i] = outline[i].position;
+			colors[i] = outline[i].color;
+		}
+
+		t_draw_list->add_convex_polygon(std::span{points, count}, std::span{colors, count});
 	}
 
-	t_draw_list->add_rect(Rect{t_origin.x + m_caret_head.x, t_origin.y + m_caret_head.y, t_size.x, t_size.y}, t_color);
+	t_draw_list->add_rect(head, t_color);
 }
 
 auto TextInput::restart_caret_blink() -> void

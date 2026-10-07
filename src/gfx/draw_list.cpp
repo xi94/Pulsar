@@ -411,16 +411,30 @@ auto DrawList::add_gradient(Rect t_rect, Color t_top_left, Color t_top_right, Co
 	push_quad(corners);
 }
 
-auto DrawList::add_quad(const Vec2 (&t_corners)[4], const Color (&t_colors)[4]) -> void
+auto DrawList::add_convex_polygon(std::span<const Vec2> t_points, std::span<const Color> t_colors) -> void
 {
+	const auto count = static_cast<u32>(t_points.size());
+	if (count < 3) return;
+
 	target(ShaderKind::SOLID);
 
-	Vertex2D vertices[4]{};
-	for (u32 i = 0; i < 4; i += 1) {
-		vertices[i] = Vertex2D{t_corners[i].x, t_corners[i].y, 0.0f, 0.0f, pack(t_colors[i])};
+	assert(m_vertex_count + count <= m_vertex_capacity);
+	assert(m_index_count + (count - 2) * 3 <= m_index_capacity);
+
+	const u32 base = m_vertex_count;
+	for (u32 i = 0; i < count; i += 1) {
+		const Vec2 position  = scaled(t_points[i]);
+		m_vertices[base + i] = Vertex2D{position.x, position.y, 0.0f, 0.0f, pack(t_colors[i])};
 	}
 
-	push_quad(vertices);
+	m_vertex_count += count;
+
+	for (u32 i = 1; i + 1 < count; i += 1) {
+		m_indices[m_index_count + 0] = base;
+		m_indices[m_index_count + 1] = base + i;
+		m_indices[m_index_count + 2] = base + i + 1;
+		m_index_count += 3;
+	}
 }
 
 auto DrawList::add_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right) -> void
