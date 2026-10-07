@@ -62,9 +62,9 @@ auto main(int t_argument_count, char** t_arguments) -> int
 	const LaunchFlags flags = launch_flags(t_argument_count, t_arguments);
 
 	if (flags.setup || flags.uninstall) {
-		if (os::bring_window_to_front(os::WindowKind::Dialog)) return 0;
+		if (os::bring_window_to_front(os::WindowKind::DIALOG)) return 0;
 
-		auto setup = std::make_unique<SetupApp>(flags.uninstall ? SetupMode::Uninstall : SetupMode::Manage);
+		auto setup = std::make_unique<SetupApp>(flags.uninstall ? SetupMode::UNINSTALL : SetupMode::MANAGE);
 		setup->run();
 		setup.reset();
 		os::installation::finish_pending_removal();
@@ -72,13 +72,13 @@ auto main(int t_argument_count, char** t_arguments) -> int
 	}
 
 	if (!flags.startup && !os::installation::is_main_window_open() && os::installation::should_offer_setup()) {
-		if (os::bring_window_to_front(os::WindowKind::Dialog)) return 0;
+		if (os::bring_window_to_front(os::WindowKind::DIALOG)) return 0;
 
-		auto               setup   = std::make_unique<SetupApp>(SetupMode::FirstRun);
+		auto               setup   = std::make_unique<SetupApp>(SetupMode::FIRST_RUN);
 		const SetupOutcome outcome = setup->run();
 		setup.reset();
 
-		if (outcome != SetupOutcome::Portable) {
+		if (outcome != SetupOutcome::PORTABLE) {
 			os::installation::finish_pending_removal();
 			return 0;
 		}
@@ -89,16 +89,16 @@ auto main(int t_argument_count, char** t_arguments) -> int
 	switch (app->start(flags.startup)) {
 		using enum App::StartResult;
 
-		case Ok: {
+		case OK: {
 			app->run();
 			return 0;
 		}
 
-		case AlreadyRunning: {
+		case ALREADY_RUNNING: {
 			return 0;
 		}
 
-		case Failed: {
+		case FAILED: {
 			return 1;
 		}
 	}

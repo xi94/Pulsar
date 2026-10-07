@@ -43,11 +43,11 @@ struct MenuItem {
 };
 
 constexpr MenuItem K_MENU_ITEMS[]{
-	{CommandType::CheckForUpdates, "Check for updates", Asset::IconUpdate, "", false, false, false},
-	{CommandType::OpenSettings, "Settings", Asset::IconSettings, PULSAR_SHORTCUT_KEY "+,", true, true, false},
-	{CommandType::OpenDataFolder, "Open data folder", Asset::IconFolderOpen, "", false, false, false},
-	{CommandType::LockVault, "Lock now", Asset::IconLock, PULSAR_SHORTCUT_KEY "+L", true, true, false},
-	{CommandType::OpenSetup, "Setup", Asset::IconApp, "", true, false, true},
+	{CommandType::CHECK_FOR_UPDATES, "Check for updates", Asset::ICON_UPDATE, "", false, false, false},
+	{CommandType::OPEN_SETTINGS, "Settings", Asset::ICON_SETTINGS, PULSAR_SHORTCUT_KEY "+,", true, true, false},
+	{CommandType::OPEN_DATA_FOLDER, "Open data folder", Asset::ICON_FOLDER_OPEN, "", false, false, false},
+	{CommandType::LOCK_VAULT, "Lock now", Asset::ICON_LOCK, PULSAR_SHORTCUT_KEY "+L", true, true, false},
+	{CommandType::OPEN_SETUP, "Setup", Asset::ICON_APP, "", true, false, true},
 };
 
 constexpr u32 K_ITEM_COUNT = static_cast<u32>(std::size(K_MENU_ITEMS));
@@ -116,7 +116,7 @@ auto AppMenu::items() const -> std::span<const u32>
 auto AppMenu::menu() const -> Rect
 {
 	const TitleBarLayout title_bar{.width = static_cast<float>(m_window->width()), .native_controls_width = m_window->native_controls_width()};
-	const Rect           button  = title_bar.button_rect(TitleBarButton::Menu);
+	const Rect           button  = title_bar.button_rect(TitleBarButton::MENU);
 	const float          x       = title_bar.menu_on_right() ? button.right() - K_MENU_X - K_MENU_WIDTH : button.x + K_MENU_X;
 	const float          content = item_offset(m_fonts, items(), m_item_count - 1) + item_height(m_fonts);
 	const float          height  = K_MENU_PADDING * 2.0f + content + K_SEPARATOR_BLOCK + footer_height(m_fonts);
@@ -162,15 +162,15 @@ auto AppMenu::on_pointer_up(Vec2 t_point) -> bool
 
 auto AppMenu::cursor() const -> CursorKind
 {
-	if (!is_blocking()) return CursorKind::Arrow;
+	if (!is_blocking()) return CursorKind::ARROW;
 
 	const Rect menu_area = menu();
 
 	for (u32 slot = 0; slot < m_item_count; slot += 1) {
-		if (is_enabled(m_items[slot]) && item_rect(m_fonts, items(), menu_area, slot).contains(m_mouse)) return CursorKind::Hand;
+		if (is_enabled(m_items[slot]) && item_rect(m_fonts, items(), menu_area, slot).contains(m_mouse)) return CursorKind::HAND;
 	}
 
-	return CursorKind::Arrow;
+	return CursorKind::ARROW;
 }
 
 auto AppMenu::draw(DrawList* t_draw_list) -> void

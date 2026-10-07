@@ -10,18 +10,18 @@
 #include "login/riot_client.h"
 
 enum class LoginStage : u8 {
-	Idle,
-	WaitingForProcess,
-	Connecting,
-	Authenticating,
-	Launching,
-	Success,
-	Error,
-	Cancelled,
+	IDLE,
+	WAITING_FOR_PROCESS,
+	CONNECTING,
+	AUTHENTICATING,
+	LAUNCHING,
+	SUCCESS,
+	FAILED,
+	CANCELLED,
 };
 
 struct LoginWork {
-	std::atomic<LoginStage> stage{LoginStage::Idle};
+	std::atomic<LoginStage> stage{LoginStage::IDLE};
 	std::atomic<bool>       cancel_requested{false};
 	std::atomic<bool>       worker_finished{false};
 
@@ -32,10 +32,14 @@ struct LoginWork {
 
 	std::string remembered_client_path;
 	std::string found_client_path;
-	bool        client_missing = false;
+	bool        client_missing     = false;
+	bool        permission_missing = false;
 
 	RiotClient riot_client{&cancel_requested};
 };
+
+// What to tell the user about an error the Riot Client showed. The client's wording is Riot's to change, so this only looks for a word.
+[[nodiscard]] auto login_failure_message(std::string_view t_riot_error) -> const char*;
 
 class LoginAttempt {
   public:
@@ -58,6 +62,7 @@ class LoginAttempt {
 	[[nodiscard]] auto terminal_message() const -> std::string_view;
 	[[nodiscard]] auto found_client_path() const -> std::string;
 	[[nodiscard]] auto is_client_missing() const -> bool;
+	[[nodiscard]] auto is_permission_missing() const -> bool;
 
 	[[nodiscard]] static auto is_terminal(LoginStage t_stage) -> bool;
 

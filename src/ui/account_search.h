@@ -47,10 +47,10 @@ class AccountSearch : public Widget {
 
   private:
 	enum class ActionKind : u8 {
-		Edit,
-		CopyUsername,
-		CopyPassword,
-		Login,
+		EDIT,
+		COPY_USERNAME,
+		COPY_PASSWORD,
+		LOGIN,
 	};
 
 	struct Action {

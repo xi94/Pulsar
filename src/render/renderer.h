@@ -109,8 +109,8 @@ class Renderer {
 	auto remember_size(const os::Window* t_window) -> void;
 
 	std::unique_ptr<RenderBackend> m_backend;
-	GraphicsApi                    m_api           = GraphicsApi::Native;
-	GraphicsApi                    m_requested_api = GraphicsApi::Native;
+	GraphicsApi                    m_api           = GraphicsApi::NATIVE;
+	GraphicsApi                    m_requested_api = GraphicsApi::NATIVE;
 
 	u32 m_free_texture_slots[K_MAX_TEXTURES]{};
 	u32 m_free_texture_count = 0;

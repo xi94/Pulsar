@@ -36,6 +36,7 @@ struct FloatSetting {
 
 constexpr BoolSetting K_BOOL_SETTINGS[]{
 	{"animations_enabled", &Settings::animations_enabled},
+	{"caret_trail", &Settings::caret_trail},
 	{"background_light", &Settings::background_light},
 	{"background_grain", &Settings::background_grain},
 	{"snow", &Settings::snow},
@@ -53,6 +54,7 @@ constexpr FloatSetting K_FLOAT_SETTINGS[]{
 	{"background_intensity", &Settings::background_intensity, 0.0f, 1.0f},
 	{"background_light_intensity", &Settings::background_light_intensity, 0.0f, 1.0f},
 	{"background_grain_intensity", &Settings::background_grain_intensity, 0.0f, 1.0f},
+	{"caret_trail_strength", &Settings::caret_trail_strength, 0.0f, 1.0f},
 };
 
 bool g_settings_writable = true;
@@ -164,7 +166,7 @@ auto from_hex(const std::string& t_hex, std::span<u8> t_out) -> bool
 
 [[nodiscard]] auto missing_or_failed(const std::string& t_path) -> storage::LoadResult
 {
-	return path_exists(t_path) ? storage::LoadResult::Failed : storage::LoadResult::NoFile;
+	return path_exists(t_path) ? storage::LoadResult::FAILED : storage::LoadResult::NO_FILE;
 }
 
 [[nodiscard]] auto master_password_to_json(const Settings* t_settings) -> json
@@ -240,12 +242,13 @@ auto read_appearance(const json& t_json, Settings* t_settings) -> void
 	}
 }
 
-[[nodiscard]] auto read_graphics_api(const json& t_json, GraphicsApi t_fallback) -> GraphicsApi
+template <typename Choice>
+[[nodiscard]] auto read_choice(const json& t_json, const char* t_key, std::span<const std::string_view> t_ids, Choice t_fallback) -> Choice
 {
-	const std::string id = t_json.value("renderer", std::string{});
+	const std::string id = t_json.value(t_key, std::string{});
 
-	for (u32 i = 0; i < std::size(K_GRAPHICS_API_IDS); i += 1) {
-		if (id == K_GRAPHICS_API_IDS[i]) return static_cast<GraphicsApi>(i);
+	for (u32 i = 0; i < t_ids.size(); i += 1) {
+		if (id == t_ids[i]) return static_cast<Choice>(i);
 	}
 
 	return t_fallback;
@@ -284,7 +287,7 @@ auto read_game_order(const json& t_json, Settings* t_settings) -> void
 [[nodiscard]] auto read_settings(Settings* t_settings) -> storage::LoadResult
 {
 	const std::string path = storage_path(K_SETTINGS_FILE_NAME);
-	if (path.empty()) return storage::LoadResult::Failed;
+	if (path.empty()) return storage::LoadResult::FAILED;
 
 	json settings;
 	if (!read_json_with_backup(path, &settings)) return missing_or_failed(path);
@@ -295,7 +298,8 @@ auto read_game_order(const json& t_json, Settings* t_settings) -> void
 		t_settings->auto_lock_minutes = settings.value("auto_lock_minutes", t_settings->auto_lock_minutes);
 		t_settings->zoom_stop         = read_zoom_stop(settings, t_settings->zoom_stop);
 		t_settings->selected_game     = settings.value("carousel_selected_banner", t_settings->selected_game);
-		t_settings->renderer          = read_graphics_api(settings, t_settings->renderer);
+		t_settings->renderer          = read_choice(settings, "renderer", K_GRAPHICS_API_IDS, t_settings->renderer);
+		t_settings->caret_style       = read_choice(settings, "caret_style", K_CARET_STYLE_IDS, t_settings->caret_style);
 		copy_to(settings.value("riot_client_path", std::string{}), t_settings->riot_client_path);
 		copy_to(settings.value("last_run_version", std::string{}), t_settings->last_run_version);
 		copy_to(settings.value("release_notes_version", std::string{}), t_settings->release_notes_version);
@@ -306,10 +310,10 @@ auto read_game_order(const json& t_json, Settings* t_settings) -> void
 		read_appearance(settings, t_settings);
 		read_master_password(settings, t_settings);
 	} catch (const json::exception&) {
-		return storage::LoadResult::Failed;
+		return storage::LoadResult::FAILED;
 	}
 
-	return storage::LoadResult::Ok;
+	return storage::LoadResult::OK;
 }
 
 [[nodiscard]] auto visible_titles(const Library* t_library, u16 t_mask) -> json
@@ -422,10 +426,10 @@ struct WipedOnExit {
 
 [[nodiscard]] auto read_accounts(Library* t_library, const MasterKey* t_master_key) -> storage::LoadResult
 {
-	if (!t_master_key->is_unlocked()) return storage::LoadResult::Locked;
+	if (!t_master_key->is_unlocked()) return storage::LoadResult::LOCKED;
 
 	const std::string path = storage_path(K_ACCOUNTS_FILE_NAME);
-	if (path.empty()) return storage::LoadResult::Failed;
+	if (path.empty()) return storage::LoadResult::FAILED;
 
 	json envelope;
 	if (!read_json_with_backup(path, &envelope)) return missing_or_failed(path);
@@ -434,10 +438,10 @@ struct WipedOnExit {
 		std::vector<u8>   plaintext;
 		const WipedOnExit wipe_plaintext{&plaintext};
 
-		if (!decrypt_vault(envelope, t_master_key, &plaintext)) return storage::LoadResult::Failed;
+		if (!decrypt_vault(envelope, t_master_key, &plaintext)) return storage::LoadResult::FAILED;
 
 		const json games = json::parse(plaintext.begin(), plaintext.end(), nullptr, false);
-		if (!games.is_array()) return storage::LoadResult::Failed;
+		if (!games.is_array()) return storage::LoadResult::FAILED;
 
 		remember_saved_accounts(plaintext, t_master_key);
 
@@ -455,10 +459,10 @@ struct WipedOnExit {
 
 		t_library->number_unordered_accounts();
 	} catch (const json::exception&) {
-		return storage::LoadResult::Failed;
+		return storage::LoadResult::FAILED;
 	}
 
-	return storage::LoadResult::Ok;
+	return storage::LoadResult::OK;
 }
 }
 
@@ -481,7 +485,7 @@ auto storage::load_settings(Settings* t_settings) -> storage::LoadResult
 {
 	const LoadResult result = read_settings(t_settings);
 
-	if (result == LoadResult::Failed) {
+	if (result == LoadResult::FAILED) {
 		// accounts.vault can only be decrypted with the key parameters in settings.json. Without them the app offers
 		// a fresh master password, and saving under that would overwrite the real vault.
 		g_settings_writable = false;
@@ -514,6 +518,7 @@ auto storage::save_settings(const Settings* t_settings) -> bool
 		{"font_name", t_settings->font_name},
 		{"theme", K_THEME_LABELS[static_cast<u32>(t_settings->theme)].id},
 		{"renderer", K_GRAPHICS_API_IDS[static_cast<u32>(t_settings->renderer)]},
+		{"caret_style", K_CARET_STYLE_IDS[static_cast<u32>(t_settings->caret_style)]},
 		{"auto_lock_minutes", t_settings->auto_lock_minutes},
 		{"riot_client_path", t_settings->riot_client_path},
 		{"last_run_version", t_settings->last_run_version},
@@ -540,7 +545,7 @@ auto storage::load_accounts(Library* t_library, const MasterKey* t_master_key) -
 {
 	const LoadResult result = read_accounts(t_library, t_master_key);
 
-	if (result == LoadResult::Failed) {
+	if (result == LoadResult::FAILED) {
 		g_accounts_writable = false;
 		debug_log::write("storage", "%s did not load - it will not be written this session", K_ACCOUNTS_FILE_NAME);
 	}

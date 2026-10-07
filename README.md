@@ -15,7 +15,7 @@
 ## Features
 
 - **One-click login** - launches the Riot Client and signs in for you.
-- **Every Riot game** - League of Legends, TFT, VALORANT, 2XKO and Legends of Runeterra.
+- **Every Riot game** - League of Legends, TFT, VALORANT, 2XKO and Legends of Runeterra. On Mac: League of Legends and TFT.
 - **Encrypted vault** - locked by your master password (Argon2id, XChaCha20-Poly1305). Nothing leaves your computer.
 - **Fast search** - find any account with Ctrl+S (⌘S on Mac), with favorites, notes and regions.
 - **Private** - auto-lock, copied passwords clear after 30 seconds, and the window hides from screen capture.
@@ -52,6 +52,8 @@ cmake --build build --target package    # optional: builds the .dmg
 ```
 
 Platform code lives in `src/os/<platform>`, `src/render/<api>` and `src/login/<platform>`. Everything else is shared.
+
+Tests live in `tests/`. Build the `pulsar_tests` target, then run `ctest --test-dir build --output-on-failure` (add `-C Release` on Windows).
 
 ## Disclaimer
 

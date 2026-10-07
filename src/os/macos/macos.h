@@ -11,6 +11,7 @@
 #include <Carbon/Carbon.h>
 #undef Rect
 
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -32,6 +33,7 @@ namespace os::macos {
 auto prepare_application() -> void;
 auto activate_application() -> void;
 auto wake_event_loop() -> void;
+auto set_session_end_handler(std::function<void()> t_handler) -> void;
 [[nodiscard]] auto take_quit_request() -> bool;
 [[nodiscard]] auto take_reopen_request() -> bool;
 

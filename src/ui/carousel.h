@@ -14,10 +14,10 @@ struct Game;
 struct Settings;
 
 enum class ViewMode : u8 {
-	Carousel,
-	Grid,
-	List,
-	Icons,
+	CAROUSEL,
+	GRID,
+	LIST,
+	ICONS,
 };
 
 class Carousel : public Widget {
@@ -182,8 +182,8 @@ class Carousel : public Widget {
 
 	i32        m_zoom_stop       = 0;
 	float      m_zoom_percent    = 0.0f;
-	ViewMode   m_mode            = ViewMode::Carousel;
-	ViewMode   m_previous_mode   = ViewMode::Carousel;
+	ViewMode   m_mode            = ViewMode::CAROUSEL;
+	ViewMode   m_previous_mode   = ViewMode::CAROUSEL;
 	float      m_mode_transition = 0.0f;
 	Rect       m_morph_from_art[K_MAX_GAMES]{};
 	Rect       m_morph_from_frame[K_MAX_GAMES]{};

@@ -10,9 +10,9 @@
 namespace os {
 
 enum class InjectionGuard : u8 {
-	Blocked,
-	Refused,
-	Unsupported,
+	BLOCKED,
+	REFUSED,
+	UNSUPPORTED,
 };
 
 [[nodiscard]] auto executable_path() -> std::string;

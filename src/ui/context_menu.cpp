@@ -100,7 +100,7 @@ auto ContextMenu::on_key_down(os::Key t_key) -> bool
 {
 	if (!m_open) return false;
 
-	if (t_key == os::Key::Escape) {
+	if (t_key == os::Key::ESCAPE) {
 		close();
 	}
 
@@ -109,7 +109,7 @@ auto ContextMenu::on_key_down(os::Key t_key) -> bool
 
 auto ContextMenu::cursor() const -> CursorKind
 {
-	return m_open && item_at(m_mouse) >= 0 ? CursorKind::Hand : CursorKind::Arrow;
+	return m_open && item_at(m_mouse) >= 0 ? CursorKind::HAND : CursorKind::ARROW;
 }
 
 auto ContextMenu::draw(DrawList* t_draw_list) -> void

@@ -79,8 +79,9 @@ constexpr float K_AUTO_SCROLL_SPEED   = 540.0f;
 constexpr float K_UNDO_SECONDS           = 6.0f;
 constexpr float K_DELETE_CONFIRM_SECONDS = 3.0f;
 
-constexpr float K_ACTION_BUTTON_WIDTH = 108.0f;
-constexpr float K_ACTION_BUTTON_GAP   = 16.0f;
+constexpr float            K_ACTION_BUTTON_WIDTH     = 108.0f;
+constexpr float            K_ACTION_BUTTON_GAP       = 16.0f;
+constexpr std::string_view K_PERMISSION_BUTTON_LABEL = "Open settings";
 
 constexpr float K_EMPTY_ICON_SIZE    = 52.0f;
 constexpr float K_EMPTY_ICON_RADIUS  = 12.0f;
@@ -363,32 +364,32 @@ struct StageSpan {
 	switch (t_stage) {
 		using enum LoginStage;
 
-		case Idle: {
+		case IDLE: {
 			return StageSpan{0.02f, 0.1f};
 		}
 
-		case WaitingForProcess: {
+		case WAITING_FOR_PROCESS: {
 			return StageSpan{0.08f, 0.3f};
 		}
 
-		case Connecting: {
+		case CONNECTING: {
 			return StageSpan{0.32f, 0.55f};
 		}
 
-		case Authenticating: {
+		case AUTHENTICATING: {
 			return StageSpan{0.58f, 0.82f};
 		}
 
-		case Launching: {
+		case LAUNCHING: {
 			return StageSpan{0.85f, 0.97f};
 		}
 
-		case Success: {
+		case SUCCESS: {
 			return StageSpan{1.0f, 1.0f};
 		}
 
-		case Error:
-		case Cancelled: {
+		case FAILED:
+		case CANCELLED: {
 			break;
 		}
 	}
@@ -401,26 +402,26 @@ struct StageSpan {
 	switch (t_stage) {
 		using enum LoginStage;
 
-		case WaitingForProcess: {
+		case WAITING_FOR_PROCESS: {
 			return 1;
 		}
 
-		case Connecting: {
+		case CONNECTING: {
 			return 2;
 		}
 
-		case Authenticating: {
+		case AUTHENTICATING: {
 			return 3;
 		}
 
-		case Launching: {
+		case LAUNCHING: {
 			return 4;
 		}
 
-		case Idle:
-		case Success:
-		case Error:
-		case Cancelled: {
+		case IDLE:
+		case SUCCESS:
+		case FAILED:
+		case CANCELLED: {
 			break;
 		}
 	}
@@ -433,35 +434,35 @@ struct StageSpan {
 	switch (t_stage) {
 		using enum LoginStage;
 
-		case Idle: {
+		case IDLE: {
 			return "";
 		}
 
-		case WaitingForProcess: {
+		case WAITING_FOR_PROCESS: {
 			return "Launching Riot Client...";
 		}
 
-		case Connecting: {
+		case CONNECTING: {
 			return "Waiting for Riot Client...";
 		}
 
-		case Authenticating: {
+		case AUTHENTICATING: {
 			return "Logging in...";
 		}
 
-		case Launching: {
+		case LAUNCHING: {
 			return "Launching game...";
 		}
 
-		case Success: {
+		case SUCCESS: {
 			return "Logged in!";
 		}
 
-		case Error: {
+		case FAILED: {
 			return "Something went wrong.";
 		}
 
-		case Cancelled: {
+		case CANCELLED: {
 			return "Cancelled.";
 		}
 	}
@@ -490,7 +491,7 @@ AccountModal::AccountModal(Library*          t_library,
 		m_fields[i].set_max_length(K_FIELD_SPECS[i].max_length);
 	}
 
-	field(EditField::Note)->set_placeholder("Main, smurf, ranked...");
+	field(EditField::NOTE)->set_placeholder("Main, smurf, ranked...");
 
 	m_search.set_max_length(K_SEARCH_MAX_LENGTH);
 	m_search.set_placeholder("Search");
@@ -688,10 +689,15 @@ auto AccountModal::search_rect(Rect t_main) const -> Rect
 
 auto AccountModal::primary_button_rect(Rect t_footer) const -> Rect
 {
-	const float width =
-		m_mode == Mode::EditAccount ? std::max(K_ACTION_BUTTON_WIDTH, text_width(m_fonts->body, save_label()) + K_CANCEL_PADDING) : K_ACTION_BUTTON_WIDTH;
+	const std::string_view label = m_mode == Mode::EDIT_ACCOUNT ? save_label() : asks_for_permission() ? K_PERMISSION_BUTTON_LABEL : "";
+	const float            width = std::max(K_ACTION_BUTTON_WIDTH, text_width(m_fonts->body, label) + K_CANCEL_PADDING);
 
 	return vertically_centered(t_footer, t_footer.right() - K_ROW_PADDING - width, width, action_button_height(m_fonts));
+}
+
+auto AccountModal::asks_for_permission() const -> bool
+{
+	return m_mode == Mode::LOGIN_PROGRESS && !m_queued_login && m_login.is_permission_missing();
 }
 
 auto AccountModal::cancel_button_rect(Rect t_primary) const -> Rect
@@ -762,10 +768,10 @@ auto AccountModal::form_layout(Rect t_main) const -> AccountModal::FormLayout
 		form.inputs[t_row] = Rect{x, top + label_height + K_FORM_LABEL_GAP, column_width, input_height};
 	};
 
-	place(static_cast<u32>(EditField::Username), 0);
-	place(static_cast<u32>(EditField::Password), 1);
+	place(static_cast<u32>(EditField::USERNAME), 0);
+	place(static_cast<u32>(EditField::PASSWORD), 1);
 	place(K_REGION_ROW, 2);
-	place(static_cast<u32>(EditField::Note), 3);
+	place(static_cast<u32>(EditField::NOTE), 3);
 	y += static_cast<float>(two_columns ? 2 : 4) * cell_height;
 
 	form.labels[K_SHOW_IN_ROW] = Rect{left, y, width, label_height};
@@ -799,7 +805,7 @@ auto AccountModal::field_text_rect(Rect t_main, u32 t_field) const -> Rect
 {
 	Rect input = field_input_rect(t_main, t_field).inset(K_INPUT_PADDING_X, 0.0f);
 
-	if (t_field == static_cast<u32>(EditField::Password)) {
+	if (t_field == static_cast<u32>(EditField::PASSWORD)) {
 		input.w -= K_REVEAL_BUTTON_SIZE;
 	}
 
@@ -808,7 +814,7 @@ auto AccountModal::field_text_rect(Rect t_main, u32 t_field) const -> Rect
 
 auto AccountModal::reveal_button_rect(Rect t_main) const -> Rect
 {
-	const Rect password = field_input_rect(t_main, static_cast<u32>(EditField::Password));
+	const Rect password = field_input_rect(t_main, static_cast<u32>(EditField::PASSWORD));
 
 	return vertically_centered(password, password.right() - K_REVEAL_BUTTON_SIZE - K_REVEAL_BUTTON_MARGIN, K_REVEAL_BUTTON_SIZE, K_REVEAL_BUTTON_SIZE);
 }
@@ -941,7 +947,7 @@ auto AccountModal::open(i32 t_game) -> void
 	m_art_source.reset();
 	m_armed_delete.reset();
 	m_game        = t_game;
-	m_mode        = Mode::AccountList;
+	m_mode        = Mode::ACCOUNT_LIST;
 	m_rows_scroll = Scrollable{};
 	m_selected.reset();
 	m_search.set_focused(false);
@@ -1006,7 +1012,7 @@ auto AccountModal::forget_secrets() -> void
 	m_selected.reset();
 	reset_row_motion();
 
-	m_mode        = Mode::AccountList;
+	m_mode        = Mode::ACCOUNT_LIST;
 	m_open        = false;
 	m_open_amount = 0.0f;
 	m_game        = -1;
@@ -1016,7 +1022,7 @@ auto AccountModal::start_adding() -> void
 {
 	m_show_required = false;
 	m_armed_delete.reset();
-	m_mode        = Mode::EditAccount;
+	m_mode        = Mode::EDIT_ACCOUNT;
 	m_form_scroll = Scrollable{};
 	m_edited.reset();
 	m_region[0] = '\0';
@@ -1027,8 +1033,8 @@ auto AccountModal::start_adding() -> void
 		input.set_value("");
 	}
 
-	focus_field(static_cast<i32>(EditField::Username));
-	field(EditField::Password)->set_masked(true);
+	focus_field(static_cast<i32>(EditField::USERNAME));
+	field(EditField::PASSWORD)->set_masked(true);
 
 	m_visible_mask   = static_cast<u16>(1u << m_game);
 	m_show_in_open   = false;
@@ -1039,20 +1045,20 @@ auto AccountModal::start_editing(AccountRef t_account) -> void
 {
 	m_show_required = false;
 	m_armed_delete.reset();
-	m_mode        = Mode::EditAccount;
+	m_mode        = Mode::EDIT_ACCOUNT;
 	m_form_scroll = Scrollable{};
 	m_edited      = t_account;
 	m_search.set_focused(false);
 
 	const Account* account = m_library->account(t_account);
-	field(EditField::Note)->set_value(account->note);
+	field(EditField::NOTE)->set_value(account->note);
 	copy_to(std::string_view{account->region}, m_region);
 	m_region_list.close();
-	field(EditField::Username)->set_value(account->username);
-	field(EditField::Password)->set_value(account->password);
+	field(EditField::USERNAME)->set_value(account->username);
+	field(EditField::PASSWORD)->set_value(account->password);
 
-	focus_field(static_cast<i32>(EditField::Username));
-	field(EditField::Password)->set_masked(true);
+	focus_field(static_cast<i32>(EditField::USERNAME));
+	field(EditField::PASSWORD)->set_masked(true);
 
 	m_visible_mask   = account->visible_games(t_account.game);
 	m_show_in_open   = false;
@@ -1061,15 +1067,15 @@ auto AccountModal::start_editing(AccountRef t_account) -> void
 
 auto AccountModal::can_save() const -> bool
 {
-	return !field(EditField::Username)->value().empty() && !field(EditField::Password)->value().empty();
+	return !field(EditField::USERNAME)->value().empty() && !field(EditField::PASSWORD)->value().empty();
 }
 
 auto AccountModal::has_changes() const -> bool
 {
-	const std::string_view note     = field(EditField::Note)->value();
+	const std::string_view note     = field(EditField::NOTE)->value();
 	const std::string_view region   = m_region;
-	const std::string_view username = field(EditField::Username)->value();
-	const std::string_view password = field(EditField::Password)->value();
+	const std::string_view username = field(EditField::USERNAME)->value();
+	const std::string_view password = field(EditField::PASSWORD)->value();
 
 	if (!m_edited) return !note.empty() || !region.empty() || !username.empty() || !password.empty();
 
@@ -1081,12 +1087,12 @@ auto AccountModal::has_changes() const -> bool
 
 auto AccountModal::save_edit() -> void
 {
-	m_mode = Mode::AccountList;
+	m_mode = Mode::ACCOUNT_LIST;
 	if (!has_game()) return;
 
-	const std::string_view username = field(EditField::Username)->value();
-	const std::string_view note     = field(EditField::Note)->value();
-	const std::string_view password = field(EditField::Password)->value();
+	const std::string_view username = field(EditField::USERNAME)->value();
+	const std::string_view note     = field(EditField::NOTE)->value();
+	const std::string_view password = field(EditField::PASSWORD)->value();
 
 	if (m_edited) {
 		Account* account = m_library->account(*m_edited);
@@ -1124,7 +1130,7 @@ auto AccountModal::delete_account(AccountRef t_account) -> void
 
 	m_toasts->notify(Notification{
 		.message     = "Account deleted. Click to undo.",
-		.on_click    = Command{.type = CommandType::UndoDelete},
+		.on_click    = Command{.type = CommandType::UNDO_DELETE},
 		.seconds     = K_UNDO_SECONDS,
 		.always_show = true,
 	});
@@ -1242,7 +1248,7 @@ auto AccountModal::request_login(u32 t_game, AccountRef t_account) -> void
 {
 	m_armed_delete.reset();
 	m_selected       = t_account;
-	m_mode           = Mode::LoginProgress;
+	m_mode           = Mode::LOGIN_PROGRESS;
 	m_login_seconds  = 0.0f;
 	m_login_progress = 0.0f;
 	m_login_outcome  = 0.0f;
@@ -1287,18 +1293,18 @@ auto AccountModal::record_login_result() -> void
 {
 	if (!m_login_account || !LoginAttempt::is_terminal(m_login.stage())) return;
 
-	if (m_login.stage() == LoginStage::Success) {
+	if (m_login.stage() == LoginStage::SUCCESS) {
 		m_library->account(*m_login_account)->last_used = std::time(nullptr);
-		m_commands->push(Command{.type = CommandType::SaveChanges});
+		m_commands->push(Command{.type = CommandType::SAVE_CHANGES});
 	}
 
 	if (const std::string found = m_login.found_client_path(); !found.empty()) {
 		copy_to(found, m_settings->riot_client_path);
-		m_commands->push(Command{.type = CommandType::SaveChanges});
+		m_commands->push(Command{.type = CommandType::SAVE_CHANGES});
 	}
 
 	if (m_login.is_client_missing()) {
-		m_commands->push(Command{.type = CommandType::LocateRiotClient, .index = static_cast<i32>(m_login_game), .account = *m_login_account});
+		m_commands->push(Command{.type = CommandType::LOCATE_RIOT_CLIENT, .index = static_cast<i32>(m_login_game), .account = *m_login_account});
 	}
 
 	m_login_account.reset();
@@ -1513,22 +1519,22 @@ auto AccountModal::request_tooltip() -> void
 	const Layout current = layout();
 	const Rect   back    = back_badge_rect(current);
 
-	if (m_mode != Mode::LoginProgress && back.contains(m_mouse)) {
+	if (m_mode != Mode::LOGIN_PROGRESS && back.contains(m_mouse)) {
 		m_tooltip.request("Back", back);
 		return;
 	}
 
-	if (m_mode == Mode::EditAccount) {
+	if (m_mode == Mode::EDIT_ACCOUNT) {
 		const Rect main = current.main_column;
 
 		if (is_reveal_hit(main, m_mouse)) {
-			m_tooltip.request(field(EditField::Password)->is_masked() ? "Show password" : "Hide password", reveal_button_rect(main));
+			m_tooltip.request(field(EditField::PASSWORD)->is_masked() ? "Show password" : "Hide password", reveal_button_rect(main));
 		}
 
 		return;
 	}
 
-	if (m_mode == Mode::AccountList) {
+	if (m_mode == Mode::ACCOUNT_LIST) {
 		request_row_tooltip(current);
 	}
 }
@@ -1583,7 +1589,7 @@ auto AccountModal::update(float t_delta_seconds) -> void
 		m_game = -1;
 	}
 
-	if (m_deleted && !m_toasts->is_offering(CommandType::UndoDelete)) {
+	if (m_deleted && !m_toasts->is_offering(CommandType::UNDO_DELETE)) {
 		forget_deleted();
 	}
 
@@ -1599,7 +1605,7 @@ auto AccountModal::update(float t_delta_seconds) -> void
 	switch (m_mode) {
 		using enum Mode;
 
-		case AccountList: {
+		case ACCOUNT_LIST: {
 			m_search.update(t_delta_seconds);
 
 			if (has_game()) {
@@ -1611,14 +1617,14 @@ auto AccountModal::update(float t_delta_seconds) -> void
 			break;
 		}
 
-		case LoginProgress: {
+		case LOGIN_PROGRESS: {
 			m_login_seconds += t_delta_seconds;
 			update_login_progress(t_delta_seconds);
 			animation::request_frame();
 			break;
 		}
 
-		case EditAccount: {
+		case EDIT_ACCOUNT: {
 			m_form_scroll.update(t_delta_seconds);
 
 			for (TextInput& input : m_fields) {
@@ -1632,7 +1638,7 @@ auto AccountModal::update(float t_delta_seconds) -> void
 	const float show_in_before = m_show_in_amount;
 	m_show_in_amount           = animation::ease_toward(m_show_in_amount, m_show_in_open ? 1.0f : 0.0f, K_SHOW_IN_EASE_RATE, t_delta_seconds);
 
-	if (m_mode == Mode::EditAccount && m_show_in_open && m_show_in_amount != show_in_before) {
+	if (m_mode == Mode::EDIT_ACCOUNT && m_show_in_open && m_show_in_amount != show_in_before) {
 		const Rect       main   = layout().main_column;
 		const FormLayout form   = form_layout(main);
 		const float      bottom = form.tiles.y + form.tiles.h * m_show_in_amount;
@@ -1664,12 +1670,12 @@ auto AccountModal::on_pointer_down(Vec2 t_point) -> bool
 
 	const Layout current = layout();
 
-	if (m_mode == Mode::EditAccount && m_region_list.is_open()) {
+	if (m_mode == Mode::EDIT_ACCOUNT && m_region_list.is_open()) {
 		m_region_list.on_pointer_down(t_point);
 		return true;
 	}
 
-	if (m_mode == Mode::EditAccount) {
+	if (m_mode == Mode::EDIT_ACCOUNT) {
 		if (m_form_scroll.on_pointer_down(t_point, form_scroll(current.main_column))) {
 			return true;
 		}
@@ -1680,7 +1686,7 @@ auto AccountModal::on_pointer_down(Vec2 t_point) -> bool
 			focus_field(pressed);
 			m_fields[pressed].on_pointer_down(m_fonts->body, field_text_rect(current.main_column, pressed), t_point.x);
 		}
-	} else if (m_mode == Mode::AccountList && has_game()) {
+	} else if (m_mode == Mode::ACCOUNT_LIST && has_game()) {
 		handle_list_press(current, t_point);
 	}
 
@@ -1799,7 +1805,7 @@ auto AccountModal::on_pointer_up(Vec2 t_point) -> bool
 	const bool   clicked_away  = !current.panel.contains(t_point);
 	const bool   clicked_close = back_badge_rect(current).contains(t_point);
 
-	if (m_mode != Mode::LoginProgress && (clicked_away || clicked_close)) {
+	if (m_mode != Mode::LOGIN_PROGRESS && (clicked_away || clicked_close)) {
 		close();
 		return true;
 	}
@@ -1807,7 +1813,7 @@ auto AccountModal::on_pointer_up(Vec2 t_point) -> bool
 	switch (m_mode) {
 		using enum Mode;
 
-		case AccountList: {
+		case ACCOUNT_LIST: {
 			if (has_game()) {
 				handle_list_click(current, t_point);
 			}
@@ -1815,16 +1821,21 @@ auto AccountModal::on_pointer_up(Vec2 t_point) -> bool
 			break;
 		}
 
-		case LoginProgress: {
-			if (primary_button_rect(current.footer).contains(t_point)) {
+		case LOGIN_PROGRESS: {
+			const Rect primary = primary_button_rect(current.footer);
+			const Rect back    = asks_for_permission() ? cancel_button_rect(primary) : primary;
+
+			if (asks_for_permission() && primary.contains(t_point)) {
+				m_commands->push(Command{.type = CommandType::OPEN_PERMISSION_SETTINGS});
+			} else if (back.contains(t_point)) {
 				cancel_login();
-				m_mode = Mode::AccountList;
+				m_mode = Mode::ACCOUNT_LIST;
 			}
 
 			break;
 		}
 
-		case EditAccount: {
+		case EDIT_ACCOUNT: {
 			handle_edit_click(current, t_point);
 			break;
 		}
@@ -1915,7 +1926,7 @@ auto AccountModal::handle_edit_click(const Layout& t_layout, Vec2 t_point) -> vo
 	}
 
 	if (is_reveal_hit(main, t_point)) {
-		TextInput* password = field(EditField::Password);
+		TextInput* password = field(EditField::PASSWORD);
 		password->set_masked(!password->is_masked());
 		return;
 	}
@@ -1925,7 +1936,7 @@ auto AccountModal::handle_edit_click(const Layout& t_layout, Vec2 t_point) -> vo
 	const Rect save = primary_button_rect(t_layout.footer);
 
 	if (cancel_button_rect(save).contains(t_point)) {
-		m_mode = Mode::AccountList;
+		m_mode = Mode::ACCOUNT_LIST;
 	} else if (has_changes() && save.contains(t_point)) {
 		if (can_save()) {
 			save_edit();
@@ -1944,26 +1955,26 @@ auto AccountModal::on_right_click(Vec2 t_point) -> bool
 
 	const Layout current = layout();
 
-	if (m_mode == Mode::EditAccount) {
+	if (m_mode == Mode::EDIT_ACCOUNT) {
 		const i32 clicked = field_at(current.main_column, t_point);
 
 		if (clicked >= 0) {
 			focus_field(clicked);
 			m_fields[clicked].on_right_click(m_fonts->body, field_text_rect(current.main_column, clicked), t_point.x);
-			m_commands->push(Command{.type = CommandType::ShowTextMenu, .position = t_point, .text_input = &m_fields[clicked]});
+			m_commands->push(Command{.type = CommandType::SHOW_TEXT_MENU, .position = t_point, .text_input = &m_fields[clicked]});
 		}
 
 		return true;
 	}
 
-	if (m_mode != Mode::AccountList || !has_game() || m_drag.lifted) return true;
+	if (m_mode != Mode::ACCOUNT_LIST || !has_game() || m_drag.lifted) return true;
 
 	const Rect search = search_rect(current.main_column);
 
 	if (search.contains(t_point)) {
 		m_search.set_focused(true);
 		m_search.on_right_click(m_fonts->secondary, controls::search_text_rect(search, K_SEARCH_INSET), t_point.x);
-		m_commands->push(Command{.type = CommandType::ShowTextMenu, .position = t_point, .text_input = &m_search});
+		m_commands->push(Command{.type = CommandType::SHOW_TEXT_MENU, .position = t_point, .text_input = &m_search});
 		return true;
 	}
 
@@ -1972,7 +1983,7 @@ auto AccountModal::on_right_click(Vec2 t_point) -> bool
 
 	if (row >= 0) {
 		m_selected = rows.accounts.refs[row];
-		m_commands->push(Command{.type = CommandType::ShowAccountMenu, .index = row, .position = t_point});
+		m_commands->push(Command{.type = CommandType::SHOW_ACCOUNT_MENU, .index = row, .position = t_point});
 	}
 
 	return true;
@@ -1988,9 +1999,9 @@ auto AccountModal::on_scroll(Vec2, float t_wheel_delta) -> bool
 		return true;
 	}
 
-	if (m_mode == Mode::AccountList) {
+	if (m_mode == Mode::ACCOUNT_LIST) {
 		m_rows_scroll.on_scroll(t_wheel_delta, account_rows(layout()).scroll);
-	} else if (m_mode == Mode::EditAccount) {
+	} else if (m_mode == Mode::EDIT_ACCOUNT) {
 		m_form_scroll.on_scroll(t_wheel_delta, form_scroll(layout().main_column));
 	}
 
@@ -2004,13 +2015,13 @@ auto AccountModal::handle_list_key(os::Key t_key) -> bool
 	switch (t_key) {
 		using enum os::Key;
 
-		case Up:
-		case Down: {
-			select_step(t_key == os::Key::Down ? 1 : -1);
+		case UP:
+		case DOWN: {
+			select_step(t_key == os::Key::DOWN ? 1 : -1);
 			return true;
 		}
 
-		case Enter: {
+		case ENTER: {
 			if (selected_row(displayed_accounts()) >= 0) {
 				request_login(static_cast<u32>(m_game), *m_selected);
 			}
@@ -2027,7 +2038,7 @@ auto AccountModal::handle_list_key(os::Key t_key) -> bool
 
 	if (control && t_key == os::Key::F && is_search_visible()) {
 		m_search.set_focused(true);
-		m_search.apply(TextEdit::SelectAll);
+		m_search.apply(TextEdit::SELECT_ALL);
 		return true;
 	}
 
@@ -2036,7 +2047,7 @@ auto AccountModal::handle_list_key(os::Key t_key) -> bool
 		return true;
 	}
 
-	if (t_key == os::Key::Delete) {
+	if (t_key == os::Key::FORWARD_DELETE) {
 		if (selected_row(displayed_accounts()) >= 0) {
 			arm_or_delete(*m_selected);
 		}
@@ -2044,7 +2055,7 @@ auto AccountModal::handle_list_key(os::Key t_key) -> bool
 		return true;
 	}
 
-	if (t_key == os::Key::Backspace && !m_search.value().empty() && is_search_visible()) {
+	if (t_key == os::Key::BACKSPACE && !m_search.value().empty() && is_search_visible()) {
 		m_search.set_focused(true);
 		m_search.on_key_down(t_key);
 		return true;
@@ -2065,30 +2076,30 @@ auto AccountModal::on_key_down(os::Key t_key) -> bool
 		return true;
 	}
 
-	if (t_key == os::Key::Escape) {
+	if (t_key == os::Key::ESCAPE) {
 		if (m_armed_delete) {
 			m_armed_delete.reset();
-		} else if (m_mode == Mode::EditAccount) {
-			m_mode = Mode::AccountList;
-		} else if (m_mode == Mode::AccountList && m_drag.lifted) {
+		} else if (m_mode == Mode::EDIT_ACCOUNT) {
+			m_mode = Mode::ACCOUNT_LIST;
+		} else if (m_mode == Mode::ACCOUNT_LIST && m_drag.lifted) {
 			cancel_row_drag();
-		} else if (m_mode == Mode::AccountList && !m_search.value().empty()) {
+		} else if (m_mode == Mode::ACCOUNT_LIST && !m_search.value().empty()) {
 			clear_search();
-		} else if (m_mode == Mode::AccountList && m_search.is_focused()) {
+		} else if (m_mode == Mode::ACCOUNT_LIST && m_search.is_focused()) {
 			m_search.set_focused(false);
-		} else if (m_mode == Mode::AccountList && m_selected) {
+		} else if (m_mode == Mode::ACCOUNT_LIST && m_selected) {
 			m_selected.reset();
-		} else if (m_mode == Mode::AccountList) {
+		} else if (m_mode == Mode::ACCOUNT_LIST) {
 			close();
 		}
 
 		return true;
 	}
 
-	if (m_mode == Mode::AccountList && has_game()) {
+	if (m_mode == Mode::ACCOUNT_LIST && has_game()) {
 		handle_list_key(t_key);
-	} else if (m_mode == Mode::EditAccount && t_key == os::Key::Tab) {
-		constexpr EditField ORDER[]{EditField::Username, EditField::Password, EditField::Note};
+	} else if (m_mode == Mode::EDIT_ACCOUNT && t_key == os::Key::TAB) {
+		constexpr EditField ORDER[]{EditField::USERNAME, EditField::PASSWORD, EditField::NOTE};
 		constexpr auto      COUNT    = static_cast<i32>(std::size(ORDER));
 		const i32           step     = os::modifiers().shift ? COUNT - 1 : 1;
 		const i32           current  = focused_field();
@@ -2102,13 +2113,13 @@ auto AccountModal::on_key_down(os::Key t_key) -> bool
 
 		focus_field(static_cast<i32>(ORDER[position < 0 ? 0 : (position + step) % COUNT]));
 		reveal_field(focused_field());
-	} else if (m_mode == Mode::EditAccount && t_key == os::Key::Enter) {
+	} else if (m_mode == Mode::EDIT_ACCOUNT && t_key == os::Key::ENTER) {
 		if (has_changes() && can_save()) {
 			save_edit();
 		} else if (has_changes()) {
 			m_show_required = true;
 		}
-	} else if (m_mode == Mode::EditAccount) {
+	} else if (m_mode == Mode::EDIT_ACCOUNT) {
 		for (TextInput& input : m_fields) {
 			input.on_key_down(t_key);
 		}
@@ -2121,7 +2132,7 @@ auto AccountModal::on_char(u32 t_character) -> bool
 {
 	if (!is_blocking()) return false;
 
-	if (m_mode == Mode::EditAccount) {
+	if (m_mode == Mode::EDIT_ACCOUNT) {
 		if (m_region_list.is_open()) {
 			m_region_list.on_char(t_character);
 			return true;
@@ -2130,7 +2141,7 @@ auto AccountModal::on_char(u32 t_character) -> bool
 		for (TextInput& input : m_fields) {
 			input.on_char(t_character);
 		}
-	} else if (m_mode == Mode::AccountList && has_game() && !m_drag.lifted) {
+	} else if (m_mode == Mode::ACCOUNT_LIST && has_game() && !m_drag.lifted) {
 		const bool printable = t_character >= 32 && t_character != 127;
 
 		if (printable && !m_search.is_focused() && is_search_visible()) {
@@ -2147,28 +2158,28 @@ auto AccountModal::on_char(u32 t_character) -> bool
 
 auto AccountModal::list_cursor(const Layout& t_layout) const -> CursorKind
 {
-	if (m_drag.lifted) return CursorKind::Drag;
+	if (m_drag.lifted) return CursorKind::DRAG;
 
 	const Rect main   = t_layout.main_column;
 	const Rect search = search_rect(main);
 
-	if (!m_search.value().empty() && controls::search_clear_rect(search).contains(m_mouse)) return CursorKind::Hand;
-	if (search.contains(m_mouse)) return CursorKind::IBeam;
-	if (add_button_rect(main).contains(m_mouse)) return CursorKind::Hand;
+	if (!m_search.value().empty() && controls::search_clear_rect(search).contains(m_mouse)) return CursorKind::HAND;
+	if (search.contains(m_mouse)) return CursorKind::I_BEAM;
+	if (add_button_rect(main).contains(m_mouse)) return CursorKind::HAND;
 
 	const AccountRows rows = account_rows(t_layout);
 	if (rows.accounts.count == 0 && m_search.value().empty() && empty_state(rows.region).button.contains(m_mouse)) {
-		return CursorKind::Hand;
+		return CursorKind::HAND;
 	}
 
 	if (row_at(t_layout, rows, m_mouse) >= 0 || m_rows_scroll.is_over_track(m_mouse, rows.scroll)) {
-		return CursorKind::Hand;
+		return CursorKind::HAND;
 	}
 
 	const bool over_login = primary_button_rect(t_layout.footer).contains(m_mouse);
 	const bool can_login  = selected_row(rows.accounts) >= 0 && !m_login.is_active();
 
-	return can_login && over_login ? CursorKind::Hand : CursorKind::Arrow;
+	return can_login && over_login ? CursorKind::HAND : CursorKind::ARROW;
 }
 
 auto AccountModal::edit_cursor(const Layout& t_layout) const -> CursorKind
@@ -2177,56 +2188,59 @@ auto AccountModal::edit_cursor(const Layout& t_layout) const -> CursorKind
 
 	if (m_region_list.is_open()) return m_region_list.cursor(m_mouse);
 	if (is_show_in_hit(main, m_mouse) || is_region_hit(main, m_mouse) || is_reveal_hit(main, m_mouse)) {
-		return CursorKind::Hand;
+		return CursorKind::HAND;
 	}
 
 	if (const std::optional<u32> tile = show_in_tile_at(main, m_mouse)) {
 		const auto bit    = static_cast<u16>(1u << *tile);
 		const bool locked = (m_visible_mask & bit) != 0 && std::popcount(m_visible_mask) == 1;
 
-		return locked ? CursorKind::Arrow : CursorKind::Hand;
+		return locked ? CursorKind::ARROW : CursorKind::HAND;
 	}
 
-	if (field_at(main, m_mouse) >= 0) return CursorKind::IBeam;
-	if (m_form_scroll.is_over_track(m_mouse, form_scroll(main))) return CursorKind::Hand;
+	if (field_at(main, m_mouse) >= 0) return CursorKind::I_BEAM;
+	if (m_form_scroll.is_over_track(m_mouse, form_scroll(main))) return CursorKind::HAND;
 
 	const Rect save        = primary_button_rect(t_layout.footer);
 	const bool over_button = cancel_button_rect(save).contains(m_mouse) || (has_changes() && save.contains(m_mouse));
 
-	return over_button ? CursorKind::Hand : CursorKind::Arrow;
+	return over_button ? CursorKind::HAND : CursorKind::ARROW;
 }
 
 auto AccountModal::cursor() const -> CursorKind
 {
-	if (!is_blocking()) return CursorKind::Arrow;
-	if (m_rows_scroll.is_dragging() || m_form_scroll.is_dragging()) return CursorKind::Drag;
-	if (m_search.is_selecting()) return CursorKind::IBeam;
+	if (!is_blocking()) return CursorKind::ARROW;
+	if (m_rows_scroll.is_dragging() || m_form_scroll.is_dragging()) return CursorKind::DRAG;
+	if (m_search.is_selecting()) return CursorKind::I_BEAM;
 
 	for (const TextInput& input : m_fields) {
-		if (input.is_selecting()) return CursorKind::IBeam;
+		if (input.is_selecting()) return CursorKind::I_BEAM;
 	}
 
 	const Layout current = layout();
 
-	if (m_mode != Mode::LoginProgress && back_badge_rect(current).contains(m_mouse)) return CursorKind::Hand;
+	if (m_mode != Mode::LOGIN_PROGRESS && back_badge_rect(current).contains(m_mouse)) return CursorKind::HAND;
 
 	switch (m_mode) {
 		using enum Mode;
 
-		case AccountList: {
-			return has_game() ? list_cursor(current) : CursorKind::Arrow;
+		case ACCOUNT_LIST: {
+			return has_game() ? list_cursor(current) : CursorKind::ARROW;
 		}
 
-		case LoginProgress: {
-			return primary_button_rect(current.footer).contains(m_mouse) ? CursorKind::Hand : CursorKind::Arrow;
+		case LOGIN_PROGRESS: {
+			const Rect primary = primary_button_rect(current.footer);
+			const bool hovered = primary.contains(m_mouse) || (asks_for_permission() && cancel_button_rect(primary).contains(m_mouse));
+
+			return hovered ? CursorKind::HAND : CursorKind::ARROW;
 		}
 
-		case EditAccount: {
+		case EDIT_ACCOUNT: {
 			return edit_cursor(current);
 		}
 	}
 
-	return CursorKind::Arrow;
+	return CursorKind::ARROW;
 }
 
 auto AccountModal::draw_chrome(DrawList* t_draw_list, const Layout& t_layout, bool t_with_art, u8 t_alpha) const -> void
@@ -2266,7 +2280,7 @@ auto AccountModal::draw_back_badge(DrawList* t_draw_list, const Layout& t_layout
 	const auto badge_alpha = static_cast<u8>(badge.contains(m_mouse) ? 210 : 170);
 
 	t_draw_list->add_rounded_rect(badge, rounded(badge.w * 0.5f), faded(with_alpha(K_COLOR_ART_BADGE, badge_alpha), t_alpha));
-	t_draw_list->add_image(badge.centered(K_CLOSE_BADGE_ICON_SIZE, K_CLOSE_BADGE_ICON_SIZE), m_assets->get(Asset::IconArrowBack),
+	t_draw_list->add_image(badge.centered(K_CLOSE_BADGE_ICON_SIZE, K_CLOSE_BADGE_ICON_SIZE), m_assets->get(Asset::ICON_ARROW_BACK),
 	                       faded(K_COLOR_ON_ART, t_alpha));
 }
 
@@ -2461,7 +2475,7 @@ auto AccountModal::draw_account_row(DrawList*      t_draw_list,
 		                        faded(favorite_hovered ? g_theme.text : g_theme.text_faint, t_alpha));
 	}
 
-	t_draw_list->add_image(edit.inset(K_ROW_ICON_INSET), m_assets->get(Asset::IconEdit), faded(edit_hovered ? g_theme.text : g_theme.text_dim, t_alpha));
+	t_draw_list->add_image(edit.inset(K_ROW_ICON_INSET), m_assets->get(Asset::ICON_EDIT), faded(edit_hovered ? g_theme.text : g_theme.text_dim, t_alpha));
 	controls::draw_x(t_draw_list, remove, faded(remove_hovered ? danger : g_theme.text_dim, t_alpha));
 
 	if (armed) {
@@ -2507,7 +2521,7 @@ auto AccountModal::draw_empty_state(DrawList* t_draw_list, Rect t_region, u8 t_a
 	draw_text(t_draw_list, body, Vec2{t_region.center().x - text_width(body, TITLE) * 0.5f, state.title_baseline}, TITLE, faded(g_theme.text, t_alpha));
 	draw_text(t_draw_list, secondary, Vec2{t_region.center().x - text_width(secondary, HINT) * 0.5f, state.hint_baseline}, HINT,
 	          faded(g_theme.text_dim, t_alpha));
-	controls::draw_button(t_draw_list, body, state.button, "Add account", controls::ButtonStyle::Accent, m_settings->accent, true,
+	controls::draw_button(t_draw_list, body, state.button, "Add account", controls::ButtonStyle::ACCENT, m_settings->accent, true,
 	                      state.button.contains(m_mouse), t_alpha);
 }
 
@@ -2540,7 +2554,7 @@ auto AccountModal::draw_account_list(DrawList* t_draw_list, const Layout& t_layo
 		controls::draw_circular_hover(t_draw_list, add, g_theme.shadow, g_theme.control_hover, t_alpha);
 	}
 
-	t_draw_list->add_image(add.centered(24.0f, 24.0f), m_assets->get(Asset::IconAdd), faded(add_hovered ? g_theme.text : g_theme.text_dim, t_alpha));
+	t_draw_list->add_image(add.centered(24.0f, 24.0f), m_assets->get(Asset::ICON_ADD), faded(add_hovered ? g_theme.text : g_theme.text_dim, t_alpha));
 
 	const AccountRows rows = account_rows(t_layout);
 
@@ -2594,7 +2608,7 @@ auto AccountModal::login_status() const -> std::string_view
 
 auto AccountModal::update_login_progress(float t_delta_seconds) -> void
 {
-	const LoginStage stage    = m_queued_login ? LoginStage::Idle : m_login.stage();
+	const LoginStage stage    = m_queued_login ? LoginStage::IDLE : m_login.stage();
 	const bool       finished = !m_queued_login && LoginAttempt::is_terminal(stage);
 
 	if (stage != m_progress_stage) {
@@ -2651,7 +2665,7 @@ auto AccountModal::draw_login_progress(DrawList* t_draw_list, Rect t_main, u8 t_
 	draw_status(m_status_from, 1.0f - m_status_change, -K_PROGRESS_TEXT_RISE * m_status_change);
 	draw_status(m_status_to, m_status_change, K_PROGRESS_TEXT_RISE * (1.0f - m_status_change));
 
-	const Color outcome    = stage == LoginStage::Success ? g_theme.success : g_theme.error;
+	const Color outcome    = stage == LoginStage::SUCCESS ? g_theme.success : g_theme.error;
 	const Color fill_color = finished ? mix(m_settings->accent, outcome, m_login_outcome) : m_settings->accent;
 	const Rect  fill{bar.x, bar.y, bar.w * std::clamp(m_login_progress, 0.0f, 1.0f), bar.h};
 
@@ -2855,7 +2869,7 @@ auto AccountModal::draw_edit_form(DrawList* t_draw_list, Rect t_main, u8 t_alpha
 		TextInput* input       = &m_fields[i];
 		const Rect box         = form.inputs[i];
 		const bool focused     = input->is_focused();
-		const bool required    = i == static_cast<u32>(EditField::Username) || i == static_cast<u32>(EditField::Password);
+		const bool required    = i == static_cast<u32>(EditField::USERNAME) || i == static_cast<u32>(EditField::PASSWORD);
 		const bool missing     = m_show_required && required && input->value().empty();
 		const bool box_hovered = live && !focused && box.contains(m_mouse);
 
@@ -2872,7 +2886,7 @@ auto AccountModal::draw_edit_form(DrawList* t_draw_list, Rect t_main, u8 t_alpha
 		}
 
 		const float label_end = draw_label(i, K_FIELD_SPECS[i].label, label);
-		if (i == static_cast<u32>(EditField::Note)) {
+		if (i == static_cast<u32>(EditField::NOTE)) {
 			draw_text(t_draw_list, secondary, Vec2{label_end, form.labels[i].y + secondary.ascent}, K_OPTIONAL_SUFFIX, faded(g_theme.text_faint, t_alpha));
 		}
 
@@ -2881,7 +2895,7 @@ auto AccountModal::draw_edit_form(DrawList* t_draw_list, Rect t_main, u8 t_alpha
 
 		if (missing) {
 			draw_hint(i, "Required", g_theme.error);
-		} else if (i == static_cast<u32>(EditField::Password) && focused && os::is_caps_lock_on()) {
+		} else if (i == static_cast<u32>(EditField::PASSWORD) && focused && os::is_caps_lock_on()) {
 			draw_hint(i, "Caps Lock is on", caution_color());
 		}
 	}
@@ -2918,7 +2932,7 @@ auto AccountModal::draw_edit_form(DrawList* t_draw_list, Rect t_main, u8 t_alpha
 	                    region_chevron.x - K_INPUT_PADDING_X - region_value_x, region_value.empty() ? faded(g_theme.text_faint, t_alpha) : text);
 	controls::draw_chevron(t_draw_list, region_chevron, region_open, faded(region_open || region_hovered ? g_theme.text : g_theme.text_dim, t_alpha));
 
-	controls::draw_eye(t_draw_list, m_assets, reveal, !field(EditField::Password)->is_masked(),
+	controls::draw_eye(t_draw_list, m_assets, reveal, !field(EditField::PASSWORD)->is_masked(),
 	                   faded(is_reveal_hit(t_main, m_mouse) ? g_theme.text : g_theme.text_dim, t_alpha));
 
 	draw_show_in(t_draw_list, form, t_alpha);
@@ -2954,9 +2968,9 @@ auto AccountModal::draw_edit_footer(DrawList* t_draw_list, Rect t_footer, u8 t_a
 		}
 	}
 
-	controls::draw_button(t_draw_list, body, save, save_label(), controls::ButtonStyle::Accent, m_settings->accent, has_changes(), save.contains(m_mouse),
+	controls::draw_button(t_draw_list, body, save, save_label(), controls::ButtonStyle::ACCENT, m_settings->accent, has_changes(), save.contains(m_mouse),
 	                      t_alpha);
-	controls::draw_button(t_draw_list, body, cancel, "Cancel", controls::ButtonStyle::Ghost, m_settings->accent, true, cancel.contains(m_mouse), t_alpha);
+	controls::draw_button(t_draw_list, body, cancel, "Cancel", controls::ButtonStyle::GHOST, m_settings->accent, true, cancel.contains(m_mouse), t_alpha);
 }
 
 auto AccountModal::draw_footer(DrawList* t_draw_list, Rect t_footer, u8 t_alpha) const -> void
@@ -2972,26 +2986,35 @@ auto AccountModal::draw_footer(DrawList* t_draw_list, Rect t_footer, u8 t_alpha)
 	switch (m_mode) {
 		using enum Mode;
 
-		case EditAccount: {
+		case EDIT_ACCOUNT: {
 			draw_edit_footer(t_draw_list, t_footer, t_alpha);
 			break;
 		}
 
-		case LoginProgress: {
+		case LOGIN_PROGRESS: {
 			const bool finished = !m_queued_login && LoginAttempt::is_terminal(m_login.stage());
 
 			draw_text_truncated(t_draw_list, secondary, Vec2{t_footer.x + K_ROW_PADDING, hint_baseline}, "", hint_width, faded(g_theme.text_faint, t_alpha));
-			controls::draw_button(t_draw_list, body, primary, finished ? "Back" : "Cancel", controls::ButtonStyle::Neutral, m_settings->accent, true,
+
+			if (asks_for_permission()) {
+				const Rect back = cancel_button_rect(primary);
+				controls::draw_button(t_draw_list, body, primary, K_PERMISSION_BUTTON_LABEL, controls::ButtonStyle::ACCENT, m_settings->accent, true,
+				                      primary.contains(m_mouse), t_alpha);
+				controls::draw_button(t_draw_list, body, back, "Back", controls::ButtonStyle::GHOST, m_settings->accent, true, back.contains(m_mouse), t_alpha);
+				break;
+			}
+
+			controls::draw_button(t_draw_list, body, primary, finished ? "Back" : "Cancel", controls::ButtonStyle::NEUTRAL, m_settings->accent, true,
 			                      primary.contains(m_mouse), t_alpha);
 			break;
 		}
 
-		case AccountList: {
+		case ACCOUNT_LIST: {
 			const bool can_login = selected_row(displayed_accounts()) >= 0;
 
 			draw_text_truncated(t_draw_list, secondary, Vec2{t_footer.x + K_ROW_PADDING, hint_baseline}, "Select an account to log in", hint_width,
 			                    faded(g_theme.text_faint, t_alpha));
-			controls::draw_button(t_draw_list, body, primary, "Login", controls::ButtonStyle::Accent, m_settings->accent, can_login, primary.contains(m_mouse),
+			controls::draw_button(t_draw_list, body, primary, "Login", controls::ButtonStyle::ACCENT, m_settings->accent, can_login, primary.contains(m_mouse),
 			                      t_alpha);
 			break;
 		}
@@ -3029,17 +3052,17 @@ auto AccountModal::draw(DrawList* t_draw_list) -> void
 	switch (m_mode) {
 		using enum Mode;
 
-		case AccountList: {
+		case ACCOUNT_LIST: {
 			draw_account_list(t_draw_list, current, alpha);
 			break;
 		}
 
-		case LoginProgress: {
+		case LOGIN_PROGRESS: {
 			draw_login_progress(t_draw_list, current.main_column, alpha);
 			break;
 		}
 
-		case EditAccount: {
+		case EDIT_ACCOUNT: {
 			draw_edit_form(t_draw_list, current.main_column, alpha);
 			break;
 		}
@@ -3047,7 +3070,7 @@ auto AccountModal::draw(DrawList* t_draw_list) -> void
 
 	draw_footer(t_draw_list, current.footer, alpha);
 
-	if (m_mode == Mode::EditAccount) {
+	if (m_mode == Mode::EDIT_ACCOUNT) {
 		m_region_list.draw(t_draw_list, m_mouse);
 	}
 

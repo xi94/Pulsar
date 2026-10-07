@@ -1,6 +1,9 @@
 #include "os/macos/macos.h"
 
+#include <functional>
 #include <utility>
+
+#include <unistd.h>
 
 #include "core/app_identity.h"
 #include "core/file.h"
@@ -13,6 +16,21 @@ namespace {
 PulsarApplicationDelegate* g_application_delegate = nil;
 bool                       g_quit_requested       = false;
 bool                       g_reopen_requested     = false;
+std::function<void()>      g_session_end;
+
+constexpr OSType K_SESSION_END_REASONS[]{kAELogOut, kAEReallyLogOut, kAERestart, kAEShutDown, kAEShowRestartDialog, kAEShowShutdownDialog};
+
+[[nodiscard]] auto is_session_ending() -> bool
+{
+	NSAppleEventDescriptor* quit   = NSAppleEventManager.sharedAppleEventManager.currentAppleEvent;
+	const OSType            reason = [quit attributeDescriptorForKeyword:kAEQuitReason].typeCodeValue;
+
+	for (const OSType ending : K_SESSION_END_REASONS) {
+		if (reason == ending) return true;
+	}
+
+	return false;
+}
 
 auto build_main_menu() -> void
 {
@@ -47,6 +65,16 @@ auto build_main_menu() -> void
 
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)t_sender
 {
+	// Cancel hands a quit to Pulsar's own loop, which saves and returns from main. At logout or shutdown Cancel would stop the logout,
+	// so Pulsar saves right here and ends the process itself, skipping exit()'s teardown of threads that are still running.
+	if (is_session_ending()) {
+		if (g_session_end) {
+			g_session_end();
+		}
+
+		_exit(0);
+	}
+
 	g_quit_requested = true;
 	os::macos::wake_event_loop();
 
@@ -116,6 +144,11 @@ auto wake_event_loop() -> void
 										  data1:0
 										  data2:0];
 	[NSApp postEvent:wake atStart:NO];
+}
+
+auto set_session_end_handler(std::function<void()> t_handler) -> void
+{
+	g_session_end = std::move(t_handler);
 }
 
 auto take_quit_request() -> bool

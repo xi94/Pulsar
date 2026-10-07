@@ -162,7 +162,7 @@ auto Toasts::on_pointer_up(Vec2 t_point) -> bool
 
 auto Toasts::cursor() const -> CursorKind
 {
-	return is_clickable_at(m_mouse) ? CursorKind::Hand : CursorKind::Arrow;
+	return is_clickable_at(m_mouse) ? CursorKind::HAND : CursorKind::ARROW;
 }
 
 auto Toasts::draw(DrawList* t_draw_list) -> void

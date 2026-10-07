@@ -57,7 +57,7 @@ class Widget {
 
 	[[nodiscard]] virtual auto cursor() const -> CursorKind
 	{
-		return CursorKind::Arrow;
+		return CursorKind::ARROW;
 	}
 
 	auto set_mouse(Vec2 t_mouse) -> void

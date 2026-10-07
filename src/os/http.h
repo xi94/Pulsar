@@ -10,9 +10,9 @@
 namespace os {
 
 enum class HttpResult : u8 {
-	Ok,
-	Cancelled,
-	Failed,
+	OK,
+	CANCELLED,
+	FAILED,
 };
 
 struct HttpProgress {

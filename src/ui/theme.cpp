@@ -349,7 +349,7 @@ struct ThemeFade {
 	float     progress;
 };
 
-ThemeFade g_fade{K_DARK, ThemeKind::Dark, 1.0f};
+ThemeFade g_fade{K_DARK, ThemeKind::DARK, 1.0f};
 
 [[nodiscard]] auto blend(u8 t_from, u8 t_to, float t_amount) -> u8
 {

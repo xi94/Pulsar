@@ -498,7 +498,7 @@ auto ColorPicker::open(Color t_initial, Rect t_anchor, Rect t_bounds) -> void
 	m_anchor               = t_anchor;
 	m_bounds               = t_bounds;
 	m_open                 = true;
-	m_press                = Press::None;
+	m_press                = Press::NONE;
 	m_copied_seconds       = 0.0f;
 	m_paste_failed_seconds = 0.0f;
 
@@ -511,7 +511,7 @@ auto ColorPicker::close() -> void
 {
 	focus_field(-1);
 	m_open  = false;
-	m_press = Press::None;
+	m_press = Press::NONE;
 	end_drags();
 }
 
@@ -542,13 +542,13 @@ auto ColorPicker::on_pointer_down(Vec2 t_point) -> bool
 	const Layout current = layout();
 	if (!current.popup.contains(t_point)) return false;
 
-	m_press         = Press::None;
+	m_press         = Press::NONE;
 	const i32 field = field_at(current, t_point);
 
 	if (field >= 0) {
 		focus_field(field);
 		m_fields[field].on_pointer_down(m_fonts->secondary, field_text_rect(current, static_cast<u32>(field)), t_point.x);
-		m_press = Press::Field;
+		m_press = Press::FIELD;
 		return true;
 	}
 
@@ -561,11 +561,11 @@ auto ColorPicker::on_pointer_down(Vec2 t_point) -> bool
 	} else if (current.alpha.contains(t_point)) {
 		m_alpha_drag.begin(t_point);
 	} else if (current.swatch.contains(t_point) && t_point.x < current.swatch.center().x) {
-		m_press = Press::Revert;
+		m_press = Press::REVERT;
 	} else if (current.copy.contains(t_point)) {
-		m_press = Press::Copy;
+		m_press = Press::COPY;
 	} else if (current.paste.contains(t_point)) {
-		m_press = Press::Paste;
+		m_press = Press::PASTE;
 	}
 
 	on_pointer_move(t_point);
@@ -608,8 +608,8 @@ auto ColorPicker::on_pointer_move(Vec2 t_point) -> void
 
 auto ColorPicker::on_pointer_up(Vec2 t_point) -> bool
 {
-	const bool  was_pressed = m_press != Press::None || is_dragging();
-	const Press press       = std::exchange(m_press, Press::None);
+	const bool  was_pressed = m_press != Press::NONE || is_dragging();
+	const Press press       = std::exchange(m_press, Press::NONE);
 
 	for (TextInput& field : m_fields) {
 		field.on_pointer_up();
@@ -624,7 +624,7 @@ auto ColorPicker::on_pointer_up(Vec2 t_point) -> bool
 	switch (press) {
 		using enum Press;
 
-		case Revert: {
+		case REVERT: {
 			if (current.swatch.contains(t_point) && t_point.x < current.swatch.center().x) {
 				set_color(m_initial);
 				sync_fields(-1);
@@ -632,22 +632,22 @@ auto ColorPicker::on_pointer_up(Vec2 t_point) -> bool
 			break;
 		}
 
-		case Copy: {
+		case COPY: {
 			if (current.copy.contains(t_point)) {
 				copy_hex();
 			}
 			break;
 		}
 
-		case Paste: {
+		case PASTE: {
 			if (current.paste.contains(t_point)) {
 				paste_color();
 			}
 			break;
 		}
 
-		case None:
-		case Field: {
+		case NONE:
+		case FIELD: {
 			break;
 		}
 	}
@@ -677,7 +677,7 @@ auto ColorPicker::on_key_down(os::Key t_key) -> bool
 	const bool control = os::modifiers().shortcut;
 
 	if (focused < 0) {
-		if (t_key == os::Key::Escape) {
+		if (t_key == os::Key::ESCAPE) {
 			close();
 			return true;
 		}
@@ -698,19 +698,19 @@ auto ColorPicker::on_key_down(os::Key t_key) -> bool
 	switch (t_key) {
 		using enum os::Key;
 
-		case Enter:
-		case Escape: {
+		case ENTER:
+		case ESCAPE: {
 			focus_field(-1);
 			return true;
 		}
 
-		case Tab: {
+		case TAB: {
 			const auto count = static_cast<i32>(K_FIELD_COUNT);
 			const i32  step  = os::modifiers().shift ? count - 1 : 1;
 			const i32  next  = (focused + step) % count;
 
 			focus_field(next);
-			m_fields[next].apply(TextEdit::SelectAll);
+			m_fields[next].apply(TextEdit::SELECT_ALL);
 			return true;
 		}
 
@@ -755,21 +755,21 @@ auto ColorPicker::hint(Vec2 t_mouse) const -> std::optional<ColorPickerHint>
 
 auto ColorPicker::cursor(Vec2 t_mouse) const -> CursorKind
 {
-	if (!m_open) return CursorKind::Arrow;
-	if (is_dragging()) return CursorKind::Drag;
+	if (!m_open) return CursorKind::ARROW;
+	if (is_dragging()) return CursorKind::DRAG;
 
 	for (const TextInput& field : m_fields) {
-		if (field.is_selecting()) return CursorKind::IBeam;
+		if (field.is_selecting()) return CursorKind::I_BEAM;
 	}
 
 	const Layout current = layout();
-	if (field_at(current, t_mouse) >= 0) return CursorKind::IBeam;
+	if (field_at(current, t_mouse) >= 0) return CursorKind::I_BEAM;
 
 	const bool over_control = current.square.contains(t_mouse) || current.hue.contains(t_mouse) || current.alpha.contains(t_mouse) ||
 	                          current.copy.contains(t_mouse) || current.paste.contains(t_mouse) ||
 	                          (current.swatch.contains(t_mouse) && t_mouse.x < current.swatch.center().x);
 
-	return over_control ? CursorKind::Hand : CursorKind::Arrow;
+	return over_control ? CursorKind::HAND : CursorKind::ARROW;
 }
 
 auto ColorPicker::draw(DrawList* t_draw_list, Vec2 t_mouse) -> void

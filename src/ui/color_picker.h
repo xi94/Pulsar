@@ -62,11 +62,11 @@ class ColorPicker {
 	static constexpr u32 K_CHANNEL_COUNT = 3;
 
 	enum class Press : u8 {
-		None,
-		Revert,
-		Copy,
-		Paste,
-		Field,
+		NONE,
+		REVERT,
+		COPY,
+		PASTE,
+		FIELD,
 	};
 
 	struct Layout {
@@ -116,7 +116,7 @@ class ColorPicker {
 	TextInput m_fields[K_FIELD_COUNT];
 	char      m_synced_text[K_FIELD_COUNT][K_TEXT_INPUT_CAPACITY]{};
 
-	Press m_press                = Press::None;
+	Press m_press                = Press::NONE;
 	float m_copied_seconds       = 0.0f;
 	float m_paste_failed_seconds = 0.0f;
 };

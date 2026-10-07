@@ -196,10 +196,31 @@ auto MetalBackend::create_texture(u32 t_slot, std::span<const TextureLevel> t_le
 	return true;
 }
 
+// A blit queued behind the frames in flight lets them finish reading the old pixels, so the CPU never waits for the GPU here.
 auto MetalBackend::update_texture(u32 t_slot, u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rgba_pixels) -> void
 {
-	wait_for_gpu();
-	[textures[t_slot] replaceRegion:MTLRegionMake2D(t_x, t_y, t_width, t_height) mipmapLevel:0 withBytes:t_rgba_pixels bytesPerRow:t_width * 4];
+	if (t_width == 0 || t_height == 0) return;
+
+	@autoreleasepool {
+		const NSUInteger row_bytes = static_cast<NSUInteger>(t_width) * 4;
+		const NSUInteger bytes     = row_bytes * t_height;
+
+		id<MTLBuffer>             staging  = [device newBufferWithBytes:t_rgba_pixels length:bytes options:MTLResourceStorageModeShared];
+		id<MTLCommandBuffer>      commands = [queue commandBuffer];
+		id<MTLBlitCommandEncoder> blit     = [commands blitCommandEncoder];
+
+		[blit copyFromBuffer:staging
+				   sourceOffset:0
+			  sourceBytesPerRow:row_bytes
+			sourceBytesPerImage:bytes
+					 sourceSize:MTLSizeMake(t_width, t_height, 1)
+					  toTexture:textures[t_slot]
+			   destinationSlice:0
+			   destinationLevel:0
+			  destinationOrigin:MTLOriginMake(t_x, t_y, 0)];
+		[blit endEncoding];
+		[commands commit];
+	}
 }
 
 auto MetalBackend::destroy_texture(u32 t_slot) -> void
@@ -319,7 +340,7 @@ auto MetalBackend::draw_command(id<MTLRenderCommandEncoder> t_encoder, const Ren
 {
 	id<MTLTexture> image = nil;
 
-	if (t_command.shader == ShaderKind::Textured) {
+	if (t_command.shader == ShaderKind::TEXTURED) {
 		if (!t_command.texture->is_valid()) return;
 
 		image = textures[t_command.texture->slot()];

@@ -4,13 +4,14 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "core/types.h"
 
 enum class PlayResult : u8 {
-	Clicked,
-	NotFound,
-	LoginError,
+	CLICKED,
+	NOT_FOUND,
+	LOGIN_ERROR,
 };
 
 class RiotClient {
@@ -25,8 +26,12 @@ class RiotClient {
 	[[nodiscard]] static auto is_game_in_progress() -> bool;
 	static auto kill_all_client_processes(const std::atomic<bool>* t_cancel) -> void;
 	[[nodiscard]] static auto automation_failure_message() -> const char*;
+	[[nodiscard]] static auto request_automation_permission() -> bool;
+	[[nodiscard]] static auto permission_missing_message() -> const char*;
+	static auto open_automation_permission_settings() -> void;
 	[[nodiscard]] static auto supports_product(std::string_view t_launch_product) -> bool;
 
+	[[nodiscard]] static auto paths_in_installs_file(std::string_view t_json) -> std::vector<std::string>;
 	[[nodiscard]] static auto executable_name() -> const char*;
 	[[nodiscard]] static auto default_install_folder() -> std::string;
 	[[nodiscard]] static auto executable_near(std::string_view t_chosen_path) -> std::string;

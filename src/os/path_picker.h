@@ -11,12 +11,12 @@ namespace os {
 class Window;
 
 enum class PathKind : u8 {
-	Folder,
-	File,
+	FOLDER,
+	FILE,
 };
 
 struct PathRequest {
-	PathKind    kind     = PathKind::Folder;
+	PathKind    kind     = PathKind::FOLDER;
 	const char* title    = "";
 	const char* ok_label = nullptr;
 	std::string start_path;

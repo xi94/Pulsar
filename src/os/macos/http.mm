@@ -115,7 +115,7 @@ auto http_get(std::string_view t_url, usize t_max_bytes, std::vector<u8>* t_out_
 		NSURL* url = [NSURL URLWithString:macos::to_ns_string(t_url)];
 		if (url == nil) {
 			*t_out_error = "could not parse the update URL";
-			return HttpResult::Failed;
+			return HttpResult::FAILED;
 		}
 
 		Download download{
@@ -149,14 +149,14 @@ auto http_get(std::string_view t_url, usize t_max_bytes, std::vector<u8>* t_out_
 
 		[session finishTasksAndInvalidate];
 
-		if (download.cancelled.load(std::memory_order_relaxed)) return HttpResult::Cancelled;
+		if (download.cancelled.load(std::memory_order_relaxed)) return HttpResult::CANCELLED;
 
 		if (!download.error.empty()) {
 			*t_out_error = download.error;
-			return HttpResult::Failed;
+			return HttpResult::FAILED;
 		}
 
-		return HttpResult::Ok;
+		return HttpResult::OK;
 	}
 }
 

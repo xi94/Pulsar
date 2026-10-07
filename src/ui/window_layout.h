@@ -17,13 +17,13 @@ constexpr Color K_TITLE_BAR_CLOSE_GLYPH_HOVER{255, 255, 255, 255};
 constexpr u8    K_TITLE_BAR_HOVER_ALPHA = 18;
 
 enum class TitleBarButton : u8 {
-	None,
-	Menu,
-	Search,
-	Update,
-	Minimize,
-	Maximize,
-	Close,
+	NONE,
+	MENU,
+	SEARCH,
+	UPDATE,
+	MINIMIZE,
+	MAXIMIZE,
+	CLOSE,
 };
 
 struct TitleBarLayout {

@@ -12,7 +12,7 @@ constexpr const char* K_LOG_CATEGORY = "gfx";
 
 [[nodiscard]] auto create_backend(GraphicsApi t_api) -> std::unique_ptr<RenderBackend>
 {
-	return t_api == GraphicsApi::OpenGl ? create_opengl_render_backend() : create_native_render_backend();
+	return t_api == GraphicsApi::OPENGL ? create_opengl_render_backend() : create_native_render_backend();
 }
 }
 
@@ -45,7 +45,7 @@ auto Texture::update(u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rg
 
 auto graphics_api_name(GraphicsApi t_api) -> std::string_view
 {
-	return t_api == GraphicsApi::OpenGl ? "OpenGL" : native_render_backend_name();
+	return t_api == GraphicsApi::OPENGL ? "OpenGL" : native_render_backend_name();
 }
 
 auto pixel_scale(const RenderFrame& t_frame) -> float
@@ -92,31 +92,31 @@ auto effect_constants(const RenderFrame& t_frame, const DrawCommand& t_command, 
 	switch (t_command.shader) {
 		using enum ShaderKind;
 
-		case BannerGlow: {
+		case BANNER_GLOW: {
 			t_out->banner_glow = BannerGlowConstants{.time_seconds = t_frame.effect_time_seconds, .params = t_command.box};
 			return sizeof(BannerGlowConstants);
 		}
 
-		case Shadow: {
+		case SHADOW: {
 			t_out->shadow = ShadowConstants{.params = t_command.box};
 			return sizeof(ShadowConstants);
 		}
 
-		case OutlineCountdown: {
+		case OUTLINE_COUNTDOWN: {
 			t_out->outline_countdown = OutlineCountdownConstants{.params = t_command.outline};
 			return sizeof(OutlineCountdownConstants);
 		}
 
-		case Backdrop:
-		case BackdropPlain: {
+		case BACKDROP:
+		case BACKDROP_PLAIN: {
 			t_out->backdrop = backdrop_constants(t_frame);
 			return sizeof(BackdropConstants);
 		}
 
-		case Solid:
-		case Textured:
-		case ColorPicker:
-		case Count: {
+		case SOLID:
+		case TEXTURED:
+		case COLOR_PICKER:
+		case COUNT: {
 			break;
 		}
 	}
@@ -130,7 +130,7 @@ Renderer::~Renderer() = default;
 
 auto Renderer::init(const os::Window* t_window, GraphicsApi t_preferred_api) -> bool
 {
-	const GraphicsApi fallback_api = t_preferred_api == GraphicsApi::OpenGl ? GraphicsApi::Native : GraphicsApi::OpenGl;
+	const GraphicsApi fallback_api = t_preferred_api == GraphicsApi::OPENGL ? GraphicsApi::NATIVE : GraphicsApi::OPENGL;
 	m_requested_api                = t_preferred_api;
 
 	for (const GraphicsApi api : {t_preferred_api, fallback_api}) {

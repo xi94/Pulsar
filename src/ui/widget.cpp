@@ -13,31 +13,31 @@ constexpr Vec2 K_MOUSE_OUTSIDE_WINDOW{-1.0f, -1.0f};
 	switch (t_event.type) {
 		using enum os::InputEventType;
 
-		case MouseDown: {
+		case MOUSE_DOWN: {
 			return t_widget->on_pointer_down(t_event.position);
 		}
 
-		case MouseMove: {
+		case MOUSE_MOVE: {
 			return t_widget->on_pointer_move(t_event.position);
 		}
 
-		case MouseUp: {
+		case MOUSE_UP: {
 			return t_widget->on_pointer_up(t_event.position);
 		}
 
-		case RightClick: {
+		case RIGHT_CLICK: {
 			return t_widget->on_right_click(t_event.position);
 		}
 
-		case MouseWheel: {
+		case MOUSE_WHEEL: {
 			return t_widget->on_scroll(t_event.position, t_event.wheel_delta);
 		}
 
-		case KeyDown: {
+		case KEY_DOWN: {
 			return t_widget->on_key_down(t_event.key);
 		}
 
-		case Character: {
+		case CHARACTER: {
 			return t_widget->on_char(t_event.codepoint);
 		}
 	}
@@ -110,14 +110,14 @@ auto WidgetStack::dispatch(const os::InputEvent& t_event) -> bool
 
 auto WidgetStack::cursor() const -> CursorKind
 {
-	CursorKind wanted = CursorKind::Arrow;
+	CursorKind wanted = CursorKind::ARROW;
 
 	visit_top_down([&](Widget* t_widget) {
 		if (t_widget->is_visible()) {
 			wanted = t_widget->cursor();
 		}
 
-		return wanted != CursorKind::Arrow;
+		return wanted != CursorKind::ARROW;
 	});
 
 	return wanted;

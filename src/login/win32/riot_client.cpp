@@ -4,6 +4,7 @@
 #include <concepts>
 #include <cwchar>
 #include <fstream>
+#include <iterator>
 #include <optional>
 #include <span>
 #include <thread>
@@ -11,8 +12,6 @@
 
 #include <Windows.h>
 #include <TlHelp32.h>
-
-#include <nlohmann/json.hpp>
 
 #include "core/debug_log.h"
 #include "core/thread_util.h"
@@ -25,8 +24,7 @@ using os::win32::to_wide;
 namespace {
 constexpr const char* K_LOG_CATEGORY = "riot";
 
-constexpr const wchar_t*    K_INSTALLS_JSON_NAME = L"Riot Games\\RiotClientInstalls.json";
-constexpr const char*       K_INSTALLS_JSON_KEYS[]{"rc_default", "rc_live", "rc_beta"};
+constexpr const wchar_t*    K_INSTALLS_JSON_NAME          = L"Riot Games\\RiotClientInstalls.json";
 constexpr const wchar_t*    K_CLIENT_EXECUTABLE_NAME      = L"RiotClientServices.exe";
 constexpr const char*       K_CLIENT_EXECUTABLE_NAME_UTF8 = "RiotClientServices.exe";
 constexpr const char*       K_DEFAULT_INSTALL_FOLDER      = "C:\\Riot Games\\Riot Client";
@@ -137,17 +135,13 @@ auto for_each_process(std::invocable<const PROCESSENTRY32W&> auto t_visitor) -> 
 
 auto installs_json_paths(std::vector<std::wstring>* t_out) -> void
 {
-	std::ifstream file(program_data_folder() + L"\\" + K_INSTALLS_JSON_NAME);
+	std::ifstream file(program_data_folder() + L"\\" + K_INSTALLS_JSON_NAME, std::ios::binary);
 	if (!file.is_open()) return;
 
-	const nlohmann::json installs = nlohmann::json::parse(file, nullptr, false);
-	if (!installs.is_object()) return;
+	const std::string json{std::istreambuf_iterator<char>{file}, std::istreambuf_iterator<char>{}};
 
-	for (const char* key : K_INSTALLS_JSON_KEYS) {
-		const auto path = installs.find(key);
-		if (path == installs.end() || !path->is_string()) continue;
-
-		std::wstring wide = to_wide(path->get_ref<const std::string&>());
+	for (const std::string& path : RiotClient::paths_in_installs_file(json)) {
+		std::wstring wide = to_wide(path);
 		std::ranges::replace(wide, L'/', L'\\');
 		t_out->push_back(std::move(wide));
 	}
@@ -533,6 +527,18 @@ auto RiotClient::automation_failure_message() -> const char*
 	return K_AUTOMATION_FAILED_MESSAGE;
 }
 
+auto RiotClient::request_automation_permission() -> bool
+{
+	return true;
+}
+
+auto RiotClient::permission_missing_message() -> const char*
+{
+	return "";
+}
+
+auto RiotClient::open_automation_permission_settings() -> void {}
+
 auto RiotClient::supports_product(std::string_view) -> bool
 {
 	return true;
@@ -769,7 +775,7 @@ auto RiotClient::wait_for_login_result(std::string* t_out_error, const std::stri
 
 auto RiotClient::click_play_when_ready(u32 t_timeout_ms, std::string* t_out_error) -> PlayResult
 {
-	if (!m_native->automation) return PlayResult::NotFound;
+	if (!m_native->automation) return PlayResult::NOT_FOUND;
 
 	const UiAutomation* automation = &*m_native->automation;
 	const auto          deadline   = deadline_after(t_timeout_ms);
@@ -780,7 +786,7 @@ auto RiotClient::click_play_when_ready(u32 t_timeout_ms, std::string* t_out_erro
 		if (const std::optional<std::wstring> shown = window.is_valid() ? shown_login_error(*automation, window, m_native->form_found_by_name) : std::nullopt) {
 			*t_out_error = to_utf8(*shown);
 			debug_log::write(K_LOG_CATEGORY, "login error shown while waiting for Play: \"%s\"", t_out_error->c_str());
-			return PlayResult::LoginError;
+			return PlayResult::LOGIN_ERROR;
 		}
 
 		const UiElement play_button = window.is_valid() ? automation->find_descendant(window, K_PLAY_BUTTON_NAME, UIA_ButtonControlTypeId) : UiElement{};
@@ -788,12 +794,12 @@ auto RiotClient::click_play_when_ready(u32 t_timeout_ms, std::string* t_out_erro
 		if (play_button.is_valid()) {
 			debug_log::write(K_LOG_CATEGORY, "Play button found - invoking it");
 			play_button.invoke();
-			return PlayResult::Clicked;
+			return PlayResult::CLICKED;
 		}
 
 		if (is_cancelled(m_cancel) || is_past(deadline)) {
 			debug_log::write(K_LOG_CATEGORY, "Play button not found (%s) - leaving the game unlaunched", is_cancelled(m_cancel) ? "cancelled" : "timed out");
-			return PlayResult::NotFound;
+			return PlayResult::NOT_FOUND;
 		}
 
 		std::this_thread::sleep_for(K_POLL_INTERVAL);

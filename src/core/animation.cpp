@@ -5,8 +5,11 @@
 #include <limits>
 
 namespace {
+// The speed slider's 1.0x plays every animation this much faster than its written rate; at the bare rates the UI felt sluggish.
+constexpr float K_BASE_SPEED = 1.5f;
+
 bool  g_enabled         = true;
-float g_speed           = 1.0f;
+float g_speed           = K_BASE_SPEED;
 bool  g_frame_requested = false;
 float g_wake_after      = std::numeric_limits<float>::max();
 }
@@ -105,5 +108,5 @@ auto animation::set_enabled(bool t_enabled) -> void
 
 auto animation::set_speed(float t_speed) -> void
 {
-	g_speed = t_speed;
+	g_speed = t_speed * K_BASE_SPEED;
 }

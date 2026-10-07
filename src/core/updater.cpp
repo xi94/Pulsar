@@ -40,7 +40,15 @@ template <usize Capacity>
 	return true;
 }
 
-[[nodiscard]] auto parse_manifest(const std::vector<u8>& t_json, UpdateManifest* t_out_manifest) -> bool
+[[nodiscard]] auto equals_ignoring_case(std::string_view t_a, std::string_view t_b) -> bool
+{
+	const auto lowered = [](char t_character) { return t_character >= 'A' && t_character <= 'Z' ? static_cast<char>(t_character - 'A' + 'a') : t_character; };
+
+	return std::ranges::equal(t_a, t_b, [&lowered](char t_left, char t_right) { return lowered(t_left) == lowered(t_right); });
+}
+}
+
+auto parse_update_manifest(const std::vector<u8>& t_json, UpdateManifest* t_out_manifest) -> bool
 {
 	const nlohmann::json parsed = nlohmann::json::parse(t_json.begin(), t_json.end(), nullptr, false);
 	if (!parsed.is_object()) return false;
@@ -61,17 +69,10 @@ template <usize Capacity>
 	return true;
 }
 
-[[nodiscard]] auto equals_ignoring_case(std::string_view t_a, std::string_view t_b) -> bool
-{
-	const auto lowered = [](char t_character) { return t_character >= 'A' && t_character <= 'Z' ? static_cast<char>(t_character - 'A' + 'a') : t_character; };
-
-	return std::ranges::equal(t_a, t_b, [&lowered](char t_left, char t_right) { return lowered(t_left) == lowered(t_right); });
-}
-
-[[nodiscard]] auto verify_download(const std::vector<u8>& t_body, const UpdateManifest& t_manifest, std::string* t_out_error) -> bool
+auto verify_update(const std::vector<u8>& t_build, const UpdateManifest& t_manifest, std::span<const u8, 32> t_public_key, std::string* t_out_error) -> bool
 {
 	u8 digest[crypto_hash_sha256_BYTES];
-	crypto_hash_sha256(digest, t_body.data(), t_body.size());
+	crypto_hash_sha256(digest, t_build.data(), t_build.size());
 
 	char digest_hex[crypto_hash_sha256_BYTES * 2 + 1];
 	sodium_bin2hex(digest_hex, sizeof(digest_hex), digest, sizeof(digest));
@@ -92,13 +93,12 @@ template <usize Capacity>
 		return false;
 	}
 
-	if (crypto_sign_verify_detached(signature, digest, sizeof(digest), K_RELEASE_SIGNING_PUBLIC_KEY.data()) != 0) {
+	if (crypto_sign_verify_detached(signature, digest, sizeof(digest), t_public_key.data()) != 0) {
 		*t_out_error = "signature verification failed - refusing to install an unsigned or tampered update";
 		return false;
 	}
 
 	return true;
-}
 }
 
 Updater::~Updater()
@@ -110,18 +110,18 @@ Updater::~Updater()
 auto Updater::check_for_update() -> void
 {
 	const UpdateStage current         = stage();
-	const bool        nothing_pending = current == UpdateStage::Idle || current == UpdateStage::UpToDate || current == UpdateStage::CheckFailed;
+	const bool        nothing_pending = current == UpdateStage::IDLE || current == UpdateStage::UP_TO_DATE || current == UpdateStage::CHECK_FAILED;
 	if (m_worker_active || !nothing_pending) return;
 
 	prepare_new_worker();
-	m_stage.store(UpdateStage::Checking, std::memory_order_relaxed);
+	m_stage.store(UpdateStage::CHECKING, std::memory_order_relaxed);
 	m_worker = std::thread([this]() { check_for_update_on_worker(); });
 }
 
 auto Updater::start_download() -> void
 {
 	const UpdateStage current       = stage();
-	const bool        have_manifest = current == UpdateStage::Available || current == UpdateStage::Error || current == UpdateStage::Cancelled;
+	const bool        have_manifest = current == UpdateStage::AVAILABLE || current == UpdateStage::UPDATE_FAILED || current == UpdateStage::CANCELLED;
 	if (m_worker_active || !have_manifest) return;
 
 	prepare_new_worker();
@@ -137,7 +137,7 @@ auto Updater::update() -> void
 	}
 
 	m_worker_active     = false;
-	m_ready_to_relaunch = stage() == UpdateStage::ReadyToRelaunch;
+	m_ready_to_relaunch = stage() == UpdateStage::READY_TO_RELAUNCH;
 }
 
 auto Updater::consume_ready_to_relaunch() -> bool
@@ -175,20 +175,20 @@ auto Updater::check_for_update_on_worker() -> void
 	std::vector<u8> body;
 	std::string     error;
 
-	if (os::http_get(K_UPDATE_MANIFEST_URL, K_MAX_DOWNLOAD_BYTES, &body, os::HttpProgress{}, &error) != os::HttpResult::Ok) {
-		fail_worker(UpdateStage::CheckFailed, PREFIX, error.c_str());
+	if (os::http_get(K_UPDATE_MANIFEST_URL, K_MAX_DOWNLOAD_BYTES, &body, os::HttpProgress{}, &error) != os::HttpResult::OK) {
+		fail_worker(UpdateStage::CHECK_FAILED, PREFIX, error.c_str());
 		return;
 	}
 
 	UpdateManifest manifest{};
-	if (!parse_manifest(body, &manifest)) {
-		fail_worker(UpdateStage::CheckFailed, PREFIX, "malformed manifest");
+	if (!parse_update_manifest(body, &manifest)) {
+		fail_worker(UpdateStage::CHECK_FAILED, PREFIX, "malformed manifest");
 		return;
 	}
 
 	const std::optional<Version> latest = parse_version(manifest.version);
 	if (!latest) {
-		fail_worker(UpdateStage::CheckFailed, PREFIX, "manifest has an unparseable version");
+		fail_worker(UpdateStage::CHECK_FAILED, PREFIX, "manifest has an unparseable version");
 		return;
 	}
 
@@ -198,11 +198,11 @@ auto Updater::check_for_update_on_worker() -> void
 	m_manifest = manifest;
 
 	if (*latest <= current) {
-		finish_worker(UpdateStage::UpToDate);
+		finish_worker(UpdateStage::UP_TO_DATE);
 	} else if (current < minimum_for_auto_update || !os::can_self_update()) {
-		finish_worker(UpdateStage::ManualUpgradeRequired);
+		finish_worker(UpdateStage::MANUAL_UPGRADE_REQUIRED);
 	} else {
-		finish_worker(UpdateStage::Available);
+		finish_worker(UpdateStage::AVAILABLE);
 	}
 }
 
@@ -211,7 +211,7 @@ auto Updater::download_and_install_on_worker(UpdateManifest t_manifest) -> void
 	m_bytes_downloaded.store(0, std::memory_order_relaxed);
 	m_total_bytes.store(0, std::memory_order_relaxed);
 	m_bytes_per_second.store(0.0, std::memory_order_relaxed);
-	m_stage.store(UpdateStage::Downloading, std::memory_order_release);
+	m_stage.store(UpdateStage::DOWNLOADING, std::memory_order_release);
 
 	const os::HttpProgress progress{&m_cancel_requested, &m_bytes_downloaded, &m_total_bytes, &m_bytes_per_second};
 
@@ -219,32 +219,32 @@ auto Updater::download_and_install_on_worker(UpdateManifest t_manifest) -> void
 	std::string          error;
 	const os::HttpResult result = os::http_get(t_manifest.url, K_MAX_DOWNLOAD_BYTES, &body, progress, &error);
 
-	if (result == os::HttpResult::Cancelled) {
-		finish_worker(UpdateStage::Cancelled);
+	if (result == os::HttpResult::CANCELLED) {
+		finish_worker(UpdateStage::CANCELLED);
 		return;
 	}
 
-	if (result != os::HttpResult::Ok) {
-		fail_worker(UpdateStage::Error, "Download failed: ", error.c_str());
+	if (result != os::HttpResult::OK) {
+		fail_worker(UpdateStage::UPDATE_FAILED, "Download failed: ", error.c_str());
 		return;
 	}
 
-	m_stage.store(UpdateStage::Verifying, std::memory_order_release);
-	if (!verify_download(body, t_manifest, &error)) {
-		fail_worker(UpdateStage::Error, "", error.c_str());
+	m_stage.store(UpdateStage::VERIFYING, std::memory_order_release);
+	if (!verify_update(body, t_manifest, K_RELEASE_SIGNING_PUBLIC_KEY, &error)) {
+		fail_worker(UpdateStage::UPDATE_FAILED, "", error.c_str());
 		return;
 	}
 
 	if (m_cancel_requested.load(std::memory_order_relaxed)) {
-		finish_worker(UpdateStage::Cancelled);
+		finish_worker(UpdateStage::CANCELLED);
 		return;
 	}
 
-	m_stage.store(UpdateStage::Installing, std::memory_order_release);
+	m_stage.store(UpdateStage::INSTALLING, std::memory_order_release);
 	if (!os::install_update(body, K_APP_VERSION, &error)) {
-		fail_worker(UpdateStage::Error, "", error.c_str());
+		fail_worker(UpdateStage::UPDATE_FAILED, "", error.c_str());
 		return;
 	}
 
-	finish_worker(UpdateStage::ReadyToRelaunch);
+	finish_worker(UpdateStage::READY_TO_RELAUNCH);
 }

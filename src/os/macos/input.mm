@@ -14,7 +14,7 @@ constexpr KeyPosition K_LETTER_POSITIONS[]{
 	{kVK_ANSI_K, os::Key::K}, {kVK_ANSI_L, os::Key::L},         {kVK_ANSI_M, os::Key::M}, {kVK_ANSI_N, os::Key::N}, {kVK_ANSI_O, os::Key::O},
 	{kVK_ANSI_P, os::Key::P}, {kVK_ANSI_Q, os::Key::Q},         {kVK_ANSI_R, os::Key::R}, {kVK_ANSI_S, os::Key::S}, {kVK_ANSI_T, os::Key::T},
 	{kVK_ANSI_U, os::Key::U}, {kVK_ANSI_V, os::Key::V},         {kVK_ANSI_W, os::Key::W}, {kVK_ANSI_X, os::Key::X}, {kVK_ANSI_Y, os::Key::Y},
-	{kVK_ANSI_Z, os::Key::Z}, {kVK_ANSI_Comma, os::Key::Comma},
+	{kVK_ANSI_Z, os::Key::Z}, {kVK_ANSI_Comma, os::Key::COMMA},
 };
 
 [[nodiscard]] auto is_held(NSEventModifierFlags t_flag) -> bool
@@ -25,13 +25,13 @@ constexpr KeyPosition K_LETTER_POSITIONS[]{
 [[nodiscard]] auto key_from_character(NSEvent* t_event) -> os::Key
 {
 	NSString* characters = t_event.charactersIgnoringModifiers.lowercaseString;
-	if (characters.length != 1) return os::Key::None;
+	if (characters.length != 1) return os::Key::NONE;
 
 	const unichar character = [characters characterAtIndex:0];
 	if (character >= 'a' && character <= 'z') return static_cast<os::Key>(static_cast<u32>(os::Key::A) + (character - 'a'));
-	if (character == ',') return os::Key::Comma;
+	if (character == ',') return os::Key::COMMA;
 
-	return os::Key::None;
+	return os::Key::NONE;
 }
 
 [[nodiscard]] auto key_from_position(u16 t_code) -> os::Key
@@ -40,7 +40,7 @@ constexpr KeyPosition K_LETTER_POSITIONS[]{
 		if (position.code == t_code) return position.key;
 	}
 
-	return os::Key::None;
+	return os::Key::NONE;
 }
 }
 
@@ -81,56 +81,56 @@ auto key_from_event(NSEvent* t_event) -> Key
 
 	switch (t_event.keyCode) {
 		case kVK_Delete: {
-			return Key::Backspace;
+			return Key::BACKSPACE;
 		}
 
 		case kVK_Tab: {
-			return Key::Tab;
+			return Key::TAB;
 		}
 
 		case kVK_Return:
 		case kVK_ANSI_KeypadEnter: {
-			return Key::Enter;
+			return Key::ENTER;
 		}
 
 		case kVK_Escape: {
-			return Key::Escape;
+			return Key::ESCAPE;
 		}
 
 		case kVK_ForwardDelete: {
-			return Key::Delete;
+			return Key::FORWARD_DELETE;
 		}
 
 		case kVK_LeftArrow: {
-			return command ? Key::Home : Key::Left;
+			return command ? Key::HOME : Key::LEFT;
 		}
 
 		case kVK_RightArrow: {
-			return command ? Key::End : Key::Right;
+			return command ? Key::END : Key::RIGHT;
 		}
 
 		case kVK_UpArrow: {
-			return Key::Up;
+			return Key::UP;
 		}
 
 		case kVK_DownArrow: {
-			return Key::Down;
+			return Key::DOWN;
 		}
 
 		case kVK_Home: {
-			return Key::Home;
+			return Key::HOME;
 		}
 
 		case kVK_End: {
-			return Key::End;
+			return Key::END;
 		}
 
 		case kVK_PageUp: {
-			return Key::PageUp;
+			return Key::PAGE_UP;
 		}
 
 		case kVK_PageDown: {
-			return Key::PageDown;
+			return Key::PAGE_DOWN;
 		}
 
 		case kVK_F1: {
@@ -148,7 +148,7 @@ auto key_from_event(NSEvent* t_event) -> Key
 
 	const Key typed = key_from_character(t_event);
 
-	return typed != Key::None ? typed : key_from_position(t_event.keyCode);
+	return typed != Key::NONE ? typed : key_from_position(t_event.keyCode);
 }
 
 }

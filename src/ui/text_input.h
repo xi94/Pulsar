@@ -13,16 +13,18 @@ constexpr u32 K_TEXT_INPUT_CAPACITY       = 512;
 constexpr u32 K_DEFAULT_TEXT_INPUT_LENGTH = 128;
 
 enum class TextEdit : u8 {
-	Cut,
-	Copy,
-	Paste,
-	SelectAll,
+	CUT,
+	COPY,
+	PASTE,
+	SELECT_ALL,
 };
 
 struct TextRange {
 	u32 start;
 	u32 end;
 };
+
+auto set_caret_style(CaretStyle t_style, bool t_trail, float t_trail_strength) -> void;
 
 class TextInput {
   public:
@@ -44,10 +46,7 @@ class TextInput {
 		return m_focused;
 	}
 
-	auto set_focused(bool t_focused) -> void
-	{
-		m_focused = t_focused;
-	}
+	auto set_focused(bool t_focused) -> void;
 
 	[[nodiscard]] auto is_masked() const -> bool
 	{
@@ -95,6 +94,9 @@ class TextInput {
 	auto erase(TextRange t_range) -> void;
 	auto insert(std::string_view t_text) -> void;
 	auto restart_caret_blink() -> void;
+	[[nodiscard]] auto caret_size(const Font& t_font, std::string_view t_shown, float t_height) const -> Vec2;
+	auto move_caret(Vec2 t_target, Vec2 t_origin, float t_line_height) -> void;
+	auto draw_caret(DrawList* t_draw_list, Vec2 t_origin, Vec2 t_size, Color t_color) const -> void;
 
 	char             m_text[K_TEXT_INPUT_CAPACITY]{};
 	u32              m_length     = 0;
@@ -114,4 +116,11 @@ class TextInput {
 
 	float m_scroll_x            = 0.0f;
 	float m_caret_blink_seconds = 0.0f;
+
+	Vec2  m_caret_head{};
+	Vec2  m_caret_tail{};
+	Vec2  m_caret_target{};
+	float m_caret_rate    = 0.0f;
+	float m_trail_seconds = 0.0f;
+	bool  m_trail_placed  = false;
 };

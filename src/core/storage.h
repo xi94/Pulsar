@@ -9,10 +9,10 @@
 namespace storage {
 
 enum class LoadResult : u8 {
-	NoFile,
-	Failed,
-	Ok,
-	Locked,
+	NO_FILE,
+	FAILED,
+	OK,
+	LOCKED,
 };
 
 [[nodiscard]] auto data_directory() -> std::string;

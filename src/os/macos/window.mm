@@ -22,6 +22,9 @@ constexpr auto    K_ACTIVATE_EXISTING_POLL          = std::chrono::milliseconds(
 
 constexpr NSWindowButton K_WINDOW_BUTTONS[]{NSWindowCloseButton, NSWindowMiniaturizeButton, NSWindowZoomButton};
 
+// Pulsar's own entries go below "About Pulsar" and its separator, which macos.mm puts first in the application menu.
+constexpr NSInteger K_APP_MENU_INSERT_INDEX = 2;
+
 class ViewEvents {
   public:
 	virtual auto mouse_down(NSEvent* t_event) -> void     = 0;
@@ -37,6 +40,7 @@ class ViewEvents {
 	virtual auto backing_changed() -> void                = 0;
 	virtual auto window_resized() -> void                 = 0;
 	virtual auto should_close() -> void                   = 0;
+	virtual auto menu_item(u32 t_id) -> void              = 0;
 
   protected:
 	~ViewEvents() = default;
@@ -44,12 +48,12 @@ class ViewEvents {
 
 [[nodiscard]] auto window_lock_name(os::WindowKind t_kind) -> std::string_view
 {
-	return t_kind == os::WindowKind::Dialog ? "setup-window.lock" : "main-window.lock";
+	return t_kind == os::WindowKind::DIALOG ? "setup-window.lock" : "main-window.lock";
 }
 
 [[nodiscard]] auto activation_event(os::WindowKind t_kind) -> std::string_view
 {
-	return t_kind == os::WindowKind::Dialog ? "activate-setup" : "activate-main";
+	return t_kind == os::WindowKind::DIALOG ? "activate-setup" : "activate-main";
 }
 
 [[nodiscard]] auto system_cursor(CursorKind t_cursor) -> NSCursor*
@@ -57,20 +61,20 @@ class ViewEvents {
 	switch (t_cursor) {
 		using enum CursorKind;
 
-		case Hand: {
+		case HAND: {
 			return NSCursor.pointingHandCursor;
 		}
 
-		case IBeam: {
+		case I_BEAM: {
 			return NSCursor.IBeamCursor;
 		}
 
-		case Move: {
+		case MOVE: {
 			return NSCursor.openHandCursor;
 		}
 
-		case Arrow:
-		case Drag: {
+		case ARROW:
+		case DRAG: {
 			break;
 		}
 	}
@@ -82,11 +86,22 @@ class ViewEvents {
 {
 	return [t_text isKindOfClass:NSAttributedString.class] ? static_cast<NSAttributedString*>(t_text).string : static_cast<NSString*>(t_text);
 }
+
+[[nodiscard]] auto key_equivalent(os::Key t_key) -> NSString*
+{
+	if (t_key == os::Key::COMMA) return @",";
+	if (t_key < os::Key::A || t_key > os::Key::Z) return @"";
+
+	const unichar letter = static_cast<unichar>('a' + (static_cast<int>(t_key) - static_cast<int>(os::Key::A)));
+
+	return [NSString stringWithCharacters:&letter length:1];
+}
 }
 
 @interface PulsarView : NSView <NSTextInputClient, NSWindowDelegate>
 - (instancetype)initWithEvents:(ViewEvents*)t_events;
 - (void)detach;
+- (void)chooseMenuItem:(NSMenuItem*)t_item;
 @end
 
 @implementation PulsarView {
@@ -112,6 +127,11 @@ class ViewEvents {
 - (void)detach
 {
 	m_events = nullptr;
+}
+
+- (void)chooseMenuItem:(NSMenuItem*)t_item
+{
+	if (m_events != nullptr) m_events->menu_item(static_cast<u32>(t_item.tag));
 }
 
 - (BOOL)isFlipped
@@ -275,14 +295,15 @@ class ViewEvents {
 namespace os {
 
 struct Window::Native final : ViewEvents {
-	Window*     owner               = nullptr;
-	NSWindow*   window              = nil;
-	PulsarView* view                = nil;
-	id          activation_observer = nil;
-	int         window_lock         = -1;
-	Vec2        restored_size{};
-	bool        mouse_inside  = false;
-	bool        control_click = false;
+	Window*                      owner               = nullptr;
+	NSWindow*                    window              = nil;
+	PulsarView*                  view                = nil;
+	id                           activation_observer = nil;
+	NSMutableArray<NSMenuItem*>* app_menu_items      = nil;
+	int                          window_lock         = -1;
+	Vec2                         restored_size{};
+	bool                         mouse_inside  = false;
+	bool                         control_click = false;
 
 	auto mouse_down(NSEvent* t_event) -> void override;
 	auto mouse_up(NSEvent* t_event) -> void override;
@@ -297,6 +318,7 @@ struct Window::Native final : ViewEvents {
 	auto backing_changed() -> void override;
 	auto window_resized() -> void override;
 	auto should_close() -> void override;
+	auto menu_item(u32 t_id) -> void override;
 
 	[[nodiscard]] auto point_of(NSEvent* t_event) const -> Vec2;
 	[[nodiscard]] auto is_caption(Vec2 t_point) const -> bool;
@@ -325,6 +347,14 @@ Window::~Window()
 		::close(native->window_lock);
 	}
 
+	for (NSMenuItem* item in native->app_menu_items) {
+		[item.menu removeItem:item];
+	}
+
+	if (m_session_end) {
+		macos::set_session_end_handler(nullptr);
+	}
+
 	[native->view detach];
 	native->window.delegate = nil;
 	[native->window close];
@@ -338,7 +368,7 @@ auto Window::create(std::string_view t_title, u32 t_width, u32 t_height, WindowK
 	m_kind         = t_kind;
 
 	NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskFullSizeContentView;
-	if (t_kind == WindowKind::Main) {
+	if (t_kind == WindowKind::MAIN) {
 		style |= NSWindowStyleMaskResizable;
 	}
 
@@ -352,7 +382,7 @@ auto Window::create(std::string_view t_title, u32 t_width, u32 t_height, WindowK
 	window.releasedWhenClosed         = NO;
 	window.tabbingMode                = NSWindowTabbingModeDisallowed;
 
-	[window standardWindowButton:NSWindowZoomButton].hidden = t_kind == WindowKind::Dialog;
+	[window standardWindowButton:NSWindowZoomButton].hidden = t_kind == WindowKind::DIALOG;
 
 	native->view            = [[PulsarView alloc] initWithEvents:native];
 	native->view.wantsLayer = YES;
@@ -395,6 +425,37 @@ auto Window::set_title_bar(float t_height, std::function<bool(Vec2)> t_is_button
 	m_title_bar_height    = t_height;
 	m_is_title_bar_button = std::move(t_is_button);
 	m_native->layout_window_buttons();
+}
+
+auto Window::set_app_menu(std::span<const AppMenuItem> t_items) -> void
+{
+	Native* native           = m_native.get();
+	NSMenu* application_menu = NSApp.mainMenu.itemArray.firstObject.submenu;
+	if (application_menu == nil) return;
+
+	for (NSMenuItem* item in native->app_menu_items) {
+		[application_menu removeItem:item];
+	}
+
+	native->app_menu_items = [NSMutableArray array];
+	if (t_items.empty()) return;
+
+	for (const AppMenuItem& entry : t_items) {
+		NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:macos::to_ns_string(entry.label)
+													  action:@selector(chooseMenuItem:)
+											   keyEquivalent:key_equivalent(entry.shortcut)];
+		item.target      = native->view;
+		item.tag         = static_cast<NSInteger>(entry.id);
+		[native->app_menu_items addObject:item];
+	}
+
+	[native->app_menu_items addObject:NSMenuItem.separatorItem];
+
+	NSInteger index = K_APP_MENU_INSERT_INDEX;
+	for (NSMenuItem* item in native->app_menu_items) {
+		[application_menu insertItem:item atIndex:index];
+		index += 1;
+	}
 }
 
 auto Window::show() -> void
@@ -459,6 +520,12 @@ auto Window::on_redraw(std::function<void()> t_callback) -> void
 auto Window::on_dpi_changed(std::function<void()> t_callback) -> void
 {
 	m_dpi_changed = std::move(t_callback);
+}
+
+auto Window::on_session_end(std::function<void()> t_callback) -> void
+{
+	m_session_end = std::move(t_callback);
+	macos::set_session_end_handler(m_session_end);
 }
 
 auto Window::redraw() -> void
@@ -568,14 +635,14 @@ auto Window::Native::mouse_down(NSEvent* t_event) -> void
 	control_click = (t_event.modifierFlags & NSEventModifierFlagControl) != 0;
 
 	if (!control_click) {
-		push_mouse(InputEventType::MouseDown, point);
+		push_mouse(InputEventType::MOUSE_DOWN, point);
 	}
 }
 
 auto Window::Native::mouse_up(NSEvent* t_event) -> void
 {
 	const Vec2 point = point_of(t_event);
-	push_mouse(std::exchange(control_click, false) ? InputEventType::RightClick : InputEventType::MouseUp, point);
+	push_mouse(std::exchange(control_click, false) ? InputEventType::RIGHT_CLICK : InputEventType::MOUSE_UP, point);
 
 	if (!NSPointInRect(NSMakePoint(point.x, point.y), view.bounds)) {
 		mouse_exited();
@@ -585,7 +652,7 @@ auto Window::Native::mouse_up(NSEvent* t_event) -> void
 auto Window::Native::mouse_moved(NSEvent* t_event) -> void
 {
 	mouse_inside = true;
-	push_mouse(InputEventType::MouseMove, point_of(t_event));
+	push_mouse(InputEventType::MOUSE_MOVE, point_of(t_event));
 }
 
 auto Window::Native::mouse_exited() -> void
@@ -594,12 +661,12 @@ auto Window::Native::mouse_exited() -> void
 	if ((NSEvent.pressedMouseButtons & 1) != 0) return;
 
 	mouse_inside = false;
-	push_mouse(InputEventType::MouseMove, Vec2{-1.0f, -1.0f});
+	push_mouse(InputEventType::MOUSE_MOVE, Vec2{-1.0f, -1.0f});
 }
 
 auto Window::Native::right_mouse_up(NSEvent* t_event) -> void
 {
-	push_mouse(InputEventType::RightClick, point_of(t_event));
+	push_mouse(InputEventType::RIGHT_CLICK, point_of(t_event));
 }
 
 auto Window::Native::scroll_wheel(NSEvent* t_event) -> void
@@ -608,12 +675,12 @@ auto Window::Native::scroll_wheel(NSEvent* t_event) -> void
 	const float delta   = t_event.hasPreciseScrollingDeltas ? delta_y / K_PRECISE_SCROLL_POINTS_PER_NOTCH : delta_y;
 	if (delta == 0.0f) return;
 
-	owner->push_input(InputEvent{.type = InputEventType::MouseWheel, .position = point_of(t_event), .wheel_delta = delta});
+	owner->push_input(InputEvent{.type = InputEventType::MOUSE_WHEEL, .position = point_of(t_event), .wheel_delta = delta});
 }
 
 auto Window::Native::key_down(NSEvent* t_event) -> void
 {
-	owner->push_input(InputEvent{.type = InputEventType::KeyDown, .key = macos::key_from_event(t_event)});
+	owner->push_input(InputEvent{.type = InputEventType::KEY_DOWN, .key = macos::key_from_event(t_event)});
 
 	if ((t_event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl)) == 0) {
 		[view interpretKeyEvents:@[ t_event ]];
@@ -634,7 +701,7 @@ auto Window::Native::insert_text(NSString* t_text) -> void
 			i += 1;
 		}
 
-		owner->push_input(InputEvent{.type = InputEventType::Character, .codepoint = codepoint});
+		owner->push_input(InputEvent{.type = InputEventType::CHARACTER, .codepoint = codepoint});
 	}
 }
 
@@ -674,6 +741,11 @@ auto Window::Native::window_resized() -> void
 auto Window::Native::should_close() -> void
 {
 	owner->close();
+}
+
+auto Window::Native::menu_item(u32 t_id) -> void
+{
+	owner->push_input(InputEvent{.type = InputEventType::MENU_ITEM, .menu_item = t_id});
 }
 
 auto Window::Native::point_of(NSEvent* t_event) const -> Vec2
@@ -742,7 +814,7 @@ auto Window::Native::act_on_title_bar_double_click() const -> void
 
 	if ([action isEqualToString:@"Minimize"]) {
 		[window performMiniaturize:nil];
-	} else if (![action isEqualToString:@"None"] && owner->m_kind == WindowKind::Main) {
+	} else if (![action isEqualToString:@"None"] && owner->m_kind == WindowKind::MAIN) {
 		[window performZoom:nil];
 	}
 }
@@ -756,7 +828,7 @@ auto activate_running_instance() -> bool
 {
 	const auto deadline = std::chrono::steady_clock::now() + K_ACTIVATE_EXISTING_TIMEOUT;
 
-	while (!bring_window_to_front(WindowKind::Main)) {
+	while (!bring_window_to_front(WindowKind::MAIN)) {
 		if (std::chrono::steady_clock::now() >= deadline) return false;
 
 		std::this_thread::sleep_for(K_ACTIVATE_EXISTING_POLL);

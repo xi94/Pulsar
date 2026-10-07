@@ -9,6 +9,7 @@
 #include "os/app_icon.h"
 #include "ui/controls.h"
 #include "ui/text.h"
+#include "ui/text_input.h"
 #include "ui/theme.h"
 #include "ui/window_layout.h"
 
@@ -40,10 +41,11 @@ auto SetupApp::create() -> bool
 	apply_theme(m_settings.theme);
 	animation::set_enabled(m_settings.animations_enabled);
 	animation::set_speed(m_settings.animation_speed);
+	set_caret_style(m_settings.caret_style, m_settings.caret_trail, m_settings.caret_trail_strength);
 	set_corner_roundness(m_settings.corner_roundness);
 
-	if (!m_window.create("Pulsar setup", K_WINDOW_WIDTH, K_WINDOW_HEIGHT, os::WindowKind::Dialog)) return false;
-	m_window.set_title_bar(K_TITLE_BAR_HEIGHT, [this](Vec2 t_point) { return title_bar().button_at(t_point) != TitleBarButton::None; });
+	if (!m_window.create("Pulsar setup", K_WINDOW_WIDTH, K_WINDOW_HEIGHT, os::WindowKind::DIALOG)) return false;
+	m_window.set_title_bar(K_TITLE_BAR_HEIGHT, [this](Vec2 t_point) { return title_bar().button_at(t_point) != TitleBarButton::NONE; });
 
 	if (!m_renderer.init(&m_window, m_settings.renderer)) return false;
 
@@ -88,7 +90,7 @@ auto SetupApp::title_bar() const -> TitleBarLayout
 
 auto SetupApp::run() -> SetupOutcome
 {
-	if (!create()) return m_mode == SetupMode::FirstRun ? SetupOutcome::Portable : SetupOutcome::Closed;
+	if (!create()) return m_mode == SetupMode::FIRST_RUN ? SetupOutcome::PORTABLE : SetupOutcome::CLOSED;
 
 	frame();
 	m_window.show();
@@ -113,7 +115,7 @@ auto SetupApp::run() -> SetupOutcome
 		}
 	}
 
-	return SetupOutcome::Closed;
+	return SetupOutcome::CLOSED;
 }
 
 auto SetupApp::handle_input(const os::InputEvent& t_event) -> void
@@ -121,18 +123,18 @@ auto SetupApp::handle_input(const os::InputEvent& t_event) -> void
 	switch (t_event.type) {
 		using enum os::InputEventType;
 
-		case MouseMove: {
+		case MOUSE_MOVE: {
 			m_mouse = t_event.position;
 			m_screen.on_pointer_move(m_mouse);
 			break;
 		}
 
-		case MouseDown: {
+		case MOUSE_DOWN: {
 			m_mouse        = t_event.position;
 			m_pointer_down = true;
 
 			const TitleBarButton button = title_bar().button_at(m_mouse);
-			if (button != TitleBarButton::None) {
+			if (button != TitleBarButton::NONE) {
 				m_pressed_button = button;
 				break;
 			}
@@ -141,39 +143,39 @@ auto SetupApp::handle_input(const os::InputEvent& t_event) -> void
 			break;
 		}
 
-		case MouseUp: {
+		case MOUSE_UP: {
 			m_mouse        = t_event.position;
 			m_pointer_down = false;
 
-			const TitleBarButton pressed = std::exchange(m_pressed_button, TitleBarButton::None);
-			if (pressed == TitleBarButton::None) {
+			const TitleBarButton pressed = std::exchange(m_pressed_button, TitleBarButton::NONE);
+			if (pressed == TitleBarButton::NONE) {
 				m_screen.on_pointer_up(m_mouse);
 				break;
 			}
 
 			if (title_bar().button_at(m_mouse) != pressed) break;
 
-			if (pressed == TitleBarButton::Close) {
+			if (pressed == TitleBarButton::CLOSE) {
 				m_window.request_quit();
-			} else if (pressed == TitleBarButton::Minimize) {
+			} else if (pressed == TitleBarButton::MINIMIZE) {
 				m_window.minimize();
 			}
 
 			break;
 		}
 
-		case KeyDown: {
+		case KEY_DOWN: {
 			m_screen.on_key_down(t_event.key);
 			break;
 		}
 
-		case Character: {
+		case CHARACTER: {
 			m_screen.on_char(t_event.codepoint);
 			break;
 		}
 
-		case MouseWheel:
-		case RightClick: {
+		case MOUSE_WHEEL:
+		case RIGHT_CLICK: {
 			break;
 		}
 	}
@@ -202,8 +204,8 @@ auto SetupApp::frame() -> void
 	m_screen.update(delta_seconds);
 	m_truncation_hint.update(delta_seconds, m_pointer_down);
 
-	const bool over_controls = title_bar().button_at(m_mouse) != TitleBarButton::None;
-	m_window.set_cursor(over_controls ? CursorKind::Arrow : m_screen.cursor());
+	const bool over_controls = title_bar().button_at(m_mouse) != TitleBarButton::NONE;
+	m_window.set_cursor(over_controls ? CursorKind::ARROW : m_screen.cursor());
 
 	if (!m_window.is_minimized() && !m_window.is_hidden()) {
 		render();
@@ -230,13 +232,13 @@ auto SetupApp::render() -> void
 
 auto SetupApp::draw_window_controls() -> void
 {
-	const TitleBarButton hovered_button = m_pressed_button != TitleBarButton::None ? m_pressed_button : title_bar().button_at(m_mouse);
+	const TitleBarButton hovered_button = m_pressed_button != TitleBarButton::NONE ? m_pressed_button : title_bar().button_at(m_mouse);
 
-	for (const TitleBarButton button : {TitleBarButton::Minimize, TitleBarButton::Close}) {
+	for (const TitleBarButton button : {TitleBarButton::MINIMIZE, TitleBarButton::CLOSE}) {
 		const Rect rect = title_bar().button_rect(button);
 		if (rect.w <= 0.0f) continue;
 
-		const bool close      = button == TitleBarButton::Close;
+		const bool close      = button == TitleBarButton::CLOSE;
 		const bool is_hovered = hovered_button == button && rect.contains(m_mouse);
 
 		if (is_hovered) {
@@ -248,6 +250,6 @@ auto SetupApp::draw_window_controls() -> void
 			glyph = close ? K_TITLE_BAR_CLOSE_GLYPH_HOVER : g_theme.text;
 		}
 
-		m_draw_list.add_image(rect.centered(K_CONTROL_ICON_SIZE, K_CONTROL_ICON_SIZE), m_assets.get(close ? Asset::IconClose : Asset::IconMinimize), glyph);
+		m_draw_list.add_image(rect.centered(K_CONTROL_ICON_SIZE, K_CONTROL_ICON_SIZE), m_assets.get(close ? Asset::ICON_CLOSE : Asset::ICON_MINIMIZE), glyph);
 	}
 }

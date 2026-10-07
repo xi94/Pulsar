@@ -69,7 +69,7 @@ auto register_app_identity() -> void {}
 
 auto block_injection() -> InjectionGuard
 {
-	return InjectionGuard::Unsupported;
+	return InjectionGuard::UNSUPPORTED;
 }
 
 auto injected_overlay() -> std::optional<std::string>

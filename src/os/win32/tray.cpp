@@ -39,7 +39,7 @@ constexpr float K_LOCKED_ICON_OPACITY = 0.55f;
 
 [[nodiscard]] auto menu_icon_size() -> int
 {
-	return os::win32::app_icon_pixel_size(os::win32::AppIconSize::SmallIcon) * 3 / 2;
+	return os::win32::app_icon_pixel_size(os::win32::AppIconSize::SMALL_ICON) * 3 / 2;
 }
 
 [[nodiscard]] auto taskbar_created_message() -> UINT
@@ -303,7 +303,7 @@ auto Tray::create(std::string_view t_tooltip) -> bool
 
 	native->tooltip = win32::to_wide(t_tooltip);
 
-	native->icon = win32::load_app_icon(win32::AppIconSize::SmallIcon);
+	native->icon = win32::load_app_icon(win32::AppIconSize::SMALL_ICON);
 	if (native->icon == nullptr) {
 		native->icon = LoadIconW(nullptr, IDI_APPLICATION);
 	}
@@ -643,12 +643,12 @@ auto Tray::Native::remove_icon() -> void
 auto Tray::Native::handle_command(UINT t_command) -> void
 {
 	if (t_command == K_SHOW_COMMAND) {
-		pending_event = TrayEvent{.type = TrayEventType::ShowWindow};
+		pending_event = TrayEvent{.type = TrayEventType::SHOW_WINDOW};
 		return;
 	}
 
 	if (t_command == K_EXIT_COMMAND) {
-		pending_event = TrayEvent{.type = TrayEventType::Exit};
+		pending_event = TrayEvent{.type = TrayEventType::EXIT};
 		return;
 	}
 
@@ -656,7 +656,7 @@ auto Tray::Native::handle_command(UINT t_command) -> void
 	if (t_command < K_FIRST_QUICK_LOGIN_COMMAND || account >= menu.account_count || locked) return;
 
 	pending_event = TrayEvent{
-		.type = TrayEventType::QuickLogin,
+		.type = TrayEventType::QUICK_LOGIN,
 		.game = menu.accounts[account].game,
 		.row  = menu.accounts[account].row,
 	};
@@ -675,7 +675,7 @@ auto Tray::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lpar
 	switch (t_message) {
 		case K_TRAY_CALLBACK_MESSAGE: {
 			if (LOWORD(t_lparam) == WM_LBUTTONUP) {
-				pending_event = TrayEvent{.type = TrayEventType::ShowWindow};
+				pending_event = TrayEvent{.type = TrayEventType::SHOW_WINDOW};
 			} else if (LOWORD(t_lparam) == WM_RBUTTONUP || LOWORD(t_lparam) == WM_CONTEXTMENU) {
 				show_menu();
 			}

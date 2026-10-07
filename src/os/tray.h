@@ -10,14 +10,14 @@
 namespace os {
 
 enum class TrayEventType : u8 {
-	None,
-	ShowWindow,
-	Exit,
-	QuickLogin,
+	NONE,
+	SHOW_WINDOW,
+	EXIT,
+	QUICK_LOGIN,
 };
 
 struct TrayEvent {
-	TrayEventType type = TrayEventType::None;
+	TrayEventType type = TrayEventType::NONE;
 	i32           game = -1;
 	i32           row  = -1;
 };

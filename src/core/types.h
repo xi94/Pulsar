@@ -175,14 +175,20 @@ constexpr CornerRadii K_SQUARE_CORNERS{0.0f, 0.0f, 0.0f, 0.0f};
 }
 
 enum class CursorKind : u8 {
-	Arrow,
-	Hand,
-	IBeam,
-	Drag,
-	Move,
+	ARROW,
+	HAND,
+	I_BEAM,
+	DRAG,
+	MOVE,
 };
 
 enum class GraphicsApi : u8 {
-	Native,
-	OpenGl,
+	NATIVE,
+	OPENGL,
+};
+
+enum class CaretStyle : u8 {
+	BAR,
+	BLOCK,
+	UNDERLINE,
 };

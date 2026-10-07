@@ -1,22 +1,24 @@
 #pragma once
 
 #include <atomic>
+#include <span>
 #include <string>
 #include <thread>
+#include <vector>
 
 enum class UpdateStage : u8 {
-	Idle,
-	Checking,
-	UpToDate,
-	Available,
-	ManualUpgradeRequired,
-	CheckFailed,
-	Downloading,
-	Verifying,
-	Installing,
-	ReadyToRelaunch,
-	Error,
-	Cancelled,
+	IDLE,
+	CHECKING,
+	UP_TO_DATE,
+	AVAILABLE,
+	MANUAL_UPGRADE_REQUIRED,
+	CHECK_FAILED,
+	DOWNLOADING,
+	VERIFYING,
+	INSTALLING,
+	READY_TO_RELAUNCH,
+	UPDATE_FAILED,
+	CANCELLED,
 };
 
 struct UpdateManifest {
@@ -27,6 +29,10 @@ struct UpdateManifest {
 	char signature_base64[128]{};
 	char notes[1024]{};
 };
+
+[[nodiscard]] auto parse_update_manifest(const std::vector<u8>& t_json, UpdateManifest* t_out_manifest) -> bool;
+[[nodiscard]] auto
+verify_update(const std::vector<u8>& t_build, const UpdateManifest& t_manifest, std::span<const u8, 32> t_public_key, std::string* t_out_error) -> bool;
 
 class Updater {
   public:
@@ -84,7 +90,7 @@ class Updater {
 	auto fail_worker(UpdateStage t_stage, const char* t_prefix, const char* t_detail) -> void;
 	auto prepare_new_worker() -> void;
 
-	std::atomic<UpdateStage> m_stage{UpdateStage::Idle};
+	std::atomic<UpdateStage> m_stage{UpdateStage::IDLE};
 	std::atomic<bool>        m_cancel_requested{false};
 	std::atomic<bool>        m_worker_finished{false};
 	std::thread              m_worker;

@@ -80,7 +80,7 @@ auto ListPopup::open(std::span<const std::string_view> t_items, std::optional<u3
 	m_previewed_item = t_selected;
 	m_hover_seconds  = 0.0f;
 	m_shown_rows     = static_cast<float>(shown_row_target());
-	m_press          = Press::None;
+	m_press          = Press::NONE;
 	m_open           = true;
 
 	const Layout current            = layout();
@@ -91,7 +91,7 @@ auto ListPopup::open(std::span<const std::string_view> t_items, std::optional<u3
 auto ListPopup::close() -> void
 {
 	m_open  = false;
-	m_press = Press::None;
+	m_press = Press::NONE;
 	m_search.set_focused(false);
 	m_search.on_pointer_up();
 	m_scroll.on_pointer_up();
@@ -355,16 +355,16 @@ auto ListPopup::on_pointer_down(Vec2 t_point) -> void
 	m_pressed_match.reset();
 
 	if (!current.popup.contains(t_point)) {
-		m_press = Press::Outside;
+		m_press = Press::OUTSIDE;
 	} else if (m_scroll.on_pointer_down(t_point, list_scroll(current))) {
-		m_press = Press::Scrollbar;
+		m_press = Press::SCROLLBAR;
 	} else if (!m_search.value().empty() && clear_button_rect(current).contains(t_point)) {
-		m_press = Press::Clear;
+		m_press = Press::CLEAR;
 	} else if (current.search.contains(t_point)) {
-		m_press = Press::Search;
+		m_press = Press::SEARCH;
 		m_search.on_pointer_down(m_fonts->body, search_field_rect(current), t_point.x);
 	} else {
-		m_press         = Press::Row;
+		m_press         = Press::ROW;
 		m_pressed_match = match_at(current, t_point);
 	}
 }
@@ -380,7 +380,7 @@ auto ListPopup::on_pointer_move(Vec2 t_point) -> void
 		m_search.on_pointer_move(m_fonts->body, search_field_rect(current), t_point.x);
 	}
 
-	if (m_press == Press::None || m_press == Press::Row) {
+	if (m_press == Press::NONE || m_press == Press::ROW) {
 		const std::optional<u32> hovered = match_at(current, t_point);
 		if (hovered && *hovered != m_highlighted) {
 			m_highlighted   = *hovered;
@@ -391,7 +391,7 @@ auto ListPopup::on_pointer_move(Vec2 t_point) -> void
 
 auto ListPopup::on_pointer_up(Vec2 t_point) -> std::optional<u32>
 {
-	const Press press = std::exchange(m_press, Press::None);
+	const Press press = std::exchange(m_press, Press::NONE);
 	m_scroll.on_pointer_up();
 	m_search.on_pointer_up();
 
@@ -402,14 +402,14 @@ auto ListPopup::on_pointer_up(Vec2 t_point) -> std::optional<u32>
 	switch (press) {
 		using enum Press;
 
-		case Outside: {
+		case OUTSIDE: {
 			if (!current.popup.contains(t_point)) {
 				close();
 			}
 			break;
 		}
 
-		case Clear: {
+		case CLEAR: {
 			if (clear_button_rect(current).contains(t_point)) {
 				m_search.set_value("");
 				refresh_matches();
@@ -417,7 +417,7 @@ auto ListPopup::on_pointer_up(Vec2 t_point) -> std::optional<u32>
 			break;
 		}
 
-		case Row: {
+		case ROW: {
 			if (m_pressed_match && match_at(current, t_point) == m_pressed_match) {
 				m_highlighted = *m_pressed_match;
 				return choose_highlighted();
@@ -425,9 +425,9 @@ auto ListPopup::on_pointer_up(Vec2 t_point) -> std::optional<u32>
 			break;
 		}
 
-		case None:
-		case Search:
-		case Scrollbar: {
+		case NONE:
+		case SEARCH:
+		case SCROLLBAR: {
 			break;
 		}
 	}
@@ -464,31 +464,31 @@ auto ListPopup::on_key_down(os::Key t_key) -> std::optional<u32>
 	switch (t_key) {
 		using enum os::Key;
 
-		case Escape: {
+		case ESCAPE: {
 			close();
 			break;
 		}
 
-		case Enter: {
+		case ENTER: {
 			return choose_highlighted();
 		}
 
-		case Up: {
+		case UP: {
 			move_highlight(-1);
 			break;
 		}
 
-		case Down: {
+		case DOWN: {
 			move_highlight(1);
 			break;
 		}
 
-		case PageUp: {
+		case PAGE_UP: {
 			move_highlight(-page);
 			break;
 		}
 
-		case PageDown: {
+		case PAGE_DOWN: {
 			move_highlight(page);
 			break;
 		}
@@ -513,17 +513,17 @@ auto ListPopup::on_char(u32 t_character) -> void
 
 auto ListPopup::cursor(Vec2 t_mouse) const -> CursorKind
 {
-	if (!m_open) return CursorKind::Arrow;
-	if (m_scroll.is_dragging()) return CursorKind::Drag;
-	if (m_search.is_selecting()) return CursorKind::IBeam;
+	if (!m_open) return CursorKind::ARROW;
+	if (m_scroll.is_dragging()) return CursorKind::DRAG;
+	if (m_search.is_selecting()) return CursorKind::I_BEAM;
 
 	const Layout current = layout();
-	if (!current.popup.contains(t_mouse)) return CursorKind::Arrow;
-	if (!m_search.value().empty() && clear_button_rect(current).contains(t_mouse)) return CursorKind::Hand;
-	if (current.search.contains(t_mouse)) return CursorKind::IBeam;
-	if (m_scroll.is_over_track(t_mouse, list_scroll(current))) return CursorKind::Hand;
+	if (!current.popup.contains(t_mouse)) return CursorKind::ARROW;
+	if (!m_search.value().empty() && clear_button_rect(current).contains(t_mouse)) return CursorKind::HAND;
+	if (current.search.contains(t_mouse)) return CursorKind::I_BEAM;
+	if (m_scroll.is_over_track(t_mouse, list_scroll(current))) return CursorKind::HAND;
 
-	return match_at(current, t_mouse) ? CursorKind::Hand : CursorKind::Arrow;
+	return match_at(current, t_mouse) ? CursorKind::HAND : CursorKind::ARROW;
 }
 
 auto ListPopup::draw_search(DrawList* t_draw_list, const Layout& t_layout, Vec2 t_mouse, u8 t_alpha) -> void

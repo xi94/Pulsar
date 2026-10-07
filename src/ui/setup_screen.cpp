@@ -182,9 +182,9 @@ SetupScreen::SetupScreen(SetupMode       t_mode,
 	m_location.set_max_length(K_TEXT_INPUT_CAPACITY - 1);
 	m_location.set_value(m_installed ? m_installed->location : os::installation::default_location());
 
-	if (m_installed && t_mode != SetupMode::FirstRun) {
+	if (m_installed && t_mode != SetupMode::FIRST_RUN) {
 		m_options = m_installed->options;
-		m_page    = t_mode == SetupMode::Uninstall ? Page::ConfirmUninstall : Page::Manage;
+		m_page    = t_mode == SetupMode::UNINSTALL ? Page::CONFIRM_UNINSTALL : Page::MANAGE;
 	}
 
 	for (u32 i = 0; i < K_OPTION_COUNT; i += 1) {
@@ -199,7 +199,7 @@ auto SetupScreen::go_to(Page t_page, bool t_forward) -> void
 	m_transition    = 0.0f;
 	m_direction     = t_forward ? 1.0f : -1.0f;
 	m_page_seconds  = 0.0f;
-	m_pressed       = Hit::None;
+	m_pressed       = Hit::NONE;
 	m_location.set_focused(false);
 }
 
@@ -210,17 +210,17 @@ auto SetupScreen::finish(SetupOutcome t_outcome) -> void
 
 auto SetupScreen::is_busy() const -> bool
 {
-	return m_saving || m_page == Page::Working;
+	return m_saving || m_page == Page::WORKING;
 }
 
 auto SetupScreen::has_footer(Page t_page) const -> bool
 {
-	return t_page != Page::Choose && t_page != Page::Working;
+	return t_page != Page::CHOOSE && t_page != Page::WORKING;
 }
 
 auto SetupScreen::is_option_page(Page t_page) const -> bool
 {
-	return t_page == Page::Location || t_page == Page::Manage;
+	return t_page == Page::LOCATION || t_page == Page::MANAGE;
 }
 
 auto SetupScreen::start_install() -> void
@@ -241,7 +241,7 @@ auto SetupScreen::start_install() -> void
 	m_progress         = 0.0f;
 	m_finished_seconds = 0.0f;
 	m_job.start_install(trimmed_folder(path), m_options);
-	go_to(Page::Working, true);
+	go_to(Page::WORKING, true);
 }
 
 auto SetupScreen::start_uninstall() -> void
@@ -256,7 +256,7 @@ auto SetupScreen::start_uninstall() -> void
 	}
 
 	m_job.start_uninstall(*m_installed, std::move(data_folder));
-	go_to(Page::Working, true);
+	go_to(Page::WORKING, true);
 }
 
 auto SetupScreen::open_installed_app() -> void
@@ -266,7 +266,7 @@ auto SetupScreen::open_installed_app() -> void
 	if (!os::installation::close_running_app()) return;
 
 	os::launch_process(executable);
-	finish(SetupOutcome::Quit);
+	finish(SetupOutcome::QUIT);
 }
 
 auto SetupScreen::go_back() -> void
@@ -274,19 +274,19 @@ auto SetupScreen::go_back() -> void
 	switch (m_page) {
 		using enum Page;
 
-		case Location: {
-			go_to(Page::Choose, false);
+		case LOCATION: {
+			go_to(Page::CHOOSE, false);
 			break;
 		}
 
-		case ConfirmUninstall: {
-			go_to(m_installed ? Page::Manage : Page::Choose, false);
+		case CONFIRM_UNINSTALL: {
+			go_to(m_installed ? Page::MANAGE : Page::CHOOSE, false);
 			break;
 		}
 
-		case Failed: {
+		case FAILED: {
 			m_installed = os::installation::find_installation();
-			go_to(m_job.task() == os::installation::Task::Uninstall && m_installed ? Page::Manage : Page::Location, false);
+			go_to(m_job.task() == os::installation::Task::UNINSTALL && m_installed ? Page::MANAGE : Page::LOCATION, false);
 			break;
 		}
 
@@ -298,33 +298,33 @@ auto SetupScreen::go_back() -> void
 
 auto SetupScreen::activate(Hit t_hit) -> void
 {
-	const auto option    = [t_hit] { return static_cast<u32>(t_hit) - static_cast<u32>(Hit::Option0); };
-	const bool is_option = t_hit >= Hit::Option0 && t_hit <= Hit::Option2;
+	const auto option    = [t_hit] { return static_cast<u32>(t_hit) - static_cast<u32>(Hit::OPTION_0); };
+	const bool is_option = t_hit >= Hit::OPTION_0 && t_hit <= Hit::OPTION_2;
 
 	switch (m_page) {
 		using enum Page;
 
-		case Choose: {
-			if (t_hit == Hit::Install) {
-				go_to(Page::Location, true);
-			} else if (t_hit == Hit::Portable) {
-				if (m_mode == SetupMode::FirstRun) {
+		case CHOOSE: {
+			if (t_hit == Hit::INSTALL) {
+				go_to(Page::LOCATION, true);
+			} else if (t_hit == Hit::PORTABLE) {
+				if (m_mode == SetupMode::FIRST_RUN) {
 					os::installation::mark_setup_complete();
-					finish(SetupOutcome::Portable);
+					finish(SetupOutcome::PORTABLE);
 				} else {
-					finish(SetupOutcome::Closed);
+					finish(SetupOutcome::CLOSED);
 				}
 			}
 
 			break;
 		}
 
-		case Location: {
-			if (t_hit == Hit::Secondary) {
+		case LOCATION: {
+			if (t_hit == Hit::SECONDARY) {
 				go_back();
-			} else if (t_hit == Hit::Primary) {
+			} else if (t_hit == Hit::PRIMARY) {
 				start_install();
-			} else if (t_hit == Hit::Browse) {
+			} else if (t_hit == Hit::BROWSE) {
 				m_location.set_focused(false);
 				m_picker.open(
 					m_window,
@@ -336,17 +336,17 @@ auto SetupScreen::activate(Hit t_hit) -> void
 			break;
 		}
 
-		case Manage: {
-			if (t_hit == Hit::OpenFolder && m_installed) {
+		case MANAGE: {
+			if (t_hit == Hit::OPEN_FOLDER && m_installed) {
 				os::open_path(m_installed->location);
-			} else if (t_hit == Hit::Secondary) {
-				go_to(Page::ConfirmUninstall, true);
-			} else if (t_hit == Hit::Primary) {
+			} else if (t_hit == Hit::SECONDARY) {
+				go_to(Page::CONFIRM_UNINSTALL, true);
+			} else if (t_hit == Hit::PRIMARY) {
 				if (m_installed && m_options != m_installed->options) {
 					m_job.start_apply(*m_installed, m_options);
 					m_saving = true;
 				} else {
-					finish(SetupOutcome::Closed);
+					finish(SetupOutcome::CLOSED);
 				}
 			} else if (is_option) {
 				toggle_option(&m_options, option());
@@ -355,39 +355,39 @@ auto SetupScreen::activate(Hit t_hit) -> void
 			break;
 		}
 
-		case ConfirmUninstall: {
-			if (t_hit == Hit::Secondary) {
+		case CONFIRM_UNINSTALL: {
+			if (t_hit == Hit::SECONDARY) {
 				go_back();
-			} else if (t_hit == Hit::Primary) {
+			} else if (t_hit == Hit::PRIMARY) {
 				start_uninstall();
-			} else if (t_hit == Hit::DeleteData) {
+			} else if (t_hit == Hit::DELETE_DATA) {
 				m_delete_data = !m_delete_data;
 			}
 
 			break;
 		}
 
-		case Done: {
-			if (t_hit == Hit::Primary) {
-				if (m_job.task() == os::installation::Task::Install) {
+		case DONE: {
+			if (t_hit == Hit::PRIMARY) {
+				if (m_job.task() == os::installation::Task::INSTALL) {
 					open_installed_app();
 				} else {
-					finish(SetupOutcome::Quit);
+					finish(SetupOutcome::QUIT);
 				}
 			}
 
 			break;
 		}
 
-		case Failed: {
-			if (t_hit == Hit::Primary) {
+		case FAILED: {
+			if (t_hit == Hit::PRIMARY) {
 				go_back();
 			}
 
 			break;
 		}
 
-		case Working: {
+		case WORKING: {
 			break;
 		}
 	}
@@ -417,10 +417,10 @@ auto SetupScreen::update(float t_delta_seconds) -> void
 	}
 
 	const bool live    = m_transition >= 1.0f && !m_picker.is_open() && !is_busy();
-	const Hit  hovered = live ? hit_at(m_mouse) : Hit::None;
+	const Hit  hovered = live ? hit_at(m_mouse) : Hit::NONE;
 
 	for (u32 i = 0; i < K_HIT_COUNT; i += 1) {
-		const float target = static_cast<u32>(hovered) == i && hovered != Hit::None ? 1.0f : 0.0f;
+		const float target = static_cast<u32>(hovered) == i && hovered != Hit::NONE ? 1.0f : 0.0f;
 		m_hover[i]         = animation::ease_toward(m_hover[i], target, K_HOVER_EASE_RATE, t_delta_seconds);
 	}
 
@@ -432,13 +432,13 @@ auto SetupScreen::update(float t_delta_seconds) -> void
 
 	if (m_saving) {
 		if (m_job.is_finished()) {
-			finish(SetupOutcome::Closed);
+			finish(SetupOutcome::CLOSED);
 		} else {
 			animation::request_frame_after(K_JOB_POLL_SECONDS);
 		}
 	}
 
-	if (m_page != Page::Working) return;
+	if (m_page != Page::WORKING) return;
 
 	const auto  steps   = static_cast<float>(m_job.step_count());
 	const float running = (static_cast<float>(std::min(m_job.step(), m_job.step_count())) + 0.5f) / steps;
@@ -451,7 +451,7 @@ auto SetupScreen::update(float t_delta_seconds) -> void
 	}
 
 	if (!m_job.succeeded()) {
-		go_to(Page::Failed, true);
+		go_to(Page::FAILED, true);
 		return;
 	}
 
@@ -459,7 +459,7 @@ auto SetupScreen::update(float t_delta_seconds) -> void
 
 	m_finished_seconds += t_delta_seconds;
 	if (m_finished_seconds >= K_DONE_HOLD_SECONDS) {
-		go_to(Page::Done, true);
+		go_to(Page::DONE, true);
 	} else {
 		animation::request_frame_after(K_DONE_HOLD_SECONDS - m_finished_seconds);
 	}
@@ -493,23 +493,23 @@ auto SetupScreen::primary_label(Page t_page) const -> std::string_view
 	switch (t_page) {
 		using enum Page;
 
-		case Location: {
+		case LOCATION: {
 			return "Install";
 		}
 
-		case Manage: {
+		case MANAGE: {
 			return m_saving ? "Saving" : "Done";
 		}
 
-		case ConfirmUninstall: {
+		case CONFIRM_UNINSTALL: {
 			return "Uninstall";
 		}
 
-		case Done: {
-			return m_job.task() == os::installation::Task::Install ? "Open Pulsar" : "Close";
+		case DONE: {
+			return m_job.task() == os::installation::Task::INSTALL ? "Open Pulsar" : "Close";
 		}
 
-		case Failed: {
+		case FAILED: {
 			return "Back";
 		}
 
@@ -524,12 +524,12 @@ auto SetupScreen::secondary_label(Page t_page) const -> std::string_view
 	switch (t_page) {
 		using enum Page;
 
-		case Location:
-		case ConfirmUninstall: {
+		case LOCATION:
+		case CONFIRM_UNINSTALL: {
 			return "Back";
 		}
 
-		case Manage: {
+		case MANAGE: {
 			return "Uninstall";
 		}
 
@@ -543,7 +543,7 @@ auto SetupScreen::header_icon_rect(Page t_page) const -> Rect
 {
 	const Rect content = content_rect();
 
-	if (t_page == Page::Manage) {
+	if (t_page == Page::MANAGE) {
 		return Rect{content.x, K_TITLE_BAR_HEIGHT + K_MANAGE_TOP_GAP, K_HEADER_ICON_SIZE, K_HEADER_ICON_SIZE};
 	}
 
@@ -556,7 +556,7 @@ auto SetupScreen::header_icon_rect(Page t_page) const -> Rect
 auto SetupScreen::choice_rect(u32 t_choice) const -> Rect
 {
 	const Rect content = content_rect();
-	const Rect header  = header_icon_rect(Page::Choose);
+	const Rect header  = header_icon_rect(Page::CHOOSE);
 
 	return Rect{content.x, header.bottom() + K_HEADER_ROWS_GAP + static_cast<float>(t_choice) * (K_CHOICE_HEIGHT + K_CHOICE_GAP), content.w, K_CHOICE_HEIGHT};
 }
@@ -591,7 +591,7 @@ auto SetupScreen::field_text_rect() const -> Rect
 
 auto SetupScreen::option_rect(Page t_page, u32 t_option) const -> Rect
 {
-	const float top   = t_page == Page::Location ? field_rect().bottom() + K_OPTIONS_GAP : installed_box_rect().bottom() + K_OPTIONS_GAP;
+	const float top   = t_page == Page::LOCATION ? field_rect().bottom() + K_OPTIONS_GAP : installed_box_rect().bottom() + K_OPTIONS_GAP;
 	const float width = K_CHECK_SIZE + K_CHECK_LABEL_GAP + text_width(m_fonts->body, K_OPTION_LABELS[t_option]) + K_OPTION_REACH;
 
 	return Rect{content_rect().x, top + static_cast<float>(t_option) * K_OPTION_HEIGHT, width, K_OPTION_HEIGHT};
@@ -609,7 +609,7 @@ auto SetupScreen::delete_data_rect() const -> Rect
 
 auto SetupScreen::installed_box_rect() const -> Rect
 {
-	const float top = header_icon_rect(Page::Manage).bottom() + K_INSTALLED_GAP + m_fonts->secondary.line_height() + K_CAPTION_GAP * 2.0f;
+	const float top = header_icon_rect(Page::MANAGE).bottom() + K_INSTALLED_GAP + m_fonts->secondary.line_height() + K_CAPTION_GAP * 2.0f;
 
 	return Rect{content_rect().x, snapped_to_pixel(top), content_rect().w, K_FIELD_HEIGHT};
 }
@@ -626,25 +626,25 @@ auto SetupScreen::hit_at(Vec2 t_point) const -> SetupScreen::Hit
 	switch (m_page) {
 		using enum Page;
 
-		case Choose: {
-			if (choice_rect(0).contains(t_point)) return Hit::Install;
-			if (choice_rect(1).contains(t_point)) return Hit::Portable;
-			return Hit::None;
+		case CHOOSE: {
+			if (choice_rect(0).contains(t_point)) return Hit::INSTALL;
+			if (choice_rect(1).contains(t_point)) return Hit::PORTABLE;
+			return Hit::NONE;
 		}
 
-		case Location: {
-			if (browse_rect().contains(t_point)) return Hit::Browse;
-			if (field_rect().contains(t_point)) return Hit::Field;
+		case LOCATION: {
+			if (browse_rect().contains(t_point)) return Hit::BROWSE;
+			if (field_rect().contains(t_point)) return Hit::FIELD;
 			break;
 		}
 
-		case ConfirmUninstall: {
-			if (delete_data_rect().contains(t_point)) return Hit::DeleteData;
+		case CONFIRM_UNINSTALL: {
+			if (delete_data_rect().contains(t_point)) return Hit::DELETE_DATA;
 			break;
 		}
 
-		case Manage: {
-			if (m_installed && open_folder_rect().contains(t_point)) return Hit::OpenFolder;
+		case MANAGE: {
+			if (m_installed && open_folder_rect().contains(t_point)) return Hit::OPEN_FOLDER;
 			break;
 		}
 
@@ -656,34 +656,34 @@ auto SetupScreen::hit_at(Vec2 t_point) const -> SetupScreen::Hit
 	if (is_option_page(m_page)) {
 		for (u32 i = 0; i < K_OPTION_COUNT; i += 1) {
 			if (option_rect(m_page, i).contains(t_point)) {
-				return static_cast<Hit>(static_cast<u32>(Hit::Option0) + i);
+				return static_cast<Hit>(static_cast<u32>(Hit::OPTION_0) + i);
 			}
 		}
 	}
 
-	if (!has_footer(m_page)) return Hit::None;
+	if (!has_footer(m_page)) return Hit::NONE;
 
 	const std::string_view secondary = secondary_label(m_page);
-	if (!secondary.empty() && footer_button(false, secondary).contains(t_point)) return Hit::Secondary;
+	if (!secondary.empty() && footer_button(false, secondary).contains(t_point)) return Hit::SECONDARY;
 
 	const std::string_view primary = primary_label(m_page);
-	if (!primary.empty() && footer_button(true, primary).contains(t_point)) return Hit::Primary;
+	if (!primary.empty() && footer_button(true, primary).contains(t_point)) return Hit::PRIMARY;
 
-	return Hit::None;
+	return Hit::NONE;
 }
 
 auto SetupScreen::on_pointer_down(Vec2 t_point) -> bool
 {
-	m_pressed = Hit::None;
+	m_pressed = Hit::NONE;
 	if (m_outcome || m_transition < 1.0f || m_picker.is_open() || is_busy()) return true;
 
 	m_pressed = hit_at(t_point);
 
-	if (m_page == Page::Location) {
-		if (m_pressed == Hit::Field) {
+	if (m_page == Page::LOCATION) {
+		if (m_pressed == Hit::FIELD) {
 			m_location.set_focused(true);
 			m_location.on_pointer_down(m_fonts->body, field_text_rect(), t_point.x);
-		} else if (m_pressed != Hit::Browse) {
+		} else if (m_pressed != Hit::BROWSE) {
 			m_location.set_focused(false);
 		}
 	}
@@ -704,8 +704,8 @@ auto SetupScreen::on_pointer_up(Vec2 t_point) -> bool
 {
 	m_location.on_pointer_up();
 
-	const Hit pressed = std::exchange(m_pressed, Hit::None);
-	if (pressed == Hit::None || pressed == Hit::Field || m_outcome || is_busy()) return true;
+	const Hit pressed = std::exchange(m_pressed, Hit::NONE);
+	if (pressed == Hit::NONE || pressed == Hit::FIELD || m_outcome || is_busy()) return true;
 
 	if (hit_at(t_point) == pressed) {
 		activate(pressed);
@@ -718,25 +718,25 @@ auto SetupScreen::on_key_down(os::Key t_key) -> bool
 {
 	if (m_outcome || m_picker.is_open() || is_busy()) return true;
 
-	if (m_location.is_focused() && t_key != os::Key::Enter && t_key != os::Key::Escape) {
+	if (m_location.is_focused() && t_key != os::Key::ENTER && t_key != os::Key::ESCAPE) {
 		m_location.on_key_down(t_key);
 		m_field_error = {};
 		return true;
 	}
 
-	if (t_key == os::Key::Escape) {
+	if (t_key == os::Key::ESCAPE) {
 		if (m_location.is_focused()) {
 			m_location.set_focused(false);
-		} else if (m_page == Page::Location || m_page == Page::ConfirmUninstall || m_page == Page::Failed) {
+		} else if (m_page == Page::LOCATION || m_page == Page::CONFIRM_UNINSTALL || m_page == Page::FAILED) {
 			go_back();
-		} else if (m_page == Page::Manage || (m_page == Page::Choose && m_mode != SetupMode::FirstRun)) {
-			finish(SetupOutcome::Closed);
+		} else if (m_page == Page::MANAGE || (m_page == Page::CHOOSE && m_mode != SetupMode::FIRST_RUN)) {
+			finish(SetupOutcome::CLOSED);
 		}
-	} else if (t_key == os::Key::Enter) {
-		if (m_page == Page::Location) {
+	} else if (t_key == os::Key::ENTER) {
+		if (m_page == Page::LOCATION) {
 			start_install();
-		} else if (m_page == Page::Done || m_page == Page::Failed) {
-			activate(Hit::Primary);
+		} else if (m_page == Page::DONE || m_page == Page::FAILED) {
+			activate(Hit::PRIMARY);
 		}
 	}
 
@@ -755,13 +755,13 @@ auto SetupScreen::on_char(u32 t_character) -> bool
 
 auto SetupScreen::cursor() const -> CursorKind
 {
-	if (m_location.is_selecting()) return CursorKind::IBeam;
-	if (m_transition < 1.0f || is_busy() || m_picker.is_open()) return CursorKind::Arrow;
+	if (m_location.is_selecting()) return CursorKind::I_BEAM;
+	if (m_transition < 1.0f || is_busy() || m_picker.is_open()) return CursorKind::ARROW;
 
 	const Hit hit = hit_at(m_mouse);
-	if (hit == Hit::Field) return CursorKind::IBeam;
+	if (hit == Hit::FIELD) return CursorKind::I_BEAM;
 
-	return hit != Hit::None ? CursorKind::Hand : CursorKind::Arrow;
+	return hit != Hit::NONE ? CursorKind::HAND : CursorKind::ARROW;
 }
 
 auto SetupScreen::reveal(float t_seconds, u32 t_order) const -> SetupScreen::Reveal
@@ -777,7 +777,7 @@ auto SetupScreen::draw_app_icon(DrawList* t_draw_list, Rect t_rect, u8 t_alpha) 
 	if (m_app_icon != nullptr) {
 		t_draw_list->add_image(t_rect, m_app_icon, faded(Color{255, 255, 255, 255}, t_alpha));
 	} else {
-		t_draw_list->add_image(t_rect, m_assets->get(Asset::IconApp), faded(g_theme.text_dim, t_alpha));
+		t_draw_list->add_image(t_rect, m_assets->get(Asset::ICON_APP), faded(g_theme.text_dim, t_alpha));
 	}
 }
 
@@ -805,7 +805,7 @@ auto SetupScreen::draw_installed_location(DrawList* t_draw_list, const PageDraw&
 	const Vec2   offset{t_draw.offset.x, t_draw.offset.y + shown.rise};
 	const Rect   box       = installed_box_rect().moved(offset);
 	const Rect   button    = open_folder_rect().moved(offset);
-	const float  hover     = m_hover[static_cast<u32>(Hit::OpenFolder)];
+	const float  hover     = m_hover[static_cast<u32>(Hit::OPEN_FOLDER)];
 	const float  caption_y = box.y - K_CAPTION_GAP - secondary.line_height();
 	const float  text_x    = box.x + K_FIELD_PADDING;
 
@@ -815,7 +815,7 @@ auto SetupScreen::draw_installed_location(DrawList* t_draw_list, const PageDraw&
 	                    faded(g_theme.text_dim, alpha));
 
 	t_draw_list->add_rounded_rect(button, rounded(K_BROWSE_RADIUS), faded(mix(g_theme.control, g_theme.control_hover, hover), alpha));
-	t_draw_list->add_image(button.centered(K_BROWSE_ICON_SIZE, K_BROWSE_ICON_SIZE), m_assets->get(Asset::IconFolderOpen),
+	t_draw_list->add_image(button.centered(K_BROWSE_ICON_SIZE, K_BROWSE_ICON_SIZE), m_assets->get(Asset::ICON_FOLDER_OPEN),
 	                       faded(mix(g_theme.text_dim, g_theme.text, hover), alpha));
 }
 
@@ -825,7 +825,7 @@ auto SetupScreen::draw_choice(DrawList* t_draw_list, u32 t_choice, const PageDra
 	const Font&  secondary = m_fonts->secondary;
 	const Color  accent    = m_settings->accent;
 	const bool   install   = t_choice == 0;
-	const float  hover     = m_hover[static_cast<u32>(install ? Hit::Install : Hit::Portable)];
+	const float  hover     = m_hover[static_cast<u32>(install ? Hit::INSTALL : Hit::PORTABLE)];
 	const Reveal shown     = reveal(t_draw.seconds, 1 + t_choice);
 	const u8     alpha     = to_alpha(t_draw.alpha * shown.alpha);
 	const Rect   row       = choice_rect(t_choice).moved(Vec2{t_draw.offset.x, t_draw.offset.y + shown.rise});
@@ -839,7 +839,7 @@ auto SetupScreen::draw_choice(DrawList* t_draw_list, u32 t_choice, const PageDra
 	const Color icon_color = mix(g_theme.text_dim, g_theme.text, hover);
 
 	t_draw_list->add_rounded_rect(tile, rounded(K_CHOICE_TILE_RADIUS), faded(tile_fill, alpha));
-	t_draw_list->add_image(tile.centered(K_CHOICE_ICON_SIZE, K_CHOICE_ICON_SIZE), m_assets->get(install ? Asset::IconDownload : Asset::IconFile),
+	t_draw_list->add_image(tile.centered(K_CHOICE_ICON_SIZE, K_CHOICE_ICON_SIZE), m_assets->get(install ? Asset::ICON_DOWNLOAD : Asset::ICON_FILE),
 	                       faded(icon_color, alpha));
 
 	const float lines  = body.line_height() + K_CHOICE_LINE_GAP + secondary.line_height();
@@ -880,8 +880,8 @@ auto SetupScreen::draw_location(DrawList* t_draw_list, const PageDraw& t_draw) -
 	const Rect   field        = field_rect().moved(offset);
 	const Rect   browse       = browse_rect().moved(offset);
 	const bool   focused      = m_location.is_focused();
-	const float  field_hover  = m_hover[static_cast<u32>(Hit::Field)];
-	const float  browse_hover = m_hover[static_cast<u32>(Hit::Browse)];
+	const float  field_hover  = m_hover[static_cast<u32>(Hit::FIELD)];
+	const float  browse_hover = m_hover[static_cast<u32>(Hit::BROWSE)];
 
 	Color border = mix(g_theme.separator, g_theme.border, field_hover);
 	if (!m_field_error.empty()) {
@@ -894,7 +894,7 @@ auto SetupScreen::draw_location(DrawList* t_draw_list, const PageDraw& t_draw) -
 	m_location.draw(t_draw_list, body, field_text_rect().moved(offset), faded(g_theme.text, alpha), faded(accent, alpha), std::nullopt);
 
 	t_draw_list->add_rounded_rect(browse, rounded(K_BROWSE_RADIUS), faded(mix(g_theme.control, g_theme.control_hover, browse_hover), alpha));
-	t_draw_list->add_image(browse.centered(K_BROWSE_ICON_SIZE, K_BROWSE_ICON_SIZE), m_assets->get(Asset::IconFolder),
+	t_draw_list->add_image(browse.centered(K_BROWSE_ICON_SIZE, K_BROWSE_ICON_SIZE), m_assets->get(Asset::ICON_FOLDER),
 	                       faded(mix(g_theme.text_dim, g_theme.text, browse_hover), alpha));
 
 	if (!m_field_error.empty()) {
@@ -931,7 +931,7 @@ auto SetupScreen::draw_options(DrawList* t_draw_list, Page t_page, const PageDra
 		const Reveal shown = reveal(t_draw.seconds, t_first_order + i);
 		const Rect   row   = option_rect(t_page, i).moved(Vec2{t_draw.offset.x, t_draw.offset.y + shown.rise});
 
-		draw_check_row(t_draw_list, row, K_OPTION_LABELS[i], m_check[i], m_hover[static_cast<u32>(Hit::Option0) + i], t_draw.alpha * shown.alpha,
+		draw_check_row(t_draw_list, row, K_OPTION_LABELS[i], m_check[i], m_hover[static_cast<u32>(Hit::OPTION_0) + i], t_draw.alpha * shown.alpha,
 		               m_settings->accent);
 	}
 }
@@ -964,7 +964,7 @@ auto SetupScreen::draw_confirm(DrawList* t_draw_list, const PageDraw& t_draw) co
 
 	const Reveal shown = reveal(t_draw.seconds, 3);
 	draw_check_row(t_draw_list, delete_data_rect().moved(Vec2{t_draw.offset.x, t_draw.offset.y + shown.rise}), K_DELETE_DATA_LABEL, m_delete_check,
-	               m_hover[static_cast<u32>(Hit::DeleteData)], t_draw.alpha * shown.alpha, g_theme.error);
+	               m_hover[static_cast<u32>(Hit::DELETE_DATA)], t_draw.alpha * shown.alpha, g_theme.error);
 }
 
 auto SetupScreen::draw_status(DrawList* t_draw_list, Page t_page, const PageDraw& t_draw) const -> void
@@ -973,7 +973,7 @@ auto SetupScreen::draw_status(DrawList* t_draw_list, Page t_page, const PageDraw
 	const Font& secondary = m_fonts->secondary;
 	const Color accent    = m_settings->accent;
 	const Vec2  size      = m_window->size();
-	const bool  install   = m_job.task() != os::installation::Task::Uninstall;
+	const bool  install   = m_job.task() != os::installation::Task::UNINSTALL;
 	const float bottom    = has_footer(t_page) ? footer_rect().y : size.y;
 	const Rect  content   = content_rect();
 
@@ -982,9 +982,9 @@ auto SetupScreen::draw_status(DrawList* t_draw_list, Page t_page, const PageDraw
 	u32              line_count = 0;
 	std::string_view detail;
 
-	if (t_page == Page::Working) {
+	if (t_page == Page::WORKING) {
 		title = install ? "Installing Pulsar" : "Uninstalling Pulsar";
-	} else if (t_page == Page::Done) {
+	} else if (t_page == Page::DONE) {
 		title = install ? "Pulsar is installed" : "Pulsar was uninstalled";
 
 		if (!install) {
@@ -1001,22 +1001,22 @@ auto SetupScreen::draw_status(DrawList* t_draw_list, Page t_page, const PageDraw
 		detail = m_job.error();
 	}
 
-	if (t_page != Page::Working && !detail.empty()) {
+	if (t_page != Page::WORKING && !detail.empty()) {
 		line_count = wrap_text(secondary, detail, content.w, lines);
 	}
 
 	const float body_height =
-		t_page == Page::Working ? K_PROGRESS_HEIGHT + K_STATUS_TEXT_GAP + secondary.line_height() : static_cast<float>(line_count) * secondary.line_height();
+		t_page == Page::WORKING ? K_PROGRESS_HEIGHT + K_STATUS_TEXT_GAP + secondary.line_height() : static_cast<float>(line_count) * secondary.line_height();
 	const float block    = K_STATUS_ICON_SIZE + K_STATUS_ICON_GAP + heading.line_height() + K_STATUS_TEXT_GAP + body_height;
 	const float top      = K_TITLE_BAR_HEIGHT + (bottom - K_TITLE_BAR_HEIGHT - block) * 0.5f - K_STATUS_BIAS;
 	const float center_x = size.x * 0.5f + t_draw.offset.x;
 
 	const Reveal icon_shown = reveal(t_draw.seconds, 0);
-	const float  icon_dim   = t_page == Page::Done && !install ? K_UNINSTALLED_ICON_DIM : 1.0f;
+	const float  icon_dim   = t_page == Page::DONE && !install ? K_UNINSTALLED_ICON_DIM : 1.0f;
 	const Rect   icon{snapped_to_pixel(center_x - K_STATUS_ICON_SIZE * 0.5f), snapped_to_pixel(top + icon_shown.rise), K_STATUS_ICON_SIZE, K_STATUS_ICON_SIZE};
 	draw_app_icon(t_draw_list, icon, to_alpha(t_draw.alpha * icon_shown.alpha * icon_dim));
 
-	if (t_page == Page::Failed) {
+	if (t_page == Page::FAILED) {
 		const Reveal badge_shown = reveal(t_draw.seconds, 2);
 		const float  badge       = K_BADGE_SIZE * (1.0f - K_BADGE_POP + K_BADGE_POP * badge_shown.alpha);
 		const Vec2   badge_center{icon.right() - K_BADGE_OFFSET, icon.bottom() - K_BADGE_OFFSET};
@@ -1039,7 +1039,7 @@ auto SetupScreen::draw_status(DrawList* t_draw_list, Page t_page, const PageDraw
 	const u8     body_alpha = to_alpha(t_draw.alpha * body_shown.alpha);
 	float        y          = title_y - title_shown.rise + heading.line_height() + K_STATUS_TEXT_GAP + body_shown.rise;
 
-	if (t_page == Page::Working) {
+	if (t_page == Page::WORKING) {
 		const Rect  track{snapped_to_pixel(center_x - K_PROGRESS_WIDTH * 0.5f), snapped_to_pixel(y), K_PROGRESS_WIDTH, K_PROGRESS_HEIGHT};
 		const float filled = std::max(K_PROGRESS_HEIGHT, K_PROGRESS_WIDTH * std::clamp(m_progress, 0.0f, 1.0f));
 
@@ -1068,16 +1068,16 @@ auto SetupScreen::draw_footer(DrawList* t_draw_list, Page t_page, const PageDraw
 
 	const std::string_view secondary = secondary_label(t_page);
 	if (!secondary.empty()) {
-		const auto style          = t_page == Page::Manage ? controls::ButtonStyle::Danger : controls::ButtonStyle::Ghost;
-		const bool hovered_button = live && m_hover[static_cast<u32>(Hit::Secondary)] > 0.5f;
+		const auto style          = t_page == Page::MANAGE ? controls::ButtonStyle::DANGER : controls::ButtonStyle::GHOST;
+		const bool hovered_button = live && m_hover[static_cast<u32>(Hit::SECONDARY)] > 0.5f;
 
 		controls::draw_button(t_draw_list, body, footer_button(false, secondary).moved(offset), secondary, style, accent, !m_saving, hovered_button, alpha);
 	}
 
 	const std::string_view primary = primary_label(t_page);
 	if (!primary.empty()) {
-		const auto style          = t_page == Page::ConfirmUninstall ? controls::ButtonStyle::DangerConfirm : controls::ButtonStyle::Accent;
-		const bool hovered_button = live && m_hover[static_cast<u32>(Hit::Primary)] > 0.5f;
+		const auto style          = t_page == Page::CONFIRM_UNINSTALL ? controls::ButtonStyle::DANGER_CONFIRM : controls::ButtonStyle::ACCENT;
+		const bool hovered_button = live && m_hover[static_cast<u32>(Hit::PRIMARY)] > 0.5f;
 
 		controls::draw_button(t_draw_list, body, footer_button(true, primary).moved(offset), primary, style, accent, !m_saving, hovered_button, alpha);
 	}
@@ -1088,34 +1088,34 @@ auto SetupScreen::draw_page(DrawList* t_draw_list, Page t_page, const PageDraw& 
 	switch (t_page) {
 		using enum Page;
 
-		case Choose: {
+		case CHOOSE: {
 			draw_header(t_draw_list, t_page, t_draw);
 			draw_choice(t_draw_list, 0, t_draw);
 			draw_choice(t_draw_list, 1, t_draw);
 			break;
 		}
 
-		case Location: {
+		case LOCATION: {
 			draw_location(t_draw_list, t_draw);
 			draw_options(t_draw_list, t_page, t_draw, 2);
 			break;
 		}
 
-		case Manage: {
+		case MANAGE: {
 			draw_header(t_draw_list, t_page, t_draw);
 			draw_installed_location(t_draw_list, t_draw);
 			draw_options(t_draw_list, t_page, t_draw, 2);
 			break;
 		}
 
-		case ConfirmUninstall: {
+		case CONFIRM_UNINSTALL: {
 			draw_confirm(t_draw_list, t_draw);
 			break;
 		}
 
-		case Working:
-		case Done:
-		case Failed: {
+		case WORKING:
+		case DONE:
+		case FAILED: {
 			draw_status(t_draw_list, t_page, t_draw);
 			break;
 		}

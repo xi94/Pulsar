@@ -1,7 +1,6 @@
 # Everything here builds on every platform and never includes an OS header. Each platform adds its os/, render/ and
-# login/ backends further down.
+# login/ backends as pulsar_platform further down. The app is main.cpp on top of both, and so are the tests in tests/.
 add_library (pulsar_portable OBJECT
-  "main.cpp"
   "app.cpp"
   "setup_app.cpp"
 
@@ -20,6 +19,7 @@ add_library (pulsar_portable OBJECT
   "gfx/font.cpp"
 
   "login/login_attempt.cpp"
+  "login/riot_client.cpp"
 
   "render/renderer.cpp"
 
@@ -67,7 +67,7 @@ if (WIN32)
   target_compile_definitions(pulsar_portable PRIVATE _WINDOWS_)
   target_compile_definitions(pulsar_portable PUBLIC PULSAR_DEFAULT_FONT_FILE="segoeui.ttf" PULSAR_SHORTCUT_KEY="Ctrl")
 
-  add_executable (Pulsar
+  add_library (pulsar_platform OBJECT
     "os/win32/app_icon.cpp"
     "os/win32/clipboard.cpp"
     "os/win32/crash_handler.cpp"
@@ -90,13 +90,10 @@ if (WIN32)
 
     "login/win32/riot_client.cpp"
     "login/win32/ui_automation.cpp"
-
-    "app.manifest"
-    "app.rc"
   )
 
-  target_compile_definitions(Pulsar PRIVATE UNICODE _UNICODE NOMINMAX)
-  set_property(TARGET Pulsar PROPERTY CXX_STANDARD 26)
+  target_compile_definitions(pulsar_platform PRIVATE UNICODE _UNICODE NOMINMAX)
+  set_property(TARGET pulsar_platform PROPERTY CXX_STANDARD 26)
 
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(SODIUM_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libsodium/lib/x64-debug")
@@ -105,8 +102,19 @@ if (WIN32)
   endif()
 
   find_package(Threads REQUIRED)
-  target_link_libraries(Pulsar PRIVATE pulsar_portable "${SODIUM_LIB_DIR}/libsodium.lib" Threads::Threads)
-  target_link_libraries(Pulsar PRIVATE shell32 dwmapi UIAutomationCore ole32 oleaut32 dbghelp comctl32 winhttp msimg32 d3d11 dxgi d3dcompiler opengl32 version)
+  target_link_libraries(pulsar_platform PUBLIC pulsar_portable "${SODIUM_LIB_DIR}/libsodium.lib" Threads::Threads)
+  target_link_libraries(pulsar_platform PUBLIC shell32 dwmapi UIAutomationCore ole32 oleaut32 dbghelp comctl32 winhttp msimg32 d3d11 dxgi d3dcompiler opengl32
+                                               version)
+
+  add_executable (Pulsar
+    "main.cpp"
+    "app.manifest"
+    "app.rc"
+  )
+
+  target_compile_definitions(Pulsar PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:_WINDOWS_>")
+  target_link_libraries(Pulsar PRIVATE pulsar_portable pulsar_platform)
+  set_property(TARGET Pulsar PROPERTY CXX_STANDARD 26)
 
   # WIN32_EXECUTABLE implies a WinMain entry; mainCRTStartup keeps main() as the one entry point in both configs.
   if (CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -126,9 +134,10 @@ elseif (APPLE)
   set(APP_VERSION "${PULSAR_VERSION_MAJOR}.${PULSAR_VERSION_MINOR}.${PULSAR_VERSION_PATCH}")
 
   set(APP_ICON "${PROJECT_SOURCE_DIR}/resources/Pulsar.icns")
-  set_source_files_properties("${APP_ICON}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+  set(MENU_BAR_ICON "${PROJECT_SOURCE_DIR}/resources/MenuBarIcon.png")
+  set_source_files_properties("${APP_ICON}" "${MENU_BAR_ICON}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
 
-  add_executable (Pulsar MACOSX_BUNDLE
+  add_library (pulsar_platform OBJECT
     "os/macos/app_icon.mm"
     "os/macos/clipboard.mm"
     "os/macos/crash_handler.mm"
@@ -150,8 +159,19 @@ elseif (APPLE)
     "render/opengl/macos/context.mm"
 
     "login/macos/riot_client.mm"
+  )
 
+  set_target_properties(pulsar_platform PROPERTIES CXX_STANDARD 26 OBJCXX_STANDARD 26)
+  target_compile_definitions(pulsar_platform PRIVATE GL_SILENCE_DEPRECATION)
+  target_compile_options(pulsar_platform PRIVATE "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
+  target_link_libraries(pulsar_platform PUBLIC pulsar_portable "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libsodium/lib/macos-universal/libsodium.a")
+  target_link_libraries(pulsar_platform PUBLIC "-framework AppKit" "-framework ApplicationServices" "-framework CoreText" "-framework Metal"
+                                              "-framework QuartzCore")
+
+  add_executable (Pulsar MACOSX_BUNDLE
+    "main.cpp"
     "${APP_ICON}"
+    "${MENU_BAR_ICON}"
   )
 
   set_target_properties(Pulsar PROPERTIES
@@ -165,11 +185,7 @@ elseif (APPLE)
     MACOSX_BUNDLE_BUNDLE_VERSION "${APP_VERSION}"
   )
 
-  target_compile_definitions(Pulsar PRIVATE GL_SILENCE_DEPRECATION)
-  target_compile_options(Pulsar PRIVATE "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
-  target_link_libraries(Pulsar PRIVATE pulsar_portable "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libsodium/lib/macos-universal/libsodium.a")
-  target_link_libraries(Pulsar PRIVATE "-framework AppKit" "-framework ApplicationServices" "-framework CoreText" "-framework Metal"
-                                       "-framework QuartzCore")
+  target_link_libraries(Pulsar PRIVATE pulsar_portable pulsar_platform)
 
   # The linker signs only the arm64 slice; a downloaded app needs the whole bundle sealed, and ad-hoc signing does that until a Developer ID is used.
   add_custom_command(TARGET Pulsar POST_BUILD COMMAND codesign --force --sign - "$<TARGET_BUNDLE_DIR:Pulsar>" VERBATIM)

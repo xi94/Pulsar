@@ -25,8 +25,8 @@ constexpr const wchar_t* K_ACTIVATE_INSTANCE_MESSAGE_NAME = L"PulsarDesktopAppAc
 constexpr const wchar_t* K_APP_USER_MODEL_ID              = L"Pulsar.DesktopApp.AccountManager";
 
 enum class AppIconSize : u8 {
-	SmallIcon,
-	LargeIcon,
+	SMALL_ICON,
+	LARGE_ICON,
 };
 
 class ComScope {

@@ -5,21 +5,21 @@
 namespace os {
 
 enum class Key : u8 {
-	None,
-	Backspace,
-	Tab,
-	Enter,
-	Escape,
-	Delete,
-	Left,
-	Right,
-	Up,
-	Down,
-	Home,
-	End,
-	PageUp,
-	PageDown,
-	Comma,
+	NONE,
+	BACKSPACE,
+	TAB,
+	ENTER,
+	ESCAPE,
+	FORWARD_DELETE,
+	LEFT,
+	RIGHT,
+	UP,
+	DOWN,
+	HOME,
+	END,
+	PAGE_UP,
+	PAGE_DOWN,
+	COMMA,
 	F1,
 	F2,
 	A,
@@ -60,13 +60,14 @@ struct Modifiers {
 };
 
 enum class InputEventType : u8 {
-	MouseDown,
-	MouseUp,
-	MouseMove,
-	MouseWheel,
-	RightClick,
-	KeyDown,
-	Character,
+	MOUSE_DOWN,
+	MOUSE_UP,
+	MOUSE_MOVE,
+	MOUSE_WHEEL,
+	RIGHT_CLICK,
+	KEY_DOWN,
+	CHARACTER,
+	MENU_ITEM,
 };
 
 struct InputEvent {
@@ -75,6 +76,7 @@ struct InputEvent {
 	float          wheel_delta;
 	Key            key;
 	u32            codepoint;
+	u32            menu_item;
 };
 
 [[nodiscard]] auto modifiers() -> Modifiers;

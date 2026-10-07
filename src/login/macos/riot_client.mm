@@ -5,12 +5,11 @@
 #include <concepts>
 #include <optional>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <libproc.h>
 #include <signal.h>
-
-#include <nlohmann/json.hpp>
 
 #include "core/debug_log.h"
 #include "core/file.h"
@@ -20,7 +19,6 @@ namespace {
 constexpr const char* K_LOG_CATEGORY = "riot";
 
 constexpr const char*      K_INSTALLS_JSON_PATH = "/Users/Shared/Riot Games/RiotClientInstalls.json";
-constexpr const char*      K_INSTALLS_JSON_KEYS[]{"rc_default", "rc_live", "rc_beta"};
 constexpr const char*      K_DEFAULT_INSTALL_FOLDER    = "/Users/Shared/Riot Games";
 constexpr const char*      K_CLIENT_BUNDLE_NAME        = "Riot Client.app";
 constexpr const char*      K_CLIENT_BUNDLE_IDENTIFIER  = "com.riotgames.RiotGames.RiotClient";
@@ -31,8 +29,10 @@ constexpr std::string_view K_LEAGUE_CLIENT_PREFIX      = "LeagueClient";
 constexpr std::string_view K_GAME_PROCESS_NAME         = "LeagueofLegends";
 constexpr u32              K_CHOSEN_PATH_SEARCH_LEVELS = 3;
 
-constexpr const char* K_AUTOMATION_FAILED_MESSAGE =
-	"Pulsar needs the Accessibility permission - allow it in System Settings > Privacy & Security > Accessibility.";
+constexpr const char* K_AUTOMATION_FAILED_MESSAGE = "Couldn't connect to the Riot Client - try again.";
+constexpr const char* K_PERMISSION_MISSING_MESSAGE =
+	"Pulsar needs the Accessibility permission to sign in. If it's already on in System Settings, remove Pulsar from the list and add it again.";
+constexpr const char* K_ACCESSIBILITY_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
 constexpr const char* K_USERNAME_FIELD_NAME        = "USERNAME";
 constexpr const char* K_PASSWORD_FIELD_NAME        = "PASSWORD";
 constexpr const char* K_PLAY_BUTTON_NAME           = "Play";
@@ -137,14 +137,10 @@ auto installs_json_paths(std::vector<std::string>* t_out) -> void
 	std::vector<u8> bytes;
 	if (!read_whole_file(K_INSTALLS_JSON_PATH, &bytes)) return;
 
-	const nlohmann::json installs = nlohmann::json::parse(bytes, nullptr, false);
-	if (!installs.is_object()) return;
+	const std::string_view json{reinterpret_cast<const char*>(bytes.data()), bytes.size()};
 
-	for (const char* key : K_INSTALLS_JSON_KEYS) {
-		const auto path = installs.find(key);
-		if (path != installs.end() && path->is_string()) {
-			t_out->push_back(path->get<std::string>());
-		}
+	for (std::string& path : RiotClient::paths_in_installs_file(json)) {
+		t_out->push_back(std::move(path));
 	}
 }
 
@@ -485,6 +481,27 @@ auto RiotClient::automation_failure_message() -> const char*
 	return K_AUTOMATION_FAILED_MESSAGE;
 }
 
+// macOS remembers the permission for this exact build, so an update shows Pulsar as allowed while it is not. The prompt also adds Pulsar
+// to the list in System Settings, which saves the user from adding it by hand.
+auto RiotClient::request_automation_permission() -> bool
+{
+	NSDictionary* options = @{(__bridge NSString*)kAXTrustedCheckOptionPrompt : @YES};
+
+	return AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
+}
+
+auto RiotClient::permission_missing_message() -> const char*
+{
+	return K_PERMISSION_MISSING_MESSAGE;
+}
+
+auto RiotClient::open_automation_permission_settings() -> void
+{
+	if (NSURL* url = [NSURL URLWithString:@(K_ACCESSIBILITY_SETTINGS_URL)]; url != nil) {
+		[NSWorkspace.sharedWorkspace openURL:url];
+	}
+}
+
 auto RiotClient::supports_product(std::string_view t_launch_product) -> bool
 {
 	return t_launch_product == "league_of_legends";
@@ -607,9 +624,8 @@ auto RiotClient::take_keyboard_focus() -> bool
 
 auto RiotClient::start_automation() -> bool
 {
-	NSDictionary* options = @{(__bridge NSString*)kAXTrustedCheckOptionPrompt : @YES};
-	if (!AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options)) {
-		debug_log::write(K_LOG_CATEGORY, "Pulsar does not have the Accessibility permission yet");
+	if (!AXIsProcessTrusted()) {
+		debug_log::write(K_LOG_CATEGORY, "Pulsar lost the Accessibility permission during the login");
 		return false;
 	}
 
@@ -736,7 +752,7 @@ auto RiotClient::wait_for_login_result(std::string* t_out_error, const std::stri
 
 auto RiotClient::click_play_when_ready(u32 t_timeout_ms, std::string* t_out_error) -> PlayResult
 {
-	if (m_native->application == nil) return PlayResult::NotFound;
+	if (m_native->application == nil) return PlayResult::NOT_FOUND;
 
 	const auto deadline = deadline_after(t_timeout_ms);
 
@@ -746,18 +762,18 @@ auto RiotClient::click_play_when_ready(u32 t_timeout_ms, std::string* t_out_erro
 		if (std::optional<std::string> shown = window != nil ? shown_login_error(window, m_cancel, m_native->form_found_by_name) : std::nullopt) {
 			*t_out_error = std::move(*shown);
 			debug_log::write(K_LOG_CATEGORY, "login error shown while waiting for Play: \"%s\"", t_out_error->c_str());
-			return PlayResult::LoginError;
+			return PlayResult::LOGIN_ERROR;
 		}
 
 		if (const id play_button = window != nil ? find_play_button(window, m_cancel) : nil; play_button != nil) {
 			debug_log::write(K_LOG_CATEGORY, "Play button found - pressing it");
 			AXUIElementPerformAction((__bridge AXUIElementRef)play_button, kAXPressAction);
-			return PlayResult::Clicked;
+			return PlayResult::CLICKED;
 		}
 
 		if (is_cancelled(m_cancel) || is_past(deadline)) {
 			debug_log::write(K_LOG_CATEGORY, "Play button not found (%s) - leaving the game unlaunched", is_cancelled(m_cancel) ? "cancelled" : "timed out");
-			return PlayResult::NotFound;
+			return PlayResult::NOT_FOUND;
 		}
 
 		std::this_thread::sleep_for(K_POLL_INTERVAL);

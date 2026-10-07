@@ -16,18 +16,18 @@ struct Vertex2D {
 };
 
 enum class ShaderKind : u8 {
-	Solid,
-	Textured,
-	BannerGlow,
-	ColorPicker,
-	Shadow,
-	OutlineCountdown,
-	Backdrop,
-	BackdropPlain,
-	Count,
+	SOLID,
+	TEXTURED,
+	BANNER_GLOW,
+	COLOR_PICKER,
+	SHADOW,
+	OUTLINE_COUNTDOWN,
+	BACKDROP,
+	BACKDROP_PLAIN,
+	COUNT,
 };
 
-constexpr u32 K_SHADER_KIND_COUNT = static_cast<u32>(ShaderKind::Count);
+constexpr u32 K_SHADER_KIND_COUNT = static_cast<u32>(ShaderKind::COUNT);
 
 struct RoundedBoxParams {
 	float quad_width;
@@ -129,6 +129,7 @@ class DrawList {
 	auto add_triangle(Vec2 t_a, Vec2 t_b, Vec2 t_c, Color t_color) -> void;
 	auto add_rect_outline(Rect t_rect, float t_thickness, Color t_color) -> void;
 	auto add_gradient(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right) -> void;
+	auto add_quad(const Vec2 (&t_corners)[4], const Color (&t_colors)[4]) -> void;
 	auto add_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right) -> void;
 	auto add_plain_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right) -> void;
 	auto add_pattern_swatch(Rect t_rect, CornerRadii t_radii, Color t_color, u32 t_style) -> void;

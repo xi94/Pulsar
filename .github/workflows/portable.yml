@@ -1,5 +1,12 @@
 name: Build
 
+# Every push builds both apps and runs the tests. Pushing a version tag (git tag v0.8.0 && git push origin v0.8.0) also makes a
+# draft release with Pulsar.exe and the DMG attached. The update signing key never leaves your PC, so finish the release there:
+#   gh release download v0.8.0 --pattern Pulsar.exe --dir release
+#   sign_release --exe release/Pulsar.exe --notes-file release/notes.txt --out release/update.json
+#   gh release upload v0.8.0 release/update.json
+# then publish the draft on GitHub.
+
 on:
   push:
   pull_request:
@@ -11,7 +18,7 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
@@ -19,10 +26,13 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
       - name: Package
         run: cmake --build build --target package
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: Pulsar-macOS
           path: build/Pulsar-*.dmg
@@ -32,10 +42,47 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Configure
         run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build --config Release --target Pulsar --parallel
+        run: cmake --build build --config Release --target Pulsar pulsar_tests --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Pulsar-Windows
+          path: build/src/Release/Pulsar.exe
+
+  release:
+    name: Draft release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Check the tag matches the app version
+        run: |
+          if [ ! -f "artifacts/Pulsar-${GITHUB_REF_NAME#v}.dmg" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match the version in src/core/app_identity.h:" artifacts/*.dmg
+            exit 1
+          fi
+
+      - name: Create or update the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "$GITHUB_REF_NAME" --notes ""
+          gh release upload "$GITHUB_REF_NAME" artifacts/Pulsar.exe "artifacts/Pulsar-${GITHUB_REF_NAME#v}.dmg" --clobber

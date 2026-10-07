@@ -100,19 +100,19 @@ auto Job::step_label() const -> std::string_view
 
 auto Job::start_install(const std::string&, Options) -> void
 {
-	begin(Task::Install);
+	begin(Task::INSTALL);
 	finish(false, K_UNSUPPORTED_MESSAGE);
 }
 
 auto Job::start_apply(const Installed&, Options) -> void
 {
-	begin(Task::Apply);
+	begin(Task::APPLY);
 	finish(false, K_UNSUPPORTED_MESSAGE);
 }
 
 auto Job::start_uninstall(const Installed&, std::optional<std::string>) -> void
 {
-	begin(Task::Uninstall);
+	begin(Task::UNINSTALL);
 	finish(false, K_UNSUPPORTED_MESSAGE);
 }
 

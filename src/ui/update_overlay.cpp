@@ -76,10 +76,10 @@ constexpr float K_CHECK_FAILED_LINGER_SECONDS = 5.0f;
 constexpr const char* K_RELEASES_URL = PULSAR_RELEASE_REPO "/releases/latest";
 
 enum class NoteKind : u8 {
-	Heading,
-	Bullet,
-	Continuation,
-	Text,
+	HEADING,
+	BULLET,
+	CONTINUATION,
+	TEXT,
 };
 
 struct NoteLine {
@@ -161,15 +161,15 @@ auto layout_notes(const Font& t_font, std::string_view t_notes, std::span<NoteLi
 
 		if (is_heading(line, next_content_line(t_notes, start))) {
 			y += count > 0 ? K_NOTE_HEADING_GAP_ABOVE : 0.0f;
-			push(heading_text(line), NoteKind::Heading);
+			push(heading_text(line), NoteKind::HEADING);
 			y += K_NOTE_HEADING_GAP_BELOW;
 		} else if (const std::optional<std::string_view> bullet = bullet_text(line)) {
 			y += blank_gap;
-			push_wrapped(*bullet, NoteKind::Bullet, NoteKind::Continuation, K_NOTES_TEXT_WIDTH - K_NOTE_BULLET_INDENT);
+			push_wrapped(*bullet, NoteKind::BULLET, NoteKind::CONTINUATION, K_NOTES_TEXT_WIDTH - K_NOTE_BULLET_INDENT);
 			y += K_NOTE_ITEM_GAP;
 		} else {
 			y += blank_gap;
-			push_wrapped(line, NoteKind::Text, NoteKind::Text, K_NOTES_TEXT_WIDTH);
+			push_wrapped(line, NoteKind::TEXT, NoteKind::TEXT, K_NOTES_TEXT_WIDTH);
 			y += K_NOTE_ITEM_GAP;
 		}
 
@@ -216,7 +216,7 @@ auto UpdateOverlay::open() -> void
 
 auto UpdateOverlay::begin_check() -> void
 {
-	m_shown_stage     = UpdateStage::Checking;
+	m_shown_stage     = UpdateStage::CHECKING;
 	m_shown_seconds   = 0.0f;
 	m_check_requested = true;
 	m_status_linger   = 0.0f;
@@ -263,60 +263,60 @@ auto UpdateOverlay::describe() const -> UpdateOverlay::Content
 		std::snprintf(content.title, sizeof(content.title), "What's new in %s", m_release_version);
 		copy_to("Pulsar was updated. Here's what changed.", content.detail);
 		content.notes   = true;
-		content.primary = Button{"Got it", Action::Close, controls::ButtonStyle::Accent};
+		content.primary = Button{"Got it", Action::CLOSE, controls::ButtonStyle::ACCENT};
 		return content;
 	}
 
 	switch (stage) {
 		using enum UpdateStage;
 
-		case Idle:
-		case Checking: {
+		case IDLE:
+		case CHECKING: {
 			set("Checking for updates", "This only takes a moment.");
 			content.spinning = true;
 			break;
 		}
 
-		case UpToDate: {
+		case UP_TO_DATE: {
 			set("You're up to date", "");
 			std::snprintf(content.detail, sizeof(content.detail), "%s %s is the latest version.", K_APP_NAME, K_APP_VERSION);
-			content.primary = Button{"Check again", Action::Check, controls::ButtonStyle::Neutral};
+			content.primary = Button{"Check again", Action::CHECK, controls::ButtonStyle::NEUTRAL};
 			break;
 		}
 
-		case CheckFailed: {
+		case CHECK_FAILED: {
 			set("Couldn't check for updates", m_updater->error_message());
 			content.detail_is_error = true;
-			content.primary         = Button{"Try again", Action::Check, controls::ButtonStyle::Accent};
+			content.primary         = Button{"Try again", Action::CHECK, controls::ButtonStyle::ACCENT};
 			break;
 		}
 
-		case Available: {
+		case AVAILABLE: {
 			copy_to("Update available", content.title);
 			std::snprintf(content.detail, sizeof(content.detail), "Version %s is ready to install.", version);
 			content.notes     = true;
-			content.secondary = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
-			content.primary   = Button{"Install update", Action::Download, controls::ButtonStyle::Accent};
+			content.secondary = Button{"Later", Action::CLOSE, controls::ButtonStyle::GHOST};
+			content.primary   = Button{"Install update", Action::DOWNLOAD, controls::ButtonStyle::ACCENT};
 			break;
 		}
 
-		case ManualUpgradeRequired: {
+		case MANUAL_UPGRADE_REQUIRED: {
 			copy_to("Update available", content.title);
 			std::snprintf(content.detail, sizeof(content.detail), "Version %s has to be downloaded from GitHub.", version);
-			content.secondary = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
-			content.primary   = Button{"Open GitHub", Action::Releases, controls::ButtonStyle::Accent};
+			content.secondary = Button{"Later", Action::CLOSE, controls::ButtonStyle::GHOST};
+			content.primary   = Button{"Open GitHub", Action::RELEASES, controls::ButtonStyle::ACCENT};
 			break;
 		}
 
-		case Downloading: {
+		case DOWNLOADING: {
 			std::snprintf(content.title, sizeof(content.title), "Downloading %s", version);
 			copy_to("You can keep using Pulsar meanwhile.", content.detail);
 			content.progress = true;
-			content.primary  = Button{"Cancel", Action::Cancel, controls::ButtonStyle::Neutral};
+			content.primary  = Button{"Cancel", Action::CANCEL, controls::ButtonStyle::NEUTRAL};
 			break;
 		}
 
-		case Verifying: {
+		case VERIFYING: {
 			std::snprintf(content.title, sizeof(content.title), "Verifying %s", version);
 			copy_to("Making sure the download is genuine.", content.detail);
 			content.spinning = true;
@@ -324,7 +324,7 @@ auto UpdateOverlay::describe() const -> UpdateOverlay::Content
 			break;
 		}
 
-		case Installing: {
+		case INSTALLING: {
 			std::snprintf(content.title, sizeof(content.title), "Installing %s", version);
 			copy_to("Pulsar restarts when it's done.", content.detail);
 			content.spinning = true;
@@ -332,24 +332,24 @@ auto UpdateOverlay::describe() const -> UpdateOverlay::Content
 			break;
 		}
 
-		case ReadyToRelaunch: {
+		case READY_TO_RELAUNCH: {
 			set("Restarting", "Pulsar will be right back.");
 			content.spinning = true;
 			break;
 		}
 
-		case Error: {
+		case UPDATE_FAILED: {
 			set("Update failed", m_updater->error_message());
 			content.detail_is_error = true;
-			content.secondary       = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
-			content.primary         = Button{"Try again", Action::Download, controls::ButtonStyle::Accent};
+			content.secondary       = Button{"Later", Action::CLOSE, controls::ButtonStyle::GHOST};
+			content.primary         = Button{"Try again", Action::DOWNLOAD, controls::ButtonStyle::ACCENT};
 			break;
 		}
 
-		case Cancelled: {
+		case CANCELLED: {
 			set("Update cancelled", "The download was stopped.");
-			content.secondary = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
-			content.primary   = Button{"Try again", Action::Download, controls::ButtonStyle::Accent};
+			content.secondary = Button{"Later", Action::CLOSE, controls::ButtonStyle::GHOST};
+			content.primary   = Button{"Try again", Action::DOWNLOAD, controls::ButtonStyle::ACCENT};
 			break;
 		}
 	}
@@ -399,7 +399,7 @@ auto UpdateOverlay::content_height(const Content& t_content) const -> float
 auto UpdateOverlay::anchored_x() const -> float
 {
 	const TitleBarLayout title_bar{.width = static_cast<float>(m_window->width()), .native_controls_width = m_window->native_controls_width()};
-	const Rect           status = title_bar.button_rect(TitleBarButton::Update);
+	const Rect           status = title_bar.button_rect(TitleBarButton::UPDATE);
 
 	return title_bar.menu_on_right() ? status.right() - K_POPOVER_WIDTH : status.x;
 }
@@ -477,12 +477,12 @@ auto UpdateOverlay::advance_shown_stage(float t_delta_seconds) -> void
 	if (actual == m_shown_stage) return;
 
 	const bool watched = m_check_requested || is_shown();
-	if (watched && m_shown_stage == UpdateStage::Checking && m_shown_seconds < K_MINIMUM_CHECKING_SECONDS) {
+	if (watched && m_shown_stage == UpdateStage::CHECKING && m_shown_seconds < K_MINIMUM_CHECKING_SECONDS) {
 		animation::request_frame_after(K_MINIMUM_CHECKING_SECONDS - m_shown_seconds);
 		return;
 	}
 
-	const bool answered = m_check_requested && m_shown_stage == UpdateStage::Checking;
+	const bool answered = m_check_requested && m_shown_stage == UpdateStage::CHECKING;
 	m_shown_stage       = actual;
 	m_shown_seconds     = 0.0f;
 
@@ -491,11 +491,11 @@ auto UpdateOverlay::advance_shown_stage(float t_delta_seconds) -> void
 	// A check someone asked for only opens the popover when there is something to install.
 	m_check_requested = false;
 
-	if (actual == UpdateStage::Available || actual == UpdateStage::ManualUpgradeRequired) {
+	if (actual == UpdateStage::AVAILABLE || actual == UpdateStage::MANUAL_UPGRADE_REQUIRED) {
 		open();
-	} else if (actual == UpdateStage::UpToDate) {
+	} else if (actual == UpdateStage::UP_TO_DATE) {
 		m_status_linger = K_UP_TO_DATE_LINGER_SECONDS;
-	} else if (actual == UpdateStage::CheckFailed) {
+	} else if (actual == UpdateStage::CHECK_FAILED) {
 		m_status_linger = K_CHECK_FAILED_LINGER_SECONDS;
 	}
 }
@@ -515,7 +515,7 @@ auto UpdateOverlay::update(float t_delta_seconds) -> void
 		m_content_key  = key;
 		m_content_fade = 0.0f;
 
-		if (m_shown_stage == UpdateStage::Downloading) {
+		if (m_shown_stage == UpdateStage::DOWNLOADING) {
 			m_progress = 0.0f;
 		}
 	}
@@ -529,7 +529,7 @@ auto UpdateOverlay::update(float t_delta_seconds) -> void
 	const UpdateStage stage      = m_shown_stage;
 	const u64         total      = m_updater->total_bytes();
 	const float       downloaded = total > 0 ? static_cast<float>(m_updater->bytes_downloaded()) / static_cast<float>(total) : 0.0f;
-	const float       progress   = stage == UpdateStage::Downloading ? downloaded : 1.0f;
+	const float       progress   = stage == UpdateStage::DOWNLOADING ? downloaded : 1.0f;
 	m_progress                   = animation::ease_toward(m_progress, progress, K_PROGRESS_EASE_RATE, t_delta_seconds);
 
 	if (content.spinning) {
@@ -537,7 +537,7 @@ auto UpdateOverlay::update(float t_delta_seconds) -> void
 		animation::request_frame();
 	}
 
-	if (stage == UpdateStage::Checking || stage == UpdateStage::Downloading) {
+	if (stage == UpdateStage::CHECKING || stage == UpdateStage::DOWNLOADING) {
 		animation::request_frame();
 	}
 
@@ -549,35 +549,35 @@ auto UpdateOverlay::run(Action t_action) -> void
 	switch (t_action) {
 		using enum Action;
 
-		case Check: {
+		case CHECK: {
 			m_updater->check_for_update();
 			close();
 			begin_check();
 			break;
 		}
 
-		case Download: {
+		case DOWNLOAD: {
 			m_updater->start_download();
 			break;
 		}
 
-		case Cancel: {
+		case CANCEL: {
 			m_updater->request_cancel();
 			break;
 		}
 
-		case Close: {
+		case CLOSE: {
 			close();
 			break;
 		}
 
-		case Releases: {
+		case RELEASES: {
 			os::open_url(K_RELEASES_URL);
 			close();
 			break;
 		}
 
-		case None: {
+		case NONE: {
 			break;
 		}
 	}
@@ -658,7 +658,7 @@ auto UpdateOverlay::on_key_down(os::Key t_key) -> bool
 {
 	if (!is_shown()) return false;
 
-	if (t_key == os::Key::Escape) {
+	if (t_key == os::Key::ESCAPE) {
 		close();
 	}
 
@@ -667,15 +667,15 @@ auto UpdateOverlay::on_key_down(os::Key t_key) -> bool
 
 auto UpdateOverlay::cursor() const -> CursorKind
 {
-	if (!is_shown()) return CursorKind::Arrow;
-	if (m_notes_scroll.is_dragging()) return CursorKind::Drag;
+	if (!is_shown()) return CursorKind::ARROW;
+	if (m_notes_scroll.is_dragging()) return CursorKind::DRAG;
 
 	const Content content = describe();
 	const Layout  current = layout(content);
 	const bool    over_button =
 		(current.primary.w > 0.0f && current.primary.contains(m_mouse)) || (current.secondary.w > 0.0f && current.secondary.contains(m_mouse));
 
-	return over_button ? CursorKind::Hand : CursorKind::Arrow;
+	return over_button ? CursorKind::HAND : CursorKind::ARROW;
 }
 
 auto UpdateOverlay::draw_title(DrawList* t_draw_list, const Content& t_content, Rect t_line, u8 t_alpha) const -> void
@@ -692,7 +692,7 @@ auto UpdateOverlay::draw_title(DrawList* t_draw_list, const Content& t_content, 
 	const float start = snapped_to_pixel(t_line.center().x - (K_TITLE_ICON_SIZE + K_TITLE_ICON_GAP + text) * 0.5f);
 	const Rect  icon{start, t_line.center().y - K_TITLE_ICON_SIZE * 0.5f, K_TITLE_ICON_SIZE, K_TITLE_ICON_SIZE};
 
-	t_draw_list->add_rotated_image(icon, m_spin, m_assets->get(Asset::IconUpdate), faded(g_theme.text_dim, t_alpha));
+	t_draw_list->add_rotated_image(icon, m_spin, m_assets->get(Asset::ICON_UPDATE), faded(g_theme.text_dim, t_alpha));
 	draw_text(t_draw_list, body, Vec2{icon.right() + K_TITLE_ICON_GAP, body.centered_baseline(t_line)}, t_content.title, color);
 }
 
@@ -721,7 +721,7 @@ auto UpdateOverlay::draw_notes(DrawList* t_draw_list, Rect t_box, const ScrollGe
 		switch (line.kind) {
 			using enum NoteKind;
 
-			case Heading: {
+			case HEADING: {
 				draw_text(t_draw_list, font, Vec2{left, baseline}, line.text, heading);
 
 				const float rule_x = left + text_width(font, line.text) + K_NOTE_HEADING_RULE_GAP;
@@ -732,19 +732,19 @@ auto UpdateOverlay::draw_notes(DrawList* t_draw_list, Rect t_box, const ScrollGe
 				break;
 			}
 
-			case Bullet: {
+			case BULLET: {
 				const Rect dot{left + K_NOTE_BULLET_OFFSET, baseline - mark_offset - K_NOTE_BULLET_SIZE * 0.5f, K_NOTE_BULLET_SIZE, K_NOTE_BULLET_SIZE};
 				t_draw_list->add_rounded_rect(dot, rounded(K_NOTE_BULLET_SIZE * 0.5f), heading);
 				draw_text(t_draw_list, font, Vec2{left + K_NOTE_BULLET_INDENT, baseline}, line.text, faded(g_theme.text, t_alpha));
 				break;
 			}
 
-			case Continuation: {
+			case CONTINUATION: {
 				draw_text(t_draw_list, font, Vec2{left + K_NOTE_BULLET_INDENT, baseline}, line.text, faded(g_theme.text, t_alpha));
 				break;
 			}
 
-			case Text: {
+			case TEXT: {
 				draw_text(t_draw_list, font, Vec2{left, baseline}, line.text, faded(g_theme.text_dim, t_alpha));
 				break;
 			}
@@ -766,7 +766,7 @@ auto UpdateOverlay::draw_progress(DrawList* t_draw_list, const Layout& t_layout,
 	t_draw_list->add_rounded_rect(track, rounded(track.h * 0.5f), faded(g_theme.control, t_alpha));
 	t_draw_list->add_rounded_rect(Rect{track.x, track.y, filled, track.h}, rounded(track.h * 0.5f), faded(m_settings->accent, t_alpha));
 
-	if (m_shown_stage != UpdateStage::Downloading) return;
+	if (m_shown_stage != UpdateStage::DOWNLOADING) return;
 
 	char                   downloaded_text[32];
 	char                   total_text[32];

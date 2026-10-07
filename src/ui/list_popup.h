@@ -56,12 +56,12 @@ class ListPopup {
 
   private:
 	enum class Press : u8 {
-		None,
-		Outside,
-		Search,
-		Clear,
-		Scrollbar,
-		Row,
+		NONE,
+		OUTSIDE,
+		SEARCH,
+		CLEAR,
+		SCROLLBAR,
+		ROW,
 	};
 
 	struct Placement {
@@ -126,7 +126,7 @@ class ListPopup {
 
 	TextInput          m_search;
 	Scrollable         m_scroll;
-	Press              m_press = Press::None;
+	Press              m_press = Press::NONE;
 	std::optional<u32> m_pressed_match;
 
 	bool  m_open        = false;

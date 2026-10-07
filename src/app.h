@@ -36,9 +36,9 @@
 class App {
   public:
 	enum class StartResult : u8 {
-		Ok,
-		AlreadyRunning,
-		Failed,
+		OK,
+		ALREADY_RUNNING,
+		FAILED,
 	};
 
 	App();
@@ -140,7 +140,7 @@ class App {
 	bool        m_just_updated                 = false;
 	bool        m_unreadable_storage_announced = false;
 	bool        m_in_frame                     = false;
-	UpdateStage m_announced_update_stage       = UpdateStage::Idle;
+	UpdateStage m_announced_update_stage       = UpdateStage::IDLE;
 	Vec2        m_mouse{-1.0f, -1.0f};
 	bool        m_pointer_down = false;
 

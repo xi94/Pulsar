@@ -560,15 +560,15 @@ auto Job::step_count() const -> u32
 	switch (m_task) {
 		using enum Task;
 
-		case Install: {
+		case INSTALL: {
 			return static_cast<u32>(std::size(K_INSTALL_STEPS));
 		}
 
-		case Apply: {
+		case APPLY: {
 			return static_cast<u32>(std::size(K_APPLY_STEPS));
 		}
 
-		case Uninstall: {
+		case UNINSTALL: {
 			return static_cast<u32>(std::size(K_UNINSTALL_STEPS));
 		}
 	}
@@ -583,15 +583,15 @@ auto Job::step_label() const -> std::string_view
 	switch (m_task) {
 		using enum Task;
 
-		case Install: {
+		case INSTALL: {
 			return K_INSTALL_STEPS[index];
 		}
 
-		case Apply: {
+		case APPLY: {
 			return K_APPLY_STEPS[index];
 		}
 
-		case Uninstall: {
+		case UNINSTALL: {
 			return K_UNINSTALL_STEPS[index];
 		}
 	}
@@ -601,7 +601,7 @@ auto Job::step_label() const -> std::string_view
 
 auto Job::start_install(const std::string& t_location, Options t_options) -> void
 {
-	begin(Task::Install);
+	begin(Task::INSTALL);
 
 	m_thread = std::thread([this, location = to_wide(t_location), options = t_options]() {
 		const win32::ComScope com;
@@ -652,7 +652,7 @@ auto Job::start_install(const std::string& t_location, Options t_options) -> voi
 
 auto Job::start_apply(const Installed& t_installed, Options t_options) -> void
 {
-	begin(Task::Apply);
+	begin(Task::APPLY);
 
 	m_thread = std::thread([this, installed = widened(t_installed), options = t_options]() {
 		const win32::ComScope com;
@@ -668,7 +668,7 @@ auto Job::start_apply(const Installed& t_installed, Options t_options) -> void
 
 auto Job::start_uninstall(const Installed& t_installed, std::optional<std::string> t_data_folder) -> void
 {
-	begin(Task::Uninstall);
+	begin(Task::UNINSTALL);
 
 	m_thread = std::thread([this, installed = widened(t_installed), data_folder = std::move(t_data_folder)]() {
 		const win32::ComScope com;

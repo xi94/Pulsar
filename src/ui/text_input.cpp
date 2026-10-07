@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstring>
 #include <optional>
+#include <utility>
 
 #include "core/animation.h"
 #include "core/str.h"
@@ -26,19 +27,43 @@ constexpr u8    K_SELECTION_ALPHA    = 70;
 constexpr float K_MULTI_CLICK_SLOP   = 4.0f;
 constexpr u32   K_CLICKS_PER_CYCLE   = 3;
 
+constexpr float            K_CARET_TYPING_RATE     = 50.0f;
+constexpr float            K_CARET_JUMP_RATE       = 27.0f;
+constexpr float            K_TRAIL_TAIL_RATE_SHORT = 14.0f;
+constexpr float            K_TRAIL_TAIL_RATE_LONG  = 3.5f;
+constexpr float            K_TRAIL_TAIL_SPREAD     = 0.45f;
+constexpr float            K_TRAIL_FAINT_ALPHA_MIN = 30.0f;
+constexpr float            K_TRAIL_FAINT_ALPHA_MAX = 80.0f;
+constexpr float            K_TRAIL_MIN_LENGTH      = 0.5f;
+constexpr float            K_TRAIL_MAX_STEP        = 0.1f;
+constexpr auto             K_HOP_WINDOW            = std::chrono::milliseconds(250);
+constexpr u8               K_BLOCK_ALPHA           = 110;
+constexpr float            K_UNDERLINE_HEIGHT      = 2.0f;
+constexpr std::string_view K_END_OF_TEXT_CELL      = "0";
+
+struct CaretMark {
+	Vec2                                  position;
+	std::chrono::steady_clock::time_point released_at;
+};
+
+CaretStyle g_caret_style    = CaretStyle::BAR;
+bool       g_caret_trail    = true;
+float      g_trail_strength = 0.5f;
+CaretMark  g_last_caret{};
+
 enum class CharClass : u8 {
-	Space,
-	Word,
-	Symbol,
+	SPACE,
+	WORD,
+	SYMBOL,
 };
 
 [[nodiscard]] auto class_of(char t_character) -> CharClass
 {
-	if (t_character == ' ') return CharClass::Space;
-	if (static_cast<u8>(t_character) >= 0x80) return CharClass::Word;
-	if (std::isalnum(static_cast<unsigned char>(t_character)) || t_character == '_') return CharClass::Word;
+	if (t_character == ' ') return CharClass::SPACE;
+	if (static_cast<u8>(t_character) >= 0x80) return CharClass::WORD;
+	if (std::isalnum(static_cast<unsigned char>(t_character)) || t_character == '_') return CharClass::WORD;
 
-	return CharClass::Symbol;
+	return CharClass::SYMBOL;
 }
 
 [[nodiscard]] auto is_printable(u32 t_codepoint) -> bool
@@ -57,19 +82,19 @@ enum class CharClass : u8 {
 		using enum os::Key;
 
 		case A: {
-			return TextEdit::SelectAll;
+			return TextEdit::SELECT_ALL;
 		}
 
 		case C: {
-			return TextEdit::Copy;
+			return TextEdit::COPY;
 		}
 
 		case X: {
-			return TextEdit::Cut;
+			return TextEdit::CUT;
 		}
 
 		case V: {
-			return TextEdit::Paste;
+			return TextEdit::PASTE;
 		}
 
 		default: {
@@ -80,11 +105,11 @@ enum class CharClass : u8 {
 
 [[nodiscard]] auto previous_word_start(std::string_view t_text, u32 t_index) -> u32
 {
-	while (t_index > 0 && class_of(t_text[t_index - 1]) == CharClass::Space) {
+	while (t_index > 0 && class_of(t_text[t_index - 1]) == CharClass::SPACE) {
 		t_index -= 1;
 	}
 
-	const CharClass word = t_index > 0 ? class_of(t_text[t_index - 1]) : CharClass::Space;
+	const CharClass word = t_index > 0 ? class_of(t_text[t_index - 1]) : CharClass::SPACE;
 	while (t_index > 0 && class_of(t_text[t_index - 1]) == word) {
 		t_index -= 1;
 	}
@@ -96,12 +121,12 @@ enum class CharClass : u8 {
 {
 	const auto length = static_cast<u32>(t_text.size());
 
-	const CharClass word = t_index < length ? class_of(t_text[t_index]) : CharClass::Space;
+	const CharClass word = t_index < length ? class_of(t_text[t_index]) : CharClass::SPACE;
 	while (t_index < length && class_of(t_text[t_index]) == word) {
 		t_index += 1;
 	}
 
-	while (t_index < length && class_of(t_text[t_index]) == CharClass::Space) {
+	while (t_index < length && class_of(t_text[t_index]) == CharClass::SPACE) {
 		t_index += 1;
 	}
 
@@ -156,16 +181,16 @@ auto TextInput::can_apply(TextEdit t_edit) const -> bool
 	switch (t_edit) {
 		using enum TextEdit;
 
-		case Cut:
-		case Copy: {
+		case CUT:
+		case COPY: {
 			return has_selection() && !m_masked;
 		}
 
-		case Paste: {
+		case PASTE: {
 			return os::clipboard_has_text();
 		}
 
-		case SelectAll: {
+		case SELECT_ALL: {
 			return m_length > 0;
 		}
 	}
@@ -183,23 +208,23 @@ auto TextInput::apply(TextEdit t_edit) -> void
 	switch (t_edit) {
 		using enum TextEdit;
 
-		case Cut: {
+		case CUT: {
 			os::set_clipboard_text(selected);
 			erase(range);
 			break;
 		}
 
-		case Copy: {
+		case COPY: {
 			os::set_clipboard_text(selected);
 			break;
 		}
 
-		case Paste: {
+		case PASTE: {
 			insert(os::clipboard_text());
 			break;
 		}
 
-		case SelectAll: {
+		case SELECT_ALL: {
 			select(TextRange{0, m_length});
 			break;
 		}
@@ -240,32 +265,32 @@ auto TextInput::on_key_down(os::Key t_key) -> void
 	switch (t_key) {
 		using enum os::Key;
 
-		case Backspace: {
+		case BACKSPACE: {
 			erase(has_selection() ? range : TextRange{previous, m_cursor});
 			break;
 		}
 
-		case Delete: {
+		case FORWARD_DELETE: {
 			erase(has_selection() ? range : TextRange{m_cursor, next});
 			break;
 		}
 
-		case Left: {
+		case LEFT: {
 			move_cursor(collapse_selection ? range.start : previous, held.shift);
 			break;
 		}
 
-		case Right: {
+		case RIGHT: {
 			move_cursor(collapse_selection ? range.end : next, held.shift);
 			break;
 		}
 
-		case Home: {
+		case HOME: {
 			move_cursor(0, held.shift);
 			break;
 		}
 
-		case End: {
+		case END: {
 			move_cursor(m_length, held.shift);
 			break;
 		}
@@ -333,8 +358,28 @@ auto TextInput::on_right_click(const Font& t_font, Rect t_field, float t_x) -> v
 	}
 }
 
+auto set_caret_style(CaretStyle t_style, bool t_trail, float t_trail_strength) -> void
+{
+	g_caret_style    = t_style;
+	g_caret_trail    = t_trail;
+	g_trail_strength = std::clamp(t_trail_strength, 0.0f, 1.0f);
+}
+
+auto TextInput::set_focused(bool t_focused) -> void
+{
+	if (t_focused && !m_focused) {
+		m_trail_placed = false;
+		restart_caret_blink();
+	} else if (!t_focused && m_focused) {
+		g_last_caret.released_at = std::chrono::steady_clock::now();
+	}
+
+	m_focused = t_focused;
+}
+
 auto TextInput::update(float t_delta_seconds) -> void
 {
+	m_trail_seconds += t_delta_seconds;
 	m_caret_blink_seconds = std::fmod(m_caret_blink_seconds + t_delta_seconds, K_CARET_BLINK_PERIOD);
 
 	if (m_focused) {
@@ -362,6 +407,10 @@ auto TextInput::draw(DrawList* t_draw_list, const Font& t_font, Rect t_field, Co
 	const float highlight_y      = std::max(t_field.y + K_HIGHLIGHT_INSET, baseline - t_font.ascent - K_CARET_OVERHANG);
 	const float highlight_bottom = std::min(t_field.bottom() - K_HIGHLIGHT_INSET, baseline - t_font.descent + K_CARET_OVERHANG);
 	const float highlight_height = std::max(0.0f, highlight_bottom - highlight_y);
+	const Vec2  caret_origin{content.x, highlight_y};
+	const Vec2  caret_extent = caret_size(t_font, shown, highlight_height);
+
+	move_caret(Vec2{caret_offset - m_scroll_x, highlight_height - caret_extent.y}, caret_origin, highlight_height);
 
 	t_draw_list->push_clip(content);
 
@@ -379,12 +428,12 @@ auto TextInput::draw(DrawList* t_draw_list, const Font& t_font, Rect t_field, Co
 	}
 
 	draw_text(t_draw_list, t_font, Vec2{origin_x, baseline}, shown, t_text_color);
-
-	if (m_focused && m_caret_blink_seconds < K_CARET_BLINK_PERIOD * 0.5f) {
-		t_draw_list->add_rect(Rect{origin_x + caret_offset, highlight_y, K_CARET_WIDTH, highlight_height}, t_caret_color);
-	}
-
 	t_draw_list->pop_clip();
+
+	// Outside the field's clip, so a caret hopping in from another field shows on its way over.
+	if (m_focused && m_caret_blink_seconds < K_CARET_BLINK_PERIOD * 0.5f) {
+		draw_caret(t_draw_list, caret_origin, caret_extent, g_caret_style == CaretStyle::BLOCK ? faded(t_caret_color, K_BLOCK_ALPHA) : t_caret_color);
+	}
 }
 
 auto TextInput::selection() const -> TextRange
@@ -459,6 +508,82 @@ auto TextInput::insert(std::string_view t_text) -> void
 	m_length += accepted_count;
 
 	move_cursor(m_cursor + accepted_count, false);
+}
+
+auto TextInput::caret_size(const Font& t_font, std::string_view t_shown, float t_height) const -> Vec2
+{
+	if (g_caret_style == CaretStyle::BAR) return Vec2{K_CARET_WIDTH, t_height};
+
+	const usize next  = next_codepoint(t_shown, m_cursor);
+	const float width = next > m_cursor ? text_width(t_font, t_shown.substr(m_cursor, next - m_cursor)) : text_width(t_font, K_END_OF_TEXT_CELL);
+
+	return Vec2{std::max(width, K_CARET_WIDTH), g_caret_style == CaretStyle::BLOCK ? t_height : K_UNDERLINE_HEIGHT};
+}
+
+// The caret glides to its new spot: quickly for a move the size of typing, so it keeps up with the text, and more slowly for longer jumps.
+// Its tail follows behind, and the stretch between them is drawn as a fading ribbon, the smear kitty and Neovide leave behind their
+// cursors. A field that just took focus starts at the caret of the field that let go of focus, so the caret flies over.
+auto TextInput::move_caret(Vec2 t_target, Vec2 t_origin, float t_line_height) -> void
+{
+	const float seconds = std::min(std::exchange(m_trail_seconds, 0.0f), K_TRAIL_MAX_STEP);
+
+	if (!m_trail_placed) {
+		const bool hops = g_caret_trail && m_focused && std::chrono::steady_clock::now() - g_last_caret.released_at < K_HOP_WINDOW;
+		m_caret_head    = hops ? Vec2{g_last_caret.position.x - t_origin.x, g_last_caret.position.y - t_origin.y} : t_target;
+		m_caret_tail    = m_caret_head;
+		m_caret_target  = t_target;
+		m_caret_rate    = K_CARET_JUMP_RATE;
+		m_trail_placed  = true;
+	}
+
+	if (t_target.x != m_caret_target.x || t_target.y != m_caret_target.y) {
+		const bool typing = t_target.y == m_caret_head.y && std::fabs(t_target.x - m_caret_head.x) <= t_line_height;
+		m_caret_rate      = typing ? K_CARET_TYPING_RATE : K_CARET_JUMP_RATE;
+		m_caret_target    = t_target;
+	}
+
+	m_caret_head.x = animation::ease_toward(m_caret_head.x, t_target.x, m_caret_rate, seconds, animation::K_SETTLED_PIXELS);
+	m_caret_head.y = animation::ease_toward(m_caret_head.y, t_target.y, m_caret_rate, seconds, animation::K_SETTLED_PIXELS);
+
+	if (g_caret_trail) {
+		const float rate = K_TRAIL_TAIL_RATE_SHORT * std::pow(K_TRAIL_TAIL_RATE_LONG / K_TRAIL_TAIL_RATE_SHORT, g_trail_strength);
+
+		m_caret_tail.x = animation::ease_toward(m_caret_tail.x, t_target.x, rate, seconds, animation::K_SETTLED_PIXELS);
+		m_caret_tail.y = animation::ease_toward(m_caret_tail.y, t_target.y, rate, seconds, animation::K_SETTLED_PIXELS);
+	} else {
+		m_caret_tail = m_caret_head;
+	}
+
+	if (m_focused) {
+		g_last_caret.position = Vec2{t_origin.x + m_caret_head.x, t_origin.y + m_caret_head.y};
+	}
+}
+
+auto TextInput::draw_caret(DrawList* t_draw_list, Vec2 t_origin, Vec2 t_size, Color t_color) const -> void
+{
+	const Vec2  head{t_origin.x + m_caret_head.x + t_size.x * 0.5f, t_origin.y + m_caret_head.y + t_size.y * 0.5f};
+	const Vec2  tail{t_origin.x + m_caret_tail.x + t_size.x * 0.5f, t_origin.y + m_caret_tail.y + t_size.y * 0.5f};
+	const float length = std::hypot(head.x - tail.x, head.y - tail.y);
+
+	if (length > K_TRAIL_MIN_LENGTH) {
+		// The ribbon's ends stand across its direction of travel, as wide as the caret is along that line.
+		const Vec2  across{(tail.y - head.y) / length, (head.x - tail.x) / length};
+		const float head_half = (std::fabs(across.x) * t_size.x + std::fabs(across.y) * t_size.y) * 0.5f;
+		const float tail_half = head_half * K_TRAIL_TAIL_SPREAD;
+		const auto  alpha     = static_cast<u8>(K_TRAIL_FAINT_ALPHA_MIN + (K_TRAIL_FAINT_ALPHA_MAX - K_TRAIL_FAINT_ALPHA_MIN) * g_trail_strength);
+		const Color faint     = faded(t_color, alpha);
+		const Vec2  corners[4]{
+			{tail.x - across.x * tail_half, tail.y - across.y * tail_half},
+			{head.x - across.x * head_half, head.y - across.y * head_half},
+			{head.x + across.x * head_half, head.y + across.y * head_half},
+			{tail.x + across.x * tail_half, tail.y + across.y * tail_half},
+		};
+		const Color colors[4]{faint, t_color, t_color, faint};
+
+		t_draw_list->add_quad(corners, colors);
+	}
+
+	t_draw_list->add_rect(Rect{t_origin.x + m_caret_head.x, t_origin.y + m_caret_head.y, t_size.x, t_size.y}, t_color);
 }
 
 auto TextInput::restart_caret_blink() -> void

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <future>
 #include <iterator>
 #include <span>
 #include <string_view>
@@ -22,32 +23,34 @@ class Window;
 }
 
 enum class SettingsTab : u8 {
-	Appearance,
-	Behavior,
-	Privacy,
-	Security,
-	Count,
+	APPEARANCE,
+	BEHAVIOR,
+	PRIVACY,
+	SECURITY,
+	COUNT,
 };
 
-constexpr u32 K_SETTINGS_TAB_COUNT = static_cast<u32>(SettingsTab::Count);
+constexpr u32 K_SETTINGS_TAB_COUNT = static_cast<u32>(SettingsTab::COUNT);
 
 enum class ResettableSetting : u8 {
-	Theme,
-	Font,
-	FontSize,
-	SecondaryFontSize,
-	Accent,
-	CornerRoundness,
-	Background,
-	BackgroundIntensity,
-	BackgroundLightIntensity,
-	BackgroundGrainIntensity,
-	AnimationSpeed,
-	CloseToTray,
-	Renderer,
-	AutoLock,
-	RiotClient,
-	Count,
+	THEME,
+	FONT,
+	FONT_SIZE,
+	SECONDARY_FONT_SIZE,
+	ACCENT,
+	CORNER_ROUNDNESS,
+	BACKGROUND,
+	PATTERN_INTENSITY,
+	LIGHT_INTENSITY,
+	GRAIN_INTENSITY,
+	CARET_STYLE,
+	TRAIL_STRENGTH,
+	ANIMATION_SPEED,
+	CLOSE_TO_TRAY,
+	RENDERER,
+	AUTO_LOCK,
+	RIOT_CLIENT,
+	COUNT,
 };
 
 class SettingsPanel : public Widget {
@@ -78,19 +81,20 @@ class SettingsPanel : public Widget {
 	[[nodiscard]] auto cursor() const -> CursorKind override;
 
   private:
-	static constexpr u32 K_GROUP_COUNT = 8;
+	static constexpr u32 K_GROUP_COUNT = 9;
 
 	enum class SliderKind : u8 {
-		CornerRoundness,
-		PatternStrength,
-		LightStrength,
-		GrainStrength,
-		AnimationSpeed,
-		AutoLock,
-		Count,
+		CORNER_ROUNDNESS,
+		PATTERN_STRENGTH,
+		LIGHT_STRENGTH,
+		GRAIN_STRENGTH,
+		TRAIL_STRENGTH,
+		ANIMATION_SPEED,
+		AUTO_LOCK,
+		COUNT,
 	};
 
-	static constexpr u32 K_SLIDER_COUNT = static_cast<u32>(SliderKind::Count);
+	static constexpr u32 K_SLIDER_COUNT = static_cast<u32>(SliderKind::COUNT);
 
 	struct Layout {
 		Rect panel;
@@ -106,6 +110,8 @@ class SettingsPanel : public Widget {
 		Rect  font;
 		Rect  font_size;
 		Rect  secondary_font_size;
+		Rect  caret_style;
+		Rect  caret_trail;
 		Rect  accent;
 		Rect  corner_roundness;
 		Rect  background;
@@ -163,12 +169,13 @@ class SettingsPanel : public Widget {
 		bool (*shown)(const Settings* t_settings);
 	};
 
-	static constexpr u32       K_PERCENT_SLIDER_COUNT = 3;
+	static constexpr u32       K_PERCENT_SLIDER_COUNT = 4;
 	static const PercentSlider K_PERCENT_SLIDERS[K_PERCENT_SLIDER_COUNT];
 
 	static constexpr Toggle K_TOGGLES[]{
 		{&Settings::show_notifications, &Rows::notifications},
 		{&Settings::animations_enabled, &Rows::animations},
+		{&Settings::caret_trail, &Rows::caret_trail},
 		{&Settings::hide_from_capture, &Rows::hide_from_capture},
 		{&Settings::block_overlay_injection, &Rows::block_overlay_injection},
 		{&Settings::background_light, &Rows::background_light},
@@ -177,7 +184,7 @@ class SettingsPanel : public Widget {
 	};
 
 	static constexpr u32 K_TOGGLE_COUNT       = static_cast<u32>(std::size(K_TOGGLES));
-	static constexpr u32 K_FIRST_TOGGLE_RESET = static_cast<u32>(ResettableSetting::Count);
+	static constexpr u32 K_FIRST_TOGGLE_RESET = static_cast<u32>(ResettableSetting::COUNT);
 	static constexpr u32 K_RESET_COUNT        = K_FIRST_TOGGLE_RESET + K_TOGGLE_COUNT;
 
 	[[nodiscard]] auto layout() const -> Layout;
@@ -232,6 +239,8 @@ class SettingsPanel : public Widget {
 	auto reset_to_default(u32 t_setting) -> void;
 
 	auto load_fonts(std::string_view t_file) -> bool;
+	auto start_font_scan() -> void;
+	auto take_font_scan(bool t_wait) -> void;
 	auto open_font_list() -> void;
 	auto open_theme_list() -> void;
 	auto choose_font(u32 t_index) -> void;
@@ -287,11 +296,12 @@ class SettingsPanel : public Widget {
 	CommandQueue*     m_commands;
 
 	bool        m_open          = false;
-	SettingsTab m_tab           = SettingsTab::Appearance;
+	SettingsTab m_tab           = SettingsTab::APPEARANCE;
 	float       m_tab_indicator = 0.0f;
 	float       m_open_amount   = 0.0f;
 
 	InstalledFonts                m_installed_fonts;
+	std::future<InstalledFonts>   m_font_scan;
 	std::vector<std::string_view> m_font_names;
 	std::string                   m_font_label;
 	ListPopup                     m_font_list;
@@ -313,6 +323,7 @@ class SettingsPanel : public Widget {
 	float m_pattern_open_amount   = 0.0f;
 	float m_close_choice_shown    = 0.0f;
 	float m_renderer_choice_shown = 0.0f;
+	float m_caret_style_shown     = 0.0f;
 
 	std::string_view m_renderer_labels[2];
 

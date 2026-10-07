@@ -147,15 +147,15 @@ auto AccountSearch::rebuild_actions() -> void
 	m_action_count = 0;
 	if (!m_account) return;
 
-	m_actions[m_action_count++] = Action{ActionKind::Edit, 0};
-	m_actions[m_action_count++] = Action{ActionKind::CopyUsername, 0};
-	m_actions[m_action_count++] = Action{ActionKind::CopyPassword, 0};
+	m_actions[m_action_count++] = Action{ActionKind::EDIT, 0};
+	m_actions[m_action_count++] = Action{ActionKind::COPY_USERNAME, 0};
+	m_actions[m_action_count++] = Action{ActionKind::COPY_PASSWORD, 0};
 
 	const u16 visible = m_library->account(*m_account)->visible_games(m_account->game);
 
 	for (u32 game = 0; game < m_library->game_count && m_action_count < K_MAX_ACTIONS; game += 1) {
 		if ((visible & (1u << game)) != 0) {
-			m_actions[m_action_count++] = Action{ActionKind::Login, game};
+			m_actions[m_action_count++] = Action{ActionKind::LOGIN, game};
 		}
 	}
 }
@@ -197,23 +197,23 @@ auto AccountSearch::activate(u32 t_row) -> void
 	switch (action.kind) {
 		using enum ActionKind;
 
-		case Edit: {
-			m_commands->push(Command{.type = CommandType::EditAccount, .account = account});
+		case EDIT: {
+			m_commands->push(Command{.type = CommandType::EDIT_ACCOUNT, .account = account});
 			break;
 		}
 
-		case CopyUsername: {
-			m_commands->push(Command{.type = CommandType::CopyAccountUsername, .account = account});
+		case COPY_USERNAME: {
+			m_commands->push(Command{.type = CommandType::COPY_ACCOUNT_USERNAME, .account = account});
 			break;
 		}
 
-		case CopyPassword: {
-			m_commands->push(Command{.type = CommandType::CopyAccountPassword, .account = account});
+		case COPY_PASSWORD: {
+			m_commands->push(Command{.type = CommandType::COPY_ACCOUNT_PASSWORD, .account = account});
 			break;
 		}
 
-		case Login: {
-			m_commands->push(Command{.type = CommandType::LoginAccount, .index = static_cast<i32>(action.game), .account = account});
+		case LOGIN: {
+			m_commands->push(Command{.type = CommandType::LOGIN_ACCOUNT, .index = static_cast<i32>(action.game), .account = account});
 			break;
 		}
 	}
@@ -422,7 +422,7 @@ auto AccountSearch::on_right_click(Vec2 t_point) -> bool
 	if (current.header.contains(t_point)) {
 		m_query.set_focused(true);
 		m_query.on_right_click(m_fonts->body, query_text_rect(current), t_point.x);
-		m_commands->push(Command{.type = CommandType::ShowTextMenu, .position = t_point, .text_input = &m_query});
+		m_commands->push(Command{.type = CommandType::SHOW_TEXT_MENU, .position = t_point, .text_input = &m_query});
 	}
 
 	return true;
@@ -452,7 +452,7 @@ auto AccountSearch::on_key_down(os::Key t_key) -> bool
 	switch (t_key) {
 		using enum os::Key;
 
-		case Escape: {
+		case ESCAPE: {
 			if (m_account) {
 				show_results();
 			} else {
@@ -462,32 +462,32 @@ auto AccountSearch::on_key_down(os::Key t_key) -> bool
 			return true;
 		}
 
-		case Up: {
+		case UP: {
 			move_highlight(-1);
 			return true;
 		}
 
-		case Down: {
+		case DOWN: {
 			move_highlight(1);
 			return true;
 		}
 
-		case PageUp: {
+		case PAGE_UP: {
 			move_highlight(-static_cast<i32>(K_MAX_SHOWN_ROWS) + 1);
 			return true;
 		}
 
-		case PageDown: {
+		case PAGE_DOWN: {
 			move_highlight(static_cast<i32>(K_MAX_SHOWN_ROWS) - 1);
 			return true;
 		}
 
-		case Enter: {
+		case ENTER: {
 			activate(m_highlighted);
 			return true;
 		}
 
-		case Tab: {
+		case TAB: {
 			if (!m_account) {
 				activate(m_highlighted);
 			}
@@ -495,8 +495,8 @@ auto AccountSearch::on_key_down(os::Key t_key) -> bool
 			return true;
 		}
 
-		case Left:
-		case Backspace: {
+		case LEFT:
+		case BACKSPACE: {
 			if (m_account) {
 				show_results();
 				return true;
@@ -537,15 +537,15 @@ auto AccountSearch::on_char(u32 t_character) -> bool
 
 auto AccountSearch::cursor() const -> CursorKind
 {
-	if (!m_open) return CursorKind::Arrow;
-	if (m_query.is_selecting()) return CursorKind::IBeam;
+	if (!m_open) return CursorKind::ARROW;
+	if (m_query.is_selecting()) return CursorKind::I_BEAM;
 
 	const Layout current = layout();
 
-	if (m_account && back_button_rect(current).contains(m_mouse)) return CursorKind::Hand;
-	if (!m_account && current.header.contains(m_mouse)) return CursorKind::IBeam;
+	if (m_account && back_button_rect(current).contains(m_mouse)) return CursorKind::HAND;
+	if (!m_account && current.header.contains(m_mouse)) return CursorKind::I_BEAM;
 
-	return row_at(current, m_mouse) ? CursorKind::Hand : CursorKind::Arrow;
+	return row_at(current, m_mouse) ? CursorKind::HAND : CursorKind::ARROW;
 }
 
 auto AccountSearch::draw_header(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) -> void
@@ -571,11 +571,11 @@ auto AccountSearch::draw_header(DrawList* t_draw_list, const Layout& t_layout, u
 		t_draw_list->add_rounded_rect(back, rounded(K_ROW_RADIUS), faded(hovered(g_theme.popup), t_alpha));
 	}
 
-	t_draw_list->add_image(back.centered(K_HEADER_ICON_SIZE, K_HEADER_ICON_SIZE), m_assets->get(Asset::IconArrowBack),
+	t_draw_list->add_image(back.centered(K_HEADER_ICON_SIZE, K_HEADER_ICON_SIZE), m_assets->get(Asset::ICON_ARROW_BACK),
 	                       faded(back_hovered ? g_theme.text : g_theme.text_dim, t_alpha));
 
 	const Rect icon{back.right() + 6.0f, header.center().y - K_ROW_ICON_SIZE * 0.5f, K_ROW_ICON_SIZE, K_ROW_ICON_SIZE};
-	t_draw_list->add_image(icon, m_assets->get(Asset::IconAccount), faded(g_theme.text_dim, t_alpha));
+	t_draw_list->add_image(icon, m_assets->get(Asset::ICON_ACCOUNT), faded(g_theme.text_dim, t_alpha));
 
 	const std::string_view name       = account_name(account);
 	const float            name_x     = icon.right() + K_ROW_ICON_GAP;
@@ -602,7 +602,7 @@ auto AccountSearch::draw_result(DrawList* t_draw_list, Rect t_row, AccountRef t_
 	}
 
 	const Rect icon{t_row.x + K_ROW_PADDING, t_row.center().y - K_ROW_ICON_SIZE * 0.5f, K_ROW_ICON_SIZE, K_ROW_ICON_SIZE};
-	t_draw_list->add_image(icon, m_assets->get(Asset::IconAccount), faded(g_theme.text_dim, t_alpha));
+	t_draw_list->add_image(icon, m_assets->get(Asset::ICON_ACCOUNT), faded(g_theme.text_dim, t_alpha));
 
 	const std::string_view region     = account->region;
 	const float            right      = t_row.right() - K_ROW_PADDING - (m_region_column > 0.0f ? m_region_column + K_COLUMN_GAP : 0.0f);
@@ -646,25 +646,25 @@ auto AccountSearch::draw_action(DrawList* t_draw_list, Rect t_row, const Action&
 	switch (t_action.kind) {
 		using enum ActionKind;
 
-		case Edit: {
-			t_draw_list->add_image(icon, m_assets->get(Asset::IconEdit), icon_color);
+		case EDIT: {
+			t_draw_list->add_image(icon, m_assets->get(Asset::ICON_EDIT), icon_color);
 			text = "Edit account";
 			break;
 		}
 
-		case CopyUsername: {
-			t_draw_list->add_image(icon, m_assets->get(Asset::IconUsername), icon_color);
+		case COPY_USERNAME: {
+			t_draw_list->add_image(icon, m_assets->get(Asset::ICON_USERNAME), icon_color);
 			text = "Copy username";
 			break;
 		}
 
-		case CopyPassword: {
-			t_draw_list->add_image(icon, m_assets->get(Asset::IconLock), icon_color);
+		case COPY_PASSWORD: {
+			t_draw_list->add_image(icon, m_assets->get(Asset::ICON_LOCK), icon_color);
 			text = "Copy password";
 			break;
 		}
 
-		case Login: {
+		case LOGIN: {
 			const Game& game = m_library->games[t_action.game];
 
 			if (game.icon != nullptr) {

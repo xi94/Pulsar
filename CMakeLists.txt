@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.10)
+cmake_minimum_required (VERSION 3.21)
 
 if (POLICY CMP0141)
   cmake_policy(SET CMP0141 NEW)
@@ -11,7 +11,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.3" CACHE STRING "Oldest macOS version Pulsar runs on")
 
 project ("Pulsar")
+enable_testing()
 add_subdirectory ("src")
+add_subdirectory ("tests")
 if (WIN32)
   add_subdirectory ("tools")
 endif()

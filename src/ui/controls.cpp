@@ -38,24 +38,24 @@ struct ButtonLook {
 	switch (t_style) {
 		using enum controls::ButtonStyle;
 
-		case Neutral: {
+		case NEUTRAL: {
 			return ButtonLook{g_theme.control, g_theme.control_hover, g_theme.text};
 		}
 
-		case Accent: {
+		case ACCENT: {
 			return ButtonLook{t_accent, lightened(t_accent, 20), foreground_on(t_accent)};
 		}
 
-		case Danger: {
+		case DANGER: {
 			return ButtonLook{mix(g_theme.control, g_theme.error, K_DANGER_FILL_STRENGTH), mix(g_theme.control, g_theme.error, K_DANGER_HOVER_STRENGTH),
 			                  mix(g_theme.error, g_theme.text, K_DANGER_LABEL_SOFTENING)};
 		}
 
-		case Ghost: {
+		case GHOST: {
 			return ButtonLook{with_alpha(g_theme.control, 0), g_theme.control_hover, g_theme.text_dim};
 		}
 
-		case DangerConfirm: {
+		case DANGER_CONFIRM: {
 			return ButtonLook{g_theme.error, lightened(g_theme.error, 15), foreground_on(g_theme.error)};
 		}
 	}
@@ -100,7 +100,7 @@ auto controls::draw_check(DrawList* t_draw_list, const Assets* t_assets, Rect t_
 	constexpr float ICON_SCALE = 1.4f;
 
 	const float size = std::min(t_rect.w, t_rect.h) * ICON_SCALE;
-	t_draw_list->add_image(t_rect.centered(size, size), t_assets->get(Asset::IconCheck), t_color);
+	t_draw_list->add_image(t_rect.centered(size, size), t_assets->get(Asset::ICON_CHECK), t_color);
 }
 
 auto controls::draw_chevron(DrawList* t_draw_list, Rect t_rect, bool t_points_up, Color t_color) -> void
@@ -235,7 +235,7 @@ auto controls::draw_magnifier(DrawList* t_draw_list, Rect t_rect, Color t_color)
 
 auto controls::draw_eye(DrawList* t_draw_list, const Assets* t_assets, Rect t_rect, bool t_revealed, Color t_color) -> void
 {
-	t_draw_list->add_image(t_rect, t_assets->get(t_revealed ? Asset::IconEyeVisible : Asset::IconEyeHidden), t_color);
+	t_draw_list->add_image(t_rect, t_assets->get(t_revealed ? Asset::ICON_EYE_VISIBLE : Asset::ICON_EYE_HIDDEN), t_color);
 }
 
 auto controls::draw_favorite(DrawList* t_draw_list, const Assets* t_assets, Rect t_rect, bool t_filled, Color t_color) -> void
@@ -262,7 +262,7 @@ auto controls::draw_favorite(DrawList* t_draw_list, const Assets* t_assets, Rect
 		}
 	}
 
-	t_draw_list->add_image(t_rect, t_assets->get(Asset::IconFavorite), t_color);
+	t_draw_list->add_image(t_rect, t_assets->get(Asset::ICON_FAVORITE), t_color);
 }
 
 auto controls::draw_lift(DrawList* t_draw_list, Rect t_rect, float t_radius, Color t_glow, u8 t_alpha) -> void
@@ -321,7 +321,7 @@ auto controls::draw_button(DrawList*        t_draw_list,
 {
 	const ButtonLook look   = t_enabled ? button_look(t_style, t_accent) : disabled_button_look();
 	const bool       lifted = t_enabled && t_hovered;
-	const bool       ghost  = t_style == ButtonStyle::Ghost;
+	const bool       ghost  = t_style == ButtonStyle::GHOST;
 
 	if (lifted && !ghost) {
 		draw_lift(t_draw_list, t_rect, K_BUTTON_RADIUS, look.fill, t_alpha);

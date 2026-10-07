@@ -21,10 +21,10 @@ class Window;
 struct Settings;
 
 enum class EditField : u8 {
-	Note,
-	Username,
-	Password,
-	Count,
+	NOTE,
+	USERNAME,
+	PASSWORD,
+	COUNT,
 };
 
 class AccountModal : public Widget {
@@ -73,12 +73,12 @@ class AccountModal : public Widget {
 	[[nodiscard]] auto cursor() const -> CursorKind override;
 
   private:
-	static constexpr u32 K_FIELD_COUNT = static_cast<u32>(EditField::Count);
+	static constexpr u32 K_FIELD_COUNT = static_cast<u32>(EditField::COUNT);
 
 	enum class Mode : u8 {
-		AccountList,
-		LoginProgress,
-		EditAccount,
+		ACCOUNT_LIST,
+		LOGIN_PROGRESS,
+		EDIT_ACCOUNT,
 	};
 
 	struct Layout {
@@ -181,6 +181,7 @@ class AccountModal : public Widget {
 	auto choose_region(u32 t_index) -> void;
 	[[nodiscard]] auto edit_header_height() const -> float;
 	[[nodiscard]] auto save_label() const -> std::string_view;
+	[[nodiscard]] auto asks_for_permission() const -> bool;
 	[[nodiscard]] auto show_in_columns(float t_width) const -> u32;
 	[[nodiscard]] auto show_in_tile_height() const -> float;
 	[[nodiscard]] auto show_in_tile(const FormLayout& t_form, u32 t_game) const -> Rect;
@@ -287,7 +288,7 @@ class AccountModal : public Widget {
 	bool                      m_press_swallowed = false;
 	i32                       m_game            = -1;
 	std::optional<AccountRef> m_selected;
-	Mode                      m_mode = Mode::AccountList;
+	Mode                      m_mode = Mode::ACCOUNT_LIST;
 	Scrollable                m_rows_scroll;
 	Scrollable                m_form_scroll;
 	Tooltip                   m_tooltip;
@@ -309,7 +310,7 @@ class AccountModal : public Widget {
 	std::optional<AccountRef>   m_login_account;
 	u32                         m_login_game     = 0;
 	float                       m_login_seconds  = 0.0f;
-	LoginStage                  m_progress_stage = LoginStage::Idle;
+	LoginStage                  m_progress_stage = LoginStage::IDLE;
 	float                       m_stage_seconds  = 0.0f;
 	float                       m_login_progress = 0.0f;
 	float                       m_login_outcome  = 0.0f;

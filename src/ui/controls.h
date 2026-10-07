@@ -13,11 +13,11 @@ class TextInput;
 namespace controls {
 
 enum class ButtonStyle : u8 {
-	Neutral,
-	Accent,
-	Danger,
-	Ghost,
-	DangerConfirm,
+	NEUTRAL,
+	ACCENT,
+	DANGER,
+	GHOST,
+	DANGER_CONFIRM,
 };
 
 [[nodiscard]] auto confirm_red() -> Color;

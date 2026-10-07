@@ -85,9 +85,9 @@ auto PathPicker::open(const Window* t_owner, PathRequest t_request) -> void
 	Native* native = m_native.get();
 
 	NSOpenPanel* panel            = [NSOpenPanel openPanel];
-	panel.canChooseDirectories    = t_request.kind == PathKind::Folder;
-	panel.canChooseFiles          = t_request.kind == PathKind::File;
-	panel.canCreateDirectories    = t_request.kind == PathKind::Folder;
+	panel.canChooseDirectories    = t_request.kind == PathKind::FOLDER;
+	panel.canChooseFiles          = t_request.kind == PathKind::FILE;
+	panel.canCreateDirectories    = t_request.kind == PathKind::FOLDER;
 	panel.allowsMultipleSelection = NO;
 	panel.title                   = macos::to_ns_string(t_request.title);
 	panel.message                 = panel.title;

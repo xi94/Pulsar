@@ -30,7 +30,7 @@ constexpr ULONGLONG K_ACTIVATE_EXISTING_TIMEOUT_MS = 3000;
 
 [[nodiscard]] auto class_name_of(os::WindowKind t_kind) -> const wchar_t*
 {
-	return t_kind == os::WindowKind::Dialog ? os::win32::K_SETUP_WINDOW_CLASS_NAME : os::win32::K_MAIN_WINDOW_CLASS_NAME;
+	return t_kind == os::WindowKind::DIALOG ? os::win32::K_SETUP_WINDOW_CLASS_NAME : os::win32::K_MAIN_WINDOW_CLASS_NAME;
 }
 
 [[nodiscard]] auto frame_border(UINT t_dpi) -> POINT
@@ -66,20 +66,20 @@ constexpr ULONGLONG K_ACTIVATE_EXISTING_TIMEOUT_MS = 3000;
 	switch (t_cursor) {
 		using enum CursorKind;
 
-		case Hand: {
+		case HAND: {
 			return LoadCursorW(nullptr, IDC_HAND);
 		}
 
-		case IBeam: {
+		case I_BEAM: {
 			return LoadCursorW(nullptr, IDC_IBEAM);
 		}
 
-		case Move: {
+		case MOVE: {
 			return LoadCursorW(nullptr, IDC_SIZEALL);
 		}
 
-		case Arrow:
-		case Drag: {
+		case ARROW:
+		case DRAG: {
 			break;
 		}
 	}
@@ -99,10 +99,10 @@ auto register_window_class(HINSTANCE t_instance, const wchar_t* t_class_name, WN
 		.style         = CS_HREDRAW | CS_VREDRAW | CS_OWNDC,
 		.lpfnWndProc   = t_procedure,
 		.hInstance     = t_instance,
-		.hIcon         = os::win32::load_app_icon(os::win32::AppIconSize::LargeIcon),
+		.hIcon         = os::win32::load_app_icon(os::win32::AppIconSize::LARGE_ICON),
 		.hCursor       = LoadCursorW(nullptr, IDC_ARROW),
 		.lpszClassName = t_class_name,
-		.hIconSm       = os::win32::load_app_icon(os::win32::AppIconSize::SmallIcon),
+		.hIconSm       = os::win32::load_app_icon(os::win32::AppIconSize::SMALL_ICON),
 	};
 
 	RegisterClassExW(&window_class);
@@ -160,7 +160,7 @@ auto Window::create(std::string_view t_title, u32 t_width, u32 t_height, WindowK
 	m_physical_height = scaled(t_height, m_dpi_scale);
 
 	const HINSTANCE instance   = GetModuleHandleW(nullptr);
-	const bool      dialog     = t_kind == WindowKind::Dialog;
+	const bool      dialog     = t_kind == WindowKind::DIALOG;
 	const wchar_t*  class_name = class_name_of(t_kind);
 	register_window_class(instance, class_name, Native::window_proc);
 
@@ -197,6 +197,8 @@ auto Window::set_title_bar(float t_height, std::function<bool(Vec2)> t_is_button
 	m_title_bar_height    = t_height;
 	m_is_title_bar_button = std::move(t_is_button);
 }
+
+auto Window::set_app_menu(std::span<const AppMenuItem>) -> void {}
 
 auto Window::show() -> void
 {
@@ -261,6 +263,11 @@ auto Window::on_redraw(std::function<void()> t_callback) -> void
 auto Window::on_dpi_changed(std::function<void()> t_callback) -> void
 {
 	m_dpi_changed = std::move(t_callback);
+}
+
+auto Window::on_session_end(std::function<void()> t_callback) -> void
+{
+	m_session_end = std::move(t_callback);
 }
 
 auto Window::redraw() -> void
@@ -365,7 +372,7 @@ auto Window::Native::push_mouse(InputEventType t_type, LPARAM t_lparam) -> void
 auto Window::Native::push_mouse_at(POINT t_client) -> void
 {
 	last_mouse = to_logical(t_client);
-	owner->push_input(InputEvent{.type = InputEventType::MouseMove, .position = last_mouse});
+	owner->push_input(InputEvent{.type = InputEventType::MOUSE_MOVE, .position = last_mouse});
 }
 
 auto Window::Native::track_mouse_leave(bool t_non_client) const -> void
@@ -387,13 +394,13 @@ auto Window::Native::handle_mouse_leave() -> void
 	if (WindowFromPoint(cursor) == window) return;
 
 	last_mouse = Vec2{-1.0f, -1.0f};
-	owner->push_input(InputEvent{.type = InputEventType::MouseMove, .position = last_mouse});
+	owner->push_input(InputEvent{.type = InputEventType::MOUSE_MOVE, .position = last_mouse});
 }
 
 auto Window::Native::handle_hit_test(LPARAM t_lparam) const -> LRESULT
 {
 	const POINT   cursor{GET_X_LPARAM(t_lparam), GET_Y_LPARAM(t_lparam)};
-	const LRESULT edge = owner->m_kind == WindowKind::Dialog ? HTNOWHERE : resize_edge_at(window, cursor);
+	const LRESULT edge = owner->m_kind == WindowKind::DIALOG ? HTNOWHERE : resize_edge_at(window, cursor);
 
 	owner->m_mouse_over_resize_border = edge != HTNOWHERE;
 	if (owner->m_mouse_over_resize_border) return edge;
@@ -436,7 +443,7 @@ auto Window::Native::handle_size(WPARAM t_wparam, LPARAM t_lparam) const -> void
 
 auto Window::Native::handle_min_max_info(LPARAM t_lparam) const -> void
 {
-	if (owner->m_kind == WindowKind::Dialog) return;
+	if (owner->m_kind == WindowKind::DIALOG) return;
 
 	auto* info             = reinterpret_cast<MINMAXINFO*>(t_lparam);
 	info->ptMinTrackSize.x = std::lround(owner->m_min_size.x * owner->m_dpi_scale);
@@ -461,7 +468,7 @@ auto Window::Native::handle_character(WPARAM t_wparam) -> void
 	}
 
 	high_surrogate = 0;
-	owner->push_input(InputEvent{.type = InputEventType::Character, .codepoint = codepoint});
+	owner->push_input(InputEvent{.type = InputEventType::CHARACTER, .codepoint = codepoint});
 }
 
 auto Window::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam) -> LRESULT
@@ -542,14 +549,14 @@ auto Window::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lp
 		}
 
 		case WM_LBUTTONDOWN: {
-			push_mouse(InputEventType::MouseDown, t_lparam);
+			push_mouse(InputEventType::MOUSE_DOWN, t_lparam);
 			SetCapture(window);
 			mouse_captured = true;
 			return 0;
 		}
 
 		case WM_LBUTTONUP: {
-			push_mouse(InputEventType::MouseUp, t_lparam);
+			push_mouse(InputEventType::MOUSE_UP, t_lparam);
 			mouse_captured = false;
 			ReleaseCapture();
 			return 0;
@@ -558,19 +565,19 @@ auto Window::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lp
 		case WM_CAPTURECHANGED: {
 			if (mouse_captured) {
 				mouse_captured = false;
-				owner->push_input(InputEvent{.type = InputEventType::MouseUp, .position = last_mouse});
+				owner->push_input(InputEvent{.type = InputEventType::MOUSE_UP, .position = last_mouse});
 			}
 
 			return 0;
 		}
 
 		case WM_RBUTTONUP: {
-			push_mouse(InputEventType::RightClick, t_lparam);
+			push_mouse(InputEventType::RIGHT_CLICK, t_lparam);
 			return 0;
 		}
 
 		case WM_MOUSEMOVE: {
-			push_mouse(InputEventType::MouseMove, t_lparam);
+			push_mouse(InputEventType::MOUSE_MOVE, t_lparam);
 			track_mouse_leave(false);
 			return 0;
 		}
@@ -598,7 +605,7 @@ auto Window::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lp
 			ScreenToClient(window, &cursor);
 
 			owner->push_input(InputEvent{
-				.type        = InputEventType::MouseWheel,
+				.type        = InputEventType::MOUSE_WHEEL,
 				.position    = to_logical(cursor),
 				.wheel_delta = static_cast<float>(GET_WHEEL_DELTA_WPARAM(t_wparam)) / WHEEL_DELTA,
 			});
@@ -606,7 +613,7 @@ auto Window::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lp
 		}
 
 		case WM_KEYDOWN: {
-			owner->push_input(InputEvent{.type = InputEventType::KeyDown, .key = win32::key_from_virtual_key(t_wparam)});
+			owner->push_input(InputEvent{.type = InputEventType::KEY_DOWN, .key = win32::key_from_virtual_key(t_wparam)});
 			return 0;
 		}
 
@@ -615,9 +622,17 @@ auto Window::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lp
 			return 0;
 		}
 
+		case WM_ENDSESSION: {
+			if (t_wparam != FALSE && owner->m_session_end) {
+				owner->m_session_end();
+			}
+
+			return 0;
+		}
+
 		case WM_DESTROY: {
 			// The setup window closes before the main window opens, and a quit message would end that one too.
-			if (owner->m_kind == WindowKind::Main) {
+			if (owner->m_kind == WindowKind::MAIN) {
 				PostQuitMessage(0);
 			}
 

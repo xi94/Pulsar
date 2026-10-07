@@ -86,12 +86,12 @@ auto block_injection() -> InjectionGuard
 
 	const HMODULE kernel32   = GetModuleHandleW(L"kernel32.dll");
 	const auto    set_policy = kernel32 != nullptr ? reinterpret_cast<SetMitigationPolicy>(GetProcAddress(kernel32, "SetProcessMitigationPolicy")) : nullptr;
-	if (set_policy == nullptr) return InjectionGuard::Unsupported;
+	if (set_policy == nullptr) return InjectionGuard::UNSUPPORTED;
 
 	PROCESS_MITIGATION_EXTENSION_POINT_DISABLE_POLICY policy{};
 	policy.DisableExtensionPoints = 1;
 
-	return set_policy(ProcessExtensionPointDisablePolicy, &policy, sizeof(policy)) ? InjectionGuard::Blocked : InjectionGuard::Refused;
+	return set_policy(ProcessExtensionPointDisablePolicy, &policy, sizeof(policy)) ? InjectionGuard::BLOCKED : InjectionGuard::REFUSED;
 }
 
 auto injected_overlay() -> std::optional<std::string>

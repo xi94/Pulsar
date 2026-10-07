@@ -10,19 +10,19 @@ constexpr u32 K_MAX_GAME_TITLE = 48;
 constexpr u32 K_PATH_CAPACITY  = 1024;
 
 enum class ThemeKind : u8 {
-	Dark,
-	Light,
-	Forest,
-	Ocean,
-	Pink,
-	Blossom,
-	Gruvbox,
-	CatppuccinMocha,
-	CatppuccinLatte,
-	Nord,
-	Dracula,
-	TokyoNight,
-	RosePine,
+	DARK,
+	LIGHT,
+	FOREST,
+	OCEAN,
+	PINK,
+	BLOSSOM,
+	GRUVBOX,
+	CATPPUCCIN_MOCHA,
+	CATPPUCCIN_LATTE,
+	NORD,
+	DRACULA,
+	TOKYO_NIGHT,
+	ROSE_PINE,
 };
 
 struct OptionLabel {
@@ -49,15 +49,15 @@ constexpr OptionLabel K_THEME_LABELS[]{
 constexpr u32 K_THEME_COUNT = static_cast<u32>(std::size(K_THEME_LABELS));
 
 enum class BackgroundStyle : u8 {
-	None,
-	Dots,
-	Grid,
-	Lines,
-	Polka,
-	Topography,
-	Starfield,
-	Scanlines,
-	Crosshatch,
+	NONE,
+	DOTS,
+	GRID,
+	LINES,
+	POLKA,
+	TOPOGRAPHY,
+	STARFIELD,
+	SCANLINES,
+	CROSSHATCH,
 };
 
 constexpr OptionLabel K_BACKGROUND_LABELS[]{
@@ -69,6 +69,7 @@ constexpr OptionLabel K_BACKGROUND_LABELS[]{
 constexpr u32 K_BACKGROUND_COUNT = static_cast<u32>(std::size(K_BACKGROUND_LABELS));
 
 constexpr std::string_view K_GRAPHICS_API_IDS[]{"native", "opengl"};
+constexpr std::string_view K_CARET_STYLE_IDS[]{"bar", "block", "underline"};
 
 constexpr float K_ANIMATION_SPEED_MIN     = 0.25f;
 constexpr float K_ANIMATION_SPEED_MAX     = 3.0f;
@@ -85,8 +86,11 @@ struct Settings {
 
 	bool            animations_enabled         = true;
 	float           animation_speed            = 1.0f;
+	CaretStyle      caret_style                = CaretStyle::BAR;
+	bool            caret_trail                = true;
+	float           caret_trail_strength       = 0.5f;
 	float           corner_roundness           = 1.0f;
-	BackgroundStyle background_style           = BackgroundStyle::None;
+	BackgroundStyle background_style           = BackgroundStyle::NONE;
 	bool            background_light           = true;
 	bool            background_grain           = true;
 	float           background_light_intensity = 0.5f;
@@ -98,14 +102,14 @@ struct Settings {
 	float secondary_font_size = 12.0f;
 	// Braces, not `= "..."`: MSVC zeroes that form whenever a Settings is constant-initialized.
 	char      font_name[260]{PULSAR_DEFAULT_FONT_FILE};
-	ThemeKind theme = ThemeKind::Dark;
+	ThemeKind theme = ThemeKind::DARK;
 	Color     accent{203, 166, 247, 255};
 
 	bool        show_notifications      = true;
 	bool        hide_from_capture       = true;
 	bool        block_overlay_injection = true;
 	bool        close_to_tray           = false;
-	GraphicsApi renderer                = GraphicsApi::Native;
+	GraphicsApi renderer                = GraphicsApi::NATIVE;
 	u32         auto_lock_minutes       = 0;
 	char        riot_client_path[K_PATH_CAPACITY]{};
 

@@ -18,6 +18,7 @@
 #include "os/installation.h"
 #include "ui/controls.h"
 #include "ui/text.h"
+#include "ui/text_input.h"
 #include "ui/theme.h"
 #include "ui/window_layout.h"
 
@@ -36,6 +37,11 @@ constexpr float K_STATUS_MARK_GAP       = 7.0f;
 constexpr float K_STATUS_DOT_SIZE       = 3.0f;
 constexpr float K_STATUS_DOT_GAP        = 7.0f;
 constexpr float K_STATUS_BASELINE_NUDGE = 2.0f;
+
+constexpr os::AppMenuItem K_APP_MENU_ITEMS[]{
+	{.label = "Settings\u2026", .shortcut = os::Key::COMMA, .id = static_cast<u32>(CommandType::OPEN_SETTINGS)},
+	{.label = "Check for Updates\u2026", .shortcut = os::Key::NONE, .id = static_cast<u32>(CommandType::CHECK_FOR_UPDATES)},
+};
 
 static_assert(os::K_TRAY_MAX_GAMES >= K_MAX_GAMES);
 
@@ -63,33 +69,33 @@ auto log_startup_phase(const char* t_phase) -> void
 	switch (t_stage) {
 		using enum UpdateStage;
 
-		case UpToDate: {
+		case UP_TO_DATE: {
 			return "Up to date";
 		}
 
-		case Available:
-		case ManualUpgradeRequired: {
+		case AVAILABLE:
+		case MANUAL_UPGRADE_REQUIRED: {
 			return "Update available";
 		}
 
-		case Checking: {
+		case CHECKING: {
 			return "Checking...";
 		}
 
-		case Downloading:
-		case Verifying:
-		case Installing: {
+		case DOWNLOADING:
+		case VERIFYING:
+		case INSTALLING: {
 			return "Updating...";
 		}
 
-		case ReadyToRelaunch: {
+		case READY_TO_RELAUNCH: {
 			return "Restart to update";
 		}
 
-		case Idle:
-		case CheckFailed:
-		case Error:
-		case Cancelled: {
+		case IDLE:
+		case CHECK_FAILED:
+		case UPDATE_FAILED:
+		case CANCELLED: {
 			break;
 		}
 	}
@@ -109,17 +115,17 @@ auto guard_against_overlays(bool t_block_injection) -> void
 	switch (os::block_injection()) {
 		using enum os::InjectionGuard;
 
-		case Blocked: {
+		case BLOCKED: {
 			debug_log::write("app", "extension-point DLL injection blocked");
 			break;
 		}
 
-		case Refused: {
+		case REFUSED: {
 			debug_log::write("app", "extension-point block refused, err=%u", os::last_error());
 			break;
 		}
 
-		case Unsupported: {
+		case UNSUPPORTED: {
 			debug_log::write("app", "extension-point block unsupported on this system");
 			break;
 		}
@@ -155,7 +161,7 @@ auto App::start(bool t_from_startup) -> App::StartResult
 		const bool activated = os::activate_running_instance();
 		debug_log::write("app", "another instance is already running (%s) - exiting", activated ? "brought it to the front" : "it never answered");
 
-		return StartResult::AlreadyRunning;
+		return StartResult::ALREADY_RUNNING;
 	}
 
 	m_assets.begin_decode();
@@ -170,11 +176,11 @@ auto App::start(bool t_from_startup) -> App::StartResult
 
 	if (sodium_init() < 0) {
 		std::println("Failed to initialize libsodium.");
-		return StartResult::Failed;
+		return StartResult::FAILED;
 	}
 
 	log_startup_phase("CreateGraphics");
-	if (!create_graphics()) return StartResult::Failed;
+	if (!create_graphics()) return StartResult::FAILED;
 
 	log_startup_phase("CreateTray");
 	m_tray.create(K_APP_NAME);
@@ -197,6 +203,10 @@ auto App::start(bool t_from_startup) -> App::StartResult
 
 	m_window.on_redraw([this] { redraw_while_resizing(); });
 	m_window.on_dpi_changed([this] { reload_fonts(); });
+	m_window.on_session_end([this] {
+		save_everything();
+		clear_clipboard_secret();
+	});
 
 	m_start_time      = std::chrono::steady_clock::now();
 	m_last_frame_time = m_start_time;
@@ -213,7 +223,7 @@ auto App::start(bool t_from_startup) -> App::StartResult
 
 	log_startup_phase("Done");
 
-	return StartResult::Ok;
+	return StartResult::OK;
 }
 
 auto App::create_graphics() -> bool
@@ -227,7 +237,8 @@ auto App::create_graphics() -> bool
 	}
 
 	m_window.set_min_size(Vec2{K_MIN_WINDOW_WIDTH, K_MIN_WINDOW_HEIGHT});
-	m_window.set_title_bar(K_TITLE_BAR_HEIGHT, [this](Vec2 t_point) { return m_title_bar.layout().button_at(t_point) != TitleBarButton::None; });
+	m_window.set_title_bar(K_TITLE_BAR_HEIGHT, [this](Vec2 t_point) { return m_title_bar.layout().button_at(t_point) != TitleBarButton::NONE; });
+	m_window.set_app_menu(K_APP_MENU_ITEMS);
 
 	if (!m_renderer.init(&m_window, m_settings.renderer)) {
 		std::println("Failed to initialize renderer.");
@@ -293,7 +304,7 @@ auto App::apply_settings(storage::LoadResult t_load_result) -> void
 	apply_game_order();
 	m_carousel.restore(m_settings.zoom_stop, m_settings.selected_game);
 
-	if (t_load_result == storage::LoadResult::Failed) return;
+	if (t_load_result == storage::LoadResult::FAILED) return;
 
 	animation::set_enabled(m_settings.animations_enabled);
 	animation::set_speed(m_settings.animation_speed);
@@ -431,7 +442,7 @@ auto App::copy_password(std::string_view t_password) -> void
 
 auto App::open_setup() -> void
 {
-	if (!os::bring_window_to_front(os::WindowKind::Dialog)) {
+	if (!os::bring_window_to_front(os::WindowKind::DIALOG)) {
 		os::launch_process(os::executable_path(), "--setup");
 	}
 }
@@ -441,7 +452,7 @@ auto App::locate_riot_client(const Command& t_command) -> void
 	if (m_client_picker.is_open()) return;
 
 	os::PathRequest request{
-		.kind              = os::PathKind::File,
+		.kind              = os::PathKind::FILE,
 		.title             = "Locate the Riot Client",
 		.ok_label          = "Use this client",
 		.start_path        = m_settings.riot_client_path[0] != '\0' ? std::string{m_settings.riot_client_path} : RiotClient::default_install_folder(),
@@ -562,24 +573,24 @@ auto App::pump_input() -> void
 auto App::handle_tray_event() -> void
 {
 	const os::TrayEvent event = m_tray.take_event();
-	if (event.type != os::TrayEventType::None) {
+	if (event.type != os::TrayEventType::NONE) {
 		m_last_activity = Clock::now();
 	}
 
 	switch (event.type) {
 		using enum os::TrayEventType;
 
-		case Exit: {
+		case EXIT: {
 			m_window.request_quit();
 			break;
 		}
 
-		case ShowWindow: {
+		case SHOW_WINDOW: {
 			m_window.restore();
 			break;
 		}
 
-		case QuickLogin: {
+		case QUICK_LOGIN: {
 			if (m_locked || event.game < 0 || event.row < 0) break;
 
 			const auto game = static_cast<u32>(event.game);
@@ -590,7 +601,7 @@ auto App::handle_tray_event() -> void
 			break;
 		}
 
-		case None: {
+		case NONE: {
 			break;
 		}
 	}
@@ -600,13 +611,18 @@ auto App::handle_input(const os::InputEvent& t_event) -> void
 {
 	m_last_activity = Clock::now();
 
+	if (t_event.type == os::InputEventType::MENU_ITEM) {
+		m_commands.push(Command{.type = static_cast<CommandType>(t_event.menu_item)});
+		return;
+	}
+
 	const bool shortcut_held = os::modifiers().shortcut;
-	if (t_event.type == os::InputEventType::KeyDown && t_event.key == os::Key::L && shortcut_held && !m_locked) {
+	if (t_event.type == os::InputEventType::KEY_DOWN && t_event.key == os::Key::L && shortcut_held && !m_locked) {
 		lock_vault();
 		return;
 	}
 
-	if (t_event.type == os::InputEventType::KeyDown && t_event.key == os::Key::S && shortcut_held && !m_locked) {
+	if (t_event.type == os::InputEventType::KEY_DOWN && t_event.key == os::Key::S && shortcut_held && !m_locked) {
 		if (m_account_search.is_open()) {
 			m_account_search.close();
 			return;
@@ -618,17 +634,17 @@ auto App::handle_input(const os::InputEvent& t_event) -> void
 		}
 	}
 
-	if (t_event.type == os::InputEventType::KeyDown && t_event.key == os::Key::Comma && shortcut_held && !m_locked && !m_settings_panel.is_blocking()) {
+	if (t_event.type == os::InputEventType::KEY_DOWN && t_event.key == os::Key::COMMA && shortcut_held && !m_locked && !m_settings_panel.is_blocking()) {
 		m_app_menu.close();
 		m_settings_panel.open();
 		return;
 	}
 
-	if (t_event.type == os::InputEventType::MouseMove) {
+	if (t_event.type == os::InputEventType::MOUSE_MOVE) {
 		m_mouse = t_event.position;
-	} else if (t_event.type == os::InputEventType::MouseDown) {
+	} else if (t_event.type == os::InputEventType::MOUSE_DOWN) {
 		m_pointer_down = true;
-	} else if (t_event.type == os::InputEventType::MouseUp) {
+	} else if (t_event.type == os::InputEventType::MOUSE_UP) {
 		m_pointer_down = false;
 	}
 
@@ -636,7 +652,7 @@ auto App::handle_input(const os::InputEvent& t_event) -> void
 	process_commands();
 
 	const bool is_action =
-		t_event.type == os::InputEventType::MouseUp || t_event.type == os::InputEventType::KeyDown || t_event.type == os::InputEventType::RightClick;
+		t_event.type == os::InputEventType::MOUSE_UP || t_event.type == os::InputEventType::KEY_DOWN || t_event.type == os::InputEventType::RIGHT_CLICK;
 	if (consumed && is_action) {
 		request_save();
 	}
@@ -656,7 +672,7 @@ auto App::process(const Command& t_command) -> void
 	switch (t_command.type) {
 		using enum CommandType;
 
-		case ToggleAppMenu: {
+		case TOGGLE_APP_MENU: {
 			if (m_app_menu.is_open()) {
 				m_app_menu.close();
 			} else {
@@ -667,7 +683,7 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case ToggleUpdateOverlay: {
+		case TOGGLE_UPDATE_OVERLAY: {
 			if (m_update_overlay.is_open()) {
 				m_update_overlay.close();
 			} else {
@@ -677,22 +693,25 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case OpenUpdateOverlay: {
+		case OPEN_UPDATE_OVERLAY: {
 			m_update_overlay.open();
 			break;
 		}
 
-		case OpenSettings: {
+		case OPEN_SETTINGS: {
+			if (m_locked) break;
+
+			m_app_menu.close();
 			m_settings_panel.open();
 			break;
 		}
 
-		case OpenSetup: {
+		case OPEN_SETUP: {
 			open_setup();
 			break;
 		}
 
-		case OpenDataFolder: {
+		case OPEN_DATA_FOLDER: {
 			const std::string directory = storage::data_directory();
 			if (!directory.empty()) {
 				os::open_path(directory);
@@ -701,24 +720,29 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case CheckForUpdates: {
+		case OPEN_PERMISSION_SETTINGS: {
+			RiotClient::open_automation_permission_settings();
+			break;
+		}
+
+		case CHECK_FOR_UPDATES: {
 			m_updater.check_for_update();
 			m_update_overlay.begin_check();
 			break;
 		}
 
-		case OpenGame: {
+		case OPEN_GAME: {
 			m_account_modal.open(t_command.index);
 			m_account_modal.set_art_source(m_carousel.art_source(static_cast<u32>(t_command.index)));
 			break;
 		}
 
-		case SaveChanges: {
+		case SAVE_CHANGES: {
 			request_save();
 			break;
 		}
 
-		case RequestNewMasterPassword: {
+		case REQUEST_NEW_MASTER_PASSWORD: {
 			m_replaced_vault_key.emplace();
 			m_replaced_vault_key->key.swap(&m_master_key);
 			m_replaced_vault_key->params = m_settings.master_key;
@@ -727,29 +751,29 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case VaultUnlocked: {
+		case VAULT_UNLOCKED: {
 			storage::load_accounts(&m_library, &m_master_key);
 			unlock();
 			break;
 		}
 
-		case VaultCreated: {
+		case VAULT_CREATED: {
 			commit_new_vault_key();
 			unlock();
 			break;
 		}
 
-		case ShowAccountMenu: {
+		case SHOW_ACCOUNT_MENU: {
 			open_account_menu(t_command);
 			break;
 		}
 
-		case ShowTextMenu: {
+		case SHOW_TEXT_MENU: {
 			open_text_menu(t_command);
 			break;
 		}
 
-		case CopyUsername: {
+		case COPY_USERNAME: {
 			if (const Account* account = m_account_modal.account_at_row(t_command.index)) {
 				os::set_clipboard_text(account->username);
 			}
@@ -757,7 +781,7 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case CopyPassword: {
+		case COPY_PASSWORD: {
 			if (const Account* account = m_account_modal.account_at_row(t_command.index)) {
 				copy_password(account->password);
 			}
@@ -765,32 +789,32 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case EditText: {
+		case EDIT_TEXT: {
 			t_command.text_input->apply(t_command.text_edit);
 			break;
 		}
 
-		case UndoDelete: {
+		case UNDO_DELETE: {
 			m_account_modal.undo_delete();
 			break;
 		}
 
-		case ToggleFavorite: {
+		case TOGGLE_FAVORITE: {
 			m_account_modal.toggle_favorite(t_command.index);
 			break;
 		}
 
-		case LockVault: {
+		case LOCK_VAULT: {
 			lock_vault();
 			break;
 		}
 
-		case OpenAccountSearch: {
+		case OPEN_ACCOUNT_SEARCH: {
 			open_account_search();
 			break;
 		}
 
-		case EditAccount: {
+		case EDIT_ACCOUNT: {
 			if (account_for(t_command.account) != nullptr) {
 				m_settings_panel.close();
 				m_account_modal.edit_account(t_command.account);
@@ -799,7 +823,7 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case LoginAccount: {
+		case LOGIN_ACCOUNT: {
 			if (account_for(t_command.account) != nullptr && t_command.index >= 0) {
 				m_settings_panel.close();
 				m_account_modal.quick_login(static_cast<u32>(t_command.index), t_command.account);
@@ -808,7 +832,7 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case CopyAccountUsername: {
+		case COPY_ACCOUNT_USERNAME: {
 			if (const Account* account = account_for(t_command.account)) {
 				os::set_clipboard_text(account->username);
 				m_toasts.notify(Notification{.message = "Username copied."});
@@ -817,7 +841,7 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case CopyAccountPassword: {
+		case COPY_ACCOUNT_PASSWORD: {
 			if (const Account* account = account_for(t_command.account)) {
 				copy_password(account->password);
 			}
@@ -825,7 +849,7 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case LocateRiotClient: {
+		case LOCATE_RIOT_CLIENT: {
 			locate_riot_client(t_command);
 			break;
 		}
@@ -838,9 +862,9 @@ auto App::open_account_menu(const Command& t_command) -> void
 	if (account == nullptr) return;
 
 	const ContextMenuItem items[]{
-		{account->favorite ? "Unpin" : "Pin to top", Command{.type = CommandType::ToggleFavorite, .index = t_command.index}},
-		{"Copy username", Command{.type = CommandType::CopyUsername, .index = t_command.index}},
-		{"Copy password", Command{.type = CommandType::CopyPassword, .index = t_command.index}},
+		{account->favorite ? "Unpin" : "Pin to top", Command{.type = CommandType::TOGGLE_FAVORITE, .index = t_command.index}},
+		{"Copy username", Command{.type = CommandType::COPY_USERNAME, .index = t_command.index}},
+		{"Copy password", Command{.type = CommandType::COPY_PASSWORD, .index = t_command.index}},
 	};
 
 	m_context_menu.open(t_command.position, items, m_window.size());
@@ -851,16 +875,16 @@ auto App::open_text_menu(const Command& t_command) -> void
 	TextInput* input = t_command.text_input;
 
 	const auto item = [input](std::string_view t_label, TextEdit t_edit, std::string_view t_shortcut) {
-		const Command edit{.type = CommandType::EditText, .text_input = input, .text_edit = t_edit};
+		const Command edit{.type = CommandType::EDIT_TEXT, .text_input = input, .text_edit = t_edit};
 
 		return ContextMenuItem{t_label, edit, input->can_apply(t_edit), t_shortcut};
 	};
 
 	const ContextMenuItem items[]{
-		item("Cut", TextEdit::Cut, PULSAR_SHORTCUT_KEY "+X"),
-		item("Copy", TextEdit::Copy, PULSAR_SHORTCUT_KEY "+C"),
-		item("Paste", TextEdit::Paste, PULSAR_SHORTCUT_KEY "+V"),
-		item("Select all", TextEdit::SelectAll, PULSAR_SHORTCUT_KEY "+A"),
+		item("Cut", TextEdit::CUT, PULSAR_SHORTCUT_KEY "+X"),
+		item("Copy", TextEdit::COPY, PULSAR_SHORTCUT_KEY "+C"),
+		item("Paste", TextEdit::PASTE, PULSAR_SHORTCUT_KEY "+V"),
+		item("Select all", TextEdit::SELECT_ALL, PULSAR_SHORTCUT_KEY "+A"),
 	};
 
 	m_context_menu.open(t_command.position, items, m_window.size());
@@ -873,16 +897,16 @@ auto App::announce_update_stage() -> void
 
 	m_announced_update_stage = stage;
 
-	const Command open_updates{.type = CommandType::OpenUpdateOverlay};
+	const Command open_updates{.type = CommandType::OPEN_UPDATE_OVERLAY};
 
 	const bool watching = m_update_overlay.is_open() || m_update_overlay.wants_status();
 
-	if ((stage == UpdateStage::Available || stage == UpdateStage::ManualUpgradeRequired) && !watching) {
+	if ((stage == UpdateStage::AVAILABLE || stage == UpdateStage::MANUAL_UPGRADE_REQUIRED) && !watching) {
 		char message[96];
 		std::snprintf(message, sizeof(message), "Version %s available", m_updater.manifest().version);
-		m_toasts.notify(Notification{.message = message, .icon = Asset::IconDownload, .on_click = open_updates});
-	} else if (stage == UpdateStage::Error && !watching) {
-		m_toasts.notify(Notification{.message = "The update could not be installed.", .icon = Asset::IconUpdate, .on_click = open_updates});
+		m_toasts.notify(Notification{.message = message, .icon = Asset::ICON_DOWNLOAD, .on_click = open_updates});
+	} else if (stage == UpdateStage::UPDATE_FAILED && !watching) {
+		m_toasts.notify(Notification{.message = "The update could not be installed.", .icon = Asset::ICON_UPDATE, .on_click = open_updates});
 	}
 }
 
@@ -903,7 +927,7 @@ auto App::announce_first_run_after_update() -> void
 
 	char message[96];
 	std::snprintf(message, sizeof(message), "Updated to %s", K_APP_VERSION);
-	m_toasts.notify(Notification{.message = message, .icon = Asset::IconUpdate});
+	m_toasts.notify(Notification{.message = message, .icon = Asset::ICON_UPDATE});
 }
 
 auto App::announce_unreadable_storage() -> void
@@ -969,6 +993,7 @@ auto App::frame() -> void
 
 	m_carousel.set_bounds(content_rect(m_window.size()));
 	set_pixel_scale(m_window.dpi_scale());
+	set_caret_style(m_settings.caret_style, m_settings.caret_trail, m_settings.caret_trail_strength);
 	update_theme(delta_seconds);
 
 	{

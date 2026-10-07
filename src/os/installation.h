@@ -37,9 +37,9 @@ auto refresh_registration() -> void;
 auto finish_pending_removal() -> void;
 
 enum class Task : u8 {
-	Install,
-	Apply,
-	Uninstall,
+	INSTALL,
+	APPLY,
+	UNINSTALL,
 };
 
 class Job {
@@ -93,7 +93,7 @@ class Job {
 	auto begin(Task t_task) -> void;
 	auto finish(bool t_succeeded, std::string t_error) -> void;
 
-	Task              m_task = Task::Install;
+	Task              m_task = Task::INSTALL;
 	std::thread       m_thread;
 	std::atomic<u32>  m_step{0};
 	std::atomic<bool> m_finished{false};

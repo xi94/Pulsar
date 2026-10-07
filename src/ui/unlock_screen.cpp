@@ -161,7 +161,7 @@ auto UnlockScreen::attempt_unlock() -> void
 	m_wrong_password = !unlocked;
 
 	if (unlocked) {
-		m_commands->push(Command{.type = CommandType::VaultUnlocked});
+		m_commands->push(Command{.type = CommandType::VAULT_UNLOCKED});
 	}
 }
 
@@ -192,7 +192,7 @@ auto UnlockScreen::attempt_setup() -> void
 		field.set_value("");
 	}
 
-	m_commands->push(Command{.type = CommandType::VaultCreated});
+	m_commands->push(Command{.type = CommandType::VAULT_CREATED});
 }
 
 auto UnlockScreen::update(float t_delta_seconds) -> void
@@ -219,9 +219,9 @@ auto UnlockScreen::on_key_down(os::Key t_key) -> bool
 {
 	if (!m_active) return false;
 
-	if (t_key == os::Key::Enter) {
+	if (t_key == os::Key::ENTER) {
 		submit();
-	} else if (m_setup && t_key == os::Key::Tab) {
+	} else if (m_setup && t_key == os::Key::TAB) {
 		focus_field(m_fields[K_PASSWORD].is_focused() ? K_CONFIRMATION : K_PASSWORD);
 	} else {
 		for (u32 i = 0; i < field_count(); i += 1) {
@@ -293,7 +293,7 @@ auto UnlockScreen::on_right_click(Vec2 t_point) -> bool
 
 		focus_field(field);
 		m_fields[field].on_right_click(m_fonts->body, field_text_rect(field), t_point.x);
-		m_commands->push(Command{.type = CommandType::ShowTextMenu, .position = t_point, .text_input = &m_fields[field]});
+		m_commands->push(Command{.type = CommandType::SHOW_TEXT_MENU, .position = t_point, .text_input = &m_fields[field]});
 	}
 
 	return true;
@@ -301,15 +301,15 @@ auto UnlockScreen::on_right_click(Vec2 t_point) -> bool
 
 auto UnlockScreen::cursor() const -> CursorKind
 {
-	if (!m_active) return CursorKind::Arrow;
+	if (!m_active) return CursorKind::ARROW;
 
 	for (const TextInput& field : m_fields) {
-		if (field.is_selecting()) return CursorKind::IBeam;
+		if (field.is_selecting()) return CursorKind::I_BEAM;
 	}
 
-	if (is_reveal_hit(m_mouse) || submit_rect().contains(m_mouse)) return CursorKind::Hand;
+	if (is_reveal_hit(m_mouse) || submit_rect().contains(m_mouse)) return CursorKind::HAND;
 
-	return field_at(m_mouse) >= 0 ? CursorKind::IBeam : CursorKind::Arrow;
+	return field_at(m_mouse) >= 0 ? CursorKind::I_BEAM : CursorKind::ARROW;
 }
 
 auto UnlockScreen::draw_field(DrawList* t_draw_list, u32 t_field) -> void
@@ -327,7 +327,7 @@ auto UnlockScreen::draw_submit_button(DrawList* t_draw_list, std::string_view t_
 {
 	const Rect button = submit_rect();
 
-	controls::draw_button(t_draw_list, m_fonts->body, button, t_label, controls::ButtonStyle::Accent, m_settings->accent, true, button.contains(m_mouse), 255);
+	controls::draw_button(t_draw_list, m_fonts->body, button, t_label, controls::ButtonStyle::ACCENT, m_settings->accent, true, button.contains(m_mouse), 255);
 }
 
 auto UnlockScreen::draw(DrawList* t_draw_list) -> void

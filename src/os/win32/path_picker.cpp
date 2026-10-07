@@ -48,7 +48,7 @@ auto CALLBACK close_thread_window(HWND t_window, LPARAM) -> BOOL
 	ComPtr<IFileOpenDialog> dialog;
 	if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) return std::nullopt;
 
-	const DWORD kind_options = t_request.kind == os::PathKind::Folder ? FOS_PICKFOLDERS | FOS_PATHMUSTEXIST : FOS_FILEMUSTEXIST;
+	const DWORD kind_options = t_request.kind == os::PathKind::FOLDER ? FOS_PICKFOLDERS | FOS_PATHMUSTEXIST : FOS_FILEMUSTEXIST;
 	DWORD       options      = 0;
 	dialog->GetOptions(&options);
 	dialog->SetOptions(options | kind_options | FOS_FORCEFILESYSTEM);

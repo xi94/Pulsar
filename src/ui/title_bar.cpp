@@ -34,14 +34,14 @@ constexpr std::string_view K_SEARCH_PILL_SHORTCUT  = PULSAR_SHORTCUT_KEY "+S";
 	switch (t_stage) {
 		using enum UpdateStage;
 
-		case Available:
-		case ManualUpgradeRequired:
-		case Downloading:
-		case Verifying:
-		case Installing:
-		case ReadyToRelaunch:
-		case Error:
-		case Cancelled: {
+		case AVAILABLE:
+		case MANUAL_UPGRADE_REQUIRED:
+		case DOWNLOADING:
+		case VERIFYING:
+		case INSTALLING:
+		case READY_TO_RELAUNCH:
+		case UPDATE_FAILED:
+		case CANCELLED: {
 			return true;
 		}
 
@@ -62,7 +62,7 @@ constexpr float K_STATUS_EMPHASIS_STRENGTH = 0.75f;
 struct StatusLook {
 	std::string_view label;
 	std::string_view sizing_label;
-	Asset            icon = Asset::IconUpdate;
+	Asset            icon = Asset::ICON_UPDATE;
 	Color            icon_color{};
 	Color            text_color{};
 	bool             spinning = false;
@@ -72,57 +72,57 @@ struct StatusLook {
 [[nodiscard]] auto status_look(const Updater* t_updater, UpdateStage t_stage, bool t_release_notes, char (&t_percent)[8]) -> StatusLook
 {
 	if (t_release_notes) {
-		return StatusLook{"What's new", "What's new", Asset::IconUpdate, g_theme.text_dim, g_theme.text};
+		return StatusLook{"What's new", "What's new", Asset::ICON_UPDATE, g_theme.text_dim, g_theme.text};
 	}
 
 	switch (t_stage) {
 		using enum UpdateStage;
 
-		case Idle:
-		case Checking: {
-			return StatusLook{"Checking for updates", "Checking for updates", Asset::IconUpdate, g_theme.text_dim, g_theme.text_dim, true};
+		case IDLE:
+		case CHECKING: {
+			return StatusLook{"Checking for updates", "Checking for updates", Asset::ICON_UPDATE, g_theme.text_dim, g_theme.text_dim, true};
 		}
 
-		case UpToDate: {
-			return StatusLook{"Up to date", "Up to date", Asset::IconCheck, g_theme.text_dim, g_theme.text_dim, false, true};
+		case UP_TO_DATE: {
+			return StatusLook{"Up to date", "Up to date", Asset::ICON_CHECK, g_theme.text_dim, g_theme.text_dim, false, true};
 		}
 
-		case CheckFailed: {
-			return StatusLook{"Couldn't check", "Couldn't check", Asset::IconUpdate, g_theme.error, g_theme.error};
+		case CHECK_FAILED: {
+			return StatusLook{"Couldn't check", "Couldn't check", Asset::ICON_UPDATE, g_theme.error, g_theme.error};
 		}
 
-		case Available:
-		case ManualUpgradeRequired: {
-			return StatusLook{"Update available", "Update available", Asset::IconDownload, g_theme.success, g_theme.text};
+		case AVAILABLE:
+		case MANUAL_UPGRADE_REQUIRED: {
+			return StatusLook{"Update available", "Update available", Asset::ICON_DOWNLOAD, g_theme.success, g_theme.text};
 		}
 
-		case Downloading: {
+		case DOWNLOADING: {
 			const u64 total   = t_updater->total_bytes();
 			const u64 percent = total > 0 ? t_updater->bytes_downloaded() * 100 / total : 0;
 			const int written = std::snprintf(t_percent, sizeof(t_percent), "%u%%", static_cast<unsigned>(std::min<u64>(percent, 100)));
 
-			return StatusLook{std::string_view{t_percent, static_cast<usize>(std::max(written, 0))}, "100%", Asset::IconDownload, g_theme.text_dim,
+			return StatusLook{std::string_view{t_percent, static_cast<usize>(std::max(written, 0))}, "100%", Asset::ICON_DOWNLOAD, g_theme.text_dim,
 			                  g_theme.text};
 		}
 
-		case Verifying: {
-			return StatusLook{"Verifying", "Verifying", Asset::IconUpdate, g_theme.text_dim, g_theme.text_dim, true};
+		case VERIFYING: {
+			return StatusLook{"Verifying", "Verifying", Asset::ICON_UPDATE, g_theme.text_dim, g_theme.text_dim, true};
 		}
 
-		case Installing: {
-			return StatusLook{"Installing", "Installing", Asset::IconUpdate, g_theme.text_dim, g_theme.text_dim, true};
+		case INSTALLING: {
+			return StatusLook{"Installing", "Installing", Asset::ICON_UPDATE, g_theme.text_dim, g_theme.text_dim, true};
 		}
 
-		case ReadyToRelaunch: {
-			return StatusLook{"Restarting", "Restarting", Asset::IconUpdate, g_theme.text_dim, g_theme.text_dim, true};
+		case READY_TO_RELAUNCH: {
+			return StatusLook{"Restarting", "Restarting", Asset::ICON_UPDATE, g_theme.text_dim, g_theme.text_dim, true};
 		}
 
-		case Error: {
-			return StatusLook{"Update failed", "Update failed", Asset::IconUpdate, g_theme.error, g_theme.error};
+		case UPDATE_FAILED: {
+			return StatusLook{"Update failed", "Update failed", Asset::ICON_UPDATE, g_theme.error, g_theme.error};
 		}
 
-		case Cancelled: {
-			return StatusLook{"Update cancelled", "Update cancelled", Asset::IconUpdate, g_theme.text_dim, g_theme.text_dim};
+		case CANCELLED: {
+			return StatusLook{"Update cancelled", "Update cancelled", Asset::ICON_UPDATE, g_theme.text_dim, g_theme.text_dim};
 		}
 	}
 
@@ -152,7 +152,7 @@ auto TitleBar::update(float t_delta_seconds) -> void
 	m_update_visible = visible;
 	m_update_reveal  = animation::ease_toward(m_update_reveal, visible ? 1.0f : 0.0f, K_STATUS_REVEAL_RATE, t_delta_seconds);
 
-	const bool emphasized = visible && (m_update_overlay->is_open() || layout().button_rect(TitleBarButton::Update).contains(m_mouse));
+	const bool emphasized = visible && (m_update_overlay->is_open() || layout().button_rect(TitleBarButton::UPDATE).contains(m_mouse));
 	m_status_emphasis     = animation::ease_toward(m_status_emphasis, emphasized ? 1.0f : 0.0f, K_STATUS_EMPHASIS_RATE, t_delta_seconds);
 
 	if (!visible && m_update_reveal <= 0.0f) return;
@@ -186,7 +186,7 @@ auto TitleBar::layout() const -> TitleBarLayout
 
 auto TitleBar::on_pointer_down(Vec2 t_point) -> bool
 {
-	return layout().button_at(t_point) != TitleBarButton::None;
+	return layout().button_at(t_point) != TitleBarButton::NONE;
 }
 
 auto TitleBar::on_pointer_up(Vec2 t_point) -> bool
@@ -194,36 +194,36 @@ auto TitleBar::on_pointer_up(Vec2 t_point) -> bool
 	switch (layout().button_at(t_point)) {
 		using enum TitleBarButton;
 
-		case None: {
+		case NONE: {
 			return false;
 		}
 
-		case Menu: {
-			m_commands->push(Command{.type = CommandType::ToggleAppMenu});
+		case MENU: {
+			m_commands->push(Command{.type = CommandType::TOGGLE_APP_MENU});
 			break;
 		}
 
-		case Search: {
-			m_commands->push(Command{.type = CommandType::OpenAccountSearch});
+		case SEARCH: {
+			m_commands->push(Command{.type = CommandType::OPEN_ACCOUNT_SEARCH});
 			break;
 		}
 
-		case Update: {
-			m_commands->push(Command{.type = CommandType::ToggleUpdateOverlay});
+		case UPDATE: {
+			m_commands->push(Command{.type = CommandType::TOGGLE_UPDATE_OVERLAY});
 			break;
 		}
 
-		case Minimize: {
+		case MINIMIZE: {
 			m_window->minimize();
 			break;
 		}
 
-		case Maximize: {
+		case MAXIMIZE: {
 			m_window->toggle_maximized();
 			break;
 		}
 
-		case Close: {
+		case CLOSE: {
 			m_window->close();
 			break;
 		}
@@ -234,7 +234,7 @@ auto TitleBar::on_pointer_up(Vec2 t_point) -> bool
 
 auto TitleBar::cursor() const -> CursorKind
 {
-	return layout().button_at(m_mouse) == TitleBarButton::None ? CursorKind::Arrow : CursorKind::Hand;
+	return layout().button_at(m_mouse) == TitleBarButton::NONE ? CursorKind::ARROW : CursorKind::HAND;
 }
 
 auto TitleBar::draw_hover(DrawList* t_draw_list, TitleBarButton t_button, TitleBarButton t_hovered) const -> void
@@ -242,13 +242,13 @@ auto TitleBar::draw_hover(DrawList* t_draw_list, TitleBarButton t_button, TitleB
 	if (t_button != t_hovered) return;
 
 	t_draw_list->add_rect(layout().button_rect(t_button),
-	                      t_button == TitleBarButton::Close ? K_TITLE_BAR_CLOSE_HOVER : with_alpha(g_theme.text, K_TITLE_BAR_HOVER_ALPHA));
+	                      t_button == TitleBarButton::CLOSE ? K_TITLE_BAR_CLOSE_HOVER : with_alpha(g_theme.text, K_TITLE_BAR_HOVER_ALPHA));
 }
 
 auto TitleBar::draw_identity(DrawList* t_draw_list, float t_amount) const -> void
 {
 	const TitleBarLayout title_bar = layout();
-	const Rect           menu      = title_bar.button_rect(TitleBarButton::Menu);
+	const Rect           menu      = title_bar.button_rect(TitleBarButton::MENU);
 	const Font&          font      = m_fonts->secondary;
 	const float          width     = K_IDENTITY_MARK_SIZE + K_IDENTITY_GAP + std::ceil(text_width(font, K_APP_NAME));
 	const float          left      = title_bar.menu_on_right() ? menu.x - K_IDENTITY_GAP * 0.5f - width : menu.right() + K_IDENTITY_GAP * 0.5f;
@@ -256,7 +256,7 @@ auto TitleBar::draw_identity(DrawList* t_draw_list, float t_amount) const -> voi
 	const Rect           mark{left, (K_TITLE_BAR_HEIGHT - K_IDENTITY_MARK_SIZE) * 0.5f + shift, K_IDENTITY_MARK_SIZE, K_IDENTITY_MARK_SIZE};
 	const auto           alpha = to_alpha(t_amount);
 
-	t_draw_list->add_image(mark, m_assets->get(Asset::IconApp), faded(g_theme.text_dim, alpha));
+	t_draw_list->add_image(mark, m_assets->get(Asset::ICON_APP), faded(g_theme.text_dim, alpha));
 	draw_text(t_draw_list, font, Vec2{mark.right() + K_IDENTITY_GAP, font.centered_baseline(menu) + shift}, K_APP_NAME, faded(g_theme.text_dim, alpha));
 }
 
@@ -265,7 +265,7 @@ auto TitleBar::draw_update_status(DrawList* t_draw_list, float t_amount) const -
 	char                 percent[8];
 	const StatusLook     look      = status_look(m_updater, m_update_overlay->shown_stage(), m_update_overlay->is_showing_release_notes(), percent);
 	const TitleBarLayout title_bar = layout();
-	const Rect           area      = title_bar.button_rect(TitleBarButton::Update);
+	const Rect           area      = title_bar.button_rect(TitleBarButton::UPDATE);
 	const auto           alpha     = to_alpha(t_amount);
 	const float          shift     = K_STATUS_SHIFT * (1.0f - t_amount);
 	t_draw_list->push_clip(area);
@@ -293,10 +293,10 @@ auto TitleBar::draw_search_pill(DrawList* t_draw_list, TitleBarButton t_hovered)
 {
 	if (!m_search_visible) return;
 
-	const Rect area = layout().button_rect(TitleBarButton::Search);
+	const Rect area = layout().button_rect(TitleBarButton::SEARCH);
 	if (area.w <= 0.0f) return;
 
-	const bool  is_hovered = t_hovered == TitleBarButton::Search;
+	const bool  is_hovered = t_hovered == TitleBarButton::SEARCH;
 	const Rect  pill       = area.inset(0.0f, (area.h - K_SEARCH_PILL_HEIGHT) * 0.5f);
 	const Color fill       = is_hovered ? hovered(g_theme.field) : g_theme.field;
 	const Font& font       = m_fonts->secondary;
@@ -319,7 +319,7 @@ auto TitleBar::draw_search_pill(DrawList* t_draw_list, TitleBarButton t_hovered)
 
 auto TitleBar::draw_maximize_glyph(DrawList* t_draw_list, Color t_color) const -> void
 {
-	const Vec2 center = layout().button_rect(TitleBarButton::Maximize).center();
+	const Vec2 center = layout().button_rect(TitleBarButton::MAXIMIZE).center();
 
 	if (!m_window->is_maximized()) {
 		constexpr float SQUARE_SIZE = 10.0f;
@@ -343,8 +343,8 @@ auto TitleBar::draw(DrawList* t_draw_list) -> void
 	const auto           icon_rect   = [this](TitleBarButton t_button) { return layout().button_rect(t_button).centered(K_ICON_SIZE, K_ICON_SIZE); };
 	const auto           glyph_color = [hovered](TitleBarButton t_button) { return hovered == t_button ? g_theme.text : g_theme.text_dim; };
 
-	draw_hover(t_draw_list, TitleBarButton::Menu, hovered);
-	t_draw_list->add_image(icon_rect(TitleBarButton::Menu), m_assets->get(Asset::IconMenu), g_theme.text);
+	draw_hover(t_draw_list, TitleBarButton::MENU, hovered);
+	t_draw_list->add_image(icon_rect(TitleBarButton::MENU), m_assets->get(Asset::ICON_MENU), g_theme.text);
 
 	if (m_update_reveal < 0.999f) {
 		draw_identity(t_draw_list, 1.0f - m_update_reveal);
@@ -358,13 +358,13 @@ auto TitleBar::draw(DrawList* t_draw_list) -> void
 
 	if (m_window->native_controls_width() > 0.0f) return;
 
-	draw_hover(t_draw_list, TitleBarButton::Minimize, hovered);
-	t_draw_list->add_image(icon_rect(TitleBarButton::Minimize), m_assets->get(Asset::IconMinimize), glyph_color(TitleBarButton::Minimize));
+	draw_hover(t_draw_list, TitleBarButton::MINIMIZE, hovered);
+	t_draw_list->add_image(icon_rect(TitleBarButton::MINIMIZE), m_assets->get(Asset::ICON_MINIMIZE), glyph_color(TitleBarButton::MINIMIZE));
 
-	draw_hover(t_draw_list, TitleBarButton::Maximize, hovered);
-	draw_maximize_glyph(t_draw_list, glyph_color(TitleBarButton::Maximize));
+	draw_hover(t_draw_list, TitleBarButton::MAXIMIZE, hovered);
+	draw_maximize_glyph(t_draw_list, glyph_color(TitleBarButton::MAXIMIZE));
 
-	draw_hover(t_draw_list, TitleBarButton::Close, hovered);
-	t_draw_list->add_image(icon_rect(TitleBarButton::Close), m_assets->get(Asset::IconClose),
-	                       hovered == TitleBarButton::Close ? K_TITLE_BAR_CLOSE_GLYPH_HOVER : g_theme.text);
+	draw_hover(t_draw_list, TitleBarButton::CLOSE, hovered);
+	t_draw_list->add_image(icon_rect(TitleBarButton::CLOSE), m_assets->get(Asset::ICON_CLOSE),
+	                       hovered == TitleBarButton::CLOSE ? K_TITLE_BAR_CLOSE_GLYPH_HOVER : g_theme.text);
 }

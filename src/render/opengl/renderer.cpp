@@ -380,7 +380,7 @@ auto OpenGlBackend::draw_command(const RenderFrame& t_frame, const DrawCommand& 
 {
 	GLuint image = 0;
 
-	if (t_command.shader == ShaderKind::Textured) {
+	if (t_command.shader == ShaderKind::TEXTURED) {
 		if (!t_command.texture->is_valid()) return;
 
 		image = textures[t_command.texture->slot()];

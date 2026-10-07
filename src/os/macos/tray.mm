@@ -7,11 +7,26 @@
 
 namespace {
 constexpr const char* K_LOG_CATEGORY      = "tray";
+constexpr const char* K_STATUS_ICON_NAME  = "MenuBarIcon";
 constexpr CGFloat     K_STATUS_ICON_SIZE  = 18.0;
 constexpr CGFloat     K_MENU_ICON_SIZE    = 16.0;
 constexpr NSInteger   K_SHOW_TAG          = 1;
 constexpr NSInteger   K_EXIT_TAG          = 2;
 constexpr NSInteger   K_FIRST_ACCOUNT_TAG = 1000;
+
+// The menu bar keeps only an icon's shape, so it gets the bare star. The app icon has a tile behind it, and the shape of a tile is a square.
+[[nodiscard]] auto status_icon() -> NSImage*
+{
+	NSImage* icon = [[NSImage imageNamed:@(K_STATUS_ICON_NAME)] copy];
+	if (icon == nil) {
+		icon = [[NSApplication sharedApplication].applicationIconImage copy];
+	}
+
+	icon.size = NSMakeSize(K_STATUS_ICON_SIZE, K_STATUS_ICON_SIZE);
+	[icon setTemplate:YES];
+
+	return icon;
+}
 }
 
 @interface PulsarMenuTarget : NSObject <NSMenuDelegate>
@@ -100,10 +115,6 @@ auto Tray::create(std::string_view t_tooltip) -> bool
 		return false;
 	}
 
-	NSImage* icon = [[NSApplication sharedApplication].applicationIconImage copy];
-	icon.size     = NSMakeSize(K_STATUS_ICON_SIZE, K_STATUS_ICON_SIZE);
-	[icon setTemplate:YES];
-
 	const auto open = ^{
 		native->rebuild_menu();
 	};
@@ -118,7 +129,7 @@ auto Tray::create(std::string_view t_tooltip) -> bool
 	native->menu.autoenablesItems = NO;
 	native->menu.delegate         = native->target;
 	native->item.menu             = native->menu;
-	native->item.button.image     = icon;
+	native->item.button.image     = status_icon();
 	native->update_button();
 
 	return true;
@@ -206,12 +217,12 @@ auto Tray::Native::rebuild_menu() -> void
 auto Tray::Native::choose(NSInteger t_tag) -> void
 {
 	if (t_tag == K_SHOW_TAG) {
-		pending_event = TrayEvent{.type = TrayEventType::ShowWindow};
+		pending_event = TrayEvent{.type = TrayEventType::SHOW_WINDOW};
 	} else if (t_tag == K_EXIT_TAG) {
-		pending_event = TrayEvent{.type = TrayEventType::Exit};
+		pending_event = TrayEvent{.type = TrayEventType::EXIT};
 	} else if (t_tag >= K_FIRST_ACCOUNT_TAG && static_cast<u32>(t_tag - K_FIRST_ACCOUNT_TAG) < contents.account_count && !locked) {
 		const TrayAccount& account = contents.accounts[t_tag - K_FIRST_ACCOUNT_TAG];
-		pending_event              = TrayEvent{.type = TrayEventType::QuickLogin, .game = account.game, .row = account.row};
+		pending_event              = TrayEvent{.type = TrayEventType::QUICK_LOGIN, .game = account.game, .row = account.row};
 	}
 
 	macos::wake_event_loop();

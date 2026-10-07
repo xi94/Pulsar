@@ -7,32 +7,33 @@
 #include "ui/text_input.h"
 
 enum class CommandType : u8 {
-	ToggleAppMenu,
-	ToggleUpdateOverlay,
-	OpenUpdateOverlay,
-	OpenSettings,
-	OpenDataFolder,
-	OpenSetup,
-	CheckForUpdates,
-	OpenGame,
-	SaveChanges,
-	RequestNewMasterPassword,
-	VaultUnlocked,
-	VaultCreated,
-	ShowAccountMenu,
-	ShowTextMenu,
-	CopyUsername,
-	CopyPassword,
-	EditText,
-	UndoDelete,
-	ToggleFavorite,
-	LockVault,
-	OpenAccountSearch,
-	EditAccount,
-	LoginAccount,
-	CopyAccountUsername,
-	CopyAccountPassword,
-	LocateRiotClient,
+	TOGGLE_APP_MENU,
+	TOGGLE_UPDATE_OVERLAY,
+	OPEN_UPDATE_OVERLAY,
+	OPEN_SETTINGS,
+	OPEN_DATA_FOLDER,
+	OPEN_PERMISSION_SETTINGS,
+	OPEN_SETUP,
+	CHECK_FOR_UPDATES,
+	OPEN_GAME,
+	SAVE_CHANGES,
+	REQUEST_NEW_MASTER_PASSWORD,
+	VAULT_UNLOCKED,
+	VAULT_CREATED,
+	SHOW_ACCOUNT_MENU,
+	SHOW_TEXT_MENU,
+	COPY_USERNAME,
+	COPY_PASSWORD,
+	EDIT_TEXT,
+	UNDO_DELETE,
+	TOGGLE_FAVORITE,
+	LOCK_VAULT,
+	OPEN_ACCOUNT_SEARCH,
+	EDIT_ACCOUNT,
+	LOGIN_ACCOUNT,
+	COPY_ACCOUNT_USERNAME,
+	COPY_ACCOUNT_PASSWORD,
+	LOCATE_RIOT_CLIENT,
 };
 
 struct ArtSource {
@@ -50,7 +51,7 @@ struct Command {
 	i32         index = -1;
 	Vec2        position{};
 	TextInput*  text_input = nullptr;
-	TextEdit    text_edit  = TextEdit::Copy;
+	TextEdit    text_edit  = TextEdit::COPY;
 	AccountRef  account{};
 };
 

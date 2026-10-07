@@ -66,18 +66,18 @@ class UpdateOverlay : public Widget {
 
   private:
 	enum class Action : u8 {
-		None,
-		Check,
-		Download,
-		Cancel,
-		Close,
-		Releases,
+		NONE,
+		CHECK,
+		DOWNLOAD,
+		CANCEL,
+		CLOSE,
+		RELEASES,
 	};
 
 	struct Button {
 		std::string_view      label;
-		Action                action = Action::None;
-		controls::ButtonStyle style  = controls::ButtonStyle::Neutral;
+		Action                action = Action::NONE;
+		controls::ButtonStyle style  = controls::ButtonStyle::NEUTRAL;
 	};
 
 	struct Content {
@@ -131,7 +131,7 @@ class UpdateOverlay : public Widget {
 	float       m_progress        = 0.0f;
 	float       m_spin            = 0.0f;
 	u32         m_content_key     = 0;
-	UpdateStage m_shown_stage     = UpdateStage::Idle;
+	UpdateStage m_shown_stage     = UpdateStage::IDLE;
 	float       m_shown_seconds   = 0.0f;
 	bool        m_check_requested = false;
 	float       m_status_linger   = 0.0f;

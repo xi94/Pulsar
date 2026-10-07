@@ -30,35 +30,35 @@ constexpr const char* K_UNRESPONSIVE_CLIENT_MESSAGE = "The Riot Client stopped r
 	switch (t_stage) {
 		using enum LoginStage;
 
-		case Idle: {
+		case IDLE: {
 			return "IDLE";
 		}
 
-		case WaitingForProcess: {
+		case WAITING_FOR_PROCESS: {
 			return "WAITING_FOR_PROCESS";
 		}
 
-		case Connecting: {
+		case CONNECTING: {
 			return "CONNECTING";
 		}
 
-		case Authenticating: {
+		case AUTHENTICATING: {
 			return "AUTHENTICATING";
 		}
 
-		case Launching: {
+		case LAUNCHING: {
 			return "LAUNCHING";
 		}
 
-		case Success: {
+		case SUCCESS: {
 			return "SUCCESS";
 		}
 
-		case Error: {
-			return "ERROR";
+		case FAILED: {
+			return "FAILED";
 		}
 
-		case Cancelled: {
+		case CANCELLED: {
 			return "CANCELLED";
 		}
 	}
@@ -75,28 +75,21 @@ auto set_stage(LoginWork* t_work, LoginStage t_stage) -> void
 auto fail(LoginWork* t_work, const char* t_message) -> void
 {
 	copy_to(t_message, t_work->message);
-	set_stage(t_work, LoginStage::Error);
+	set_stage(t_work, LoginStage::FAILED);
 }
 
 [[nodiscard]] auto stop_if_cancelled(LoginWork* t_work) -> bool
 {
 	if (!t_work->cancel_requested.load(std::memory_order_relaxed)) return false;
 
-	set_stage(t_work, LoginStage::Cancelled);
+	set_stage(t_work, LoginStage::CANCELLED);
 
 	return true;
 }
 
-[[nodiscard]] auto is_invalid_credentials(const std::string& t_error) -> bool
+[[nodiscard]] auto is_invalid_credentials(std::string_view t_error) -> bool
 {
-	return t_error.find("credentials") != std::string::npos;
-}
-
-[[nodiscard]] auto failure_message(const std::string& t_error) -> const char*
-{
-	if (t_error.empty()) return K_UNRECOGNIZED_ERROR_MESSAGE;
-
-	return is_invalid_credentials(t_error) ? K_INVALID_CREDENTIALS_MESSAGE : K_SERVER_ERROR_MESSAGE;
+	return t_error.find("credentials") != std::string_view::npos;
 }
 
 [[nodiscard]] auto submit_and_wait_for_error(LoginWork* t_work, std::string* t_out_error, const std::string* t_error_to_ignore = nullptr) -> bool
@@ -141,7 +134,7 @@ auto fail(LoginWork* t_work, const char* t_message) -> void
 
 [[nodiscard]] auto focus_client(LoginWork* t_work) -> bool
 {
-	set_stage(t_work, LoginStage::Connecting);
+	set_stage(t_work, LoginStage::CONNECTING);
 
 	t_work->riot_client.bring_to_foreground();
 	t_work->riot_client.take_keyboard_focus();
@@ -151,7 +144,7 @@ auto fail(LoginWork* t_work, const char* t_message) -> void
 
 [[nodiscard]] auto authenticate(LoginWork* t_work) -> bool
 {
-	set_stage(t_work, LoginStage::Authenticating);
+	set_stage(t_work, LoginStage::AUTHENTICATING);
 
 	std::string error;
 	bool        error_shown = submit_and_wait_for_error(t_work, &error);
@@ -161,7 +154,7 @@ auto fail(LoginWork* t_work, const char* t_message) -> void
 	if (error_shown && !error.empty() && !is_invalid_credentials(error)) {
 		if (!focus_client(t_work)) return false;
 
-		set_stage(t_work, LoginStage::Authenticating);
+		set_stage(t_work, LoginStage::AUTHENTICATING);
 
 		const std::string previous_error = error;
 		error_shown                      = submit_and_wait_for_error(t_work, &error, &previous_error);
@@ -170,7 +163,7 @@ auto fail(LoginWork* t_work, const char* t_message) -> void
 	}
 
 	if (error_shown) {
-		fail(t_work, failure_message(error));
+		fail(t_work, login_failure_message(error));
 		return false;
 	}
 
@@ -181,25 +174,31 @@ auto sign_in_and_play(LoginWork* t_work) -> void
 {
 	if (!authenticate(t_work)) return;
 
-	set_stage(t_work, LoginStage::Launching);
+	set_stage(t_work, LoginStage::LAUNCHING);
 
 	std::string      late_error;
 	const PlayResult play = t_work->riot_client.click_play_when_ready(K_PLAY_BUTTON_TIMEOUT_MS, &late_error);
 
 	if (stop_if_cancelled(t_work)) return;
 
-	if (play == PlayResult::LoginError) {
-		fail(t_work, failure_message(late_error));
+	if (play == PlayResult::LOGIN_ERROR) {
+		fail(t_work, login_failure_message(late_error));
 		return;
 	}
 
-	set_stage(t_work, LoginStage::Success);
+	set_stage(t_work, LoginStage::SUCCESS);
 }
 
 auto run_login(LoginWork* t_work) -> void
 {
 	t_work->message[0] = '\0';
-	set_stage(t_work, LoginStage::WaitingForProcess);
+	set_stage(t_work, LoginStage::WAITING_FOR_PROCESS);
+
+	if (!RiotClient::request_automation_permission()) {
+		t_work->permission_missing = true;
+		fail(t_work, RiotClient::permission_missing_message());
+		return;
+	}
 
 	if (!start_fresh_client(t_work) || !focus_client(t_work)) return;
 
@@ -225,6 +224,13 @@ auto worker_main(const std::shared_ptr<LoginWork>& t_work) -> void
 }
 }
 
+auto login_failure_message(std::string_view t_riot_error) -> const char*
+{
+	if (t_riot_error.empty()) return K_UNRECOGNIZED_ERROR_MESSAGE;
+
+	return is_invalid_credentials(t_riot_error) ? K_INVALID_CREDENTIALS_MESSAGE : K_SERVER_ERROR_MESSAGE;
+}
+
 LoginAttempt::~LoginAttempt()
 {
 	if (m_work != nullptr) {
@@ -241,7 +247,7 @@ LoginAttempt::~LoginAttempt()
 
 auto LoginAttempt::is_terminal(LoginStage t_stage) -> bool
 {
-	return t_stage == LoginStage::Success || t_stage == LoginStage::Error || t_stage == LoginStage::Cancelled;
+	return t_stage == LoginStage::SUCCESS || t_stage == LoginStage::FAILED || t_stage == LoginStage::CANCELLED;
 }
 
 auto LoginAttempt::start(std::string_view t_username, std::string_view t_password, std::string_view t_launch_product, std::string_view t_client_path) -> void
@@ -258,7 +264,7 @@ auto LoginAttempt::start(std::string_view t_username, std::string_view t_passwor
 	copy_to(t_password, work->password);
 	copy_to(t_launch_product, work->launch_product);
 	work->remembered_client_path = std::string{t_client_path};
-	work->stage.store(LoginStage::WaitingForProcess, std::memory_order_relaxed);
+	work->stage.store(LoginStage::WAITING_FOR_PROCESS, std::memory_order_relaxed);
 
 	m_work   = work;
 	m_worker = std::thread(worker_main, std::move(work));
@@ -278,7 +284,7 @@ auto LoginAttempt::cancel() -> void
 
 auto LoginAttempt::stage() const -> LoginStage
 {
-	return m_work != nullptr ? m_work->stage.load(std::memory_order_acquire) : LoginStage::Idle;
+	return m_work != nullptr ? m_work->stage.load(std::memory_order_acquire) : LoginStage::IDLE;
 }
 
 auto LoginAttempt::terminal_message() const -> std::string_view
@@ -296,6 +302,11 @@ auto LoginAttempt::found_client_path() const -> std::string
 auto LoginAttempt::is_client_missing() const -> bool
 {
 	return m_work != nullptr && is_terminal(stage()) && m_work->client_missing;
+}
+
+auto LoginAttempt::is_permission_missing() const -> bool
+{
+	return m_work != nullptr && is_terminal(stage()) && m_work->permission_missing;
 }
 
 auto LoginAttempt::update() -> void
@@ -330,10 +341,10 @@ auto LoginAttempt::abandon_worker() -> void
 
 	auto abandoned = std::make_shared<LoginWork>();
 	if (user_cancelled) {
-		abandoned->stage.store(LoginStage::Cancelled, std::memory_order_relaxed);
+		abandoned->stage.store(LoginStage::CANCELLED, std::memory_order_relaxed);
 	} else {
 		copy_to(K_UNRESPONSIVE_CLIENT_MESSAGE, abandoned->message);
-		abandoned->stage.store(LoginStage::Error, std::memory_order_relaxed);
+		abandoned->stage.store(LoginStage::FAILED, std::memory_order_relaxed);
 	}
 
 	abandoned->worker_finished.store(true, std::memory_order_relaxed);

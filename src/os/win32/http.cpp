@@ -69,7 +69,7 @@ auto query_number_header(HINTERNET t_request, DWORD t_header, DWORD* t_out_value
 	if (query_number_header(t_request, WINHTTP_QUERY_CONTENT_LENGTH, &content_length)) {
 		if (content_length > t_max_bytes) {
 			*t_out_error = "the server offered a file far larger than any Pulsar build";
-			return os::HttpResult::Failed;
+			return os::HttpResult::FAILED;
 		}
 
 		t_out_body->reserve(content_length);
@@ -83,20 +83,20 @@ auto query_number_header(HINTERNET t_request, DWORD t_header, DWORD* t_out_value
 
 	for (;;) {
 		if (t_progress.cancel_requested != nullptr && t_progress.cancel_requested->load(std::memory_order_relaxed)) {
-			return os::HttpResult::Cancelled;
+			return os::HttpResult::CANCELLED;
 		}
 
 		DWORD available = 0;
 		if (!WinHttpQueryDataAvailable(t_request, &available)) {
 			*t_out_error = "the connection was interrupted while reading";
-			return os::HttpResult::Failed;
+			return os::HttpResult::FAILED;
 		}
 
-		if (available == 0) return os::HttpResult::Ok;
+		if (available == 0) return os::HttpResult::OK;
 
 		if (t_out_body->size() + available > t_max_bytes) {
 			*t_out_error = "the download grew far larger than any Pulsar build";
-			return os::HttpResult::Failed;
+			return os::HttpResult::FAILED;
 		}
 
 		const usize previous_size = t_out_body->size();
@@ -105,7 +105,7 @@ auto query_number_header(HINTERNET t_request, DWORD t_header, DWORD* t_out_value
 		DWORD read = 0;
 		if (!WinHttpReadData(t_request, t_out_body->data() + previous_size, available, &read)) {
 			*t_out_error = "the connection was interrupted while reading";
-			return os::HttpResult::Failed;
+			return os::HttpResult::FAILED;
 		}
 
 		t_out_body->resize(previous_size + read);
@@ -144,13 +144,13 @@ auto http_get(std::string_view t_url, usize t_max_bytes, std::vector<u8>* t_out_
 
 	if (!WinHttpCrackUrl(url_text.c_str(), 0, 0, &url)) {
 		*t_out_error = "could not parse the update URL";
-		return HttpResult::Failed;
+		return HttpResult::FAILED;
 	}
 
 	const InternetHandle session{WinHttpOpen(K_USER_AGENT, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0)};
 	if (session == nullptr) {
 		*t_out_error = "could not open an HTTP session";
-		return HttpResult::Failed;
+		return HttpResult::FAILED;
 	}
 
 	WinHttpSetTimeouts(session, K_RESOLVE_TIMEOUT_MS, K_CONNECT_TIMEOUT_MS, K_SEND_TIMEOUT_MS, K_RECEIVE_TIMEOUT_MS);
@@ -158,30 +158,30 @@ auto http_get(std::string_view t_url, usize t_max_bytes, std::vector<u8>* t_out_
 	const InternetHandle connection{WinHttpConnect(session, host, url.nPort, 0)};
 	if (connection == nullptr) {
 		*t_out_error = "could not connect to " + win32::to_utf8(host);
-		return HttpResult::Failed;
+		return HttpResult::FAILED;
 	}
 
 	const InternetHandle request{open_request(connection, std::wstring{path} + query, url.nScheme == INTERNET_SCHEME_HTTPS)};
 	if (request == nullptr) {
 		*t_out_error = "could not open an HTTP request";
-		return HttpResult::Failed;
+		return HttpResult::FAILED;
 	}
 
 	if (!WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
 		*t_out_error = "the request failed to send";
-		return HttpResult::Failed;
+		return HttpResult::FAILED;
 	}
 
 	if (!WinHttpReceiveResponse(request, nullptr)) {
 		*t_out_error = "no response was received";
-		return HttpResult::Failed;
+		return HttpResult::FAILED;
 	}
 
 	DWORD status = 0;
 	query_number_header(request, WINHTTP_QUERY_STATUS_CODE, &status);
 	if (status < 200 || status >= 300) {
 		*t_out_error = "server returned HTTP " + std::to_string(status);
-		return HttpResult::Failed;
+		return HttpResult::FAILED;
 	}
 
 	return read_body(request, t_max_bytes, t_out_body, t_progress, t_out_error);
