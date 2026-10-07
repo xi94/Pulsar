@@ -11,31 +11,33 @@ constexpr Vec2 K_MOUSE_OUTSIDE_WINDOW{-1.0f, -1.0f};
 [[nodiscard]] auto deliver(Widget* t_widget, const os::InputEvent& t_event) -> bool
 {
 	switch (t_event.type) {
-		case os::InputEventType::MouseDown: {
+		using enum os::InputEventType;
+
+		case MouseDown: {
 			return t_widget->on_pointer_down(t_event.position);
 		}
 
-		case os::InputEventType::MouseMove: {
+		case MouseMove: {
 			return t_widget->on_pointer_move(t_event.position);
 		}
 
-		case os::InputEventType::MouseUp: {
+		case MouseUp: {
 			return t_widget->on_pointer_up(t_event.position);
 		}
 
-		case os::InputEventType::RightClick: {
+		case RightClick: {
 			return t_widget->on_right_click(t_event.position);
 		}
 
-		case os::InputEventType::MouseWheel: {
+		case MouseWheel: {
 			return t_widget->on_scroll(t_event.position, t_event.wheel_delta);
 		}
 
-		case os::InputEventType::KeyDown: {
+		case KeyDown: {
 			return t_widget->on_key_down(t_event.key);
 		}
 
-		case os::InputEventType::Character: {
+		case Character: {
 			return t_widget->on_char(t_event.codepoint);
 		}
 	}

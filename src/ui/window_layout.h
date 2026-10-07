@@ -34,6 +34,7 @@ struct TitleBarLayout {
 	float update_width          = K_UPDATE_BUTTON_WIDTH;
 	bool  search_visible        = false;
 
+	[[nodiscard]] auto menu_on_right() const -> bool;
 	[[nodiscard]] auto button_rect(TitleBarButton t_button) const -> Rect;
 	[[nodiscard]] auto button_at(Vec2 t_point) const -> TitleBarButton;
 };

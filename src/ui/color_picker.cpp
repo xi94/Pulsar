@@ -622,7 +622,9 @@ auto ColorPicker::on_pointer_up(Vec2 t_point) -> bool
 	const Layout current = layout();
 
 	switch (press) {
-		case Press::Revert: {
+		using enum Press;
+
+		case Revert: {
 			if (current.swatch.contains(t_point) && t_point.x < current.swatch.center().x) {
 				set_color(m_initial);
 				sync_fields(-1);
@@ -630,22 +632,22 @@ auto ColorPicker::on_pointer_up(Vec2 t_point) -> bool
 			break;
 		}
 
-		case Press::Copy: {
+		case Copy: {
 			if (current.copy.contains(t_point)) {
 				copy_hex();
 			}
 			break;
 		}
 
-		case Press::Paste: {
+		case Paste: {
 			if (current.paste.contains(t_point)) {
 				paste_color();
 			}
 			break;
 		}
 
-		case Press::None:
-		case Press::Field: {
+		case None:
+		case Field: {
 			break;
 		}
 	}
@@ -694,13 +696,15 @@ auto ColorPicker::on_key_down(os::Key t_key) -> bool
 	}
 
 	switch (t_key) {
-		case os::Key::Enter:
-		case os::Key::Escape: {
+		using enum os::Key;
+
+		case Enter:
+		case Escape: {
 			focus_field(-1);
 			return true;
 		}
 
-		case os::Key::Tab: {
+		case Tab: {
 			const auto count = static_cast<i32>(K_FIELD_COUNT);
 			const i32  step  = os::modifiers().shift ? count - 1 : 1;
 			const i32  next  = (focused + step) % count;

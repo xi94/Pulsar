@@ -54,19 +54,21 @@ enum class CharClass : u8 {
 [[nodiscard]] auto shortcut_for(os::Key t_key) -> std::optional<TextEdit>
 {
 	switch (t_key) {
-		case os::Key::A: {
+		using enum os::Key;
+
+		case A: {
 			return TextEdit::SelectAll;
 		}
 
-		case os::Key::C: {
+		case C: {
 			return TextEdit::Copy;
 		}
 
-		case os::Key::X: {
+		case X: {
 			return TextEdit::Cut;
 		}
 
-		case os::Key::V: {
+		case V: {
 			return TextEdit::Paste;
 		}
 
@@ -152,16 +154,18 @@ auto TextInput::set_max_length(u32 t_max_length) -> void
 auto TextInput::can_apply(TextEdit t_edit) const -> bool
 {
 	switch (t_edit) {
-		case TextEdit::Cut:
-		case TextEdit::Copy: {
+		using enum TextEdit;
+
+		case Cut:
+		case Copy: {
 			return has_selection() && !m_masked;
 		}
 
-		case TextEdit::Paste: {
+		case Paste: {
 			return os::clipboard_has_text();
 		}
 
-		case TextEdit::SelectAll: {
+		case SelectAll: {
 			return m_length > 0;
 		}
 	}
@@ -177,23 +181,25 @@ auto TextInput::apply(TextEdit t_edit) -> void
 	const std::string_view selected{m_text + range.start, range.end - range.start};
 
 	switch (t_edit) {
-		case TextEdit::Cut: {
+		using enum TextEdit;
+
+		case Cut: {
 			os::set_clipboard_text(selected);
 			erase(range);
 			break;
 		}
 
-		case TextEdit::Copy: {
+		case Copy: {
 			os::set_clipboard_text(selected);
 			break;
 		}
 
-		case TextEdit::Paste: {
+		case Paste: {
 			insert(os::clipboard_text());
 			break;
 		}
 
-		case TextEdit::SelectAll: {
+		case SelectAll: {
 			select(TextRange{0, m_length});
 			break;
 		}
@@ -232,37 +238,39 @@ auto TextInput::on_key_down(os::Key t_key) -> void
 	const bool collapse_selection = has_selection() && !held.shift;
 
 	switch (t_key) {
-		case os::Key::Backspace: {
+		using enum os::Key;
+
+		case Backspace: {
 			erase(has_selection() ? range : TextRange{previous, m_cursor});
 			break;
 		}
 
-		case os::Key::Delete: {
+		case Delete: {
 			erase(has_selection() ? range : TextRange{m_cursor, next});
 			break;
 		}
 
-		case os::Key::Left: {
+		case Left: {
 			move_cursor(collapse_selection ? range.start : previous, held.shift);
 			break;
 		}
 
-		case os::Key::Right: {
+		case Right: {
 			move_cursor(collapse_selection ? range.end : next, held.shift);
 			break;
 		}
 
-		case os::Key::Home: {
+		case Home: {
 			move_cursor(0, held.shift);
 			break;
 		}
 
-		case os::Key::End: {
+		case End: {
 			move_cursor(m_length, held.shift);
 			break;
 		}
 
-		case os::Key::E: {
+		case E: {
 			if (!held.shortcut) return;
 
 			move_cursor(m_length, false);

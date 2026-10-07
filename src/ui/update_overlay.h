@@ -108,7 +108,7 @@ class UpdateOverlay : public Widget {
 	[[nodiscard]] auto notes_box_height() const -> float;
 	[[nodiscard]] auto notes_content_height() const -> float;
 	[[nodiscard]] auto shown_notes() const -> std::string_view;
-	[[nodiscard]] auto anchor_rect() const -> Rect;
+	[[nodiscard]] auto anchored_x() const -> float;
 	[[nodiscard]] auto layout(const Content& t_content) const -> Layout;
 	[[nodiscard]] auto notes_scroll(const Layout& t_layout) const -> ScrollGeometry;
 	auto run(Action t_action) -> void;

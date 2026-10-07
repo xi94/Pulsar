@@ -230,16 +230,18 @@ constexpr u32 K_SWITCHER_ROW_COUNT = static_cast<u32>(std::size(K_SWITCHER_ROWS)
 [[nodiscard]] auto art_radius(ViewMode t_mode, Rect t_art) -> float
 {
 	switch (t_mode) {
-		case ViewMode::List: {
+		using enum ViewMode;
+
+		case List: {
 			return K_LIST_CORNER_RADIUS;
 		}
 
-		case ViewMode::Icons: {
+		case Icons: {
 			return t_art.w * K_ICON_ART_RADIUS_SHARE;
 		}
 
-		case ViewMode::Carousel:
-		case ViewMode::Grid: {
+		case Carousel:
+		case Grid: {
 			break;
 		}
 	}
@@ -564,16 +566,18 @@ auto Carousel::icon_tile_art(Rect t_tile) const -> Rect
 auto Carousel::wrap_columns() const -> u32
 {
 	switch (m_mode) {
-		case ViewMode::Grid: {
+		using enum ViewMode;
+
+		case Grid: {
 			return grid_columns(m_bounds.w, m_zoom_percent, view_scale());
 		}
 
-		case ViewMode::Icons: {
+		case Icons: {
 			return icon_columns();
 		}
 
-		case ViewMode::Carousel:
-		case ViewMode::List: {
+		case Carousel:
+		case List: {
 			break;
 		}
 	}
@@ -584,19 +588,21 @@ auto Carousel::wrap_columns() const -> u32
 auto Carousel::slot_rect(ViewMode t_mode, u32 t_slot) const -> Rect
 {
 	switch (t_mode) {
-		case ViewMode::Grid: {
+		using enum ViewMode;
+
+		case Grid: {
 			return grid_slot(t_slot);
 		}
 
-		case ViewMode::List: {
+		case List: {
 			return list_slot(t_slot);
 		}
 
-		case ViewMode::Icons: {
+		case Icons: {
 			return icon_slot(t_slot);
 		}
 
-		case ViewMode::Carousel: {
+		case Carousel: {
 			break;
 		}
 	}
@@ -663,16 +669,18 @@ auto Carousel::art_rect(ViewMode t_mode, u32 t_game) const -> Rect
 	const Rect card = shown_card(t_mode, t_game);
 
 	switch (t_mode) {
-		case ViewMode::List: {
+		using enum ViewMode;
+
+		case List: {
 			return list_thumb(card);
 		}
 
-		case ViewMode::Icons: {
+		case Icons: {
 			return grown(icon_tile_art(card), t_game);
 		}
 
-		case ViewMode::Carousel:
-		case ViewMode::Grid: {
+		case Carousel:
+		case Grid: {
 			break;
 		}
 	}
@@ -1321,35 +1329,37 @@ auto Carousel::on_key_down(os::Key t_key) -> bool
 	const i32  row_step   = std::max(1, static_cast<i32>(wrap_columns()));
 
 	switch (t_key) {
-		case os::Key::Left: {
+		using enum os::Key;
+
+		case Left: {
 			if (!horizontal) return false;
 
 			move_focus(-1);
 			return true;
 		}
 
-		case os::Key::Right: {
+		case Right: {
 			if (!horizontal) return false;
 
 			move_focus(1);
 			return true;
 		}
 
-		case os::Key::Up: {
+		case Up: {
 			if (!vertical) return false;
 
 			move_focus(-row_step);
 			return true;
 		}
 
-		case os::Key::Down: {
+		case Down: {
 			if (!vertical) return false;
 
 			move_focus(row_step);
 			return true;
 		}
 
-		case os::Key::Enter: {
+		case Enter: {
 			if (m_mode != ViewMode::Carousel && !m_keyboard_focus_shown) {
 				move_focus(0);
 				return true;
@@ -1723,22 +1733,24 @@ auto Carousel::draw_reorder_hint(DrawList* t_draw_list) const -> void
 auto Carousel::draw_mode(DrawList* t_draw_list, ViewMode t_mode) const -> void
 {
 	switch (t_mode) {
-		case ViewMode::Carousel: {
+		using enum ViewMode;
+
+		case Carousel: {
 			draw_carousel_mode(t_draw_list);
 			break;
 		}
 
-		case ViewMode::Grid: {
+		case Grid: {
 			draw_grid_mode(t_draw_list);
 			break;
 		}
 
-		case ViewMode::List: {
+		case List: {
 			draw_list_mode(t_draw_list);
 			break;
 		}
 
-		case ViewMode::Icons: {
+		case Icons: {
 			draw_icons_mode(t_draw_list);
 			break;
 		}

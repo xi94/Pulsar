@@ -55,20 +55,22 @@ class ViewEvents {
 [[nodiscard]] auto system_cursor(CursorKind t_cursor) -> NSCursor*
 {
 	switch (t_cursor) {
-		case CursorKind::Hand: {
+		using enum CursorKind;
+
+		case Hand: {
 			return NSCursor.pointingHandCursor;
 		}
 
-		case CursorKind::IBeam: {
+		case IBeam: {
 			return NSCursor.IBeamCursor;
 		}
 
-		case CursorKind::Move: {
+		case Move: {
 			return NSCursor.openHandCursor;
 		}
 
-		case CursorKind::Arrow:
-		case CursorKind::Drag: {
+		case Arrow:
+		case Drag: {
 			break;
 		}
 	}

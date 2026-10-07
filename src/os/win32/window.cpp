@@ -64,20 +64,22 @@ constexpr ULONGLONG K_ACTIVATE_EXISTING_TIMEOUT_MS = 3000;
 [[nodiscard]] auto system_cursor(CursorKind t_cursor) -> HCURSOR
 {
 	switch (t_cursor) {
-		case CursorKind::Hand: {
+		using enum CursorKind;
+
+		case Hand: {
 			return LoadCursorW(nullptr, IDC_HAND);
 		}
 
-		case CursorKind::IBeam: {
+		case IBeam: {
 			return LoadCursorW(nullptr, IDC_IBEAM);
 		}
 
-		case CursorKind::Move: {
+		case Move: {
 			return LoadCursorW(nullptr, IDC_SIZEALL);
 		}
 
-		case CursorKind::Arrow:
-		case CursorKind::Drag: {
+		case Arrow:
+		case Drag: {
 			break;
 		}
 	}

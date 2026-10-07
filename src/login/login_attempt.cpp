@@ -28,35 +28,37 @@ constexpr const char* K_UNRESPONSIVE_CLIENT_MESSAGE = "The Riot Client stopped r
 [[nodiscard]] auto stage_name(LoginStage t_stage) -> const char*
 {
 	switch (t_stage) {
-		case LoginStage::Idle: {
+		using enum LoginStage;
+
+		case Idle: {
 			return "IDLE";
 		}
 
-		case LoginStage::WaitingForProcess: {
+		case WaitingForProcess: {
 			return "WAITING_FOR_PROCESS";
 		}
 
-		case LoginStage::Connecting: {
+		case Connecting: {
 			return "CONNECTING";
 		}
 
-		case LoginStage::Authenticating: {
+		case Authenticating: {
 			return "AUTHENTICATING";
 		}
 
-		case LoginStage::Launching: {
+		case Launching: {
 			return "LAUNCHING";
 		}
 
-		case LoginStage::Success: {
+		case Success: {
 			return "SUCCESS";
 		}
 
-		case LoginStage::Error: {
+		case Error: {
 			return "ERROR";
 		}
 
-		case LoginStage::Cancelled: {
+		case Cancelled: {
 			return "CANCELLED";
 		}
 	}

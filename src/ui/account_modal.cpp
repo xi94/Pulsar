@@ -361,32 +361,34 @@ struct StageSpan {
 [[nodiscard]] auto stage_span(LoginStage t_stage) -> std::optional<StageSpan>
 {
 	switch (t_stage) {
-		case LoginStage::Idle: {
+		using enum LoginStage;
+
+		case Idle: {
 			return StageSpan{0.02f, 0.1f};
 		}
 
-		case LoginStage::WaitingForProcess: {
+		case WaitingForProcess: {
 			return StageSpan{0.08f, 0.3f};
 		}
 
-		case LoginStage::Connecting: {
+		case Connecting: {
 			return StageSpan{0.32f, 0.55f};
 		}
 
-		case LoginStage::Authenticating: {
+		case Authenticating: {
 			return StageSpan{0.58f, 0.82f};
 		}
 
-		case LoginStage::Launching: {
+		case Launching: {
 			return StageSpan{0.85f, 0.97f};
 		}
 
-		case LoginStage::Success: {
+		case Success: {
 			return StageSpan{1.0f, 1.0f};
 		}
 
-		case LoginStage::Error:
-		case LoginStage::Cancelled: {
+		case Error:
+		case Cancelled: {
 			break;
 		}
 	}
@@ -397,26 +399,28 @@ struct StageSpan {
 [[nodiscard]] auto stage_step(LoginStage t_stage) -> u32
 {
 	switch (t_stage) {
-		case LoginStage::WaitingForProcess: {
+		using enum LoginStage;
+
+		case WaitingForProcess: {
 			return 1;
 		}
 
-		case LoginStage::Connecting: {
+		case Connecting: {
 			return 2;
 		}
 
-		case LoginStage::Authenticating: {
+		case Authenticating: {
 			return 3;
 		}
 
-		case LoginStage::Launching: {
+		case Launching: {
 			return 4;
 		}
 
-		case LoginStage::Idle:
-		case LoginStage::Success:
-		case LoginStage::Error:
-		case LoginStage::Cancelled: {
+		case Idle:
+		case Success:
+		case Error:
+		case Cancelled: {
 			break;
 		}
 	}
@@ -427,35 +431,37 @@ struct StageSpan {
 [[nodiscard]] auto stage_message(LoginStage t_stage) -> std::string_view
 {
 	switch (t_stage) {
-		case LoginStage::Idle: {
+		using enum LoginStage;
+
+		case Idle: {
 			return "";
 		}
 
-		case LoginStage::WaitingForProcess: {
+		case WaitingForProcess: {
 			return "Launching Riot Client...";
 		}
 
-		case LoginStage::Connecting: {
+		case Connecting: {
 			return "Waiting for Riot Client...";
 		}
 
-		case LoginStage::Authenticating: {
+		case Authenticating: {
 			return "Logging in...";
 		}
 
-		case LoginStage::Launching: {
+		case Launching: {
 			return "Launching game...";
 		}
 
-		case LoginStage::Success: {
+		case Success: {
 			return "Logged in!";
 		}
 
-		case LoginStage::Error: {
+		case Error: {
 			return "Something went wrong.";
 		}
 
-		case LoginStage::Cancelled: {
+		case Cancelled: {
 			return "Cancelled.";
 		}
 	}
@@ -1591,7 +1597,9 @@ auto AccountModal::update(float t_delta_seconds) -> void
 	}
 
 	switch (m_mode) {
-		case Mode::AccountList: {
+		using enum Mode;
+
+		case AccountList: {
 			m_search.update(t_delta_seconds);
 
 			if (has_game()) {
@@ -1603,14 +1611,14 @@ auto AccountModal::update(float t_delta_seconds) -> void
 			break;
 		}
 
-		case Mode::LoginProgress: {
+		case LoginProgress: {
 			m_login_seconds += t_delta_seconds;
 			update_login_progress(t_delta_seconds);
 			animation::request_frame();
 			break;
 		}
 
-		case Mode::EditAccount: {
+		case EditAccount: {
 			m_form_scroll.update(t_delta_seconds);
 
 			for (TextInput& input : m_fields) {
@@ -1797,7 +1805,9 @@ auto AccountModal::on_pointer_up(Vec2 t_point) -> bool
 	}
 
 	switch (m_mode) {
-		case Mode::AccountList: {
+		using enum Mode;
+
+		case AccountList: {
 			if (has_game()) {
 				handle_list_click(current, t_point);
 			}
@@ -1805,7 +1815,7 @@ auto AccountModal::on_pointer_up(Vec2 t_point) -> bool
 			break;
 		}
 
-		case Mode::LoginProgress: {
+		case LoginProgress: {
 			if (primary_button_rect(current.footer).contains(t_point)) {
 				cancel_login();
 				m_mode = Mode::AccountList;
@@ -1814,7 +1824,7 @@ auto AccountModal::on_pointer_up(Vec2 t_point) -> bool
 			break;
 		}
 
-		case Mode::EditAccount: {
+		case EditAccount: {
 			handle_edit_click(current, t_point);
 			break;
 		}
@@ -1992,13 +2002,15 @@ auto AccountModal::handle_list_key(os::Key t_key) -> bool
 	if (m_drag.lifted) return true;
 
 	switch (t_key) {
-		case os::Key::Up:
-		case os::Key::Down: {
+		using enum os::Key;
+
+		case Up:
+		case Down: {
 			select_step(t_key == os::Key::Down ? 1 : -1);
 			return true;
 		}
 
-		case os::Key::Enter: {
+		case Enter: {
 			if (selected_row(displayed_accounts()) >= 0) {
 				request_login(static_cast<u32>(m_game), *m_selected);
 			}
@@ -2199,15 +2211,17 @@ auto AccountModal::cursor() const -> CursorKind
 	if (m_mode != Mode::LoginProgress && back_badge_rect(current).contains(m_mouse)) return CursorKind::Hand;
 
 	switch (m_mode) {
-		case Mode::AccountList: {
+		using enum Mode;
+
+		case AccountList: {
 			return has_game() ? list_cursor(current) : CursorKind::Arrow;
 		}
 
-		case Mode::LoginProgress: {
+		case LoginProgress: {
 			return primary_button_rect(current.footer).contains(m_mouse) ? CursorKind::Hand : CursorKind::Arrow;
 		}
 
-		case Mode::EditAccount: {
+		case EditAccount: {
 			return edit_cursor(current);
 		}
 	}
@@ -2956,12 +2970,14 @@ auto AccountModal::draw_footer(DrawList* t_draw_list, Rect t_footer, u8 t_alpha)
 	t_draw_list->add_rect(Rect{t_footer.x, t_footer.y, t_footer.w, 1.0f}, faded(g_theme.separator, t_alpha));
 
 	switch (m_mode) {
-		case Mode::EditAccount: {
+		using enum Mode;
+
+		case EditAccount: {
 			draw_edit_footer(t_draw_list, t_footer, t_alpha);
 			break;
 		}
 
-		case Mode::LoginProgress: {
+		case LoginProgress: {
 			const bool finished = !m_queued_login && LoginAttempt::is_terminal(m_login.stage());
 
 			draw_text_truncated(t_draw_list, secondary, Vec2{t_footer.x + K_ROW_PADDING, hint_baseline}, "", hint_width, faded(g_theme.text_faint, t_alpha));
@@ -2970,7 +2986,7 @@ auto AccountModal::draw_footer(DrawList* t_draw_list, Rect t_footer, u8 t_alpha)
 			break;
 		}
 
-		case Mode::AccountList: {
+		case AccountList: {
 			const bool can_login = selected_row(displayed_accounts()) >= 0;
 
 			draw_text_truncated(t_draw_list, secondary, Vec2{t_footer.x + K_ROW_PADDING, hint_baseline}, "Select an account to log in", hint_width,
@@ -3011,17 +3027,19 @@ auto AccountModal::draw(DrawList* t_draw_list) -> void
 	draw_back_badge(t_draw_list, current, alpha);
 
 	switch (m_mode) {
-		case Mode::AccountList: {
+		using enum Mode;
+
+		case AccountList: {
 			draw_account_list(t_draw_list, current, alpha);
 			break;
 		}
 
-		case Mode::LoginProgress: {
+		case LoginProgress: {
 			draw_login_progress(t_draw_list, current.main_column, alpha);
 			break;
 		}
 
-		case Mode::EditAccount: {
+		case EditAccount: {
 			draw_edit_form(t_draw_list, current.main_column, alpha);
 			break;
 		}

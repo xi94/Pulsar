@@ -9,11 +9,15 @@
 class Assets;
 struct Fonts;
 
+namespace os {
+class Window;
+}
+
 class AppMenu : public Widget {
   public:
-	AppMenu(const Fonts* t_fonts, const Assets* t_assets, CommandQueue* t_commands);
+	AppMenu(const os::Window* t_window, const Fonts* t_fonts, const Assets* t_assets, CommandQueue* t_commands);
 
-	auto open(bool t_unlocked, std::string_view t_update_status, float t_anchor_x) -> void;
+	auto open(bool t_unlocked, std::string_view t_update_status) -> void;
 	auto close() -> void;
 
 	[[nodiscard]] auto is_open() const -> bool
@@ -40,15 +44,15 @@ class AppMenu : public Widget {
 	[[nodiscard]] auto menu() const -> Rect;
 	[[nodiscard]] auto is_enabled(u32 t_item) const -> bool;
 
-	const Fonts*  m_fonts;
-	const Assets* m_assets;
-	CommandQueue* m_commands;
+	const os::Window* m_window;
+	const Fonts*      m_fonts;
+	const Assets*     m_assets;
+	CommandQueue*     m_commands;
 
 	bool             m_open     = false;
 	bool             m_unlocked = false;
 	std::string_view m_update_status;
 	float            m_open_amount = 0.0f;
-	float            m_anchor_x    = 0.0f;
 	float            m_item_hover[K_MAX_ITEMS]{};
 	u32              m_items[K_MAX_ITEMS]{};
 	u32              m_item_count = 0;

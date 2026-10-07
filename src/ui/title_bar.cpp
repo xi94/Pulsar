@@ -32,14 +32,16 @@ constexpr std::string_view K_SEARCH_PILL_SHORTCUT  = PULSAR_SHORTCUT_KEY "+S";
 [[nodiscard]] auto is_update_worth_showing(UpdateStage t_stage) -> bool
 {
 	switch (t_stage) {
-		case UpdateStage::Available:
-		case UpdateStage::ManualUpgradeRequired:
-		case UpdateStage::Downloading:
-		case UpdateStage::Verifying:
-		case UpdateStage::Installing:
-		case UpdateStage::ReadyToRelaunch:
-		case UpdateStage::Error:
-		case UpdateStage::Cancelled: {
+		using enum UpdateStage;
+
+		case Available:
+		case ManualUpgradeRequired:
+		case Downloading:
+		case Verifying:
+		case Installing:
+		case ReadyToRelaunch:
+		case Error:
+		case Cancelled: {
 			return true;
 		}
 
@@ -53,7 +55,7 @@ constexpr float K_STATUS_WIDTH_RATE        = 16.0f;
 constexpr float K_SPIN_TURNS_PER_SECOND    = 0.9f;
 constexpr float K_STATUS_REVEAL_RATE       = 14.0f;
 constexpr float K_STATUS_SHIFT             = 4.0f;
-constexpr float K_STATUS_PADDING_RIGHT     = 10.0f;
+constexpr float K_STATUS_PADDING_OUTER     = 10.0f;
 constexpr float K_STATUS_EMPHASIS_RATE     = 16.0f;
 constexpr float K_STATUS_EMPHASIS_STRENGTH = 0.75f;
 
@@ -74,25 +76,27 @@ struct StatusLook {
 	}
 
 	switch (t_stage) {
-		case UpdateStage::Idle:
-		case UpdateStage::Checking: {
+		using enum UpdateStage;
+
+		case Idle:
+		case Checking: {
 			return StatusLook{"Checking for updates", "Checking for updates", Asset::IconUpdate, g_theme.text_dim, g_theme.text_dim, true};
 		}
 
-		case UpdateStage::UpToDate: {
+		case UpToDate: {
 			return StatusLook{"Up to date", "Up to date", Asset::IconCheck, g_theme.text_dim, g_theme.text_dim, false, true};
 		}
 
-		case UpdateStage::CheckFailed: {
+		case CheckFailed: {
 			return StatusLook{"Couldn't check", "Couldn't check", Asset::IconUpdate, g_theme.error, g_theme.error};
 		}
 
-		case UpdateStage::Available:
-		case UpdateStage::ManualUpgradeRequired: {
+		case Available:
+		case ManualUpgradeRequired: {
 			return StatusLook{"Update available", "Update available", Asset::IconDownload, g_theme.success, g_theme.text};
 		}
 
-		case UpdateStage::Downloading: {
+		case Downloading: {
 			const u64 total   = t_updater->total_bytes();
 			const u64 percent = total > 0 ? t_updater->bytes_downloaded() * 100 / total : 0;
 			const int written = std::snprintf(t_percent, sizeof(t_percent), "%u%%", static_cast<unsigned>(std::min<u64>(percent, 100)));
@@ -101,23 +105,23 @@ struct StatusLook {
 			                  g_theme.text};
 		}
 
-		case UpdateStage::Verifying: {
+		case Verifying: {
 			return StatusLook{"Verifying", "Verifying", Asset::IconUpdate, g_theme.text_dim, g_theme.text_dim, true};
 		}
 
-		case UpdateStage::Installing: {
+		case Installing: {
 			return StatusLook{"Installing", "Installing", Asset::IconUpdate, g_theme.text_dim, g_theme.text_dim, true};
 		}
 
-		case UpdateStage::ReadyToRelaunch: {
+		case ReadyToRelaunch: {
 			return StatusLook{"Restarting", "Restarting", Asset::IconUpdate, g_theme.text_dim, g_theme.text_dim, true};
 		}
 
-		case UpdateStage::Error: {
+		case Error: {
 			return StatusLook{"Update failed", "Update failed", Asset::IconUpdate, g_theme.error, g_theme.error};
 		}
 
-		case UpdateStage::Cancelled: {
+		case Cancelled: {
 			return StatusLook{"Update cancelled", "Update cancelled", Asset::IconUpdate, g_theme.text_dim, g_theme.text_dim};
 		}
 	}
@@ -156,7 +160,7 @@ auto TitleBar::update(float t_delta_seconds) -> void
 	char             percent[8];
 	const StatusLook look = status_look(m_updater, m_update_overlay->shown_stage(), m_update_overlay->is_showing_release_notes(), percent);
 	const float      target =
-		K_IDENTITY_GAP * 0.5f + K_ICON_SIZE + K_STATUS_ICON_GAP + std::ceil(text_width(m_fonts->secondary, look.sizing_label)) + K_STATUS_PADDING_RIGHT;
+		K_IDENTITY_GAP * 0.5f + K_ICON_SIZE + K_STATUS_ICON_GAP + std::ceil(text_width(m_fonts->secondary, look.sizing_label)) + K_STATUS_PADDING_OUTER;
 
 	m_status_width =
 		m_status_width <= 0.0f ? target : animation::ease_toward(m_status_width, target, K_STATUS_WIDTH_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS);
@@ -188,36 +192,38 @@ auto TitleBar::on_pointer_down(Vec2 t_point) -> bool
 auto TitleBar::on_pointer_up(Vec2 t_point) -> bool
 {
 	switch (layout().button_at(t_point)) {
-		case TitleBarButton::None: {
+		using enum TitleBarButton;
+
+		case None: {
 			return false;
 		}
 
-		case TitleBarButton::Menu: {
+		case Menu: {
 			m_commands->push(Command{.type = CommandType::ToggleAppMenu});
 			break;
 		}
 
-		case TitleBarButton::Search: {
+		case Search: {
 			m_commands->push(Command{.type = CommandType::OpenAccountSearch});
 			break;
 		}
 
-		case TitleBarButton::Update: {
+		case Update: {
 			m_commands->push(Command{.type = CommandType::ToggleUpdateOverlay});
 			break;
 		}
 
-		case TitleBarButton::Minimize: {
+		case Minimize: {
 			m_window->minimize();
 			break;
 		}
 
-		case TitleBarButton::Maximize: {
+		case Maximize: {
 			m_window->toggle_maximized();
 			break;
 		}
 
-		case TitleBarButton::Close: {
+		case Close: {
 			m_window->close();
 			break;
 		}
@@ -241,12 +247,14 @@ auto TitleBar::draw_hover(DrawList* t_draw_list, TitleBarButton t_button, TitleB
 
 auto TitleBar::draw_identity(DrawList* t_draw_list, float t_amount) const -> void
 {
-	const Rect  menu  = layout().button_rect(TitleBarButton::Menu);
-	const float shift = -K_STATUS_SHIFT * (1.0f - t_amount);
-	const Rect  mark{menu.right() + K_IDENTITY_GAP * 0.5f, (K_TITLE_BAR_HEIGHT - K_IDENTITY_MARK_SIZE) * 0.5f + shift, K_IDENTITY_MARK_SIZE,
-	                 K_IDENTITY_MARK_SIZE};
-	const Font& font  = m_fonts->secondary;
-	const auto  alpha = to_alpha(t_amount);
+	const TitleBarLayout title_bar = layout();
+	const Rect           menu      = title_bar.button_rect(TitleBarButton::Menu);
+	const Font&          font      = m_fonts->secondary;
+	const float          width     = K_IDENTITY_MARK_SIZE + K_IDENTITY_GAP + std::ceil(text_width(font, K_APP_NAME));
+	const float          left      = title_bar.menu_on_right() ? menu.x - K_IDENTITY_GAP * 0.5f - width : menu.right() + K_IDENTITY_GAP * 0.5f;
+	const float          shift     = -K_STATUS_SHIFT * (1.0f - t_amount);
+	const Rect           mark{left, (K_TITLE_BAR_HEIGHT - K_IDENTITY_MARK_SIZE) * 0.5f + shift, K_IDENTITY_MARK_SIZE, K_IDENTITY_MARK_SIZE};
+	const auto           alpha = to_alpha(t_amount);
 
 	t_draw_list->add_image(mark, m_assets->get(Asset::IconApp), faded(g_theme.text_dim, alpha));
 	draw_text(t_draw_list, font, Vec2{mark.right() + K_IDENTITY_GAP, font.centered_baseline(menu) + shift}, K_APP_NAME, faded(g_theme.text_dim, alpha));
@@ -254,15 +262,17 @@ auto TitleBar::draw_identity(DrawList* t_draw_list, float t_amount) const -> voi
 
 auto TitleBar::draw_update_status(DrawList* t_draw_list, float t_amount) const -> void
 {
-	char             percent[8];
-	const StatusLook look  = status_look(m_updater, m_update_overlay->shown_stage(), m_update_overlay->is_showing_release_notes(), percent);
-	const Rect       area  = layout().button_rect(TitleBarButton::Update);
-	const auto       alpha = to_alpha(t_amount);
-	const float      shift = K_STATUS_SHIFT * (1.0f - t_amount);
+	char                 percent[8];
+	const StatusLook     look      = status_look(m_updater, m_update_overlay->shown_stage(), m_update_overlay->is_showing_release_notes(), percent);
+	const TitleBarLayout title_bar = layout();
+	const Rect           area      = title_bar.button_rect(TitleBarButton::Update);
+	const auto           alpha     = to_alpha(t_amount);
+	const float          shift     = K_STATUS_SHIFT * (1.0f - t_amount);
 	t_draw_list->push_clip(area);
 
-	const Font& font = m_fonts->secondary;
-	const Rect  icon{area.x + K_IDENTITY_GAP * 0.5f, (K_TITLE_BAR_HEIGHT - K_ICON_SIZE) * 0.5f + shift, K_ICON_SIZE, K_ICON_SIZE};
+	const Font& font    = m_fonts->secondary;
+	const float padding = title_bar.menu_on_right() ? K_STATUS_PADDING_OUTER : K_IDENTITY_GAP * 0.5f;
+	const Rect  icon{area.x + padding, (K_TITLE_BAR_HEIGHT - K_ICON_SIZE) * 0.5f + shift, K_ICON_SIZE, K_ICON_SIZE};
 	const Color icon_color = faded(look.icon_color, alpha);
 
 	if (look.spinning) {

@@ -3,15 +3,19 @@
 #include <algorithm>
 #include <cmath>
 
+auto TitleBarLayout::menu_on_right() const -> bool
+{
+	return native_controls_width > 0.0f;
+}
+
 auto TitleBarLayout::button_rect(TitleBarButton t_button) const -> Rect
 {
-	const bool  native_controls = native_controls_width > 0.0f;
-	const bool  window_button   = t_button == TitleBarButton::Minimize || t_button == TitleBarButton::Maximize || t_button == TitleBarButton::Close;
-	const float right           = width;
-	const float leading         = native_controls_width;
-	const float trailing        = native_controls ? 0.0f : K_TITLE_BAR_BUTTON_WIDTH * 3.0f;
+	const bool  window_button = t_button == TitleBarButton::Minimize || t_button == TitleBarButton::Maximize || t_button == TitleBarButton::Close;
+	const float right         = width;
+	const float leading       = native_controls_width;
+	const float trailing      = menu_on_right() ? 0.0f : K_TITLE_BAR_BUTTON_WIDTH * 3.0f;
 
-	if (native_controls && window_button) return Rect{};
+	if (menu_on_right() && window_button) return Rect{};
 
 	if (dialog) {
 		if (t_button == TitleBarButton::Minimize) {
@@ -26,14 +30,19 @@ auto TitleBarLayout::button_rect(TitleBarButton t_button) const -> Rect
 	}
 
 	switch (t_button) {
-		case TitleBarButton::Menu: {
-			return Rect{leading, 0.0f, K_TITLE_BAR_BUTTON_WIDTH, K_TITLE_BAR_HEIGHT};
+		using enum TitleBarButton;
+
+		case Menu: {
+			const float x = menu_on_right() ? right - K_TITLE_BAR_BUTTON_WIDTH : leading;
+
+			return Rect{x, 0.0f, K_TITLE_BAR_BUTTON_WIDTH, K_TITLE_BAR_HEIGHT};
 		}
 
-		case TitleBarButton::Search: {
-			const float side       = update_visible ? update_width + K_SEARCH_BUTTON_MARGIN : 0.0f;
-			const float left       = leading + K_TITLE_BAR_BUTTON_WIDTH + std::max(K_SEARCH_BUTTON_SIDE_ROOM, side);
-			const float limit      = right - trailing - K_SEARCH_BUTTON_MARGIN;
+		case Search: {
+			const float status     = update_visible ? update_width + K_SEARCH_BUTTON_MARGIN : 0.0f;
+			const float menu_side  = K_TITLE_BAR_BUTTON_WIDTH + std::max(K_SEARCH_BUTTON_SIDE_ROOM, status);
+			const float left       = menu_on_right() ? leading + K_SEARCH_BUTTON_MARGIN : leading + menu_side;
+			const float limit      = menu_on_right() ? right - menu_side : right - trailing - K_SEARCH_BUTTON_MARGIN;
 			const float pill_width = std::min(K_SEARCH_BUTTON_WIDTH, limit - left);
 			if (pill_width < K_SEARCH_BUTTON_MIN_WIDTH) return Rect{};
 
@@ -42,23 +51,25 @@ auto TitleBarLayout::button_rect(TitleBarButton t_button) const -> Rect
 			return Rect{std::floor(x), 0.0f, pill_width, K_TITLE_BAR_HEIGHT};
 		}
 
-		case TitleBarButton::Update: {
-			return Rect{leading + K_TITLE_BAR_BUTTON_WIDTH, 0.0f, update_width, K_TITLE_BAR_HEIGHT};
+		case Update: {
+			const float x = menu_on_right() ? right - K_TITLE_BAR_BUTTON_WIDTH - update_width : leading + K_TITLE_BAR_BUTTON_WIDTH;
+
+			return Rect{x, 0.0f, update_width, K_TITLE_BAR_HEIGHT};
 		}
 
-		case TitleBarButton::Minimize: {
+		case Minimize: {
 			return Rect{right - K_TITLE_BAR_BUTTON_WIDTH * 3.0f, 0.0f, K_TITLE_BAR_BUTTON_WIDTH, K_TITLE_BAR_HEIGHT};
 		}
 
-		case TitleBarButton::Maximize: {
+		case Maximize: {
 			return Rect{right - K_TITLE_BAR_BUTTON_WIDTH * 2.0f, 0.0f, K_TITLE_BAR_BUTTON_WIDTH, K_TITLE_BAR_HEIGHT};
 		}
 
-		case TitleBarButton::Close: {
+		case Close: {
 			return Rect{right - K_TITLE_BAR_BUTTON_WIDTH, 0.0f, K_TITLE_BAR_BUTTON_WIDTH, K_TITLE_BAR_HEIGHT};
 		}
 
-		case TitleBarButton::None: {
+		case None: {
 			break;
 		}
 	}

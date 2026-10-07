@@ -80,8 +80,9 @@ constexpr u32 K_ITEM_COUNT = static_cast<u32>(std::size(K_MENU_ITEMS));
 }
 }
 
-AppMenu::AppMenu(const Fonts* t_fonts, const Assets* t_assets, CommandQueue* t_commands)
-	: m_fonts(t_fonts)
+AppMenu::AppMenu(const os::Window* t_window, const Fonts* t_fonts, const Assets* t_assets, CommandQueue* t_commands)
+	: m_window(t_window)
+	, m_fonts(t_fonts)
 	, m_assets(t_assets)
 	, m_commands(t_commands)
 {
@@ -95,11 +96,10 @@ AppMenu::AppMenu(const Fonts* t_fonts, const Assets* t_assets, CommandQueue* t_c
 	}
 }
 
-auto AppMenu::open(bool t_unlocked, std::string_view t_update_status, float t_anchor_x) -> void
+auto AppMenu::open(bool t_unlocked, std::string_view t_update_status) -> void
 {
 	m_unlocked      = t_unlocked;
 	m_update_status = t_update_status;
-	m_anchor_x      = t_anchor_x;
 	m_open          = true;
 }
 
@@ -115,11 +115,14 @@ auto AppMenu::items() const -> std::span<const u32>
 
 auto AppMenu::menu() const -> Rect
 {
-	const float content = item_offset(m_fonts, items(), m_item_count - 1) + item_height(m_fonts);
-	const float height  = K_MENU_PADDING * 2.0f + content + K_SEPARATOR_BLOCK + footer_height(m_fonts);
-	const float slide   = snapped_to_pixel((1.0f - m_open_amount) * -K_SLIDE_DISTANCE);
+	const TitleBarLayout title_bar{.width = static_cast<float>(m_window->width()), .native_controls_width = m_window->native_controls_width()};
+	const Rect           button  = title_bar.button_rect(TitleBarButton::Menu);
+	const float          x       = title_bar.menu_on_right() ? button.right() - K_MENU_X - K_MENU_WIDTH : button.x + K_MENU_X;
+	const float          content = item_offset(m_fonts, items(), m_item_count - 1) + item_height(m_fonts);
+	const float          height  = K_MENU_PADDING * 2.0f + content + K_SEPARATOR_BLOCK + footer_height(m_fonts);
+	const float          slide   = snapped_to_pixel((1.0f - m_open_amount) * -K_SLIDE_DISTANCE);
 
-	return Rect{m_anchor_x + K_MENU_X, K_TITLE_BAR_HEIGHT + 4.0f + slide, K_MENU_WIDTH, height};
+	return Rect{x, K_TITLE_BAR_HEIGHT + 4.0f + slide, K_MENU_WIDTH, height};
 }
 
 auto AppMenu::is_enabled(u32 t_item) const -> bool

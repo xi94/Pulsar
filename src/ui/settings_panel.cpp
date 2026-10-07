@@ -766,31 +766,33 @@ auto SettingsPanel::inline_slider_left(Rect t_row) const -> float
 auto SettingsPanel::slider_line(const Rows& t_rows, SliderKind t_slider) const -> Rect
 {
 	switch (t_slider) {
-		case SliderKind::CornerRoundness: {
+		using enum SliderKind;
+
+		case CornerRoundness: {
 			return t_rows.corner_roundness;
 		}
 
-		case SliderKind::PatternStrength: {
+		case PatternStrength: {
 			return t_rows.background;
 		}
 
-		case SliderKind::LightStrength: {
+		case LightStrength: {
 			return t_rows.background_light;
 		}
 
-		case SliderKind::GrainStrength: {
+		case GrainStrength: {
 			return t_rows.background_grain;
 		}
 
-		case SliderKind::AnimationSpeed: {
+		case AnimationSpeed: {
 			return t_rows.animations;
 		}
 
-		case SliderKind::AutoLock: {
+		case AutoLock: {
 			return t_rows.auto_lock;
 		}
 
-		case SliderKind::Count: {
+		case Count: {
 			break;
 		}
 	}
@@ -803,22 +805,24 @@ auto SettingsPanel::slider_rect(const Rows& t_rows, SliderKind t_slider) const -
 	const Rect line = slider_line(t_rows, t_slider);
 
 	switch (t_slider) {
-		case SliderKind::CornerRoundness:
-		case SliderKind::AutoLock: {
+		using enum SliderKind;
+
+		case CornerRoundness:
+		case AutoLock: {
 			return slider_control_rect(line, m_fonts);
 		}
 
-		case SliderKind::PatternStrength:
-		case SliderKind::LightStrength:
-		case SliderKind::GrainStrength: {
+		case PatternStrength:
+		case LightStrength:
+		case GrainStrength: {
 			return inline_slider_rect(line, pattern_select_rect(line, m_fonts), inline_slider_left(line), m_fonts);
 		}
 
-		case SliderKind::AnimationSpeed: {
+		case AnimationSpeed: {
 			return inline_slider_rect(line, toggle_rect(line), inline_slider_left(line), m_fonts);
 		}
 
-		case SliderKind::Count: {
+		case Count: {
 			break;
 		}
 	}
@@ -837,19 +841,21 @@ auto SettingsPanel::slider_hit_rect(const Rows& t_rows, SliderKind t_slider) con
 auto SettingsPanel::slider_visibility(SliderKind t_slider) const -> float
 {
 	switch (t_slider) {
-		case SliderKind::PatternStrength:
-		case SliderKind::LightStrength:
-		case SliderKind::GrainStrength: {
+		using enum SliderKind;
+
+		case PatternStrength:
+		case LightStrength:
+		case GrainStrength: {
 			return m_percent_reveal[static_cast<u32>(t_slider) - static_cast<u32>(SliderKind::PatternStrength)];
 		}
 
-		case SliderKind::AnimationSpeed: {
+		case AnimationSpeed: {
 			return m_animation_speed_reveal;
 		}
 
-		case SliderKind::CornerRoundness:
-		case SliderKind::AutoLock:
-		case SliderKind::Count: {
+		case CornerRoundness:
+		case AutoLock:
+		case Count: {
 			break;
 		}
 	}
@@ -860,25 +866,27 @@ auto SettingsPanel::slider_visibility(SliderKind t_slider) const -> float
 auto SettingsPanel::slider_fraction(SliderKind t_slider) const -> float
 {
 	switch (t_slider) {
-		case SliderKind::CornerRoundness: {
+		using enum SliderKind;
+
+		case CornerRoundness: {
 			return fraction_in(m_corner_roundness_shown, K_CORNER_ROUNDNESS_MIN, K_CORNER_ROUNDNESS_MAX);
 		}
 
-		case SliderKind::PatternStrength:
-		case SliderKind::LightStrength:
-		case SliderKind::GrainStrength: {
+		case PatternStrength:
+		case LightStrength:
+		case GrainStrength: {
 			return m_percent_shown[static_cast<u32>(t_slider) - static_cast<u32>(SliderKind::PatternStrength)];
 		}
 
-		case SliderKind::AnimationSpeed: {
+		case AnimationSpeed: {
 			return fraction_in(m_animation_speed_shown, K_ANIMATION_SPEED_MIN, K_ANIMATION_SPEED_MAX);
 		}
 
-		case SliderKind::AutoLock: {
+		case AutoLock: {
 			return m_auto_lock_shown / static_cast<float>(K_AUTO_LOCK_STOP_COUNT - 1);
 		}
 
-		case SliderKind::Count: {
+		case Count: {
 			break;
 		}
 	}
@@ -891,28 +899,30 @@ auto SettingsPanel::slider_readout(SliderKind t_slider, char (&t_buffer)[16]) co
 	int written = 0;
 
 	switch (t_slider) {
-		case SliderKind::CornerRoundness: {
+		using enum SliderKind;
+
+		case CornerRoundness: {
 			written = std::snprintf(t_buffer, sizeof(t_buffer), "%.0f%%", m_corner_roundness_shown * 100.0f);
 			break;
 		}
 
-		case SliderKind::PatternStrength:
-		case SliderKind::LightStrength:
-		case SliderKind::GrainStrength: {
+		case PatternStrength:
+		case LightStrength:
+		case GrainStrength: {
 			written = std::snprintf(t_buffer, sizeof(t_buffer), "%.0f%%", slider_fraction(t_slider) * 100.0f);
 			break;
 		}
 
-		case SliderKind::AnimationSpeed: {
+		case AnimationSpeed: {
 			written = std::snprintf(t_buffer, sizeof(t_buffer), "%.2fx", m_animation_speed_shown);
 			break;
 		}
 
-		case SliderKind::AutoLock: {
+		case AutoLock: {
 			return auto_lock_label(m_settings->auto_lock_minutes, t_buffer);
 		}
 
-		case SliderKind::Count: {
+		case Count: {
 			break;
 		}
 	}
@@ -936,34 +946,36 @@ auto SettingsPanel::slider_at(const Layout& t_layout, const Rows& t_rows, Vec2 t
 auto SettingsPanel::apply_slider(SliderKind t_slider, float t_fraction) -> void
 {
 	switch (t_slider) {
-		case SliderKind::CornerRoundness: {
+		using enum SliderKind;
+
+		case CornerRoundness: {
 			m_settings->corner_roundness = value_at(t_fraction, K_CORNER_ROUNDNESS_MIN, K_CORNER_ROUNDNESS_MAX);
 			set_corner_roundness(m_settings->corner_roundness);
 			break;
 		}
 
-		case SliderKind::PatternStrength:
-		case SliderKind::LightStrength:
-		case SliderKind::GrainStrength: {
+		case PatternStrength:
+		case LightStrength:
+		case GrainStrength: {
 			const u32 index = static_cast<u32>(t_slider) - static_cast<u32>(SliderKind::PatternStrength);
 
 			m_settings->*K_PERCENT_SLIDERS[index].value = value_at(t_fraction, 0.0f, 1.0f);
 			break;
 		}
 
-		case SliderKind::AnimationSpeed: {
+		case AnimationSpeed: {
 			m_settings->animation_speed = value_at(t_fraction, K_ANIMATION_SPEED_MIN, K_ANIMATION_SPEED_MAX);
 			animation::set_speed(m_settings->animation_speed);
 			break;
 		}
 
-		case SliderKind::AutoLock: {
+		case AutoLock: {
 			const auto stop               = static_cast<u32>(std::lround(t_fraction * static_cast<float>(K_AUTO_LOCK_STOP_COUNT - 1)));
 			m_settings->auto_lock_minutes = K_AUTO_LOCK_STOPS[std::min(stop, K_AUTO_LOCK_STOP_COUNT - 1)];
 			break;
 		}
 
-		case SliderKind::Count: {
+		case Count: {
 			break;
 		}
 	}
@@ -1169,64 +1181,66 @@ auto SettingsPanel::reset_row(const Rows& t_rows, u32 t_setting) const -> Rect
 	if (const Toggle* toggle = reset_toggle(t_setting)) return t_rows.*toggle->row;
 
 	switch (static_cast<ResettableSetting>(t_setting)) {
-		case ResettableSetting::Theme: {
+		using enum ResettableSetting;
+
+		case Theme: {
 			return t_rows.theme;
 		}
 
-		case ResettableSetting::Font: {
+		case Font: {
 			return t_rows.font;
 		}
 
-		case ResettableSetting::FontSize: {
+		case FontSize: {
 			return t_rows.font_size;
 		}
 
-		case ResettableSetting::SecondaryFontSize: {
+		case SecondaryFontSize: {
 			return t_rows.secondary_font_size;
 		}
 
-		case ResettableSetting::Accent: {
+		case Accent: {
 			return t_rows.accent;
 		}
 
-		case ResettableSetting::CornerRoundness: {
+		case CornerRoundness: {
 			return t_rows.corner_roundness;
 		}
 
-		case ResettableSetting::Background:
-		case ResettableSetting::BackgroundIntensity: {
+		case Background:
+		case BackgroundIntensity: {
 			return t_rows.background;
 		}
 
-		case ResettableSetting::BackgroundLightIntensity: {
+		case BackgroundLightIntensity: {
 			return t_rows.background_light;
 		}
 
-		case ResettableSetting::BackgroundGrainIntensity: {
+		case BackgroundGrainIntensity: {
 			return t_rows.background_grain;
 		}
 
-		case ResettableSetting::AnimationSpeed: {
+		case AnimationSpeed: {
 			return t_rows.animations;
 		}
 
-		case ResettableSetting::CloseToTray: {
+		case CloseToTray: {
 			return t_rows.close_to_tray;
 		}
 
-		case ResettableSetting::Renderer: {
+		case Renderer: {
 			return t_rows.renderer;
 		}
 
-		case ResettableSetting::AutoLock: {
+		case AutoLock: {
 			return t_rows.auto_lock;
 		}
 
-		case ResettableSetting::RiotClient: {
+		case RiotClient: {
 			return t_rows.riot_client;
 		}
 
-		case ResettableSetting::Count: {
+		case Count: {
 			break;
 		}
 	}
@@ -1242,46 +1256,48 @@ auto SettingsPanel::reset_control(const Rows& t_rows, u32 t_setting) const -> Re
 	if (reset_toggle(t_setting) != nullptr) return toggle_rect(row);
 
 	switch (static_cast<ResettableSetting>(t_setting)) {
-		case ResettableSetting::Theme:
-		case ResettableSetting::Font: {
+		using enum ResettableSetting;
+
+		case Theme:
+		case Font: {
 			return dropdown_rect(row, m_fonts);
 		}
 
-		case ResettableSetting::Background: {
+		case Background: {
 			return pattern_select_rect(row, m_fonts);
 		}
 
-		case ResettableSetting::FontSize:
-		case ResettableSetting::SecondaryFontSize: {
+		case FontSize:
+		case SecondaryFontSize: {
 			return stepper_rect(row, m_fonts);
 		}
 
-		case ResettableSetting::Accent: {
+		case Accent: {
 			return swatch_rect(row).inset(-(K_SWATCH_RING_GAP + K_SWATCH_RING));
 		}
 
-		case ResettableSetting::CornerRoundness:
-		case ResettableSetting::AutoLock: {
+		case CornerRoundness:
+		case AutoLock: {
 			return slider_control_rect(row, m_fonts);
 		}
 
-		case ResettableSetting::CloseToTray: {
+		case CloseToTray: {
 			return segment_choice_rect(row, K_CLOSE_CHOICE_LABELS);
 		}
 
-		case ResettableSetting::Renderer: {
+		case Renderer: {
 			return segment_choice_rect(row, m_renderer_labels);
 		}
 
-		case ResettableSetting::RiotClient: {
+		case RiotClient: {
 			return riot_client_button_rect(row, m_fonts);
 		}
 
-		case ResettableSetting::BackgroundIntensity:
-		case ResettableSetting::BackgroundLightIntensity:
-		case ResettableSetting::BackgroundGrainIntensity:
-		case ResettableSetting::AnimationSpeed:
-		case ResettableSetting::Count: {
+		case BackgroundIntensity:
+		case BackgroundLightIntensity:
+		case BackgroundGrainIntensity:
+		case AnimationSpeed:
+		case Count: {
 			break;
 		}
 	}
@@ -1297,19 +1313,21 @@ auto SettingsPanel::reset_button(const Rows& t_rows, u32 t_setting) const -> Rec
 auto SettingsPanel::reset_slider(u32 t_setting) -> std::optional<SettingsPanel::SliderKind>
 {
 	switch (static_cast<ResettableSetting>(t_setting)) {
-		case ResettableSetting::BackgroundIntensity: {
+		using enum ResettableSetting;
+
+		case BackgroundIntensity: {
 			return SliderKind::PatternStrength;
 		}
 
-		case ResettableSetting::BackgroundLightIntensity: {
+		case BackgroundLightIntensity: {
 			return SliderKind::LightStrength;
 		}
 
-		case ResettableSetting::BackgroundGrainIntensity: {
+		case BackgroundGrainIntensity: {
 			return SliderKind::GrainStrength;
 		}
 
-		case ResettableSetting::AnimationSpeed: {
+		case AnimationSpeed: {
 			return SliderKind::AnimationSpeed;
 		}
 
@@ -1343,67 +1361,69 @@ auto SettingsPanel::is_default(u32 t_setting) const -> bool
 	if (const Toggle* toggle = reset_toggle(t_setting)) return m_settings->*toggle->value == defaults.*toggle->value;
 
 	switch (static_cast<ResettableSetting>(t_setting)) {
-		case ResettableSetting::Theme: {
+		using enum ResettableSetting;
+
+		case Theme: {
 			return m_settings->theme == defaults.theme;
 		}
 
-		case ResettableSetting::Font: {
+		case Font: {
 			return std::string_view{m_settings->font_name} == defaults.font_name;
 		}
 
-		case ResettableSetting::FontSize: {
+		case FontSize: {
 			return same(m_settings->font_size, defaults.font_size);
 		}
 
-		case ResettableSetting::SecondaryFontSize: {
+		case SecondaryFontSize: {
 			return same(m_settings->secondary_font_size, defaults.secondary_font_size);
 		}
 
-		case ResettableSetting::Accent: {
+		case Accent: {
 			return m_settings->accent == theme_preset(m_settings->theme).default_accent;
 		}
 
-		case ResettableSetting::CornerRoundness: {
+		case CornerRoundness: {
 			return same(m_settings->corner_roundness, defaults.corner_roundness);
 		}
 
-		case ResettableSetting::Background: {
+		case Background: {
 			return m_settings->background_style == defaults.background_style;
 		}
 
-		case ResettableSetting::BackgroundIntensity: {
+		case BackgroundIntensity: {
 			return same(m_settings->background_intensity, defaults.background_intensity);
 		}
 
-		case ResettableSetting::BackgroundLightIntensity: {
+		case BackgroundLightIntensity: {
 			return same(m_settings->background_light_intensity, defaults.background_light_intensity);
 		}
 
-		case ResettableSetting::BackgroundGrainIntensity: {
+		case BackgroundGrainIntensity: {
 			return same(m_settings->background_grain_intensity, defaults.background_grain_intensity);
 		}
 
-		case ResettableSetting::AnimationSpeed: {
+		case AnimationSpeed: {
 			return same(m_settings->animation_speed, defaults.animation_speed);
 		}
 
-		case ResettableSetting::CloseToTray: {
+		case CloseToTray: {
 			return m_settings->close_to_tray == defaults.close_to_tray;
 		}
 
-		case ResettableSetting::Renderer: {
+		case Renderer: {
 			return m_settings->renderer == defaults.renderer;
 		}
 
-		case ResettableSetting::AutoLock: {
+		case AutoLock: {
 			return m_settings->auto_lock_minutes == defaults.auto_lock_minutes;
 		}
 
-		case ResettableSetting::RiotClient: {
+		case RiotClient: {
 			return m_settings->riot_client_path[0] == '\0';
 		}
 
-		case ResettableSetting::Count: {
+		case Count: {
 			break;
 		}
 	}
@@ -1423,12 +1443,14 @@ auto SettingsPanel::reset_to_default(u32 t_setting) -> void
 	}
 
 	switch (static_cast<ResettableSetting>(t_setting)) {
-		case ResettableSetting::Theme: {
+		using enum ResettableSetting;
+
+		case Theme: {
 			select_theme(defaults.theme);
 			break;
 		}
 
-		case ResettableSetting::Font: {
+		case Font: {
 			if (load_fonts(defaults.font_name)) {
 				copy_to(defaults.font_name, m_settings->font_name);
 				refresh_font_label();
@@ -1436,77 +1458,77 @@ auto SettingsPanel::reset_to_default(u32 t_setting) -> void
 			break;
 		}
 
-		case ResettableSetting::FontSize: {
+		case FontSize: {
 			m_settings->font_size = defaults.font_size;
 			load_fonts(m_settings->font_name);
 			break;
 		}
 
-		case ResettableSetting::SecondaryFontSize: {
+		case SecondaryFontSize: {
 			m_settings->secondary_font_size = defaults.secondary_font_size;
 			load_fonts(m_settings->font_name);
 			break;
 		}
 
-		case ResettableSetting::Accent: {
+		case Accent: {
 			m_settings->accent = theme_preset(m_settings->theme).default_accent;
 			m_color_picker.close();
 			break;
 		}
 
-		case ResettableSetting::CornerRoundness: {
+		case CornerRoundness: {
 			m_settings->corner_roundness = defaults.corner_roundness;
 			break;
 		}
 
-		case ResettableSetting::Background: {
+		case Background: {
 			m_settings->background_style = defaults.background_style;
 			break;
 		}
 
-		case ResettableSetting::BackgroundIntensity: {
+		case BackgroundIntensity: {
 			m_settings->background_intensity = defaults.background_intensity;
 			break;
 		}
 
-		case ResettableSetting::BackgroundLightIntensity: {
+		case BackgroundLightIntensity: {
 			m_settings->background_light_intensity = defaults.background_light_intensity;
 			break;
 		}
 
-		case ResettableSetting::BackgroundGrainIntensity: {
+		case BackgroundGrainIntensity: {
 			m_settings->background_grain_intensity = defaults.background_grain_intensity;
 			break;
 		}
 
-		case ResettableSetting::AnimationSpeed: {
+		case AnimationSpeed: {
 			m_settings->animation_speed = defaults.animation_speed;
 			animation::set_speed(m_settings->animation_speed);
 			break;
 		}
 
-		case ResettableSetting::CloseToTray: {
+		case CloseToTray: {
 			m_settings->close_to_tray = defaults.close_to_tray;
 			break;
 		}
 
-		case ResettableSetting::Renderer: {
+		case Renderer: {
 			m_settings->renderer = defaults.renderer;
 			break;
 		}
 
-		case ResettableSetting::AutoLock: {
+		case AutoLock: {
 			m_settings->auto_lock_minutes = defaults.auto_lock_minutes;
 			break;
 		}
 
-		case ResettableSetting::RiotClient: {
+		case RiotClient: {
 			m_settings->riot_client_path[0] = '\0';
 			m_commands->push(Command{.type = CommandType::SaveChanges});
 			break;
 		}
 
-		case ResettableSetting::Count: {
+		case Count: {
 			break;
 		}
 	}

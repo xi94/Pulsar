@@ -36,24 +36,26 @@ struct ButtonLook {
 [[nodiscard]] auto button_look(controls::ButtonStyle t_style, Color t_accent) -> ButtonLook
 {
 	switch (t_style) {
-		case controls::ButtonStyle::Neutral: {
+		using enum controls::ButtonStyle;
+
+		case Neutral: {
 			return ButtonLook{g_theme.control, g_theme.control_hover, g_theme.text};
 		}
 
-		case controls::ButtonStyle::Accent: {
+		case Accent: {
 			return ButtonLook{t_accent, lightened(t_accent, 20), foreground_on(t_accent)};
 		}
 
-		case controls::ButtonStyle::Danger: {
+		case Danger: {
 			return ButtonLook{mix(g_theme.control, g_theme.error, K_DANGER_FILL_STRENGTH), mix(g_theme.control, g_theme.error, K_DANGER_HOVER_STRENGTH),
 			                  mix(g_theme.error, g_theme.text, K_DANGER_LABEL_SOFTENING)};
 		}
 
-		case controls::ButtonStyle::Ghost: {
+		case Ghost: {
 			return ButtonLook{with_alpha(g_theme.control, 0), g_theme.control_hover, g_theme.text_dim};
 		}
 
-		case controls::ButtonStyle::DangerConfirm: {
+		case DangerConfirm: {
 			return ButtonLook{g_theme.error, lightened(g_theme.error, 15), foreground_on(g_theme.error)};
 		}
 	}

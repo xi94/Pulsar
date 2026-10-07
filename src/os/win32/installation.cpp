@@ -558,15 +558,17 @@ auto Job::finish(bool t_succeeded, std::string t_error) -> void
 auto Job::step_count() const -> u32
 {
 	switch (m_task) {
-		case Task::Install: {
+		using enum Task;
+
+		case Install: {
 			return static_cast<u32>(std::size(K_INSTALL_STEPS));
 		}
 
-		case Task::Apply: {
+		case Apply: {
 			return static_cast<u32>(std::size(K_APPLY_STEPS));
 		}
 
-		case Task::Uninstall: {
+		case Uninstall: {
 			return static_cast<u32>(std::size(K_UNINSTALL_STEPS));
 		}
 	}
@@ -579,15 +581,17 @@ auto Job::step_label() const -> std::string_view
 	const u32 index = std::min(step(), step_count() - 1);
 
 	switch (m_task) {
-		case Task::Install: {
+		using enum Task;
+
+		case Install: {
 			return K_INSTALL_STEPS[index];
 		}
 
-		case Task::Apply: {
+		case Apply: {
 			return K_APPLY_STEPS[index];
 		}
 
-		case Task::Uninstall: {
+		case Uninstall: {
 			return K_UNINSTALL_STEPS[index];
 		}
 	}

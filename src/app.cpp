@@ -61,33 +61,35 @@ auto log_startup_phase(const char* t_phase) -> void
 [[nodiscard]] auto update_status(UpdateStage t_stage) -> std::string_view
 {
 	switch (t_stage) {
-		case UpdateStage::UpToDate: {
+		using enum UpdateStage;
+
+		case UpToDate: {
 			return "Up to date";
 		}
 
-		case UpdateStage::Available:
-		case UpdateStage::ManualUpgradeRequired: {
+		case Available:
+		case ManualUpgradeRequired: {
 			return "Update available";
 		}
 
-		case UpdateStage::Checking: {
+		case Checking: {
 			return "Checking...";
 		}
 
-		case UpdateStage::Downloading:
-		case UpdateStage::Verifying:
-		case UpdateStage::Installing: {
+		case Downloading:
+		case Verifying:
+		case Installing: {
 			return "Updating...";
 		}
 
-		case UpdateStage::ReadyToRelaunch: {
+		case ReadyToRelaunch: {
 			return "Restart to update";
 		}
 
-		case UpdateStage::Idle:
-		case UpdateStage::CheckFailed:
-		case UpdateStage::Error:
-		case UpdateStage::Cancelled: {
+		case Idle:
+		case CheckFailed:
+		case Error:
+		case Cancelled: {
 			break;
 		}
 	}
@@ -105,17 +107,19 @@ auto guard_against_overlays(bool t_block_injection) -> void
 	}
 
 	switch (os::block_injection()) {
-		case os::InjectionGuard::Blocked: {
+		using enum os::InjectionGuard;
+
+		case Blocked: {
 			debug_log::write("app", "extension-point DLL injection blocked");
 			break;
 		}
 
-		case os::InjectionGuard::Refused: {
+		case Refused: {
 			debug_log::write("app", "extension-point block refused, err=%u", os::last_error());
 			break;
 		}
 
-		case os::InjectionGuard::Unsupported: {
+		case Unsupported: {
 			debug_log::write("app", "extension-point block unsupported on this system");
 			break;
 		}
@@ -133,7 +137,7 @@ App::App()
 	, m_account_modal(&m_library, &m_settings, &m_fonts, &m_assets, &m_window, &m_toasts, &m_commands)
 	, m_settings_panel(&m_settings, &m_fonts, &m_renderer, &m_window, &m_assets, &m_commands)
 	, m_unlock_screen(&m_settings, &m_master_key, &m_fonts, &m_assets, &m_window, &m_commands)
-	, m_app_menu(&m_fonts, &m_assets, &m_commands)
+	, m_app_menu(&m_window, &m_fonts, &m_assets, &m_commands)
 	, m_update_overlay(&m_updater, &m_settings, &m_fonts, &m_assets, &m_window)
 	, m_account_search(&m_library, &m_fonts, &m_assets, &m_window, &m_commands)
 	, m_context_menu(&m_fonts, &m_commands)
@@ -563,17 +567,19 @@ auto App::handle_tray_event() -> void
 	}
 
 	switch (event.type) {
-		case os::TrayEventType::Exit: {
+		using enum os::TrayEventType;
+
+		case Exit: {
 			m_window.request_quit();
 			break;
 		}
 
-		case os::TrayEventType::ShowWindow: {
+		case ShowWindow: {
 			m_window.restore();
 			break;
 		}
 
-		case os::TrayEventType::QuickLogin: {
+		case QuickLogin: {
 			if (m_locked || event.game < 0 || event.row < 0) break;
 
 			const auto game = static_cast<u32>(event.game);
@@ -584,7 +590,7 @@ auto App::handle_tray_event() -> void
 			break;
 		}
 
-		case os::TrayEventType::None: {
+		case None: {
 			break;
 		}
 	}
@@ -648,18 +654,20 @@ auto App::process(const Command& t_command) -> void
 	animation::request_frame();
 
 	switch (t_command.type) {
-		case CommandType::ToggleAppMenu: {
+		using enum CommandType;
+
+		case ToggleAppMenu: {
 			if (m_app_menu.is_open()) {
 				m_app_menu.close();
 			} else {
 				m_update_overlay.close();
-				m_app_menu.open(!m_locked, update_status(m_updater.stage()), m_title_bar.layout().button_rect(TitleBarButton::Menu).x);
+				m_app_menu.open(!m_locked, update_status(m_updater.stage()));
 			}
 
 			break;
 		}
 
-		case CommandType::ToggleUpdateOverlay: {
+		case ToggleUpdateOverlay: {
 			if (m_update_overlay.is_open()) {
 				m_update_overlay.close();
 			} else {
@@ -669,22 +677,22 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case CommandType::OpenUpdateOverlay: {
+		case OpenUpdateOverlay: {
 			m_update_overlay.open();
 			break;
 		}
 
-		case CommandType::OpenSettings: {
+		case OpenSettings: {
 			m_settings_panel.open();
 			break;
 		}
 
-		case CommandType::OpenSetup: {
+		case OpenSetup: {
 			open_setup();
 			break;
 		}
 
-		case CommandType::OpenDataFolder: {
+		case OpenDataFolder: {
 			const std::string directory = storage::data_directory();
 			if (!directory.empty()) {
 				os::open_path(directory);
@@ -693,24 +701,24 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case CommandType::CheckForUpdates: {
+		case CheckForUpdates: {
 			m_updater.check_for_update();
 			m_update_overlay.begin_check();
 			break;
 		}
 
-		case CommandType::OpenGame: {
+		case OpenGame: {
 			m_account_modal.open(t_command.index);
 			m_account_modal.set_art_source(m_carousel.art_source(static_cast<u32>(t_command.index)));
 			break;
 		}
 
-		case CommandType::SaveChanges: {
+		case SaveChanges: {
 			request_save();
 			break;
 		}
 
-		case CommandType::RequestNewMasterPassword: {
+		case RequestNewMasterPassword: {
 			m_replaced_vault_key.emplace();
 			m_replaced_vault_key->key.swap(&m_master_key);
 			m_replaced_vault_key->params = m_settings.master_key;
@@ -719,29 +727,29 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case CommandType::VaultUnlocked: {
+		case VaultUnlocked: {
 			storage::load_accounts(&m_library, &m_master_key);
 			unlock();
 			break;
 		}
 
-		case CommandType::VaultCreated: {
+		case VaultCreated: {
 			commit_new_vault_key();
 			unlock();
 			break;
 		}
 
-		case CommandType::ShowAccountMenu: {
+		case ShowAccountMenu: {
 			open_account_menu(t_command);
 			break;
 		}
 
-		case CommandType::ShowTextMenu: {
+		case ShowTextMenu: {
 			open_text_menu(t_command);
 			break;
 		}
 
-		case CommandType::CopyUsername: {
+		case CopyUsername: {
 			if (const Account* account = m_account_modal.account_at_row(t_command.index)) {
 				os::set_clipboard_text(account->username);
 			}
@@ -749,7 +757,7 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case CommandType::CopyPassword: {
+		case CopyPassword: {
 			if (const Account* account = m_account_modal.account_at_row(t_command.index)) {
 				copy_password(account->password);
 			}
@@ -757,32 +765,32 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case CommandType::EditText: {
+		case EditText: {
 			t_command.text_input->apply(t_command.text_edit);
 			break;
 		}
 
-		case CommandType::UndoDelete: {
+		case UndoDelete: {
 			m_account_modal.undo_delete();
 			break;
 		}
 
-		case CommandType::ToggleFavorite: {
+		case ToggleFavorite: {
 			m_account_modal.toggle_favorite(t_command.index);
 			break;
 		}
 
-		case CommandType::LockVault: {
+		case LockVault: {
 			lock_vault();
 			break;
 		}
 
-		case CommandType::OpenAccountSearch: {
+		case OpenAccountSearch: {
 			open_account_search();
 			break;
 		}
 
-		case CommandType::EditAccount: {
+		case EditAccount: {
 			if (account_for(t_command.account) != nullptr) {
 				m_settings_panel.close();
 				m_account_modal.edit_account(t_command.account);
@@ -791,7 +799,7 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case CommandType::LoginAccount: {
+		case LoginAccount: {
 			if (account_for(t_command.account) != nullptr && t_command.index >= 0) {
 				m_settings_panel.close();
 				m_account_modal.quick_login(static_cast<u32>(t_command.index), t_command.account);
@@ -800,7 +808,7 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case CommandType::CopyAccountUsername: {
+		case CopyAccountUsername: {
 			if (const Account* account = account_for(t_command.account)) {
 				os::set_clipboard_text(account->username);
 				m_toasts.notify(Notification{.message = "Username copied."});
@@ -809,7 +817,7 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case CommandType::CopyAccountPassword: {
+		case CopyAccountPassword: {
 			if (const Account* account = account_for(t_command.account)) {
 				copy_password(account->password);
 			}
@@ -817,7 +825,7 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case CommandType::LocateRiotClient: {
+		case LocateRiotClient: {
 			locate_riot_client(t_command);
 			break;
 		}

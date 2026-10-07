@@ -268,28 +268,30 @@ auto UpdateOverlay::describe() const -> UpdateOverlay::Content
 	}
 
 	switch (stage) {
-		case UpdateStage::Idle:
-		case UpdateStage::Checking: {
+		using enum UpdateStage;
+
+		case Idle:
+		case Checking: {
 			set("Checking for updates", "This only takes a moment.");
 			content.spinning = true;
 			break;
 		}
 
-		case UpdateStage::UpToDate: {
+		case UpToDate: {
 			set("You're up to date", "");
 			std::snprintf(content.detail, sizeof(content.detail), "%s %s is the latest version.", K_APP_NAME, K_APP_VERSION);
 			content.primary = Button{"Check again", Action::Check, controls::ButtonStyle::Neutral};
 			break;
 		}
 
-		case UpdateStage::CheckFailed: {
+		case CheckFailed: {
 			set("Couldn't check for updates", m_updater->error_message());
 			content.detail_is_error = true;
 			content.primary         = Button{"Try again", Action::Check, controls::ButtonStyle::Accent};
 			break;
 		}
 
-		case UpdateStage::Available: {
+		case Available: {
 			copy_to("Update available", content.title);
 			std::snprintf(content.detail, sizeof(content.detail), "Version %s is ready to install.", version);
 			content.notes     = true;
@@ -298,7 +300,7 @@ auto UpdateOverlay::describe() const -> UpdateOverlay::Content
 			break;
 		}
 
-		case UpdateStage::ManualUpgradeRequired: {
+		case ManualUpgradeRequired: {
 			copy_to("Update available", content.title);
 			std::snprintf(content.detail, sizeof(content.detail), "Version %s has to be downloaded from GitHub.", version);
 			content.secondary = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
@@ -306,7 +308,7 @@ auto UpdateOverlay::describe() const -> UpdateOverlay::Content
 			break;
 		}
 
-		case UpdateStage::Downloading: {
+		case Downloading: {
 			std::snprintf(content.title, sizeof(content.title), "Downloading %s", version);
 			copy_to("You can keep using Pulsar meanwhile.", content.detail);
 			content.progress = true;
@@ -314,7 +316,7 @@ auto UpdateOverlay::describe() const -> UpdateOverlay::Content
 			break;
 		}
 
-		case UpdateStage::Verifying: {
+		case Verifying: {
 			std::snprintf(content.title, sizeof(content.title), "Verifying %s", version);
 			copy_to("Making sure the download is genuine.", content.detail);
 			content.spinning = true;
@@ -322,7 +324,7 @@ auto UpdateOverlay::describe() const -> UpdateOverlay::Content
 			break;
 		}
 
-		case UpdateStage::Installing: {
+		case Installing: {
 			std::snprintf(content.title, sizeof(content.title), "Installing %s", version);
 			copy_to("Pulsar restarts when it's done.", content.detail);
 			content.spinning = true;
@@ -330,13 +332,13 @@ auto UpdateOverlay::describe() const -> UpdateOverlay::Content
 			break;
 		}
 
-		case UpdateStage::ReadyToRelaunch: {
+		case ReadyToRelaunch: {
 			set("Restarting", "Pulsar will be right back.");
 			content.spinning = true;
 			break;
 		}
 
-		case UpdateStage::Error: {
+		case Error: {
 			set("Update failed", m_updater->error_message());
 			content.detail_is_error = true;
 			content.secondary       = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
@@ -344,7 +346,7 @@ auto UpdateOverlay::describe() const -> UpdateOverlay::Content
 			break;
 		}
 
-		case UpdateStage::Cancelled: {
+		case Cancelled: {
 			set("Update cancelled", "The download was stopped.");
 			content.secondary = Button{"Later", Action::Close, controls::ButtonStyle::Ghost};
 			content.primary   = Button{"Try again", Action::Download, controls::ButtonStyle::Accent};
@@ -394,10 +396,12 @@ auto UpdateOverlay::content_height(const Content& t_content) const -> float
 	return height + K_POPOVER_PADDING;
 }
 
-auto UpdateOverlay::anchor_rect() const -> Rect
+auto UpdateOverlay::anchored_x() const -> float
 {
-	return TitleBarLayout{.width = static_cast<float>(m_window->width()), .native_controls_width = m_window->native_controls_width()}.button_rect(
-		TitleBarButton::Update);
+	const TitleBarLayout title_bar{.width = static_cast<float>(m_window->width()), .native_controls_width = m_window->native_controls_width()};
+	const Rect           status = title_bar.button_rect(TitleBarButton::Update);
+
+	return title_bar.menu_on_right() ? status.right() - K_POPOVER_WIDTH : status.x;
 }
 
 auto UpdateOverlay::layout(const Content& t_content) const -> UpdateOverlay::Layout
@@ -405,7 +409,7 @@ auto UpdateOverlay::layout(const Content& t_content) const -> UpdateOverlay::Lay
 	const Font& body      = m_fonts->body;
 	const Font& secondary = m_fonts->secondary;
 	const Vec2  window    = m_window->size();
-	const float x         = std::clamp(anchor_rect().x, K_WINDOW_MARGIN, std::max(K_WINDOW_MARGIN, window.x - K_WINDOW_MARGIN - K_POPOVER_WIDTH));
+	const float x         = std::clamp(anchored_x(), K_WINDOW_MARGIN, std::max(K_WINDOW_MARGIN, window.x - K_WINDOW_MARGIN - K_POPOVER_WIDTH));
 	const float y         = K_TITLE_BAR_HEIGHT + K_POPOVER_OFFSET - K_SLIDE_DISTANCE * (1.0f - m_open_amount);
 
 	Layout result{};
@@ -543,35 +547,37 @@ auto UpdateOverlay::update(float t_delta_seconds) -> void
 auto UpdateOverlay::run(Action t_action) -> void
 {
 	switch (t_action) {
-		case Action::Check: {
+		using enum Action;
+
+		case Check: {
 			m_updater->check_for_update();
 			close();
 			begin_check();
 			break;
 		}
 
-		case Action::Download: {
+		case Download: {
 			m_updater->start_download();
 			break;
 		}
 
-		case Action::Cancel: {
+		case Cancel: {
 			m_updater->request_cancel();
 			break;
 		}
 
-		case Action::Close: {
+		case Close: {
 			close();
 			break;
 		}
 
-		case Action::Releases: {
+		case Releases: {
 			os::open_url(K_RELEASES_URL);
 			close();
 			break;
 		}
 
-		case Action::None: {
+		case None: {
 			break;
 		}
 	}
@@ -713,7 +719,9 @@ auto UpdateOverlay::draw_notes(DrawList* t_draw_list, Rect t_box, const ScrollGe
 		if (baseline < t_box.y - line_height || baseline > t_box.bottom() + line_height) continue;
 
 		switch (line.kind) {
-			case NoteKind::Heading: {
+			using enum NoteKind;
+
+			case Heading: {
 				draw_text(t_draw_list, font, Vec2{left, baseline}, line.text, heading);
 
 				const float rule_x = left + text_width(font, line.text) + K_NOTE_HEADING_RULE_GAP;
@@ -724,19 +732,19 @@ auto UpdateOverlay::draw_notes(DrawList* t_draw_list, Rect t_box, const ScrollGe
 				break;
 			}
 
-			case NoteKind::Bullet: {
+			case Bullet: {
 				const Rect dot{left + K_NOTE_BULLET_OFFSET, baseline - mark_offset - K_NOTE_BULLET_SIZE * 0.5f, K_NOTE_BULLET_SIZE, K_NOTE_BULLET_SIZE};
 				t_draw_list->add_rounded_rect(dot, rounded(K_NOTE_BULLET_SIZE * 0.5f), heading);
 				draw_text(t_draw_list, font, Vec2{left + K_NOTE_BULLET_INDENT, baseline}, line.text, faded(g_theme.text, t_alpha));
 				break;
 			}
 
-			case NoteKind::Continuation: {
+			case Continuation: {
 				draw_text(t_draw_list, font, Vec2{left + K_NOTE_BULLET_INDENT, baseline}, line.text, faded(g_theme.text, t_alpha));
 				break;
 			}
 
-			case NoteKind::Text: {
+			case Text: {
 				draw_text(t_draw_list, font, Vec2{left, baseline}, line.text, faded(g_theme.text_dim, t_alpha));
 				break;
 			}

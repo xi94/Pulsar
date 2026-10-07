@@ -272,17 +272,19 @@ auto SetupScreen::open_installed_app() -> void
 auto SetupScreen::go_back() -> void
 {
 	switch (m_page) {
-		case Page::Location: {
+		using enum Page;
+
+		case Location: {
 			go_to(Page::Choose, false);
 			break;
 		}
 
-		case Page::ConfirmUninstall: {
+		case ConfirmUninstall: {
 			go_to(m_installed ? Page::Manage : Page::Choose, false);
 			break;
 		}
 
-		case Page::Failed: {
+		case Failed: {
 			m_installed = os::installation::find_installation();
 			go_to(m_job.task() == os::installation::Task::Uninstall && m_installed ? Page::Manage : Page::Location, false);
 			break;
@@ -300,7 +302,9 @@ auto SetupScreen::activate(Hit t_hit) -> void
 	const bool is_option = t_hit >= Hit::Option0 && t_hit <= Hit::Option2;
 
 	switch (m_page) {
-		case Page::Choose: {
+		using enum Page;
+
+		case Choose: {
 			if (t_hit == Hit::Install) {
 				go_to(Page::Location, true);
 			} else if (t_hit == Hit::Portable) {
@@ -315,7 +319,7 @@ auto SetupScreen::activate(Hit t_hit) -> void
 			break;
 		}
 
-		case Page::Location: {
+		case Location: {
 			if (t_hit == Hit::Secondary) {
 				go_back();
 			} else if (t_hit == Hit::Primary) {
@@ -332,7 +336,7 @@ auto SetupScreen::activate(Hit t_hit) -> void
 			break;
 		}
 
-		case Page::Manage: {
+		case Manage: {
 			if (t_hit == Hit::OpenFolder && m_installed) {
 				os::open_path(m_installed->location);
 			} else if (t_hit == Hit::Secondary) {
@@ -351,7 +355,7 @@ auto SetupScreen::activate(Hit t_hit) -> void
 			break;
 		}
 
-		case Page::ConfirmUninstall: {
+		case ConfirmUninstall: {
 			if (t_hit == Hit::Secondary) {
 				go_back();
 			} else if (t_hit == Hit::Primary) {
@@ -363,7 +367,7 @@ auto SetupScreen::activate(Hit t_hit) -> void
 			break;
 		}
 
-		case Page::Done: {
+		case Done: {
 			if (t_hit == Hit::Primary) {
 				if (m_job.task() == os::installation::Task::Install) {
 					open_installed_app();
@@ -375,7 +379,7 @@ auto SetupScreen::activate(Hit t_hit) -> void
 			break;
 		}
 
-		case Page::Failed: {
+		case Failed: {
 			if (t_hit == Hit::Primary) {
 				go_back();
 			}
@@ -383,7 +387,7 @@ auto SetupScreen::activate(Hit t_hit) -> void
 			break;
 		}
 
-		case Page::Working: {
+		case Working: {
 			break;
 		}
 	}
@@ -487,23 +491,25 @@ auto SetupScreen::footer_button(bool t_right, std::string_view t_label) const ->
 auto SetupScreen::primary_label(Page t_page) const -> std::string_view
 {
 	switch (t_page) {
-		case Page::Location: {
+		using enum Page;
+
+		case Location: {
 			return "Install";
 		}
 
-		case Page::Manage: {
+		case Manage: {
 			return m_saving ? "Saving" : "Done";
 		}
 
-		case Page::ConfirmUninstall: {
+		case ConfirmUninstall: {
 			return "Uninstall";
 		}
 
-		case Page::Done: {
+		case Done: {
 			return m_job.task() == os::installation::Task::Install ? "Open Pulsar" : "Close";
 		}
 
-		case Page::Failed: {
+		case Failed: {
 			return "Back";
 		}
 
@@ -516,12 +522,14 @@ auto SetupScreen::primary_label(Page t_page) const -> std::string_view
 auto SetupScreen::secondary_label(Page t_page) const -> std::string_view
 {
 	switch (t_page) {
-		case Page::Location:
-		case Page::ConfirmUninstall: {
+		using enum Page;
+
+		case Location:
+		case ConfirmUninstall: {
 			return "Back";
 		}
 
-		case Page::Manage: {
+		case Manage: {
 			return "Uninstall";
 		}
 
@@ -616,24 +624,26 @@ auto SetupScreen::open_folder_rect() const -> Rect
 auto SetupScreen::hit_at(Vec2 t_point) const -> SetupScreen::Hit
 {
 	switch (m_page) {
-		case Page::Choose: {
+		using enum Page;
+
+		case Choose: {
 			if (choice_rect(0).contains(t_point)) return Hit::Install;
 			if (choice_rect(1).contains(t_point)) return Hit::Portable;
 			return Hit::None;
 		}
 
-		case Page::Location: {
+		case Location: {
 			if (browse_rect().contains(t_point)) return Hit::Browse;
 			if (field_rect().contains(t_point)) return Hit::Field;
 			break;
 		}
 
-		case Page::ConfirmUninstall: {
+		case ConfirmUninstall: {
 			if (delete_data_rect().contains(t_point)) return Hit::DeleteData;
 			break;
 		}
 
-		case Page::Manage: {
+		case Manage: {
 			if (m_installed && open_folder_rect().contains(t_point)) return Hit::OpenFolder;
 			break;
 		}
@@ -1076,34 +1086,36 @@ auto SetupScreen::draw_footer(DrawList* t_draw_list, Page t_page, const PageDraw
 auto SetupScreen::draw_page(DrawList* t_draw_list, Page t_page, const PageDraw& t_draw) -> void
 {
 	switch (t_page) {
-		case Page::Choose: {
+		using enum Page;
+
+		case Choose: {
 			draw_header(t_draw_list, t_page, t_draw);
 			draw_choice(t_draw_list, 0, t_draw);
 			draw_choice(t_draw_list, 1, t_draw);
 			break;
 		}
 
-		case Page::Location: {
+		case Location: {
 			draw_location(t_draw_list, t_draw);
 			draw_options(t_draw_list, t_page, t_draw, 2);
 			break;
 		}
 
-		case Page::Manage: {
+		case Manage: {
 			draw_header(t_draw_list, t_page, t_draw);
 			draw_installed_location(t_draw_list, t_draw);
 			draw_options(t_draw_list, t_page, t_draw, 2);
 			break;
 		}
 
-		case Page::ConfirmUninstall: {
+		case ConfirmUninstall: {
 			draw_confirm(t_draw_list, t_draw);
 			break;
 		}
 
-		case Page::Working:
-		case Page::Done:
-		case Page::Failed: {
+		case Working:
+		case Done:
+		case Failed: {
 			draw_status(t_draw_list, t_page, t_draw);
 			break;
 		}
