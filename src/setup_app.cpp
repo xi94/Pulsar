@@ -175,7 +175,8 @@ auto SetupApp::handle_input(const os::InputEvent& t_event) -> void
 		}
 
 		case MOUSE_WHEEL:
-		case RIGHT_CLICK: {
+		case RIGHT_CLICK:
+		case MENU_ITEM: {
 			break;
 		}
 	}

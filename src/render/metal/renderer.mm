@@ -241,9 +241,9 @@ auto MetalBackend::size_blur_targets(u32 t_width, u32 t_height) -> void
 	blur_ready = downsample_pipeline != nil && blur_pipeline != nil && capture != nil;
 
 	for (u32 level = 0; level < K_BLUR_LEVEL_COUNT; level += 1) {
-		for (id<MTLTexture>& texture : levels[level]) {
-			texture    = target(blur_level_extent(t_width, level), blur_level_extent(t_height, level));
-			blur_ready = blur_ready && texture != nil;
+		for (u32 i = 0; i < std::size(levels[level]); i += 1) {
+			levels[level][i] = target(blur_level_extent(t_width, level), blur_level_extent(t_height, level));
+			blur_ready       = blur_ready && levels[level][i] != nil;
 		}
 	}
 }
