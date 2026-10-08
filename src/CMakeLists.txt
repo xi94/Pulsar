@@ -140,7 +140,6 @@ elseif (APPLE)
   set_source_files_properties("${APP_ICON}" "${MENU_BAR_ICON}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
 
   add_library (pulsar_platform OBJECT
-    "os/macos/app_icon.mm"
     "os/macos/clipboard.mm"
     "os/macos/crash_handler.mm"
     "os/macos/files.mm"

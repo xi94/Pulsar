@@ -15,7 +15,6 @@
 #include "core/str.h"
 #include "games.h"
 #include "login/riot_client.h"
-#include "os/app_icon.h"
 #include "os/clipboard.h"
 #include "os/installation.h"
 #include "ui/controls.h"
@@ -33,7 +32,6 @@ constexpr float K_IDLE_POLL_SECONDS         = 0.25f;
 constexpr auto  K_RESUME_FRAME_TIME         = std::chrono::microseconds(16667);
 constexpr auto  K_CLIPBOARD_SECRET_LIFETIME = std::chrono::seconds(30);
 constexpr float K_PICKER_POLL_SECONDS       = 0.1f;
-constexpr u32   K_APP_ICON_TEXTURE_SIZE     = 256;
 constexpr float K_INTRO_SECONDS             = 0.5f;
 constexpr float K_INTRO_MAX_STEP            = 1.0f / 30.0f;
 constexpr float K_INTRO_START_SCALE         = 0.97f;
@@ -260,10 +258,7 @@ auto App::create_graphics() -> bool
 
 	m_snowfall.create_texture(&m_renderer);
 
-	if (const std::vector<u8> icon = os::app_icon_pixels(K_APP_ICON_TEXTURE_SIZE); !icon.empty()) {
-		m_app_icon = Assets::create_texture(&m_renderer, icon.data(), K_APP_ICON_TEXTURE_SIZE, K_APP_ICON_TEXTURE_SIZE);
-		m_unlock_screen.set_app_icon(m_app_icon.get());
-	}
+	m_unlock_screen.set_app_icon(m_assets.get(Asset::ICON_LOGO));
 
 	if (!reload_fonts()) {
 		std::println("Failed to load the UI font.");

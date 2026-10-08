@@ -118,13 +118,12 @@ class App {
 	CommandQueue            m_commands;
 	LoginSession            m_login_session;
 
-	os::Window               m_window;
-	Renderer                 m_renderer;
-	Assets                   m_assets;
-	std::unique_ptr<Texture> m_app_icon;
-	Fonts                    m_fonts;
-	os::Tray                 m_tray;
-	DrawList                 m_draw_list;
+	os::Window m_window;
+	Renderer   m_renderer;
+	Assets     m_assets;
+	Fonts      m_fonts;
+	os::Tray   m_tray;
+	DrawList   m_draw_list;
 
 	Carousel       m_carousel;
 	Snowfall       m_snowfall;

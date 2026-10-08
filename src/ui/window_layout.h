@@ -33,6 +33,8 @@ struct TitleBarLayout {
 	bool  update_visible        = false;
 	float update_width          = K_UPDATE_BUTTON_WIDTH;
 	bool  search_visible        = false;
+	// On macOS the app's name sits right after the window buttons, and the search pill keeps clear of it.
+	float identity_width = 0.0f;
 
 	[[nodiscard]] auto menu_on_right() const -> bool;
 	[[nodiscard]] auto button_rect(TitleBarButton t_button) const -> Rect;

@@ -32,18 +32,17 @@ class SetupApp {
 	auto draw_window_controls() -> void;
 	[[nodiscard]] auto title_bar() const -> TitleBarLayout;
 
-	SetupMode                m_mode;
-	Settings                 m_settings;
-	os::Window               m_window;
-	Renderer                 m_renderer;
-	Assets                   m_assets;
-	Fonts                    m_fonts;
-	Fonts                    m_heading_fonts;
-	Fonts                    m_title_fonts;
-	DrawList                 m_draw_list;
-	std::unique_ptr<Texture> m_app_icon;
-	SetupScreen              m_screen;
-	TruncationHint           m_truncation_hint;
+	SetupMode      m_mode;
+	Settings       m_settings;
+	os::Window     m_window;
+	Renderer       m_renderer;
+	Assets         m_assets;
+	Fonts          m_fonts;
+	Fonts          m_heading_fonts;
+	Fonts          m_title_fonts;
+	DrawList       m_draw_list;
+	SetupScreen    m_screen;
+	TruncationHint m_truncation_hint;
 
 	Vec2                                  m_mouse{-1.0f, -1.0f};
 	TitleBarButton                        m_pressed_button = TitleBarButton::NONE;

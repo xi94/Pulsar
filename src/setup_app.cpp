@@ -6,7 +6,6 @@
 #include "core/animation.h"
 #include "core/storage.h"
 #include "core/str.h"
-#include "os/app_icon.h"
 #include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/text_input.h"
@@ -18,7 +17,6 @@ constexpr u32   K_WINDOW_WIDTH              = 480;
 constexpr u32   K_WINDOW_HEIGHT             = 380;
 constexpr u32   K_DRAW_LIST_VERTEX_CAPACITY = 1 << 14;
 constexpr u32   K_DRAW_LIST_INDEX_CAPACITY  = (1 << 14) * 3 / 2;
-constexpr u32   K_APP_ICON_TEXTURE_SIZE     = 256;
 constexpr float K_HEADING_FONT_SCALE        = 1.3f;
 constexpr float K_TITLE_FONT_SCALE          = 1.75f;
 constexpr float K_IDLE_POLL_SECONDS         = 0.25f;
@@ -52,11 +50,7 @@ auto SetupApp::create() -> bool
 	if (!m_assets.finish_upload(&m_renderer)) return false;
 	if (!reload_fonts()) return false;
 
-	const std::vector<u8> icon = os::app_icon_pixels(K_APP_ICON_TEXTURE_SIZE);
-	if (!icon.empty()) {
-		m_app_icon = Assets::create_texture(&m_renderer, icon.data(), K_APP_ICON_TEXTURE_SIZE, K_APP_ICON_TEXTURE_SIZE);
-		m_screen.set_app_icon(m_app_icon.get());
-	}
+	m_screen.set_app_icon(m_assets.get(Asset::ICON_LOGO));
 
 	m_draw_list.init(K_DRAW_LIST_VERTEX_CAPACITY, K_DRAW_LIST_INDEX_CAPACITY);
 	m_window.on_redraw([this] { redraw_while_moving(); });

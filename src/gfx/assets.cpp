@@ -37,6 +37,7 @@
 #include "embeds/icons/LibraryIcon.hpp"
 #include "embeds/icons/ListArrow.hpp"
 #include "embeds/icons/LockIcon.hpp"
+#include "embeds/icons/LogoIcon.hpp"
 #include "embeds/icons/MenuIcon.hpp"
 #include "embeds/icons/Minimize.hpp"
 #include "embeds/icons/ResetIcon.hpp"
@@ -118,6 +119,7 @@ constexpr EncodedAsset K_ENCODED_ASSETS[]{
 	{Asset::ICON_DOWNLOAD, icon::download_icon, "DownloadIcon"},
 	{Asset::ICON_CHECK, icon::check_icon, "CheckedIcon"},
 	{Asset::ICON_APP, icon::app_mark, "AppMark"},
+	{Asset::ICON_LOGO, icon::logo_icon, "LogoIcon"},
 	{Asset::ICON_LEAGUE_OF_LEGENDS, icon::league_of_legends_icon, "LeagueIcon"},
 	{Asset::ICON_VALORANT, icon::valorant_icon, "ValorantIcon"},
 	{Asset::ICON_TWO_XKO, icon::two_xko_icon, "2XKOIcon"},

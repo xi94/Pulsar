@@ -37,6 +37,7 @@ class TitleBar : public Widget {
   private:
 	auto draw_hover(DrawList* t_draw_list, TitleBarButton t_button, TitleBarButton t_hovered) const -> void;
 	auto draw_search_pill(DrawList* t_draw_list, TitleBarButton t_hovered) const -> void;
+	[[nodiscard]] auto identity_width() const -> float;
 	auto draw_identity(DrawList* t_draw_list, float t_amount) const -> void;
 	auto draw_update_status(DrawList* t_draw_list, float t_amount) const -> void;
 	auto draw_maximize_glyph(DrawList* t_draw_list, Color t_color) const -> void;

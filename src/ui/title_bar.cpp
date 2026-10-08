@@ -181,7 +181,14 @@ auto TitleBar::layout() const -> TitleBarLayout
 		.update_visible        = m_update_visible,
 		.update_width          = m_status_width > 0.0f ? m_status_width : K_UPDATE_BUTTON_WIDTH,
 		.search_visible        = m_search_visible,
+		.identity_width        = identity_width(),
 	};
+}
+
+// The mark and name, with the half gap that leads into them.
+auto TitleBar::identity_width() const -> float
+{
+	return K_IDENTITY_GAP * 0.5f + K_IDENTITY_MARK_SIZE + K_IDENTITY_GAP + std::ceil(text_width(m_fonts->secondary, K_APP_NAME));
 }
 
 auto TitleBar::on_pointer_down(Vec2 t_point) -> bool
@@ -250,8 +257,8 @@ auto TitleBar::draw_identity(DrawList* t_draw_list, float t_amount) const -> voi
 	const TitleBarLayout title_bar = layout();
 	const Rect           menu      = title_bar.button_rect(TitleBarButton::MENU);
 	const Font&          font      = m_fonts->secondary;
-	const float          width     = K_IDENTITY_MARK_SIZE + K_IDENTITY_GAP + std::ceil(text_width(font, K_APP_NAME));
-	const float          left      = title_bar.menu_on_right() ? menu.x - K_IDENTITY_GAP * 0.5f - width : menu.right() + K_IDENTITY_GAP * 0.5f;
+	const float          start     = title_bar.menu_on_right() ? title_bar.native_controls_width : menu.right();
+	const float          left      = start + K_IDENTITY_GAP * 0.5f;
 	const float          shift     = -K_STATUS_SHIFT * (1.0f - t_amount);
 	const Rect           mark{left, (K_TITLE_BAR_HEIGHT - K_IDENTITY_MARK_SIZE) * 0.5f + shift, K_IDENTITY_MARK_SIZE, K_IDENTITY_MARK_SIZE};
 	const auto           alpha = to_alpha(t_amount);
@@ -346,8 +353,10 @@ auto TitleBar::draw(DrawList* t_draw_list) -> void
 	draw_hover(t_draw_list, TitleBarButton::MENU, hovered);
 	t_draw_list->add_image(icon_rect(TitleBarButton::MENU), m_assets->get(Asset::ICON_MENU), g_theme.text);
 
-	if (m_update_reveal < 0.999f) {
-		draw_identity(t_draw_list, 1.0f - m_update_reveal);
+	// On Windows the update status takes the name's place beside the menu. On macOS they sit at opposite ends, so the name stays.
+	const float identity = layout().menu_on_right() ? 1.0f : 1.0f - m_update_reveal;
+	if (identity > 0.001f) {
+		draw_identity(t_draw_list, identity);
 	}
 
 	if (m_update_reveal > 0.001f) {

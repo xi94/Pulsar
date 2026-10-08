@@ -41,7 +41,7 @@ auto TitleBarLayout::button_rect(TitleBarButton t_button) const -> Rect
 		case SEARCH: {
 			const float status     = update_visible ? update_width + K_SEARCH_BUTTON_MARGIN : 0.0f;
 			const float menu_side  = K_TITLE_BAR_BUTTON_WIDTH + std::max(K_SEARCH_BUTTON_SIDE_ROOM, status);
-			const float left       = menu_on_right() ? leading + K_SEARCH_BUTTON_MARGIN : leading + menu_side;
+			const float left       = menu_on_right() ? leading + identity_width + K_SEARCH_BUTTON_MARGIN : leading + menu_side;
 			const float limit      = menu_on_right() ? right - menu_side : right - trailing - K_SEARCH_BUTTON_MARGIN;
 			const float pill_width = std::min(K_SEARCH_BUTTON_WIDTH, limit - left);
 			if (pill_width < K_SEARCH_BUTTON_MIN_WIDTH) return Rect{};
