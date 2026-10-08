@@ -24,6 +24,7 @@ enum class ShaderKind : u8 {
 	OUTLINE_COUNTDOWN,
 	BACKDROP,
 	BACKDROP_PLAIN,
+	BACKDROP_BLUR,
 	COUNT,
 };
 
@@ -76,6 +77,20 @@ constexpr UvRect K_FULL_UV{0.0f, 0.0f, 1.0f, 1.0f};
 
 [[nodiscard]] auto scaled_radius(float t_radius) -> float;
 auto set_corner_roundness(float t_scale) -> void;
+[[nodiscard]] auto user_roundness() -> float;
+
+// Corners drawn inside one of these keep a set roundness instead of following the Corner roundness setting.
+class RoundnessScope {
+  public:
+	explicit RoundnessScope(float t_roundness);
+	~RoundnessScope();
+
+	RoundnessScope(const RoundnessScope&)                    = delete;
+	auto operator=(const RoundnessScope&) -> RoundnessScope& = delete;
+
+  private:
+	float m_previous;
+};
 
 auto set_pixel_scale(float t_scale) -> void;
 [[nodiscard]] auto snapped_to_pixel(float t_value) -> float;
@@ -137,6 +152,10 @@ class DrawList {
 
 	auto add_rounded_rect(Rect t_rect, CornerRadii t_radii, Color t_color) -> void;
 	auto add_bordered_rect(Rect t_rect, CornerRadii t_radii, Color t_fill, Color t_border, float t_thickness) -> void;
+	auto add_rounded_outline(Rect t_rect, CornerRadii t_radii, float t_thickness, Color t_color) -> void;
+
+	// A copy of everything drawn before it, inside the shape, blurred with a Gaussian whose sigma is t_spread logical pixels.
+	auto add_blurred_backdrop(Rect t_rect, CornerRadii t_radii, float t_spread, u8 t_alpha) -> void;
 
 	auto add_image(Rect t_rect, const Texture* t_texture, Color t_tint, CornerRadii t_radii = K_SQUARE_CORNERS, UvRect t_uv = K_FULL_UV) -> void;
 	auto add_rotated_image(Rect t_rect, float t_radians, const Texture* t_texture, Color t_tint) -> void;
@@ -162,6 +181,7 @@ class DrawList {
 	auto push_quad(Rect t_rect, UvRect t_uv, u32 t_color) -> void;
 	auto push_quad(const Vertex2D (&t_corners)[4]) -> void;
 	auto push_rounded(Rect t_rect, CornerRadii t_radii, UvRect t_uv, u32 t_color) -> void;
+	auto push_rounded_ring(Rect t_rect, CornerRadii t_radii, float t_thickness, u32 t_color) -> void;
 
 	std::unique_ptr<Vertex2D[]> m_vertices;
 	std::unique_ptr<u32[]>      m_indices;

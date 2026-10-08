@@ -82,6 +82,7 @@ class App {
 	auto commit_new_vault_key() -> void;
 	auto copy_password(std::string_view t_password) -> void;
 	auto open_account_search() -> void;
+	auto lift_game_card(u32 t_game) -> void;
 	auto open_setup() -> void;
 	auto locate_riot_client(const Command& t_command) -> void;
 	auto take_picked_riot_client() -> void;

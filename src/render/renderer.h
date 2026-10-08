@@ -98,6 +98,7 @@ class Renderer {
 	}
 
 	auto render(const DrawList* t_draw_list, Color t_clear_color) -> void;
+	[[nodiscard]] auto supports_backdrop_blur() const -> bool;
 
 	[[nodiscard]] auto create_texture(std::span<const TextureLevel> t_levels, bool t_updatable) -> u32;
 	auto update_texture(u32 t_slot, u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rgba_pixels) -> void;

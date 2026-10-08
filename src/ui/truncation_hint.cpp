@@ -95,6 +95,8 @@ auto TruncationHint::draw(DrawList* t_draw_list, Rect t_bounds) const -> void
 {
 	if (m_visible_amount <= 0.001f || m_length == 0) return;
 
+	const RoundnessScope corners{controls::K_POPUP_ROUNDNESS};
+
 	const Font& font       = m_fonts->secondary;
 	const float wrap_width = std::max(40.0f, std::min(K_MAX_WIDTH, t_bounds.w - (K_EDGE_MARGIN + K_PADDING_X) * 2.0f));
 
@@ -121,7 +123,7 @@ auto TruncationHint::draw(DrawList* t_draw_list, Rect t_bounds) const -> void
 	const auto  alpha = to_alpha(m_visible_amount);
 
 	controls::draw_popup_shadow(t_draw_list, card, K_CORNER_RADIUS, m_visible_amount);
-	t_draw_list->add_bordered_rect(card, rounded(K_CORNER_RADIUS), faded(g_theme.popup, alpha), faded(g_theme.border, alpha), 1.0f);
+	controls::draw_glass(t_draw_list, card, rounded(K_CORNER_RADIUS), controls::GlassSurface::SOFT, alpha);
 
 	for (u32 i = 0; i < line_count; i += 1) {
 		draw_text(t_draw_list, font, Vec2{card.x + K_PADDING_X, card.y + K_PADDING_Y + font.ascent + i * font.line_height()}, lines[i],

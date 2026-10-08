@@ -40,6 +40,7 @@ constexpr BoolSetting K_BOOL_SETTINGS[]{
 	{"background_light", &Settings::background_light},
 	{"background_grain", &Settings::background_grain},
 	{"snow", &Settings::snow},
+	{"glass", &Settings::glass},
 	{"show_notifications", &Settings::show_notifications},
 	{"exclude_account_list_from_capture", &Settings::hide_from_capture},
 	{"block_overlay_injection", &Settings::block_overlay_injection},
@@ -55,6 +56,8 @@ constexpr FloatSetting K_FLOAT_SETTINGS[]{
 	{"background_light_intensity", &Settings::background_light_intensity, 0.0f, 1.0f},
 	{"background_grain_intensity", &Settings::background_grain_intensity, 0.0f, 1.0f},
 	{"caret_trail_strength", &Settings::caret_trail_strength, 0.0f, 1.0f},
+	{"glass_blur", &Settings::glass_blur, 0.0f, 1.0f},
+	{"glass_tint", &Settings::glass_tint, K_GLASS_TINT_MIN, K_GLASS_TINT_MAX},
 };
 
 bool g_settings_writable = true;

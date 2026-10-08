@@ -45,6 +45,8 @@ enum class ResettableSetting : u8 {
 	GRAIN_INTENSITY,
 	CARET_STYLE,
 	TRAIL_STRENGTH,
+	GLASS_BLUR,
+	GLASS_TINT,
 	ANIMATION_SPEED,
 	CLOSE_TO_TRAY,
 	RENDERER,
@@ -81,7 +83,7 @@ class SettingsPanel : public Widget {
 	[[nodiscard]] auto cursor() const -> CursorKind override;
 
   private:
-	static constexpr u32 K_GROUP_COUNT = 9;
+	static constexpr u32 K_GROUP_COUNT = 10;
 
 	enum class SliderKind : u8 {
 		CORNER_ROUNDNESS,
@@ -89,8 +91,10 @@ class SettingsPanel : public Widget {
 		LIGHT_STRENGTH,
 		GRAIN_STRENGTH,
 		TRAIL_STRENGTH,
+		GLASS_BLUR,
 		ANIMATION_SPEED,
 		AUTO_LOCK,
+		GLASS_TINT,
 		COUNT,
 	};
 
@@ -112,6 +116,8 @@ class SettingsPanel : public Widget {
 		Rect  secondary_font_size;
 		Rect  caret_style;
 		Rect  caret_trail;
+		Rect  glass;
+		Rect  glass_tint;
 		Rect  accent;
 		Rect  corner_roundness;
 		Rect  background;
@@ -169,13 +175,14 @@ class SettingsPanel : public Widget {
 		bool (*shown)(const Settings* t_settings);
 	};
 
-	static constexpr u32       K_PERCENT_SLIDER_COUNT = 4;
+	static constexpr u32       K_PERCENT_SLIDER_COUNT = 5;
 	static const PercentSlider K_PERCENT_SLIDERS[K_PERCENT_SLIDER_COUNT];
 
 	static constexpr Toggle K_TOGGLES[]{
 		{&Settings::show_notifications, &Rows::notifications},
 		{&Settings::animations_enabled, &Rows::animations},
 		{&Settings::caret_trail, &Rows::caret_trail},
+		{&Settings::glass, &Rows::glass},
 		{&Settings::hide_from_capture, &Rows::hide_from_capture},
 		{&Settings::block_overlay_injection, &Rows::block_overlay_injection},
 		{&Settings::background_light, &Rows::background_light},
@@ -187,6 +194,8 @@ class SettingsPanel : public Widget {
 	static constexpr u32 K_FIRST_TOGGLE_RESET = static_cast<u32>(ResettableSetting::COUNT);
 	static constexpr u32 K_RESET_COUNT        = K_FIRST_TOGGLE_RESET + K_TOGGLE_COUNT;
 
+	[[nodiscard]] static auto column_slider_row(SliderKind t_slider) -> Rect Rows::*;
+	[[nodiscard]] static auto slider_caption(SliderKind t_slider) -> std::string_view;
 	[[nodiscard]] auto layout() const -> Layout;
 	[[nodiscard]] auto rows(const Layout& t_layout) const -> Rows;
 	[[nodiscard]] auto rows_scroll(const Layout& t_layout, const Rows& t_rows) const -> ScrollGeometry;
@@ -331,6 +340,7 @@ class SettingsPanel : public Widget {
 	float m_secondary_font_size_shown = 0.0f;
 	float m_animation_speed_shown     = 0.0f;
 	float m_corner_roundness_shown    = 0.0f;
+	float m_glass_tint_shown          = 0.0f;
 	float m_percent_shown[K_PERCENT_SLIDER_COUNT]{};
 	float m_percent_reveal[K_PERCENT_SLIDER_COUNT]{};
 	float m_animation_speed_reveal = 0.0f;

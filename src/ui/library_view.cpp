@@ -43,8 +43,6 @@ constexpr float K_CONTROL_RADIUS         = 8.0f;
 constexpr float K_ADD_PADDING_X          = 12.0f;
 constexpr float K_ADD_ICON_SIZE          = 14.0f;
 constexpr float K_ADD_ICON_GAP           = 6.0f;
-constexpr float K_DOT_SIZE               = 3.0f;
-constexpr float K_DOT_GAP                = 7.0f;
 constexpr float K_ROW_PADDING_Y          = 9.0f;
 constexpr float K_ROW_LINE_GAP           = 3.0f;
 constexpr float K_ROW_GAP                = 2.0f;
@@ -133,18 +131,18 @@ constexpr float K_EMPTY_BUTTON_WIDTH     = 140.0f;
 constexpr u32   K_FILTER_MAX_LENGTH      = 64;
 constexpr Color K_COLOR_IMAGE{255, 255, 255, 255};
 
-constexpr std::string_view K_LOGIN_LABEL      = "Log in";
+constexpr float K_CHEVRON_MARGIN = 12.0f;
+constexpr Vec2  K_CHEVRON_SIZE{9.0f, 5.0f};
+
+constexpr std::string_view K_LOGIN_LABEL      = "Login";
 constexpr std::string_view K_CANCEL_LABEL     = "Cancel";
 constexpr std::string_view K_RETRY_LABEL      = "Try again";
 constexpr std::string_view K_PERMISSION_LABEL = "Open settings";
 constexpr std::string_view K_ADD_LABEL        = "Add account";
 constexpr std::string_view K_DELETE_LABEL     = "Delete";
 constexpr std::string_view K_DELETE_ARMED     = "Delete for good";
-constexpr std::string_view K_MORE_REGIONS     = "More";
-constexpr std::string_view K_FEWER_REGIONS    = "Less";
 constexpr std::string_view K_OPTIONAL_SUFFIX  = " (optional)";
 constexpr std::string_view K_FIELD_LABELS[]{"Username", "Password", "Note"};
-constexpr std::string_view K_COMMON_REGIONS[]{"NA", "EUW", "EUNE", "KR"};
 
 [[nodiscard]] auto eased_out(float t_amount) -> float
 {
@@ -178,18 +176,6 @@ auto draw_pill(DrawList* t_draw_list, const Font& t_font, Rect t_rect, std::stri
 	draw_text_centered(t_draw_list, t_font, t_rect, t_label, faded(t_ink, t_alpha));
 }
 
-// Two pieces of text joined by a small dot, like the note and last-used line.
-auto draw_dotted(DrawList* t_draw_list, const Font& t_font, Vec2 t_baseline, std::string_view t_first, std::string_view t_second, Color t_color) -> void
-{
-	draw_text(t_draw_list, t_font, t_baseline, t_first, t_color);
-	if (t_second.empty()) return;
-
-	const float dot_x = t_baseline.x + text_width(t_font, t_first) + K_DOT_GAP;
-	const float dot_y = t_baseline.y - t_font.ascent * 0.33f - K_DOT_SIZE * 0.5f;
-
-	t_draw_list->add_rounded_rect(Rect{dot_x, dot_y, K_DOT_SIZE, K_DOT_SIZE}, rounded(K_DOT_SIZE * 0.5f), t_color);
-	draw_text(t_draw_list, t_font, Vec2{dot_x + K_DOT_SIZE + K_DOT_GAP, t_baseline.y}, t_second, t_color);
-}
 }
 
 auto LibraryView::is_row_target(Target t_target) -> bool
@@ -226,6 +212,7 @@ LibraryView::LibraryView(Library*        t_library,
 	, m_toasts(t_toasts)
 	, m_session(t_session)
 	, m_commands(t_commands)
+	, m_region_list(t_fonts, t_assets, t_settings, ListPopupOptions{.empty_message = "No regions"})
 {
 	constexpr u32 LENGTHS[K_FIELD_COUNT]{sizeof(Account::username) - 1, sizeof(Account::password) - 1, sizeof(Account::note) - 1};
 
@@ -403,39 +390,6 @@ auto LibraryView::form_card(const Layout& t_layout, const VisibleAccounts& t_acc
 	return Rect{t_layout.rows.x, top + *row * pitch(t_layout) + m_row_offsets[*row], t_layout.rows.w, height};
 }
 
-auto LibraryView::region_chips(std::string_view (&t_labels)[K_MAX_REGION_CHIPS]) const -> u32
-{
-	static_assert(K_REGION_COUNT + 1 <= K_MAX_REGION_CHIPS);
-
-	u32 count = 0;
-
-	if (m_regions_expanded) {
-		for (const RegionOption& option : K_REGION_OPTIONS) {
-			if (!option.code.empty()) {
-				t_labels[count] = option.code;
-				count += 1;
-			}
-		}
-
-		t_labels[count] = K_FEWER_REGIONS;
-		return count + 1;
-	}
-
-	const std::string_view selected = m_region;
-	if (!selected.empty() && std::ranges::find(K_COMMON_REGIONS, selected) == std::end(K_COMMON_REGIONS)) {
-		t_labels[count] = selected;
-		count += 1;
-	}
-
-	for (const std::string_view code : K_COMMON_REGIONS) {
-		t_labels[count] = code;
-		count += 1;
-	}
-
-	t_labels[count] = K_MORE_REGIONS;
-	return count + 1;
-}
-
 auto LibraryView::form_layout(Rect t_card) const -> LibraryView::FormLayout
 {
 	const Font& body      = m_fonts->body;
@@ -476,27 +430,10 @@ auto LibraryView::form_layout(Rect t_card) const -> LibraryView::FormLayout
 	}
 
 	place(K_FIELD_COUNT, second_x, y);
+	form.region = Rect{second_x, y + label_h + K_FORM_LABEL_GAP, column, input_h};
 
-	std::string_view labels[K_MAX_REGION_CHIPS];
-	form.region_count = region_chips(labels);
-
-	const float chip_h    = input_h - K_CHIP_SHRINK;
-	const float chips_top = y + label_h + K_FORM_LABEL_GAP + K_CHIP_SHRINK * 0.5f;
-	float       chip_x    = second_x;
-	float       chip_y    = chips_top;
-
-	for (u32 i = 0; i < form.region_count; i += 1) {
-		const float width = text_width(secondary, labels[i]) + K_CHIP_PADDING_X * 2.0f;
-		if (chip_x > second_x && chip_x + width > second_x + column) {
-			chip_x = second_x;
-			chip_y += chip_h + K_CHIP_GAP;
-		}
-
-		form.regions[i] = Rect{chip_x, chip_y, width, chip_h};
-		chip_x += width + K_CHIP_GAP;
-	}
-
-	y = std::max(form.fields[K_NOTE].bottom(), chip_y + chip_h + K_CHIP_SHRINK * 0.5f) + K_FORM_ROW_GAP;
+	const float chip_h = input_h - K_CHIP_SHRINK;
+	y                  = std::max(form.fields[K_NOTE].bottom(), form.region.bottom()) + K_FORM_ROW_GAP;
 
 	form.has_games = m_library->game_count > 1;
 	if (form.has_games) {
@@ -709,9 +646,7 @@ auto LibraryView::form_hit(Rect t_card, Vec2 t_point) const -> LibraryView::Hit
 		if (form.fields[i].contains(t_point)) return Hit{Target::FIELD, i};
 	}
 
-	for (u32 i = 0; i < form.region_count; i += 1) {
-		if (form.regions[i].contains(t_point)) return Hit{Target::REGION, i};
-	}
+	if (form.region.contains(t_point)) return Hit{Target::REGION};
 
 	if (form.has_games) {
 		for (u32 game = 0; game < m_library->game_count; game += 1) {
@@ -827,17 +762,7 @@ auto LibraryView::activate(Hit t_hit) -> void
 		}
 
 		case REGION: {
-			std::string_view labels[K_MAX_REGION_CHIPS];
-			const u32        count = region_chips(labels);
-
-			if (t_hit.index + 1 == count) {
-				m_regions_expanded = !m_regions_expanded;
-			} else if (t_hit.index < count && labels[t_hit.index] == std::string_view{m_region}) {
-				m_region[0] = '\0';
-			} else if (t_hit.index < count) {
-				copy_to(labels[t_hit.index], m_region);
-			}
-
+			open_region_list();
 			break;
 		}
 
@@ -929,12 +854,12 @@ auto LibraryView::open_form(std::optional<AccountRef> t_account) -> void
 		close_form(false);
 	}
 
-	m_form_open        = true;
-	m_form_account     = t_account;
-	m_form_amount      = 0.0f;
-	m_show_required    = false;
-	m_delete_armed     = false;
-	m_regions_expanded = false;
+	m_form_open     = true;
+	m_form_account  = t_account;
+	m_form_amount   = 0.0f;
+	m_show_required = false;
+	m_delete_armed  = false;
+	m_region_list.close();
 
 	if (t_account) {
 		const Account* account = m_library->account(*t_account);
@@ -963,6 +888,7 @@ auto LibraryView::close_form(bool t_animated) -> void
 {
 	m_form_open = false;
 	focus_field(std::nullopt);
+	m_region_list.close();
 
 	if (!t_animated) {
 		m_form_amount = 0.0f;
@@ -978,9 +904,8 @@ auto LibraryView::clear_form() -> void
 
 	sodium_memzero(m_region, sizeof(m_region));
 	m_form_account.reset();
-	m_show_required    = false;
-	m_delete_armed     = false;
-	m_regions_expanded = false;
+	m_show_required = false;
+	m_delete_armed  = false;
 }
 
 auto LibraryView::save_form() -> void
@@ -1135,6 +1060,13 @@ auto LibraryView::blur() -> void
 {
 	focus_filter(false);
 	focus_field(std::nullopt);
+	m_region_list.close();
+}
+
+auto LibraryView::open_region_list() -> void
+{
+	focus_field(std::nullopt);
+	m_region_list.open(K_REGION_LABELS, region_index(m_region));
 }
 
 auto LibraryView::toggle_shown_game(u32 t_game) -> void
@@ -1372,10 +1304,18 @@ auto LibraryView::update(float t_delta_seconds) -> void
 	}
 
 	update_drag(t_delta_seconds);
+
+	const Rect region = form_shown() ? form_layout(form_card(layout, accounts)).region : Rect{};
+	m_region_list.update(t_delta_seconds, region, m_bounds);
 }
 
 auto LibraryView::on_pointer_down(Vec2 t_point) -> void
 {
+	if (m_region_list.is_open()) {
+		m_region_list.on_pointer_down(t_point);
+		return;
+	}
+
 	const Layout          layout   = this->layout();
 	const VisibleAccounts accounts = shown_accounts();
 	if (m_scroll.on_pointer_down(t_point, scroll_geometry(layout, accounts))) return;
@@ -1422,6 +1362,11 @@ auto LibraryView::on_pointer_down(Vec2 t_point) -> void
 
 auto LibraryView::on_pointer_move(Vec2 t_point) -> bool
 {
+	if (m_region_list.is_open()) {
+		m_region_list.on_pointer_move(t_point);
+		return true;
+	}
+
 	const Layout          layout   = this->layout();
 	const VisibleAccounts accounts = shown_accounts();
 	bool                  handled  = false;
@@ -1463,6 +1408,15 @@ auto LibraryView::on_pointer_move(Vec2 t_point) -> bool
 
 auto LibraryView::on_pointer_up(Vec2 t_point) -> bool
 {
+	if (m_region_list.is_open()) {
+		if (const std::optional<u32> chosen = m_region_list.on_pointer_up(t_point)) {
+			copy_to(K_REGION_OPTIONS[std::min<usize>(*chosen, K_REGION_COUNT - 1)].code, m_region);
+		}
+
+		m_pressed = Hit{};
+		return true;
+	}
+
 	m_filter.on_pointer_up();
 
 	for (TextInput& field : m_fields) {
@@ -1523,11 +1477,24 @@ auto LibraryView::on_right_click(Vec2 t_point) -> void
 
 auto LibraryView::on_scroll(float t_wheel_delta) -> void
 {
+	if (m_region_list.is_open()) {
+		m_region_list.on_scroll(t_wheel_delta);
+		return;
+	}
+
 	m_scroll.on_scroll(t_wheel_delta, scroll_geometry(layout(), shown_accounts()));
 }
 
 auto LibraryView::on_key_down(os::Key t_key) -> bool
 {
+	if (m_region_list.is_open()) {
+		if (const std::optional<u32> chosen = m_region_list.on_key_down(t_key)) {
+			copy_to(K_REGION_OPTIONS[std::min<usize>(*chosen, K_REGION_COUNT - 1)].code, m_region);
+		}
+
+		return true;
+	}
+
 	if (m_drag.lifted) {
 		if (t_key == os::Key::ESCAPE) {
 			cancel_drag();
@@ -1607,6 +1574,11 @@ auto LibraryView::on_key_down(os::Key t_key) -> bool
 // Typing anywhere in the library starts filtering.
 auto LibraryView::on_char(u32 t_character) -> bool
 {
+	if (m_region_list.is_open()) {
+		m_region_list.on_char(t_character);
+		return true;
+	}
+
 	if (const std::optional<u32> field = focused_field()) {
 		m_fields[*field].on_char(t_character);
 		return true;
@@ -1642,7 +1614,9 @@ auto LibraryView::drop_press() -> void
 
 auto LibraryView::cursor() const -> CursorKind
 {
-	if (m_drag.lifted || m_scroll.is_dragging()) return CursorKind::DRAG;
+	if (m_region_list.is_open()) return m_region_list.cursor(m_mouse);
+	if (m_drag.lifted) return CursorKind::MOVE;
+	if (m_scroll.is_dragging()) return CursorKind::DRAG;
 	if (m_filter.is_selecting() || std::ranges::any_of(m_fields, [](const TextInput& t_field) { return t_field.is_selecting(); })) return CursorKind::I_BEAM;
 
 	const Hit hit = hit_at(m_mouse);
@@ -1695,8 +1669,9 @@ auto LibraryView::draw_header(DrawList* t_draw_list, const Layout& t_layout, u8 
 		written                     = std::snprintf(played, sizeof(played), "last played %.*s", static_cast<int>(when.size()), when.data());
 	}
 
-	draw_dotted(t_draw_list, secondary, Vec2{t_layout.header.x, t_layout.subtitle_baseline}, {count, static_cast<usize>(std::max(counted, 0))},
-	            {played, static_cast<usize>(std::max(written, 0))}, faded(g_theme.text_faint, t_alpha));
+	controls::draw_dotted(t_draw_list, secondary, Vec2{t_layout.header.x, t_layout.subtitle_baseline}, {count, static_cast<usize>(std::max(counted, 0))},
+	                      {played, static_cast<usize>(std::max(written, 0))}, std::max(0.0f, t_layout.filter.x - K_TITLE_GAP - t_layout.header.x),
+	                      faded(g_theme.text_faint, t_alpha));
 
 	controls::draw_search_field(t_draw_list, secondary, t_layout.filter, K_FILTER_INSET, &m_filter, m_mouse, accent, t_alpha);
 
@@ -1971,26 +1946,24 @@ auto LibraryView::draw_form(DrawList* t_draw_list, const Layout& t_layout, const
 	draw_text(t_draw_list, secondary, Vec2{region_label.x + text_width(secondary, "Region"), region_label.y + secondary.ascent}, K_OPTIONAL_SUFFIX,
 	          faded(g_theme.text_faint, content));
 
-	std::string_view labels[K_MAX_REGION_CHIPS];
-	const u32        chips = region_chips(labels);
+	const Rect  region         = form.region;
+	const bool  region_open    = m_region_list.is_open();
+	const bool  region_hovered = live && region.contains(m_mouse);
+	const u32   region_choice  = region_index(m_region);
+	const Rect  chevron{region.right() - K_CHEVRON_MARGIN - K_CHEVRON_SIZE.x, region.center().y - K_CHEVRON_SIZE.y * 0.5f, K_CHEVRON_SIZE.x, K_CHEVRON_SIZE.y};
+	const float value_x = region.x + K_INPUT_PADDING_X;
 
-	for (u32 i = 0; i < chips; i += 1) {
-		const Rect chip     = form.regions[i];
-		const bool toggle   = i + 1 == chips;
-		const bool selected = !toggle && labels[i] == std::string_view{m_region};
-		const bool hovered  = live && chip.contains(m_mouse);
-
-		if (toggle) {
-			draw_text_centered(t_draw_list, secondary, chip, labels[i], faded(hovered ? g_theme.text : accent, content));
-			continue;
-		}
-
-		const Color fill = selected ? accent : (hovered ? g_theme.control_hover : g_theme.control);
-		const Color ink  = selected ? controls::ink_on(accent) : (hovered ? g_theme.text : g_theme.text_dim);
-
-		t_draw_list->add_rounded_rect(chip, rounded(K_CHIP_RADIUS), faded(fill, content));
-		draw_text_centered(t_draw_list, secondary, chip, labels[i], faded(ink, content));
+	Color region_border = g_theme.separator;
+	if (region_open) {
+		region_border = accent;
+	} else if (region_hovered) {
+		region_border = g_theme.border;
 	}
+
+	draw_input_box(t_draw_list, region, region_border, region_open, accent, content);
+	draw_text_truncated(t_draw_list, body, Vec2{value_x, body.centered_baseline(region)}, K_REGION_OPTIONS[region_choice].label,
+	                    chevron.x - K_INPUT_PADDING_X - value_x, faded(region_choice == 0 ? g_theme.text_faint : g_theme.text, content));
+	controls::draw_chevron(t_draw_list, chevron, region_open, faded(region_open || region_hovered ? g_theme.text : g_theme.text_dim, content));
 
 	if (form.has_games) {
 		const Rect shown_label = form.labels[K_FIELD_COUNT + 1];
@@ -2137,4 +2110,5 @@ auto LibraryView::draw(DrawList* t_draw_list, u8 t_alpha) -> void
 	const ScrollGeometry geometry = scroll_geometry(layout, accounts);
 	m_scroll.draw_edge_fade(t_draw_list, layout.rows, geometry, faded(g_theme.window, t_alpha));
 	m_scroll.draw(t_draw_list, geometry, m_mouse, t_alpha);
+	m_region_list.draw(t_draw_list, m_mouse);
 }

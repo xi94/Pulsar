@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <span>
 
 #include "core/debug_log.h"
 #include "core/profiler.h"
@@ -20,7 +21,7 @@ constexpr NSUInteger     K_VERTEX_BUFFER_INDEX    = 0;
 constexpr NSUInteger     K_CONSTANTS_BUFFER_INDEX = 1;
 
 constexpr const char* K_FRAGMENT_FUNCTIONS[]{
-	"ps_solid", "ps_textured", "ps_banner_glow", "ps_color_picker", "ps_shadow", "ps_outline_countdown", "ps_backdrop", "ps_backdrop_plain",
+	"ps_solid", "ps_textured", "ps_banner_glow", "ps_color_picker", "ps_shadow", "ps_outline_countdown", "ps_backdrop", "ps_backdrop_plain", "ps_backdrop_blur",
 };
 
 static_assert(std::size(K_FRAGMENT_FUNCTIONS) == K_SHADER_KIND_COUNT);
@@ -45,11 +46,23 @@ struct MetalBackend final : RenderBackend {
 
 	id<MTLTexture> textures[Renderer::K_MAX_TEXTURES]{};
 
+	// The frame so far, then halved level by level. Each level has a second target the blur passes bounce through.
+	id<MTLRenderPipelineState> downsample_pipeline = nil;
+	id<MTLRenderPipelineState> blur_pipeline       = nil;
+	id<MTLTexture>             capture             = nil;
+	id<MTLTexture>             levels[K_BLUR_LEVEL_COUNT][2]{};
+	bool                       blur_ready = false;
+
 	~MetalBackend() override;
 
 	[[nodiscard]] auto init(const os::Window* t_window) -> bool override;
 	auto resize(u32 t_physical_width, u32 t_physical_height) -> void override;
 	auto render(const RenderFrame& t_frame) -> void override;
+
+	[[nodiscard]] auto supports_backdrop_blur() const -> bool override
+	{
+		return blur_ready;
+	}
 
 	[[nodiscard]] auto create_texture(u32 t_slot, std::span<const TextureLevel> t_levels, bool t_updatable) -> bool override;
 	auto update_texture(u32 t_slot, u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rgba_pixels) -> void override;
@@ -57,6 +70,8 @@ struct MetalBackend final : RenderBackend {
 
 	[[nodiscard]] auto create_pipelines() -> bool;
 	auto create_sampler() -> void;
+	auto size_blur_targets(u32 t_width, u32 t_height) -> void;
+	auto encode_blur(id<MTLCommandBuffer> t_commands, BlurPlan t_plan) const -> void;
 	auto attach_layer(const os::Window* t_window) -> void;
 	auto wait_for_gpu() const -> void;
 	auto upload_geometry(FrameGeometry* t_geometry, const DrawList* t_draw_list) const -> void;
@@ -114,6 +129,7 @@ auto MetalBackend::resize(u32 t_physical_width, u32 t_physical_height) -> void
 	descriptor.storageMode           = MTLStorageModePrivate;
 
 	msaa_target = [device newTextureWithDescriptor:descriptor];
+	size_blur_targets(t_physical_width, t_physical_height);
 }
 
 auto MetalBackend::render(const RenderFrame& t_frame) -> void
@@ -134,33 +150,68 @@ auto MetalBackend::render(const RenderFrame& t_frame) -> void
 
 		PULSAR_PROFILE_SCOPE("Render.Submit");
 
-		const Color              clear          = t_frame.clear_color;
-		MTLRenderPassDescriptor* pass           = [MTLRenderPassDescriptor renderPassDescriptor];
-		pass.colorAttachments[0].texture        = msaa_target;
-		pass.colorAttachments[0].resolveTexture = drawable.texture;
-		pass.colorAttachments[0].loadAction     = MTLLoadActionClear;
-		pass.colorAttachments[0].storeAction    = MTLStoreActionMultisampleResolve;
-		pass.colorAttachments[0].clearColor     = MTLClearColorMake(clear.r / 255.0, clear.g / 255.0, clear.b / 255.0, clear.a / 255.0);
+		const Color                        clear     = t_frame.clear_color;
+		const DrawList*                    draw_list = t_frame.draw_list;
+		const std::span<const DrawCommand> list      = draw_list->commands();
+		const ViewportConstants            viewport  = viewport_constants(t_frame);
+		FrameGeometry*                     geometry  = &frames[frame_index];
+		id<MTLCommandBuffer>               commands  = [queue commandBuffer];
 
-		id<MTLCommandBuffer>        commands  = [queue commandBuffer];
-		id<MTLRenderCommandEncoder> encoder   = [commands renderCommandEncoderWithDescriptor:pass];
-		const DrawList*             draw_list = t_frame.draw_list;
-
-		if (!draw_list->commands().empty()) {
-			FrameGeometry*          geometry = &frames[frame_index];
-			const ViewportConstants viewport = viewport_constants(t_frame);
+		if (!list.empty()) {
 			upload_geometry(geometry, draw_list);
-
-			[encoder setVertexBuffer:geometry->vertices offset:0 atIndex:K_VERTEX_BUFFER_INDEX];
-			[encoder setVertexBytes:&viewport length:sizeof(viewport) atIndex:K_CONSTANTS_BUFFER_INDEX];
-			[encoder setFragmentSamplerState:sampler atIndex:0];
-
-			for (const DrawCommand& command : draw_list->commands()) {
-				draw_command(encoder, t_frame, command, geometry->indices);
-			}
 		}
 
-		[encoder endEncoding];
+		// Each pass runs up to the next glass that needs a fresh blur of what is drawn before it, or that blurs unlike the glass before it.
+		// That pass resolves into the capture instead of the screen, the blur runs, and the next pass carries on from the multisampled
+		// frame it left behind.
+		usize first       = 0;
+		bool  first_clear = true;
+
+		while (true) {
+			usize end          = first;
+			bool  ends_in_blur = false;
+
+			for (; end < list.size(); end += 1) {
+				const bool glass = list[end].shader == ShaderKind::BACKDROP_BLUR;
+
+				const bool follows_glass = end > first && list[end - 1].shader == ShaderKind::BACKDROP_BLUR;
+
+				if (glass && blur_ready && end > first && (!follows_glass || blur_plan(t_frame, list[end - 1]) != blur_plan(t_frame, list[end]))) {
+					ends_in_blur = true;
+					break;
+				}
+			}
+
+			MTLRenderPassDescriptor* pass           = [MTLRenderPassDescriptor renderPassDescriptor];
+			pass.colorAttachments[0].texture        = msaa_target;
+			pass.colorAttachments[0].resolveTexture = ends_in_blur ? capture : drawable.texture;
+			pass.colorAttachments[0].loadAction     = first_clear ? MTLLoadActionClear : MTLLoadActionLoad;
+			pass.colorAttachments[0].storeAction    = ends_in_blur ? MTLStoreActionStoreAndMultisampleResolve : MTLStoreActionMultisampleResolve;
+			pass.colorAttachments[0].clearColor     = MTLClearColorMake(clear.r / 255.0, clear.g / 255.0, clear.b / 255.0, clear.a / 255.0);
+
+			id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
+
+			if (end > first) {
+				[encoder setVertexBuffer:geometry->vertices offset:0 atIndex:K_VERTEX_BUFFER_INDEX];
+				[encoder setVertexBytes:&viewport length:sizeof(viewport) atIndex:K_CONSTANTS_BUFFER_INDEX];
+				[encoder setFragmentSamplerState:sampler atIndex:0];
+
+				for (usize i = first; i < end; i += 1) {
+					if (list[i].shader == ShaderKind::BACKDROP_BLUR && !blur_ready) continue;
+
+					draw_command(encoder, t_frame, list[i], geometry->indices);
+				}
+			}
+
+			[encoder endEncoding];
+
+			if (!ends_in_blur) break;
+
+			encode_blur(commands, blur_plan(t_frame, list[end]));
+			first       = end;
+			first_clear = false;
+		}
+
 		[commands presentDrawable:drawable];
 
 		dispatch_semaphore_t semaphore = frames_available;
@@ -170,6 +221,68 @@ auto MetalBackend::render(const RenderFrame& t_frame) -> void
 		[commands commit];
 
 		frame_index = (frame_index + 1) % K_FRAMES_IN_FLIGHT;
+	}
+}
+
+auto MetalBackend::size_blur_targets(u32 t_width, u32 t_height) -> void
+{
+	const auto target = [this](u32 t_target_width, u32 t_target_height) {
+		MTLTextureDescriptor* descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:K_PIXEL_FORMAT
+																							  width:std::max<u32>(t_target_width, 1)
+																							 height:std::max<u32>(t_target_height, 1)
+																						  mipmapped:NO];
+		descriptor.usage                 = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+		descriptor.storageMode           = MTLStorageModePrivate;
+
+		return [device newTextureWithDescriptor:descriptor];
+	};
+
+	capture    = target(t_width, t_height);
+	blur_ready = downsample_pipeline != nil && blur_pipeline != nil && capture != nil;
+
+	for (u32 level = 0; level < K_BLUR_LEVEL_COUNT; level += 1) {
+		for (id<MTLTexture>& texture : levels[level]) {
+			texture    = target(blur_level_extent(t_width, level), blur_level_extent(t_height, level));
+			blur_ready = blur_ready && texture != nil;
+		}
+	}
+}
+
+// Halves the captured frame down to the plan's level and blurs it there for glass to sample.
+auto MetalBackend::encode_blur(id<MTLCommandBuffer> t_commands, BlurPlan t_plan) const -> void
+{
+	const auto pass = [&](id<MTLTexture> t_target, id<MTLTexture> t_source, id<MTLRenderPipelineState> t_pipeline, float t_step_x, float t_step_y) {
+		MTLRenderPassDescriptor* descriptor        = [MTLRenderPassDescriptor renderPassDescriptor];
+		descriptor.colorAttachments[0].texture     = t_target;
+		descriptor.colorAttachments[0].loadAction  = MTLLoadActionDontCare;
+		descriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+
+		const BlurConstants         constants{.step_x = t_step_x, .step_y = t_step_y};
+		id<MTLRenderCommandEncoder> encoder = [t_commands renderCommandEncoderWithDescriptor:descriptor];
+
+		[encoder setRenderPipelineState:t_pipeline];
+		[encoder setFragmentTexture:t_source atIndex:0];
+		[encoder setFragmentSamplerState:sampler atIndex:0];
+		[encoder setFragmentBytes:&constants length:sizeof(constants) atIndex:K_CONSTANTS_BUFFER_INDEX];
+		[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+		[encoder endEncoding];
+	};
+
+	id<MTLTexture> source = capture;
+
+	for (u32 level = 0; level <= t_plan.level; level += 1) {
+		pass(levels[level][0], source, downsample_pipeline, 1.0f / static_cast<float>(source.width), 1.0f / static_cast<float>(source.height));
+		source = levels[level][0];
+	}
+
+	id<MTLTexture> blurred = levels[t_plan.level][0];
+	id<MTLTexture> scratch = levels[t_plan.level][1];
+	const float    step_x  = t_plan.step / static_cast<float>(blurred.width);
+	const float    step_y  = t_plan.step / static_cast<float>(blurred.height);
+
+	for (u32 i = 0; i < t_plan.iterations; i += 1) {
+		pass(scratch, blurred, blur_pipeline, step_x, 0.0f);
+		pass(blurred, scratch, blur_pipeline, 0.0f, step_y);
 	}
 }
 
@@ -275,6 +388,19 @@ auto MetalBackend::create_pipelines() -> bool
 		}
 	}
 
+	MTLRenderPipelineDescriptor* passes    = [[MTLRenderPipelineDescriptor alloc] init];
+	passes.vertexFunction                  = [library newFunctionWithName:@"vs_fullscreen"];
+	passes.colorAttachments[0].pixelFormat = K_PIXEL_FORMAT;
+
+	passes.fragmentFunction = [library newFunctionWithName:@"ps_downsample"];
+	downsample_pipeline     = [device newRenderPipelineStateWithDescriptor:passes error:&error];
+	passes.fragmentFunction = [library newFunctionWithName:@"ps_blur"];
+	blur_pipeline           = [device newRenderPipelineStateWithDescriptor:passes error:&error];
+
+	if (downsample_pipeline == nil || blur_pipeline == nil) {
+		debug_log::write(K_LOG_CATEGORY, "the glass blur pipelines failed - glass draws without blur");
+	}
+
 	return true;
 }
 
@@ -344,6 +470,8 @@ auto MetalBackend::draw_command(id<MTLRenderCommandEncoder> t_encoder, const Ren
 		if (!t_command.texture->is_valid()) return;
 
 		image = textures[t_command.texture->slot()];
+	} else if (t_command.shader == ShaderKind::BACKDROP_BLUR) {
+		image = levels[blur_plan(t_frame, t_command).level][0];
 	}
 
 	EffectConstants effect{};

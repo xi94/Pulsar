@@ -182,8 +182,10 @@ auto AppMenu::draw(DrawList* t_draw_list) -> void
 	const Font& font      = m_fonts->body;
 	const Font& hint_font = m_fonts->secondary;
 
+	const RoundnessScope corners{controls::K_POPUP_ROUNDNESS};
+
 	controls::draw_popup_shadow(t_draw_list, menu_area, K_MENU_RADIUS, m_open_amount);
-	t_draw_list->add_bordered_rect(menu_area, rounded(K_MENU_RADIUS), faded(g_theme.popup, alpha), faded(g_theme.border, alpha), 1.0f);
+	controls::draw_glass(t_draw_list, menu_area, rounded(K_MENU_RADIUS), controls::GlassSurface::MENU, alpha);
 
 	const auto separator_above = [&](float t_y) {
 		t_draw_list->add_rect(Rect{menu_area.x + 1.0f, t_y - K_SEPARATOR_GAP - 1.0f, menu_area.w - 2.0f, 1.0f}, faded(g_theme.separator, alpha));
@@ -200,7 +202,7 @@ auto AppMenu::draw(DrawList* t_draw_list) -> void
 		}
 
 		if (m_item_hover[slot] > 0.001f) {
-			t_draw_list->add_rounded_rect(item, rounded(K_ITEM_RADIUS), faded(backdrop, alpha));
+			t_draw_list->add_rounded_rect(item, rounded(K_ITEM_RADIUS), faded(controls::glass_highlight(m_item_hover[slot]), alpha));
 		}
 
 		const Color label      = faded(enabled ? g_theme.text : g_theme.text_faint, alpha);

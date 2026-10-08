@@ -75,6 +75,10 @@ constexpr float K_ANIMATION_SPEED_MIN     = 0.25f;
 constexpr float K_ANIMATION_SPEED_MAX     = 3.0f;
 constexpr float K_CORNER_ROUNDNESS_MIN    = 0.0f;
 constexpr float K_CORNER_ROUNDNESS_MAX    = 1.5f;
+constexpr float K_GLASS_TINT_MIN          = 0.3f;
+constexpr float K_GLASS_TINT_MAX          = 1.0f;
+constexpr float K_GLASS_TINT_DEFAULT      = 0.64f;
+constexpr float K_GLASS_BLUR_DEFAULT      = 0.3f;
 constexpr float K_FONT_SIZE_MIN           = 10.0f;
 constexpr float K_FONT_SIZE_MAX           = 24.0f;
 constexpr float K_SECONDARY_FONT_SIZE_MIN = 8.0f;
@@ -97,6 +101,9 @@ struct Settings {
 	float           background_grain_intensity = 0.5f;
 	bool            snow                       = false;
 	float           background_intensity       = 0.5f;
+	bool            glass                      = true;
+	float           glass_blur                 = K_GLASS_BLUR_DEFAULT;
+	float           glass_tint                 = K_GLASS_TINT_DEFAULT;
 
 	float font_size           = 13.0f;
 	float secondary_font_size = 12.0f;

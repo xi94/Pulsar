@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <optional>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <Windows.h>
@@ -28,7 +30,7 @@ constexpr u32  K_INITIAL_INDEX_CAPACITY  = 1536;
 constexpr UINT K_MSAA_SAMPLE_COUNT       = 4;
 
 constexpr const char* K_PIXEL_SHADER_ENTRY_POINTS[]{
-	"ps_solid", "ps_textured", "ps_banner_glow", "ps_color_picker", "ps_shadow", "ps_outline_countdown", "ps_backdrop", "ps_backdrop_plain",
+	"ps_solid", "ps_textured", "ps_banner_glow", "ps_color_picker", "ps_shadow", "ps_outline_countdown", "ps_backdrop", "ps_backdrop_plain", "ps_backdrop_blur",
 };
 
 static_assert(std::size(K_PIXEL_SHADER_ENTRY_POINTS) == K_SHADER_KIND_COUNT);
@@ -90,20 +92,33 @@ struct D3D11Backend final : RenderBackend {
 		ComPtr<ID3D11ShaderResourceView> view;
 	};
 
+	struct BlurTarget {
+		ComPtr<ID3D11Texture2D>          texture;
+		ComPtr<ID3D11RenderTargetView>   target;
+		ComPtr<ID3D11ShaderResourceView> view;
+		u32                              width  = 0;
+		u32                              height = 0;
+	};
+
 	ComPtr<ID3D11Device>           device;
 	ComPtr<ID3D11DeviceContext>    context;
 	ComPtr<IDXGISwapChain>         swap_chain;
+	ComPtr<ID3D11Texture2D>        back_buffer;
 	ComPtr<ID3D11RenderTargetView> render_target_view;
 
 	ComPtr<ID3D11VertexShader> vertex_shader;
 	ComPtr<ID3D11PixelShader>  pixel_shaders[K_SHADER_KIND_COUNT];
 	ComPtr<ID3D11InputLayout>  input_layout;
+	ComPtr<ID3D11VertexShader> fullscreen_shader;
+	ComPtr<ID3D11PixelShader>  downsample_shader;
+	ComPtr<ID3D11PixelShader>  blur_shader;
 
 	ComPtr<ID3D11Buffer> viewport_constants;
 	ComPtr<ID3D11Buffer> banner_glow_constants;
 	ComPtr<ID3D11Buffer> shadow_constants;
 	ComPtr<ID3D11Buffer> outline_countdown_constants;
 	ComPtr<ID3D11Buffer> backdrop_constants;
+	ComPtr<ID3D11Buffer> blur_constants;
 
 	ComPtr<ID3D11BlendState>      blend_state;
 	ComPtr<ID3D11RasterizerState> rasterizer_state;
@@ -116,9 +131,19 @@ struct D3D11Backend final : RenderBackend {
 
 	TextureSlot textures[Renderer::K_MAX_TEXTURES];
 
+	// The frame so far, then halved level by level. Each level has a second target the blur passes bounce through.
+	BlurTarget capture;
+	BlurTarget levels[K_BLUR_LEVEL_COUNT][2];
+	bool       blur_ready = false;
+
 	[[nodiscard]] auto init(const os::Window* t_window) -> bool override;
 	auto resize(u32 t_physical_width, u32 t_physical_height) -> void override;
 	auto render(const RenderFrame& t_frame) -> void override;
+
+	[[nodiscard]] auto supports_backdrop_blur() const -> bool override
+	{
+		return blur_ready;
+	}
 
 	[[nodiscard]] auto create_texture(u32 t_slot, std::span<const TextureLevel> t_levels, bool t_updatable) -> bool override;
 	auto update_texture(u32 t_slot, u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rgba_pixels) -> void override;
@@ -131,6 +156,9 @@ struct D3D11Backend final : RenderBackend {
 	auto create_vertex_buffer(u32 t_capacity) -> bool;
 	auto create_index_buffer(u32 t_capacity) -> bool;
 	auto set_viewport(u32 t_width, u32 t_height) const -> void;
+	[[nodiscard]] auto create_blur_target(u32 t_width, u32 t_height, bool t_renderable, BlurTarget* t_target) const -> bool;
+	auto size_blur_targets(u32 t_width, u32 t_height) -> void;
+	auto blur_frame(const RenderFrame& t_frame, BlurPlan t_plan) -> void;
 
 	auto upload_geometry(const DrawList* t_draw_list) -> void;
 	auto bind_shared_state(const RenderFrame& t_frame) const -> void;
@@ -182,6 +210,7 @@ auto D3D11Backend::init(const os::Window* t_window) -> bool
 	                 std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - pipeline_start).count());
 
 	set_viewport(t_window->physical_width(), t_window->physical_height());
+	size_blur_targets(t_window->physical_width(), t_window->physical_height());
 
 	return true;
 }
@@ -189,10 +218,12 @@ auto D3D11Backend::init(const os::Window* t_window) -> bool
 auto D3D11Backend::resize(u32 t_physical_width, u32 t_physical_height) -> void
 {
 	render_target_view.Reset();
+	back_buffer.Reset();
 	swap_chain->ResizeBuffers(0, t_physical_width, t_physical_height, DXGI_FORMAT_UNKNOWN, 0);
 	create_render_target_view();
 
 	set_viewport(t_physical_width, t_physical_height);
+	size_blur_targets(t_physical_width, t_physical_height);
 }
 
 auto D3D11Backend::render(const RenderFrame& t_frame) -> void
@@ -211,7 +242,19 @@ auto D3D11Backend::render(const RenderFrame& t_frame) -> void
 			upload_geometry(t_frame.draw_list);
 			bind_shared_state(t_frame);
 
+			// Glass needs a fresh blur of what is drawn before it, but a run of glass shapes that blur alike can share one.
+			std::optional<BlurPlan> blurred;
+
 			for (const DrawCommand& command : t_frame.draw_list->commands()) {
+				if (command.shader != ShaderKind::BACKDROP_BLUR) {
+					blurred.reset();
+				} else if (!blur_ready) {
+					continue;
+				} else if (const BlurPlan plan = blur_plan(t_frame, command); blurred != plan) {
+					blur_frame(t_frame, plan);
+					blurred = plan;
+				}
+
 				draw_command(t_frame, command);
 			}
 		}
@@ -276,10 +319,108 @@ auto D3D11Backend::set_viewport(u32 t_width, u32 t_height) const -> void
 	context->RSSetViewports(1, &viewport);
 }
 
+auto D3D11Backend::create_blur_target(u32 t_width, u32 t_height, bool t_renderable, BlurTarget* t_target) const -> bool
+{
+	*t_target = BlurTarget{.width = std::max<u32>(t_width, 1), .height = std::max<u32>(t_height, 1)};
+
+	const D3D11_TEXTURE2D_DESC desc{
+		.Width      = t_target->width,
+		.Height     = t_target->height,
+		.MipLevels  = 1,
+		.ArraySize  = 1,
+		.Format     = DXGI_FORMAT_R8G8B8A8_UNORM,
+		.SampleDesc = {.Count = 1, .Quality = 0},
+		.Usage      = D3D11_USAGE_DEFAULT,
+		.BindFlags  = D3D11_BIND_SHADER_RESOURCE | (t_renderable ? D3D11_BIND_RENDER_TARGET : 0u),
+	};
+
+	if (FAILED(device->CreateTexture2D(&desc, nullptr, &t_target->texture))) return false;
+	if (FAILED(device->CreateShaderResourceView(t_target->texture.Get(), nullptr, &t_target->view))) return false;
+
+	return !t_renderable || SUCCEEDED(device->CreateRenderTargetView(t_target->texture.Get(), nullptr, &t_target->target));
+}
+
+auto D3D11Backend::size_blur_targets(u32 t_width, u32 t_height) -> void
+{
+	blur_ready = create_blur_target(t_width, t_height, false, &capture);
+
+	for (u32 level = 0; level < K_BLUR_LEVEL_COUNT; level += 1) {
+		const u32 width  = blur_level_extent(t_width, level);
+		const u32 height = blur_level_extent(t_height, level);
+
+		for (BlurTarget& target : levels[level]) {
+			blur_ready = blur_ready && create_blur_target(width, height, true, &target);
+		}
+	}
+
+	if (!blur_ready) {
+		debug_log::write(K_LOG_CATEGORY, "glass blur targets could not be made - glass draws without blur");
+	}
+}
+
+// Resolves what is drawn so far, halves it down to the plan's level and blurs it there, then puts the frame's own state back.
+auto D3D11Backend::blur_frame(const RenderFrame& t_frame, BlurPlan t_plan) -> void
+{
+	PULSAR_PROFILE_SCOPE("Render.Blur");
+
+	if constexpr (K_MSAA_SAMPLE_COUNT > 1) {
+		context->ResolveSubresource(capture.texture.Get(), 0, back_buffer.Get(), 0, DXGI_FORMAT_R8G8B8A8_UNORM);
+	} else {
+		context->CopyResource(capture.texture.Get(), back_buffer.Get());
+	}
+
+	ID3D11ShaderResourceView* const no_view  = nullptr;
+	ID3D11Buffer* const             settings = blur_constants.Get();
+
+	context->IASetInputLayout(nullptr);
+	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	context->VSSetShader(fullscreen_shader.Get(), nullptr, 0);
+	context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+	context->PSSetConstantBuffers(1, 1, &settings);
+
+	const auto pass = [&](const BlurTarget& t_target, const BlurTarget& t_source, ID3D11PixelShader* t_shader, float t_step_x, float t_step_y) {
+		ID3D11RenderTargetView* const   target = t_target.target.Get();
+		ID3D11ShaderResourceView* const source = t_source.view.Get();
+		const D3D11_RECT                scissor{0, 0, static_cast<LONG>(t_target.width), static_cast<LONG>(t_target.height)};
+		const BlurConstants             constants{.step_x = t_step_x, .step_y = t_step_y};
+
+		context->PSSetShaderResources(0, 1, &no_view);
+		context->OMSetRenderTargets(1, &target, nullptr);
+		set_viewport(t_target.width, t_target.height);
+		context->RSSetScissorRects(1, &scissor);
+		context->UpdateSubresource(blur_constants.Get(), 0, nullptr, &constants, 0, 0);
+		context->PSSetShader(t_shader, nullptr, 0);
+		context->PSSetShaderResources(0, 1, &source);
+		context->Draw(3, 0);
+	};
+
+	const BlurTarget* source = &capture;
+
+	for (u32 level = 0; level <= t_plan.level; level += 1) {
+		pass(levels[level][0], *source, downsample_shader.Get(), 1.0f / static_cast<float>(source->width), 1.0f / static_cast<float>(source->height));
+		source = &levels[level][0];
+	}
+
+	const BlurTarget* blurred = levels[t_plan.level];
+	const float       step_x  = t_plan.step / static_cast<float>(blurred[0].width);
+	const float       step_y  = t_plan.step / static_cast<float>(blurred[0].height);
+
+	for (u32 i = 0; i < t_plan.iterations; i += 1) {
+		pass(blurred[1], blurred[0], blur_shader.Get(), step_x, 0.0f);
+		pass(blurred[0], blurred[1], blur_shader.Get(), 0.0f, step_y);
+	}
+
+	context->PSSetShaderResources(0, 1, &no_view);
+
+	ID3D11RenderTargetView* const frame_target = render_target_view.Get();
+	context->OMSetRenderTargets(1, &frame_target, nullptr);
+	set_viewport(t_frame.physical_width, t_frame.physical_height);
+	bind_shared_state(t_frame);
+}
+
 auto D3D11Backend::create_render_target_view() -> bool
 {
-	ComPtr<ID3D11Texture2D> back_buffer;
-	if (FAILED(swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer)))) return false;
+	if (FAILED(swap_chain->GetBuffer(0, IID_PPV_ARGS(back_buffer.ReleaseAndGetAddressOf())))) return false;
 
 	return SUCCEEDED(device->CreateRenderTargetView(back_buffer.Get(), nullptr, &render_target_view));
 }
@@ -294,6 +435,9 @@ auto D3D11Backend::create_shaders() -> bool
 	};
 
 	CompileJob vertex_job{"vs_main", "vs_5_0"};
+	CompileJob fullscreen_job{"vs_fullscreen", "vs_5_0"};
+	CompileJob downsample_job{"ps_downsample", "ps_5_0"};
+	CompileJob blur_job{"ps_blur", "ps_5_0"};
 	CompileJob pixel_jobs[K_SHADER_KIND_COUNT];
 	for (u32 i = 0; i < K_SHADER_KIND_COUNT; i += 1) {
 		pixel_jobs[i] = CompileJob{K_PIXEL_SHADER_ENTRY_POINTS[i], "ps_5_0"};
@@ -305,6 +449,9 @@ auto D3D11Backend::create_shaders() -> bool
 	};
 
 	compile(&vertex_job);
+	compile(&fullscreen_job);
+	compile(&downsample_job);
+	compile(&blur_job);
 	for (CompileJob& job : pixel_jobs) {
 		compile(&job);
 	}
@@ -314,6 +461,18 @@ auto D3D11Backend::create_shaders() -> bool
 	}
 
 	if (!vertex_job.compiled || !std::ranges::all_of(pixel_jobs, &CompileJob::compiled)) return false;
+	if (!fullscreen_job.compiled || !downsample_job.compiled || !blur_job.compiled) return false;
+
+	const auto bytecode = [](const CompileJob& t_job) { return std::pair{t_job.blob->GetBufferPointer(), t_job.blob->GetBufferSize()}; };
+	const auto [fullscreen_code, fullscreen_size] = bytecode(fullscreen_job);
+	const auto [downsample_code, downsample_size] = bytecode(downsample_job);
+	const auto [blur_code, blur_size]             = bytecode(blur_job);
+
+	if (FAILED(device->CreateVertexShader(fullscreen_code, fullscreen_size, nullptr, &fullscreen_shader)) ||
+	    FAILED(device->CreatePixelShader(downsample_code, downsample_size, nullptr, &downsample_shader)) ||
+	    FAILED(device->CreatePixelShader(blur_code, blur_size, nullptr, &blur_shader))) {
+		return false;
+	}
 
 	ID3DBlob* vertex_blob = vertex_job.blob.Get();
 	if (FAILED(device->CreateVertexShader(vertex_blob->GetBufferPointer(), vertex_blob->GetBufferSize(), nullptr, &vertex_shader))) {
@@ -344,7 +503,7 @@ auto D3D11Backend::create_constant_buffers() -> bool
 	       create_constant_buffer<BannerGlowConstants>(device.Get(), &banner_glow_constants) &&
 	       create_constant_buffer<ShadowConstants>(device.Get(), &shadow_constants) &&
 	       create_constant_buffer<OutlineCountdownConstants>(device.Get(), &outline_countdown_constants) &&
-	       create_constant_buffer<BackdropConstants>(device.Get(), &backdrop_constants);
+	       create_constant_buffer<BackdropConstants>(device.Get(), &backdrop_constants) && create_constant_buffer<BlurConstants>(device.Get(), &blur_constants);
 }
 
 auto D3D11Backend::create_pipeline_states() -> bool
@@ -490,6 +649,12 @@ auto D3D11Backend::draw_command(const RenderFrame& t_frame, const DrawCommand& t
 		case BACKDROP:
 		case BACKDROP_PLAIN: {
 			extra_constants = backdrop_constants.Get();
+			break;
+		}
+
+		case BACKDROP_BLUR: {
+			image           = levels[blur_plan(t_frame, t_command).level][0].view.Get();
+			extra_constants = blur_constants.Get();
 			break;
 		}
 	}

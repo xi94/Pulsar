@@ -8,6 +8,7 @@
 #include <span>
 
 #include "core/library.h"
+#include "core/settings.h"
 #include "core/str.h"
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
@@ -18,6 +19,10 @@
 
 namespace {
 constexpr float K_BUTTON_RADIUS          = 8.0f;
+constexpr float K_CIRCLE_ROUNDNESS       = 1.0f;
+constexpr u8    K_GLASS_HIGHLIGHT_ALPHA  = 10;
+constexpr float K_GLASS_ROW_ALPHA        = 26.0f;
+constexpr float K_BLURRED_SCRIM_SHARE    = 0.5f;
 constexpr float K_FIELD_BORDER           = 1.5f;
 constexpr float K_DANGER_FILL_STRENGTH   = 0.22f;
 constexpr float K_DANGER_HOVER_STRENGTH  = 0.38f;
@@ -35,6 +40,26 @@ constexpr float K_REGION_CHIP_PADDING    = 6.0f;
 constexpr u8    K_REGION_CHIP_ALPHA      = 22;
 constexpr float K_DETAIL_DOT_SIZE        = 3.0f;
 constexpr float K_DETAIL_DOT_GAP         = 7.0f;
+
+constexpr float K_GLASS_BLUR_REFERENCE = 0.5f;
+
+// Each GlassSurface's blur as a Gaussian sigma in logical pixels at 50% Blur, and how opaque its tint is at the default Tint.
+struct GlassLook {
+	float spread;
+	float tint;
+};
+
+constexpr GlassLook K_GLASS_LOOKS[]{
+	{.spread = 4.0f, .tint = 0.64f}, {.spread = 6.0f, .tint = 0.64f}, {.spread = 9.0f, .tint = 0.64f},
+	{.spread = 9.0f, .tint = 0.90f}, {.spread = 14.0f, .tint = 0.0f},
+};
+
+static_assert(std::size(K_GLASS_LOOKS) == static_cast<usize>(controls::GlassSurface::BACKDROP) + 1);
+
+bool  g_glass_available  = false;
+bool  g_glass_blurs      = false;
+float g_glass_tint       = K_GLASS_TINT_DEFAULT;
+float g_glass_blur_scale = 1.0f;
 
 struct ButtonLook {
 	Color fill;
@@ -96,6 +121,26 @@ auto draw_outline_countdown(DrawList* t_draw_list, Rect t_shape, float t_shape_r
 	const float radius = std::min(t_shape_radius, std::min(t_shape.w, t_shape.h) * 0.5f) + K_COUNTDOWN_GAP;
 
 	t_draw_list->add_outline_countdown(t_shape.inset(-K_COUNTDOWN_GAP), radius, t_remaining, K_COUNTDOWN_THICKNESS, t_color);
+}
+
+[[nodiscard]] auto glass_look(controls::GlassSurface t_surface) -> GlassLook
+{
+	return K_GLASS_LOOKS[static_cast<u32>(t_surface)];
+}
+
+// The Blur setting scales every surface's blur from its 50% value, so 100% doubles it.
+[[nodiscard]] auto glass_spread(controls::GlassSurface t_surface) -> float
+{
+	return glass_look(t_surface).spread * g_glass_blur_scale;
+}
+
+// The Tint setting scales how much of each surface is see-through from its default, so every surface keeps its place against the
+// others and 100% is solid everywhere.
+[[nodiscard]] auto glass_tint(controls::GlassSurface t_surface) -> u8
+{
+	const float clear = (1.0f - glass_look(t_surface).tint) * (1.0f - g_glass_tint) / (1.0f - K_GLASS_TINT_DEFAULT);
+
+	return to_alpha(std::clamp(1.0f - clear, 0.0f, 1.0f));
 }
 }
 
@@ -364,8 +409,11 @@ auto controls::draw_lift(DrawList* t_draw_list, Rect t_rect, float t_radius, Col
 	t_draw_list->add_shadow(t_rect, t_radius, SPREAD, with_alpha(t_glow, static_cast<u8>(STRENGTH * t_alpha / 255.0f)));
 }
 
+// Round buttons stay circles at any Corner roundness.
 auto controls::draw_circular_hover(DrawList* t_draw_list, Rect t_rect, Color t_glow, Color t_fill, u8 t_alpha) -> void
 {
+	const RoundnessScope circle{K_CIRCLE_ROUNDNESS};
+
 	draw_lift(t_draw_list, t_rect, t_rect.w * 0.5f, t_glow, t_alpha);
 	t_draw_list->add_rounded_rect(t_rect, rounded(t_rect.w * 0.5f), faded(t_fill, t_alpha));
 }
@@ -392,12 +440,58 @@ auto controls::draw_popup_shadow(DrawList* t_draw_list, Rect t_popup, float t_ra
 
 auto controls::draw_field(DrawList* t_draw_list, Rect t_rect, float t_radius, Color t_border, Color t_fill, u8 t_alpha) -> void
 {
+	const RoundnessScope corners{user_roundness()};
+
 	t_draw_list->add_bordered_rect(t_rect, rounded(t_radius), faded(t_fill, t_alpha), faded(t_border, t_alpha), K_FIELD_BORDER);
 }
 
 auto controls::draw_circular_countdown(DrawList* t_draw_list, Rect t_circle, float t_remaining, Color t_color) -> void
 {
-	draw_outline_countdown(t_draw_list, t_circle, scaled_radius(t_circle.w * 0.5f), t_remaining, t_color);
+	draw_outline_countdown(t_draw_list, t_circle, t_circle.w * 0.5f, t_remaining, t_color);
+}
+
+auto controls::set_glass(bool t_supported, bool t_enabled, float t_tint, float t_blur) -> void
+{
+	g_glass_available  = t_supported && t_enabled;
+	g_glass_blurs      = g_glass_available && t_blur > 0.001f;
+	g_glass_tint       = t_tint;
+	g_glass_blur_scale = t_blur / K_GLASS_BLUR_REFERENCE;
+}
+
+// Rows on glass are lit with a thin wash of the text colour, so the glass still shows through them.
+auto controls::glass_highlight(float t_amount) -> Color
+{
+	return with_alpha(g_theme.text, static_cast<u8>(K_GLASS_ROW_ALPHA * std::clamp(t_amount, 0.0f, 1.0f)));
+}
+
+auto controls::draw_popup_backdrop(DrawList* t_draw_list, Rect t_rect, float t_amount) -> void
+{
+	if (g_glass_blurs) {
+		t_draw_list->add_blurred_backdrop(t_rect, rounded(0.0f), glass_spread(GlassSurface::BACKDROP), to_alpha(t_amount));
+	}
+
+	const float share = g_glass_blurs ? K_BLURRED_SCRIM_SHARE : 1.0f;
+	t_draw_list->add_rect(t_rect, faded(g_theme.scrim, to_alpha(t_amount * share)));
+}
+
+auto controls::draw_glass(DrawList* t_draw_list, Rect t_rect, CornerRadii t_radii, GlassSurface t_surface, u8 t_alpha, bool t_framed) -> void
+{
+	if (g_glass_available) {
+		if (g_glass_blurs) {
+			t_draw_list->add_blurred_backdrop(t_rect, t_radii, glass_spread(t_surface), t_alpha);
+		}
+
+		t_draw_list->add_rounded_rect(t_rect, t_radii, faded(with_alpha(g_theme.popup, glass_tint(t_surface)), t_alpha));
+	} else {
+		t_draw_list->add_rounded_rect(t_rect, t_radii, faded(g_theme.popup, t_alpha));
+	}
+
+	if (!t_framed) return;
+
+	const float inset = std::max(t_radii.top_left, t_radii.top_right);
+	t_draw_list->add_rect(Rect{t_rect.x + inset, t_rect.y + 1.0f, std::max(0.0f, t_rect.w - inset * 2.0f), 1.0f},
+	                      faded(Color{255, 255, 255, K_GLASS_HIGHLIGHT_ALPHA}, t_alpha));
+	t_draw_list->add_rounded_outline(t_rect, t_radii, 1.0f, faded(g_theme.border, t_alpha));
 }
 
 auto controls::draw_button(DrawList*        t_draw_list,
@@ -410,6 +504,8 @@ auto controls::draw_button(DrawList*        t_draw_list,
                            bool             t_hovered,
                            u8               t_alpha) -> void
 {
+	const RoundnessScope corners{user_roundness()};
+
 	const ButtonLook look   = t_enabled ? button_look(t_style, t_accent) : disabled_button_look();
 	const bool       lifted = t_enabled && t_hovered;
 	const bool       ghost  = t_style == ButtonStyle::GHOST;
@@ -512,4 +608,26 @@ auto controls::draw_account_details(DrawList* t_draw_list, const Font& t_font, V
 	t_draw_list->add_rounded_rect(Rect{dot_x, dot_y, K_DETAIL_DOT_SIZE, K_DETAIL_DOT_SIZE}, rounded(K_DETAIL_DOT_SIZE * 0.5f),
 	                              faded(g_theme.text_faint, t_alpha));
 	draw_text_truncated(t_draw_list, t_font, Vec2{when_x, t_baseline.y}, when, t_baseline.x + t_max_width - when_x, faded(g_theme.text_faint, t_alpha));
+}
+
+// Two pieces of text joined by a small dot, like an account count and when one was last played.
+auto controls::draw_dotted(DrawList*        t_draw_list,
+                           const Font&      t_font,
+                           Vec2             t_baseline,
+                           std::string_view t_first,
+                           std::string_view t_second,
+                           float            t_max_width,
+                           Color            t_color) -> void
+{
+	draw_text_truncated(t_draw_list, t_font, t_baseline, t_first, t_max_width, t_color);
+
+	const float dot_x    = t_baseline.x + std::min(text_width(t_font, t_first), t_max_width) + K_DETAIL_DOT_GAP;
+	const float second_x = dot_x + K_DETAIL_DOT_SIZE + K_DETAIL_DOT_GAP;
+	const float room     = t_baseline.x + t_max_width - second_x;
+	if (t_second.empty() || room <= 0.0f) return;
+
+	const float dot_y = t_baseline.y - t_font.ascent * 0.33f - K_DETAIL_DOT_SIZE * 0.5f;
+
+	t_draw_list->add_rounded_rect(Rect{dot_x, dot_y, K_DETAIL_DOT_SIZE, K_DETAIL_DOT_SIZE}, rounded(K_DETAIL_DOT_SIZE * 0.5f), t_color);
+	draw_text_truncated(t_draw_list, t_font, Vec2{second_x, t_baseline.y}, t_second, room, t_color);
 }

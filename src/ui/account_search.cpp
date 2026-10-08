@@ -45,6 +45,7 @@ constexpr u32              K_MAX_SHOWN_ROWS   = 8;
 constexpr u32              K_QUERY_MAX_LENGTH = 64;
 constexpr u32              K_GROUP_BREAK_ROW  = 3;
 constexpr float            K_GROUP_GAP        = 9.0f;
+constexpr u8               K_FOOTER_ALPHA     = 110;
 
 [[nodiscard]] auto account_name(const Account* t_account) -> std::string_view
 {
@@ -568,7 +569,7 @@ auto AccountSearch::draw_header(DrawList* t_draw_list, const Layout& t_layout, u
 	const bool     back_hovered = back.contains(m_mouse);
 
 	if (back_hovered) {
-		t_draw_list->add_rounded_rect(back, rounded(K_ROW_RADIUS), faded(hovered(g_theme.popup), t_alpha));
+		t_draw_list->add_rounded_rect(back, rounded(K_ROW_RADIUS), faded(controls::glass_highlight(), t_alpha));
 	}
 
 	t_draw_list->add_image(back.centered(K_HEADER_ICON_SIZE, K_HEADER_ICON_SIZE), m_assets->get(Asset::ICON_ARROW_BACK),
@@ -598,7 +599,7 @@ auto AccountSearch::draw_result(DrawList* t_draw_list, Rect t_row, AccountRef t_
 	const Account* account   = m_library->account(t_account);
 
 	if (t_highlighted) {
-		t_draw_list->add_rounded_rect(t_row, rounded(K_ROW_RADIUS), faded(hovered(g_theme.popup), t_alpha));
+		t_draw_list->add_rounded_rect(t_row, rounded(K_ROW_RADIUS), faded(controls::glass_highlight(), t_alpha));
 	}
 
 	const Rect icon{t_row.x + K_ROW_PADDING, t_row.center().y - K_ROW_ICON_SIZE * 0.5f, K_ROW_ICON_SIZE, K_ROW_ICON_SIZE};
@@ -631,11 +632,10 @@ auto AccountSearch::draw_result(DrawList* t_draw_list, Rect t_row, AccountRef t_
 
 auto AccountSearch::draw_action(DrawList* t_draw_list, Rect t_row, const Action& t_action, bool t_highlighted, u8 t_alpha) const -> void
 {
-	const Font& body     = m_fonts->body;
-	const Color backdrop = t_highlighted ? hovered(g_theme.popup) : g_theme.popup;
+	const Font& body = m_fonts->body;
 
 	if (t_highlighted) {
-		t_draw_list->add_rounded_rect(t_row, rounded(K_ROW_RADIUS), faded(backdrop, t_alpha));
+		t_draw_list->add_rounded_rect(t_row, rounded(K_ROW_RADIUS), faded(controls::glass_highlight(), t_alpha));
 	}
 
 	const Rect       icon{t_row.x + K_ROW_PADDING, t_row.center().y - K_ROW_ICON_SIZE * 0.5f, K_ROW_ICON_SIZE, K_ROW_ICON_SIZE};
@@ -647,19 +647,19 @@ auto AccountSearch::draw_action(DrawList* t_draw_list, Rect t_row, const Action&
 		using enum ActionKind;
 
 		case EDIT: {
-			t_draw_list->add_image(icon, m_assets->get(Asset::ICON_EDIT), icon_color);
+			t_draw_list->add_image(icon, m_assets->get(Asset::ICON_EDIT_BOX), icon_color);
 			text = "Edit account";
 			break;
 		}
 
 		case COPY_USERNAME: {
-			t_draw_list->add_image(icon, m_assets->get(Asset::ICON_USERNAME), icon_color);
+			t_draw_list->add_image(icon, m_assets->get(Asset::ICON_COPY), icon_color);
 			text = "Copy username";
 			break;
 		}
 
 		case COPY_PASSWORD: {
-			t_draw_list->add_image(icon, m_assets->get(Asset::ICON_LOCK), icon_color);
+			t_draw_list->add_image(icon, m_assets->get(Asset::ICON_KEY), icon_color);
 			text = "Copy password";
 			break;
 		}
@@ -694,7 +694,8 @@ auto AccountSearch::draw_footer(DrawList* t_draw_list, const Layout& t_layout, u
 	const Color label    = faded(g_theme.text_faint, t_alpha);
 	float       x        = footer.x + K_FOOTER_PADDING_X;
 
-	t_draw_list->add_rounded_rect(footer, rounded(0.0f, 0.0f, K_PANEL_RADIUS - 1.0f, K_PANEL_RADIUS - 1.0f), faded(g_theme.field, t_alpha));
+	t_draw_list->add_rounded_rect(footer, rounded(0.0f, 0.0f, K_PANEL_RADIUS - 1.0f, K_PANEL_RADIUS - 1.0f),
+	                              faded(with_alpha(g_theme.field, K_FOOTER_ALPHA), t_alpha));
 
 	const auto key = [&](std::string_view t_key) {
 		const float width = controls::keycap_width(font, t_key);
@@ -732,14 +733,15 @@ auto AccountSearch::draw(DrawList* t_draw_list) -> void
 {
 	if (m_open_amount <= 0.01f) return;
 
-	const auto   alpha   = to_alpha(m_open_amount);
-	const Vec2   window  = m_window->size();
-	const Layout current = layout();
+	const auto           alpha   = to_alpha(m_open_amount);
+	const Vec2           window  = m_window->size();
+	const Layout         current = layout();
+	const RoundnessScope corners{controls::K_POPUP_ROUNDNESS};
 
-	t_draw_list->add_rect(Rect{0.0f, K_TITLE_BAR_HEIGHT, window.x, window.y - K_TITLE_BAR_HEIGHT}, faded(g_theme.scrim, alpha));
+	controls::draw_popup_backdrop(t_draw_list, Rect{0.0f, K_TITLE_BAR_HEIGHT, window.x, window.y - K_TITLE_BAR_HEIGHT}, m_open_amount);
 
 	controls::draw_popup_shadow(t_draw_list, current.panel, K_PANEL_RADIUS, m_open_amount);
-	t_draw_list->add_bordered_rect(current.panel, rounded(K_PANEL_RADIUS), faded(g_theme.popup, alpha), faded(g_theme.border, alpha), 1.0f);
+	controls::draw_glass(t_draw_list, current.panel, rounded(K_PANEL_RADIUS), controls::GlassSurface::PANEL, alpha);
 
 	draw_header(t_draw_list, current, alpha);
 	t_draw_list->add_rect(Rect{current.panel.x + 1.0f, current.header.bottom(), current.panel.w - 2.0f, 1.0f}, faded(g_theme.separator, alpha));

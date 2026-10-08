@@ -25,6 +25,20 @@ constexpr const char* K_VERTEX_SHADER_SOURCE = R"(
 	}
 )";
 
+// A triangle that covers the target, for the blur passes. Its uv runs bottom-up like the textures it reads.
+constexpr const char* K_FULLSCREEN_VERTEX_SHADER_SOURCE = R"(
+	out vec2 pixel_uv;
+	out vec4 pixel_color;
+
+	void main()
+	{
+		vec2 uv = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+		gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0);
+		pixel_uv = uv;
+		pixel_color = vec4(1.0);
+	}
+)";
+
 constexpr const char* K_FRAGMENT_SHADER_SOURCE = R"(
 	layout(origin_upper_left) in vec4 gl_FragCoord;
 
@@ -389,6 +403,65 @@ constexpr const char* K_FRAGMENT_SHADER_SOURCE = R"(
 	vec4 ps_backdrop_plain()
 	{
 		return backdrop_color(false);
+	}
+
+	layout(std140) uniform BlurConstants {
+		vec2 target_size;
+		vec2 texel_step;
+	} blur;
+
+	// Reads the blurred level as a cubic B-spline in four bilinear taps. Plain bilinear stretched over many pixels shows the level's
+	// texels as blocks; the spline is smooth across them.
+	vec3 sample_blurred(vec2 uv)
+	{
+		vec2 coord = uv / blur.texel_step - 0.5;
+		vec2 base = floor(coord);
+		vec2 f = coord - base;
+		vec2 f2 = f * f;
+		vec2 f3 = f2 * f;
+		vec2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0;
+		vec2 w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+		vec2 w3 = f3 / 6.0;
+		vec2 g0 = w0 + w1;
+		vec2 g1 = 1.0 - g0;
+		vec2 t0 = (base - 0.5 + w1 / g0) * blur.texel_step;
+		vec2 t1 = (base + 1.5 + w3 / g1) * blur.texel_step;
+
+		return (texture(image, t0).rgb * g0.x + texture(image, vec2(t1.x, t0.y)).rgb * g1.x) * g0.y +
+		       (texture(image, vec2(t0.x, t1.y)).rgb * g0.x + texture(image, t1).rgb * g1.x) * g1.y;
+	}
+
+	vec4 ps_backdrop_blur()
+	{
+		vec2 uv = vec2(gl_FragCoord.x, blur.target_size.y - gl_FragCoord.y) / blur.target_size;
+		vec3 rgb = sample_blurred(uv);
+		float luma = dot(rgb, vec3(0.299, 0.587, 0.114));
+		rgb = mix(vec3(luma), rgb, 1.15) + (backdrop_noise(gl_FragCoord.xy) - 0.5) * (4.0 / 255.0);
+		return vec4(saturate(rgb), pixel_color.a);
+	}
+
+	// Halves its source through five taps, a small tent rather than a box, so fine detail does not alias into the level below.
+	vec4 ps_downsample()
+	{
+		vec2 diagonal = vec2(blur.texel_step.x, -blur.texel_step.y);
+		vec4 sum = texture(image, pixel_uv) * 4.0;
+		sum += texture(image, pixel_uv - blur.texel_step) + texture(image, pixel_uv + blur.texel_step);
+		sum += texture(image, pixel_uv - diagonal) + texture(image, pixel_uv + diagonal);
+		return sum * 0.125;
+	}
+
+	vec4 ps_blur()
+	{
+		const float offsets[4] = float[4](0.0, 1.411764706, 3.294117647, 5.176470588);
+		const float weights[4] = float[4](0.196482550, 0.296906965, 0.094470398, 0.010381362);
+
+		vec4 sum = texture(image, pixel_uv) * weights[0];
+		for (int i = 1; i < 4; i++) {
+			sum += texture(image, pixel_uv + blur.texel_step * offsets[i]) * weights[i];
+			sum += texture(image, pixel_uv - blur.texel_step * offsets[i]) * weights[i];
+		}
+
+		return sum;
 	}
 
 	void main()

@@ -382,4 +382,76 @@ constexpr const char* K_SHADER_SOURCE = R"(
 	{
 		return backdrop_color(input, false);
 	}
+
+	cbuffer BlurConstants : register(b1) {
+		float2 blur_target_size;
+		float2 blur_step;
+	};
+
+	// Reads the blurred level as a cubic B-spline in four bilinear taps. Plain bilinear stretched over many pixels shows the level's
+	// texels as blocks; the spline is smooth across them.
+	float3 sample_blurred(float2 uv)
+	{
+		float2 coord = uv / blur_step - 0.5;
+		float2 base = floor(coord);
+		float2 f = coord - base;
+		float2 f2 = f * f;
+		float2 f3 = f2 * f;
+		float2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0;
+		float2 w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+		float2 w3 = f3 / 6.0;
+		float2 g0 = w0 + w1;
+		float2 g1 = 1.0 - g0;
+		float2 t0 = (base - 0.5 + w1 / g0) * blur_step;
+		float2 t1 = (base + 1.5 + w3 / g1) * blur_step;
+
+		return (image.Sample(image_sampler, t0).rgb * g0.x + image.Sample(image_sampler, float2(t1.x, t0.y)).rgb * g1.x) * g0.y +
+		       (image.Sample(image_sampler, float2(t0.x, t1.y)).rgb * g0.x + image.Sample(image_sampler, t1).rgb * g1.x) * g1.y;
+	}
+
+	float4 ps_backdrop_blur(PixelInput input) : SV_TARGET
+	{
+		float3 rgb = sample_blurred(input.position.xy / blur_target_size);
+		float luma = dot(rgb, float3(0.299, 0.587, 0.114));
+		rgb = lerp(float3(luma, luma, luma), rgb, 1.15) + (backdrop_noise(input.position.xy) - 0.5) * (4.0 / 255.0);
+		return float4(saturate(rgb), input.color.a);
+	}
+
+	struct FullscreenOutput {
+		float4 position : SV_POSITION;
+		float2 uv : TEXCOORD0;
+	};
+
+	FullscreenOutput vs_fullscreen(uint vertex : SV_VertexID)
+	{
+		FullscreenOutput output;
+		float2 uv = float2((vertex << 1) & 2, vertex & 2);
+		output.position = float4(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0.0, 1.0);
+		output.uv = uv;
+		return output;
+	}
+
+	// Halves its source through five taps, a small tent rather than a box, so fine detail does not alias into the level below.
+	float4 ps_downsample(FullscreenOutput input) : SV_TARGET
+	{
+		float2 diagonal = float2(blur_step.x, -blur_step.y);
+		float4 sum = image.Sample(image_sampler, input.uv) * 4.0;
+		sum += image.Sample(image_sampler, input.uv - blur_step) + image.Sample(image_sampler, input.uv + blur_step);
+		sum += image.Sample(image_sampler, input.uv - diagonal) + image.Sample(image_sampler, input.uv + diagonal);
+		return sum * 0.125;
+	}
+
+	float4 ps_blur(FullscreenOutput input) : SV_TARGET
+	{
+		const float offsets[4] = {0.0, 1.411764706, 3.294117647, 5.176470588};
+		const float weights[4] = {0.196482550, 0.296906965, 0.094470398, 0.010381362};
+
+		float4 sum = image.Sample(image_sampler, input.uv) * weights[0];
+		[unroll] for (int i = 1; i < 4; i++) {
+			sum += image.Sample(image_sampler, input.uv + blur_step * offsets[i]) * weights[i];
+			sum += image.Sample(image_sampler, input.uv - blur_step * offsets[i]) * weights[i];
+		}
+
+		return sum;
+	}
 )";

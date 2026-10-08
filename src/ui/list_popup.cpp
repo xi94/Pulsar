@@ -579,7 +579,7 @@ auto ListPopup::draw_row(DrawList* t_draw_list, Rect t_row, u32 t_item, bool t_h
 	const Color backdrop = t_highlighted ? hovered(g_theme.popup) : g_theme.popup;
 
 	if (t_highlighted) {
-		t_draw_list->add_rounded_rect(t_row, rounded(K_ROW_RADIUS), faded(backdrop, t_alpha));
+		t_draw_list->add_rounded_rect(t_row, rounded(K_ROW_RADIUS), faded(controls::glass_highlight(), t_alpha));
 	}
 
 	float left = t_row.x + K_ROW_INSET;
@@ -619,7 +619,6 @@ auto ListPopup::draw_rows(DrawList* t_draw_list, const Layout& t_layout, Vec2 t_
 
 	t_draw_list->pop_clip();
 
-	m_scroll.draw_edge_fade(t_draw_list, t_layout.list, list_scroll(t_layout), faded(g_theme.popup, t_alpha));
 	m_scroll.draw(t_draw_list, list_scroll(t_layout), t_mouse, t_alpha);
 }
 
@@ -627,10 +626,12 @@ auto ListPopup::draw(DrawList* t_draw_list, Vec2 t_mouse) -> void
 {
 	if (m_open_amount <= 0.01f) return;
 
-	const auto   alpha   = to_alpha(m_open_amount);
-	const Layout current = layout();
+	const auto           alpha   = to_alpha(m_open_amount);
+	const Layout         current = layout();
+	const RoundnessScope corners{controls::K_POPUP_ROUNDNESS};
+
 	controls::draw_popup_shadow(t_draw_list, current.popup, K_POPUP_RADIUS, m_open_amount);
-	t_draw_list->add_bordered_rect(current.popup, rounded(K_POPUP_RADIUS), faded(g_theme.popup, alpha), faded(g_theme.border, alpha), 1.0f);
+	controls::draw_glass(t_draw_list, current.popup, rounded(K_POPUP_RADIUS), controls::GlassSurface::MENU, alpha);
 
 	if (is_searchable()) {
 		draw_search(t_draw_list, current, t_mouse, alpha);

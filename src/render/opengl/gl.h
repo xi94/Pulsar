@@ -86,10 +86,12 @@ using GLsizeiptr = std::ptrdiff_t;
 	X(void, delete_textures, glDeleteTextures, GLsizei, const GLuint*)                                                                                         \
 	X(void, delete_vertex_arrays, glDeleteVertexArrays, GLsizei, const GLuint*)                                                                                \
 	X(void, disable, glDisable, GLenum)                                                                                                                        \
+	X(void, draw_arrays, glDrawArrays, GLenum, GLint, GLsizei)                                                                                                 \
 	X(void, draw_elements, glDrawElements, GLenum, GLsizei, GLenum, const void*)                                                                               \
 	X(void, enable, glEnable, GLenum)                                                                                                                          \
 	X(void, enable_vertex_attrib_array, glEnableVertexAttribArray, GLuint)                                                                                     \
 	X(void, framebuffer_renderbuffer, glFramebufferRenderbuffer, GLenum, GLenum, GLenum, GLuint)                                                               \
+	X(void, framebuffer_texture_2d, glFramebufferTexture2D, GLenum, GLenum, GLenum, GLuint, GLint)                                                             \
 	X(void, gen_buffers, glGenBuffers, GLsizei, GLuint*)                                                                                                       \
 	X(void, gen_framebuffers, glGenFramebuffers, GLsizei, GLuint*)                                                                                             \
 	X(void, gen_renderbuffers, glGenRenderbuffers, GLsizei, GLuint*)                                                                                           \

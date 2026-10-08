@@ -65,6 +65,8 @@ class Carousel : public Widget {
 
 	[[nodiscard]] auto art_source(u32 t_game) const -> ArtSource;
 
+	auto show_game(u32 t_game) -> void;
+
 	auto set_detached_game(i32 t_game) -> void
 	{
 		m_detached_game = t_game;

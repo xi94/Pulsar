@@ -953,6 +953,14 @@ auto Carousel::move_focus(i32 t_delta) -> void
 	m_wrap_scroll.reveal(card.y, card.bottom(), m_bounds.y + K_GRID_PADDING, m_bounds.bottom() - K_GRID_PADDING, wrap_scroll_geometry());
 }
 
+// Brings a game's card round to the middle, so a popup opened from elsewhere lifts it like a click on the card would.
+auto Carousel::show_game(u32 t_game) -> void
+{
+	if (m_mode != ViewMode::CAROUSEL || t_game >= m_library->game_count) return;
+
+	m_target_scroll = static_cast<float>(m_slot_of[t_game]);
+}
+
 auto Carousel::open_game(i32 t_game) -> void
 {
 	m_commands->push(Command{.type = CommandType::OPEN_GAME, .index = t_game});
@@ -1869,7 +1877,7 @@ auto Carousel::draw_reorder_hint(DrawList* t_draw_list) const -> void
 	const float baseline = font.centered_baseline(pill);
 
 	controls::draw_popup_shadow(t_draw_list, pill, height * 0.5f, m_reorder_hint);
-	t_draw_list->add_bordered_rect(pill, rounded(height * 0.5f), faded(g_theme.popup, alpha), faded(g_theme.border, alpha), 1.0f);
+	controls::draw_glass(t_draw_list, pill, rounded(height * 0.5f), controls::GlassSurface::SOFT, alpha);
 
 	float x = pill.x + K_HINT_PADDING_X;
 	draw_text(t_draw_list, font, Vec2{x, baseline}, PLACE, faded(g_theme.text, alpha));
@@ -1993,7 +2001,12 @@ auto Carousel::draw_switcher_rows(DrawList* t_draw_list, Rect t_panel, u8 t_alph
 	const Color active_fill  = hovered(g_theme.popup);
 	const bool  pointer_live = !m_switcher_drag.is_pressed();
 
-	t_draw_list->add_rounded_rect(switcher_active_pill(t_panel), rounded(K_SWITCHER_ROW_RADIUS), faded(active_fill, t_alpha));
+	const CornerRadii row_corners = [] {
+		const RoundnessScope corners{controls::K_POPUP_ROUNDNESS};
+		return rounded(K_SWITCHER_ROW_RADIUS);
+	}();
+
+	t_draw_list->add_rounded_rect(switcher_active_pill(t_panel), row_corners, faded(controls::glass_highlight(), t_alpha));
 
 	for (u32 index = 0; index < K_SWITCHER_ROW_COUNT; index += 1) {
 		const SwitcherRow& entry      = K_SWITCHER_ROWS[index];
@@ -2002,7 +2015,7 @@ auto Carousel::draw_switcher_rows(DrawList* t_draw_list, Rect t_panel, u8 t_alph
 		const bool         is_hovered = !is_active && pointer_live && row.contains(m_mouse);
 
 		if (is_hovered) {
-			t_draw_list->add_rounded_rect(row, rounded(K_SWITCHER_ROW_RADIUS), faded(mix(g_theme.popup, active_fill, K_SWITCHER_HOVER_FILL), t_alpha));
+			t_draw_list->add_rounded_rect(row, row_corners, faded(controls::glass_highlight(K_SWITCHER_HOVER_FILL), t_alpha));
 		}
 
 		Color content = g_theme.text_dim;
@@ -2088,8 +2101,12 @@ auto Carousel::draw_switcher(DrawList* t_draw_list) const -> void
 	Rect       panel = switcher_panel_rect();
 	panel.y += snapped_to_pixel((1.0f - m_switcher_shown) * K_SWITCHER_SLIDE_DISTANCE);
 
-	controls::draw_popup_shadow(t_draw_list, panel, K_SWITCHER_RADIUS, m_switcher_shown);
-	t_draw_list->add_bordered_rect(panel, rounded(K_SWITCHER_RADIUS), faded(g_theme.popup, alpha), faded(g_theme.border, alpha), 1.0f);
+	{
+		const RoundnessScope corners{controls::K_POPUP_ROUNDNESS};
+
+		controls::draw_popup_shadow(t_draw_list, panel, K_SWITCHER_RADIUS, m_switcher_shown);
+		controls::draw_glass(t_draw_list, panel, rounded(K_SWITCHER_RADIUS), controls::GlassSurface::MENU, alpha);
+	}
 
 	draw_switcher_rows(t_draw_list, panel, alpha);
 	draw_size_slider(t_draw_list, panel, alpha);

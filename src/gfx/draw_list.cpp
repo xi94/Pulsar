@@ -14,6 +14,7 @@ constexpr u32   K_POINTS_PER_CORNER   = K_CORNER_SEGMENTS + 1;
 constexpr u32   K_ROUNDED_POINT_COUNT = K_POINTS_PER_CORNER * 4;
 constexpr float K_DEGREES_TO_RADIANS  = std::numbers::pi_v<float> / 180.0f;
 
+float g_user_roundness   = 1.0f;
 float g_corner_roundness = 1.0f;
 float g_pixel_scale      = 1.0f;
 
@@ -94,7 +95,7 @@ float g_pixel_scale      = 1.0f;
 
 [[nodiscard]] auto uses_rounded_box(ShaderKind t_shader) -> bool
 {
-	return t_shader == ShaderKind::BANNER_GLOW || t_shader == ShaderKind::SHADOW;
+	return t_shader == ShaderKind::BANNER_GLOW || t_shader == ShaderKind::SHADOW || t_shader == ShaderKind::BACKDROP_BLUR;
 }
 
 [[nodiscard]] auto uv_at(Rect t_rect, UvRect t_uv, Vec2 t_point) -> Vec2
@@ -110,7 +111,24 @@ float g_pixel_scale      = 1.0f;
 
 auto set_corner_roundness(float t_scale) -> void
 {
-	g_corner_roundness = std::max(0.0f, t_scale);
+	g_user_roundness   = std::max(0.0f, t_scale);
+	g_corner_roundness = g_user_roundness;
+}
+
+auto user_roundness() -> float
+{
+	return g_user_roundness;
+}
+
+RoundnessScope::RoundnessScope(float t_roundness)
+	: m_previous(g_corner_roundness)
+{
+	g_corner_roundness = std::max(0.0f, t_roundness);
+}
+
+RoundnessScope::~RoundnessScope()
+{
+	g_corner_roundness = m_previous;
 }
 
 auto set_pixel_scale(float t_scale) -> void
@@ -371,6 +389,44 @@ auto DrawList::push_rounded(Rect t_rect, CornerRadii t_radii, UvRect t_uv, u32 t
 	}
 }
 
+auto DrawList::push_rounded_ring(Rect t_rect, CornerRadii t_radii, float t_thickness, u32 t_color) -> void
+{
+	assert(m_vertex_count + K_ROUNDED_POINT_COUNT * 2 <= m_vertex_capacity);
+	assert(m_index_count + K_ROUNDED_POINT_COUNT * 6 <= m_index_capacity);
+
+	const Rect  inner      = t_rect.inset(t_thickness);
+	const float outer_most = std::min(t_rect.w, t_rect.h) * 0.5f;
+	const float inner_most = std::max(0.0f, std::min(inner.w, inner.h) * 0.5f);
+	const float corners[4]{t_radii.top_left, t_radii.top_right, t_radii.bottom_right, t_radii.bottom_left};
+	const auto& directions = corner_arc_directions();
+	const u32   first      = m_vertex_count;
+
+	for (const bool outer : {true, false}) {
+		const Rect box = outer ? t_rect : inner;
+
+		for (u32 i = 0; i < K_ROUNDED_POINT_COUNT; i += 1) {
+			const u32   corner = i / K_POINTS_PER_CORNER;
+			const float radius = outer ? std::min(corners[corner], outer_most) : std::clamp(corners[corner] - t_thickness, 0.0f, inner_most);
+			const Vec2  center{corner == 0 || corner == 3 ? box.x + radius : box.right() - radius, corner < 2 ? box.y + radius : box.bottom() - radius};
+			const Vec2  point = scaled(Vec2{center.x + radius * directions[i].x, center.y + radius * directions[i].y});
+
+			m_vertices[m_vertex_count] = Vertex2D{point.x, point.y, 0.0f, 0.0f, t_color};
+			m_vertex_count += 1;
+		}
+	}
+
+	for (u32 i = 0; i < K_ROUNDED_POINT_COUNT; i += 1) {
+		const u32 next = (i + 1) % K_ROUNDED_POINT_COUNT;
+		const u32 quad[6]{
+			first + i, first + next, first + K_ROUNDED_POINT_COUNT + i, first + next, first + K_ROUNDED_POINT_COUNT + next, first + K_ROUNDED_POINT_COUNT + i};
+
+		for (const u32 index : quad) {
+			m_indices[m_index_count] = index;
+			m_index_count += 1;
+		}
+	}
+}
+
 auto DrawList::add_rect(Rect t_rect, Color t_color) -> void
 {
 	note_cover(t_rect, t_color);
@@ -517,6 +573,25 @@ auto DrawList::add_rounded_rect(Rect t_rect, CornerRadii t_radii, Color t_color)
 	note_cover(t_rect, t_color);
 	target(ShaderKind::SOLID);
 	push_rounded(t_rect, t_radii, K_FULL_UV, pack(t_color));
+}
+
+auto DrawList::add_rounded_outline(Rect t_rect, CornerRadii t_radii, float t_thickness, Color t_color) -> void
+{
+	if (t_color.a == 0 || t_thickness <= 0.0f) return;
+
+	target(ShaderKind::SOLID);
+	push_rounded_ring(t_rect, t_radii, t_thickness, pack(t_color));
+}
+
+auto DrawList::add_blurred_backdrop(Rect t_rect, CornerRadii t_radii, float t_spread, u8 t_alpha) -> void
+{
+	if (t_alpha == 0 || t_spread <= 0.0f) return;
+
+	const Color tint{255, 255, 255, t_alpha};
+
+	note_cover(t_rect, tint);
+	target(ShaderKind::BACKDROP_BLUR, nullptr, RoundedBoxParams{.edge_width = t_spread});
+	push_rounded(t_rect, t_radii, K_FULL_UV, pack(tint));
 }
 
 auto DrawList::add_bordered_rect(Rect t_rect, CornerRadii t_radii, Color t_fill, Color t_border, float t_thickness) -> void

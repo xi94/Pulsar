@@ -154,7 +154,7 @@ App::App()
 	, m_app_menu(&m_window, &m_fonts, &m_assets, &m_commands)
 	, m_update_overlay(&m_updater, &m_settings, &m_fonts, &m_assets, &m_window)
 	, m_account_search(&m_library, &m_fonts, &m_assets, &m_window, &m_commands)
-	, m_context_menu(&m_fonts, &m_commands)
+	, m_context_menu(&m_fonts, &m_assets, &m_commands)
 	, m_title_bar(&m_window, &m_updater, &m_update_overlay, &m_fonts, &m_assets, &m_commands)
 	, m_truncation_hint(&m_fonts)
 #ifdef PULSAR_PROFILING
@@ -518,6 +518,13 @@ auto App::take_picked_riot_client() -> void
 	}
 }
 
+// However a game's accounts open, its card lifts into the popup as if it was clicked, so the glass always has the same thing behind it.
+auto App::lift_game_card(u32 t_game) -> void
+{
+	m_carousel.show_game(t_game);
+	m_account_modal.set_art_source(m_carousel.art_source(t_game));
+}
+
 auto App::open_account_search() -> void
 {
 	if (m_locked) return;
@@ -623,6 +630,7 @@ auto App::handle_tray_event() -> void
 			const auto game = static_cast<u32>(event.game);
 			if (const auto account = m_library.visible_account(game, static_cast<u32>(event.row))) {
 				m_account_modal.quick_login(game, *account);
+				lift_game_card(game);
 			}
 
 			break;
@@ -827,8 +835,13 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
-		case TOGGLE_FAVORITE: {
-			m_account_modal.toggle_favorite(t_command.index);
+		case EDIT_ROW: {
+			m_account_modal.edit_row(t_command.index);
+			break;
+		}
+
+		case DELETE_ROW: {
+			m_account_modal.delete_row(t_command.index);
 			break;
 		}
 
@@ -846,6 +859,7 @@ auto App::process(const Command& t_command) -> void
 			if (account_for(t_command.account) != nullptr) {
 				m_settings_panel.close();
 				m_account_modal.edit_account(t_command.account);
+				lift_game_card(t_command.account.game);
 			}
 
 			break;
@@ -855,6 +869,7 @@ auto App::process(const Command& t_command) -> void
 			if (account_for(t_command.account) != nullptr && t_command.index >= 0) {
 				m_settings_panel.close();
 				m_account_modal.quick_login(static_cast<u32>(t_command.index), t_command.account);
+				lift_game_card(static_cast<u32>(t_command.index));
 			}
 
 			break;
@@ -862,14 +877,6 @@ auto App::process(const Command& t_command) -> void
 
 		case UNDO_LIBRARY_DELETE: {
 			m_carousel.library_view()->undo_delete();
-			break;
-		}
-
-		case TOGGLE_ACCOUNT_FAVORITE: {
-			if (account_for(t_command.account) != nullptr) {
-				m_carousel.library_view()->toggle_favorite(t_command.account);
-			}
-
 			break;
 		}
 
@@ -912,13 +919,14 @@ auto App::open_account_menu(const Command& t_command) -> void
 		return;
 	}
 
-	const Account* account = m_account_modal.account_at_row(t_command.index);
-	if (account == nullptr) return;
+	if (m_account_modal.account_at_row(t_command.index) == nullptr) return;
 
+	const i32             row = t_command.index;
 	const ContextMenuItem items[]{
-		{account->favorite ? "Unpin" : "Pin to top", Command{.type = CommandType::TOGGLE_FAVORITE, .index = t_command.index}},
-		{"Copy username", Command{.type = CommandType::COPY_USERNAME, .index = t_command.index}},
-		{"Copy password", Command{.type = CommandType::COPY_PASSWORD, .index = t_command.index}},
+		{.label = "Edit", .command = Command{.type = CommandType::EDIT_ROW, .index = row}, .icon = Asset::ICON_EDIT_BOX},
+		{.label = "Delete", .command = Command{.type = CommandType::DELETE_ROW, .index = row}, .icon = Asset::ICON_TRASH, .destructive = true},
+		{.label = "Copy username", .command = Command{.type = CommandType::COPY_USERNAME, .index = row}, .icon = Asset::ICON_COPY, .separated = true},
+		{.label = "Copy password", .command = Command{.type = CommandType::COPY_PASSWORD, .index = row}, .icon = Asset::ICON_KEY},
 	};
 
 	m_context_menu.open(t_command.position, items, m_window.size());
@@ -930,11 +938,11 @@ auto App::open_library_account_menu(const Command& t_command) -> void
 	const Account* account = account_for(t_command.account);
 	if (account == nullptr) return;
 
+	const Command         copy_username{.type = CommandType::COPY_ACCOUNT_USERNAME, .account = t_command.account};
 	const ContextMenuItem items[]{
-		{account->favorite ? "Unpin" : "Pin to top", Command{.type = CommandType::TOGGLE_ACCOUNT_FAVORITE, .account = t_command.account}},
-		{"Edit", Command{.type = CommandType::EDIT_ACCOUNT_IN_PLACE, .account = t_command.account}},
-		{"Copy username", Command{.type = CommandType::COPY_ACCOUNT_USERNAME, .account = t_command.account}},
-		{"Copy password", Command{.type = CommandType::COPY_ACCOUNT_PASSWORD, .account = t_command.account}},
+		{.label = "Edit", .command = Command{.type = CommandType::EDIT_ACCOUNT_IN_PLACE, .account = t_command.account}, .icon = Asset::ICON_EDIT_BOX},
+		{.label = "Copy username", .command = copy_username, .icon = Asset::ICON_COPY, .separated = true},
+		{.label = "Copy password", .command = Command{.type = CommandType::COPY_ACCOUNT_PASSWORD, .account = t_command.account}, .icon = Asset::ICON_KEY},
 	};
 
 	m_context_menu.open(t_command.position, items, m_window.size());
@@ -1067,6 +1075,7 @@ auto App::frame() -> void
 	m_carousel.set_bounds(content_rect(m_window.size()));
 	set_pixel_scale(m_window.dpi_scale());
 	set_caret_style(m_settings.caret_style, m_settings.caret_trail, m_settings.caret_trail_strength);
+	controls::set_glass(m_renderer.supports_backdrop_blur(), m_settings.glass, m_settings.glass_tint, m_settings.glass_blur);
 	update_theme(delta_seconds);
 
 	{

@@ -1,7 +1,7 @@
 #pragma once
 
 #define PULSAR_VERSION_MAJOR 0
-#define PULSAR_VERSION_MINOR 7
+#define PULSAR_VERSION_MINOR 8
 #define PULSAR_VERSION_PATCH 0
 
 #define PULSAR_STRINGIFY_IMPL(x) #x

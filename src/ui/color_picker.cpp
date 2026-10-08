@@ -781,8 +781,12 @@ auto ColorPicker::draw(DrawList* t_draw_list, Vec2 t_mouse) -> void
 	const Font&  font    = m_fonts->secondary;
 	const Color  picked  = with_alpha(m_color, 255);
 
-	controls::draw_popup_shadow(t_draw_list, popup.inset(-1.0f), K_POPUP_RADIUS, 1.0f);
-	t_draw_list->add_bordered_rect(popup.inset(-1.0f), rounded(K_POPUP_RADIUS), g_theme.popup, g_theme.border, 1.0f);
+	{
+		const RoundnessScope corners{controls::K_POPUP_ROUNDNESS};
+
+		controls::draw_popup_shadow(t_draw_list, popup.inset(-1.0f), K_POPUP_RADIUS, 1.0f);
+		controls::draw_glass(t_draw_list, popup.inset(-1.0f), rounded(K_POPUP_RADIUS), controls::GlassSurface::MENU, 255);
+	}
 
 	t_draw_list->add_color_picker_square(current.square, m_hue);
 	draw_handle(t_draw_list, Vec2{current.square.x + m_saturation * current.square.w, current.square.y + (1.0f - m_value) * current.square.h}, picked);

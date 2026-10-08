@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 
 #include "core/debug_log.h"
 #include "os/window.h"
@@ -51,6 +52,35 @@ auto graphics_api_name(GraphicsApi t_api) -> std::string_view
 auto pixel_scale(const RenderFrame& t_frame) -> float
 {
 	return t_frame.logical_width > 0.0f ? static_cast<float>(t_frame.physical_width) / t_frame.logical_width : 1.0f;
+}
+
+auto blur_level_extent(u32 t_frame_extent, u32 t_level) -> u32
+{
+	const u32 scale = 2u << t_level;
+
+	return std::max((t_frame_extent + scale - 1) / scale, 1u);
+}
+
+// Glass blurs at the level where its spread is one or two texels wide, so a pass or two covers it, and reads the level back through
+// a cubic filter that hides the texels. Halving and that filter already spread the image a little, so the passes only add the rest.
+auto blur_plan(const RenderFrame& t_frame, const DrawCommand& t_command) -> BlurPlan
+{
+	constexpr float LEVEL_SPREAD    = 1.5f;
+	constexpr float KERNEL_SPREAD   = 1.95f;
+	constexpr float MAX_STEP        = 1.25f;
+	constexpr float FILTER_VARIANCE = 0.58f;
+	constexpr u32   MAX_ITERATIONS  = 6;
+
+	const float spread       = t_command.box.edge_width * pixel_scale(t_frame);
+	const auto  halvings     = static_cast<u32>(std::log2(std::max(spread / LEVEL_SPREAD, 2.0f)));
+	const u32   level        = std::min(halvings, K_BLUR_LEVEL_COUNT) - 1;
+	const float level_spread = spread / static_cast<float>(2u << level);
+	const float variance     = std::max(level_spread * level_spread - FILTER_VARIANCE, 0.0f);
+	const float pass_spread  = KERNEL_SPREAD * MAX_STEP;
+	const u32   iterations   = std::min(static_cast<u32>(std::ceil(variance / (pass_spread * pass_spread))), MAX_ITERATIONS);
+	const float step         = iterations > 0 ? std::sqrt(variance / static_cast<float>(iterations)) / KERNEL_SPREAD : 0.0f;
+
+	return BlurPlan{.level = level, .iterations = iterations, .step = step};
 }
 
 auto scissor_for(const RenderFrame& t_frame, const DrawCommand& t_command) -> ScissorRect
@@ -111,6 +141,17 @@ auto effect_constants(const RenderFrame& t_frame, const DrawCommand& t_command, 
 		case BACKDROP_PLAIN: {
 			t_out->backdrop = backdrop_constants(t_frame);
 			return sizeof(BackdropConstants);
+		}
+
+		case BACKDROP_BLUR: {
+			const u32 level = blur_plan(t_frame, t_command).level;
+			t_out->blur     = BlurConstants{
+				.target_width  = static_cast<float>(t_frame.physical_width),
+				.target_height = static_cast<float>(t_frame.physical_height),
+				.step_x        = 1.0f / static_cast<float>(blur_level_extent(t_frame.physical_width, level)),
+				.step_y        = 1.0f / static_cast<float>(blur_level_extent(t_frame.physical_height, level)),
+			};
+			return sizeof(BlurConstants);
 		}
 
 		case SOLID:
@@ -177,6 +218,11 @@ auto Renderer::render(const DrawList* t_draw_list, Color t_clear_color) -> void
 		.backdrop_light      = m_backdrop_light,
 		.backdrop_grain      = m_backdrop_grain,
 	});
+}
+
+auto Renderer::supports_backdrop_blur() const -> bool
+{
+	return m_backend != nullptr && m_backend->supports_backdrop_blur();
 }
 
 auto Renderer::create_texture(std::span<const TextureLevel> t_levels, bool t_updatable) -> u32

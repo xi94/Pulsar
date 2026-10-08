@@ -61,6 +61,7 @@ constexpr float K_TAB_LABEL_INSET         = 12.0f;
 constexpr float K_TAB_GAP                 = 4.0f;
 constexpr float K_TAB_SLIDE_RATE          = 18.0f;
 constexpr float K_HOVERED_TAB_FILL        = 0.5f;
+constexpr float K_CARD_WASH               = 0.35f;
 constexpr float K_HOVERED_TAB_BRIGHTENING = 0.5f;
 constexpr float K_SCROLLBAR_MARGIN        = 4.0f;
 constexpr float K_HEADER_SHADOW_HEIGHT    = 14.0f;
@@ -131,6 +132,7 @@ constexpr float            K_THEME_LIST_WIDTH   = 300.0f;
 constexpr float K_THEME_DOT_SIZE              = 16.0f;
 constexpr float K_THEME_DOT_OVERLAP           = 6.0f;
 constexpr float K_THEME_DOT_CUTOUT            = 2.0f;
+constexpr float K_CIRCLE_ROUNDNESS            = 1.0f;
 constexpr float K_THEME_HOVER_PREVIEW_SECONDS = 1.0f;
 constexpr Vec2  K_THEME_PREVIEW_SIZE{K_THEME_DOT_SIZE * 2.0f - K_THEME_DOT_OVERLAP, K_THEME_DOT_SIZE};
 
@@ -478,8 +480,11 @@ auto draw_reset_button(DrawList* t_draw_list, const Texture* t_icon, Rect t_butt
 	return true;
 }
 
+// Colour dots stay round at any Corner roundness, and inside popups that fix their own.
 auto draw_theme_preview(DrawList* t_draw_list, Rect t_preview, ThemeKind t_kind, Color t_backdrop, u8 t_alpha) -> void
 {
+	const RoundnessScope circles{K_CIRCLE_ROUNDNESS};
+
 	const Theme& preset = theme_preset(t_kind);
 	const float  radius = K_THEME_DOT_SIZE * 0.5f;
 	const Rect   background_dot{t_preview.x, t_preview.center().y - radius, K_THEME_DOT_SIZE, K_THEME_DOT_SIZE};
@@ -492,9 +497,9 @@ auto draw_theme_preview(DrawList* t_draw_list, Rect t_preview, ThemeKind t_kind,
 }
 
 const SettingsPanel::GroupSpec SettingsPanel::K_GROUP_SPECS[K_GROUP_COUNT]{
-	{SettingsTab::APPEARANCE, "Look"},      {SettingsTab::APPEARANCE, "Background"}, {SettingsTab::APPEARANCE, "Text"},
-	{SettingsTab::APPEARANCE, "Cursor"},    {SettingsTab::BEHAVIOR, "Motion"},       {SettingsTab::BEHAVIOR, "General"},
-	{SettingsTab::BEHAVIOR, "Riot Client"}, {SettingsTab::PRIVACY, "Protection"},    {SettingsTab::SECURITY, "Vault"},
+	{SettingsTab::APPEARANCE, "Look"},    {SettingsTab::APPEARANCE, "Background"}, {SettingsTab::APPEARANCE, "Text"},  {SettingsTab::APPEARANCE, "Cursor"},
+	{SettingsTab::APPEARANCE, "Glass"},   {SettingsTab::BEHAVIOR, "Motion"},       {SettingsTab::BEHAVIOR, "General"}, {SettingsTab::BEHAVIOR, "Riot Client"},
+	{SettingsTab::PRIVACY, "Protection"}, {SettingsTab::SECURITY, "Vault"},
 };
 
 const SettingsPanel::RowSpec SettingsPanel::K_ROW_SPECS[]{
@@ -513,18 +518,21 @@ const SettingsPanel::RowSpec SettingsPanel::K_ROW_SPECS[]{
 	{&Rows::secondary_font_size, SettingsTab::APPEARANCE, 2, "Small text size", "", "secondary font labels hints scale smaller"},
 	{&Rows::caret_style, SettingsTab::APPEARANCE, 3, "Cursor style", "", "caret text typing shape bar beam line block underline"},
 	{&Rows::caret_trail, SettingsTab::APPEARANCE, 3, "Cursor trail", "", "caret typing smooth smear glide hop neovide kitty strength length"},
-	{&Rows::animations, SettingsTab::BEHAVIOR, 4, "Animations", "", "motion effects reduce animate popups speed fast slow"},
-	{&Rows::notifications, SettingsTab::BEHAVIOR, 5, "Notifications", "", "toast popup alert confirmation messages"},
-	{&Rows::close_to_tray, SettingsTab::BEHAVIOR, 5, "When closing", "", "close to tray minimize quit exit background system tray hide"},
-	{&Rows::renderer, SettingsTab::BEHAVIOR, 5, "Renderer", "Restart Pulsar to switch.", "graphics gpu direct3d directx metal opengl driver"},
-	{&Rows::riot_client, SettingsTab::BEHAVIOR, 6, "Location", "Found automatically when you log in.",
+	{&Rows::glass, SettingsTab::APPEARANCE, 4, "Frosted glass", "",
+	 "blur popups menus translucent transparent acrylic vibrancy frost background strength tint opacity"},
+	{&Rows::glass_tint, SettingsTab::APPEARANCE, 4, "", "", "glass tint popups menus opacity darkness transparency see through"},
+	{&Rows::animations, SettingsTab::BEHAVIOR, 5, "Animations", "", "motion effects reduce animate popups speed fast slow"},
+	{&Rows::notifications, SettingsTab::BEHAVIOR, 6, "Notifications", "", "toast popup alert confirmation messages"},
+	{&Rows::close_to_tray, SettingsTab::BEHAVIOR, 6, "When closing", "", "close to tray minimize quit exit background system tray hide"},
+	{&Rows::renderer, SettingsTab::BEHAVIOR, 6, "Renderer", "Restart Pulsar to switch.", "graphics gpu direct3d directx metal opengl driver"},
+	{&Rows::riot_client, SettingsTab::BEHAVIOR, 7, "Location", "Found automatically when you log in.",
 	 "riot client path folder install location exe riotclientservices browse locate find launcher"},
-	{&Rows::hide_from_capture, SettingsTab::PRIVACY, 7, "Hide from screen capture", "Hide Pulsar from screenshares, recordings and screenshots.",
+	{&Rows::hide_from_capture, SettingsTab::PRIVACY, 8, "Hide from screen capture", "Hide Pulsar from screenshares, recordings and screenshots.",
 	 "stream record share obs discord"},
-	{&Rows::block_overlay_injection, SettingsTab::PRIVACY, 7, "Block overlay injection", "Block overlays and keyloggers. Restart to apply.",
+	{&Rows::block_overlay_injection, SettingsTab::PRIVACY, 8, "Block overlay injection", "Block overlays and keyloggers. Restart to apply.",
 	 "security inject dll"},
-	{&Rows::auto_lock, SettingsTab::SECURITY, 8, "Auto-lock", "Lock the vault after being idle.", "timeout idle inactive away"},
-	{&Rows::master_password, SettingsTab::SECURITY, 8, "Master password", "Encrypts saved passwords.", "change reset vault encryption"},
+	{&Rows::auto_lock, SettingsTab::SECURITY, 9, "Auto-lock", "Lock the vault after being idle.", "timeout idle inactive away"},
+	{&Rows::master_password, SettingsTab::SECURITY, 9, "Master password", "Encrypts saved passwords.", "change reset vault encryption"},
 };
 
 const SettingsPanel::PercentSlider SettingsPanel::K_PERCENT_SLIDERS[K_PERCENT_SLIDER_COUNT]{
@@ -532,6 +540,7 @@ const SettingsPanel::PercentSlider SettingsPanel::K_PERCENT_SLIDERS[K_PERCENT_SL
 	{&Rows::background_light, &Settings::background_light_intensity, [](const Settings* t_settings) { return t_settings->background_light; }},
 	{&Rows::background_grain, &Settings::background_grain_intensity, [](const Settings* t_settings) { return t_settings->background_grain; }},
 	{&Rows::caret_trail, &Settings::caret_trail_strength, [](const Settings* t_settings) { return t_settings->caret_trail; }},
+	{&Rows::glass, &Settings::glass_blur, [](const Settings* t_settings) { return t_settings->glass; }},
 };
 
 SettingsPanel::SettingsPanel(Settings*         t_settings,
@@ -586,6 +595,7 @@ auto SettingsPanel::sync_with_settings() -> void
 	m_secondary_font_size_shown = m_settings->secondary_font_size;
 	m_animation_speed_shown     = m_settings->animation_speed;
 	m_corner_roundness_shown    = m_settings->corner_roundness;
+	m_glass_tint_shown          = m_settings->glass_tint;
 	for (u32 i = 0; i < K_PERCENT_SLIDER_COUNT; i += 1) {
 		m_percent_shown[i]  = m_settings->*K_PERCENT_SLIDERS[i].value;
 		m_percent_reveal[i] = K_PERCENT_SLIDERS[i].shown(m_settings) ? 1.0f : 0.0f;
@@ -752,16 +762,19 @@ auto SettingsPanel::is_listed(const RowSpec& t_spec) const -> bool
 	return is_searching() ? matches_search(t_spec) : t_spec.tab == m_tab;
 }
 
+// Glass tint folds out under Frosted glass, opening and closing with it.
 auto SettingsPanel::row_extent(const RowSpec& t_spec) const -> float
 {
-	return *t_spec.description == '\0' ? single_row_height(m_fonts) : row_height(m_fonts);
+	const float height = *t_spec.description == '\0' ? single_row_height(m_fonts) : row_height(m_fonts);
+
+	return t_spec.row == &Rows::glass_tint ? height * slider_visibility(SliderKind::GLASS_BLUR) : height;
 }
 
 auto SettingsPanel::inline_slider_left(Rect t_row) const -> float
 {
 	float widest = 0.0f;
 
-	for (Rect Rows::* row : {&Rows::background, &Rows::background_light, &Rows::background_grain, &Rows::caret_trail, &Rows::animations}) {
+	for (Rect Rows::* row : {&Rows::background, &Rows::background_light, &Rows::background_grain, &Rows::caret_trail, &Rows::glass, &Rows::animations}) {
 		widest = std::max(widest, text_width(m_fonts->body, spec_of(row).title));
 	}
 
@@ -793,12 +806,20 @@ auto SettingsPanel::slider_line(const Rows& t_rows, SliderKind t_slider) const -
 			return t_rows.caret_trail;
 		}
 
+		case GLASS_BLUR: {
+			return t_rows.glass;
+		}
+
 		case ANIMATION_SPEED: {
 			return t_rows.animations;
 		}
 
 		case AUTO_LOCK: {
 			return t_rows.auto_lock;
+		}
+
+		case GLASS_TINT: {
+			return t_rows.glass_tint;
 		}
 
 		case COUNT: {
@@ -824,7 +845,9 @@ auto SettingsPanel::slider_rect(const Rows& t_rows, SliderKind t_slider) const -
 		case PATTERN_STRENGTH:
 		case LIGHT_STRENGTH:
 		case GRAIN_STRENGTH:
-		case TRAIL_STRENGTH: {
+		case TRAIL_STRENGTH:
+		case GLASS_BLUR:
+		case GLASS_TINT: {
 			return inline_slider_rect(line, pattern_select_rect(line, m_fonts), inline_slider_left(line), m_fonts);
 		}
 
@@ -856,12 +879,17 @@ auto SettingsPanel::slider_visibility(SliderKind t_slider) const -> float
 		case PATTERN_STRENGTH:
 		case LIGHT_STRENGTH:
 		case GRAIN_STRENGTH:
-		case TRAIL_STRENGTH: {
+		case TRAIL_STRENGTH:
+		case GLASS_BLUR: {
 			return m_percent_reveal[static_cast<u32>(t_slider) - static_cast<u32>(SliderKind::PATTERN_STRENGTH)];
 		}
 
 		case ANIMATION_SPEED: {
 			return m_animation_speed_reveal;
+		}
+
+		case GLASS_TINT: {
+			return slider_visibility(SliderKind::GLASS_BLUR);
 		}
 
 		case CORNER_ROUNDNESS:
@@ -886,12 +914,17 @@ auto SettingsPanel::slider_fraction(SliderKind t_slider) const -> float
 		case PATTERN_STRENGTH:
 		case LIGHT_STRENGTH:
 		case GRAIN_STRENGTH:
-		case TRAIL_STRENGTH: {
+		case TRAIL_STRENGTH:
+		case GLASS_BLUR: {
 			return m_percent_shown[static_cast<u32>(t_slider) - static_cast<u32>(SliderKind::PATTERN_STRENGTH)];
 		}
 
 		case ANIMATION_SPEED: {
 			return fraction_in(m_animation_speed_shown, K_ANIMATION_SPEED_MIN, K_ANIMATION_SPEED_MAX);
+		}
+
+		case GLASS_TINT: {
+			return fraction_in(m_glass_tint_shown, K_GLASS_TINT_MIN, K_GLASS_TINT_MAX);
 		}
 
 		case AUTO_LOCK: {
@@ -921,8 +954,14 @@ auto SettingsPanel::slider_readout(SliderKind t_slider, char (&t_buffer)[16]) co
 		case PATTERN_STRENGTH:
 		case LIGHT_STRENGTH:
 		case GRAIN_STRENGTH:
-		case TRAIL_STRENGTH: {
+		case TRAIL_STRENGTH:
+		case GLASS_BLUR: {
 			written = std::snprintf(t_buffer, sizeof(t_buffer), "%.0f%%", slider_fraction(t_slider) * 100.0f);
+			break;
+		}
+
+		case GLASS_TINT: {
+			written = std::snprintf(t_buffer, sizeof(t_buffer), "%.0f%%", m_glass_tint_shown * 100.0f);
 			break;
 		}
 
@@ -970,7 +1009,8 @@ auto SettingsPanel::apply_slider(SliderKind t_slider, float t_fraction) -> void
 		case PATTERN_STRENGTH:
 		case LIGHT_STRENGTH:
 		case GRAIN_STRENGTH:
-		case TRAIL_STRENGTH: {
+		case TRAIL_STRENGTH:
+		case GLASS_BLUR: {
 			const u32 index = static_cast<u32>(t_slider) - static_cast<u32>(SliderKind::PATTERN_STRENGTH);
 
 			m_settings->*K_PERCENT_SLIDERS[index].value = value_at(t_fraction, 0.0f, 1.0f);
@@ -986,6 +1026,11 @@ auto SettingsPanel::apply_slider(SliderKind t_slider, float t_fraction) -> void
 		case AUTO_LOCK: {
 			const auto stop               = static_cast<u32>(std::lround(t_fraction * static_cast<float>(K_AUTO_LOCK_STOP_COUNT - 1)));
 			m_settings->auto_lock_minutes = K_AUTO_LOCK_STOPS[std::min(stop, K_AUTO_LOCK_STOP_COUNT - 1)];
+			break;
+		}
+
+		case GLASS_TINT: {
+			m_settings->glass_tint = value_at(t_fraction, K_GLASS_TINT_MIN, K_GLASS_TINT_MAX);
 			break;
 		}
 
@@ -1141,7 +1186,7 @@ auto SettingsPanel::select_tab(SettingsTab t_tab) -> void
 auto SettingsPanel::rows_scroll(const Layout& t_layout, const Rows& t_rows) const -> ScrollGeometry
 {
 	const Rect  region        = t_layout.rows_region;
-	const float bottom_margin = t_layout.docked ? K_SCROLLBAR_MARGIN : std::max(K_SCROLLBAR_MARGIN, scaled_radius(K_PANEL_RADIUS) * 0.75f);
+	const float bottom_margin = t_layout.docked ? K_SCROLLBAR_MARGIN : std::max(K_SCROLLBAR_MARGIN, K_PANEL_RADIUS * controls::K_POPUP_ROUNDNESS * 0.75f);
 	const Rect  track{region.right() - K_SCROLLBAR_WIDTH - K_SCROLLBAR_MARGIN, region.y + K_SCROLLBAR_MARGIN, K_SCROLLBAR_WIDTH,
 	                  std::max(0.0f, region.h - K_SCROLLBAR_MARGIN - bottom_margin)};
 
@@ -1242,6 +1287,14 @@ auto SettingsPanel::reset_row(const Rows& t_rows, u32 t_setting) const -> Rect
 			return t_rows.caret_trail;
 		}
 
+		case GLASS_BLUR: {
+			return t_rows.glass;
+		}
+
+		case GLASS_TINT: {
+			return t_rows.glass_tint;
+		}
+
 		case ANIMATION_SPEED: {
 			return t_rows.animations;
 		}
@@ -1299,6 +1352,7 @@ auto SettingsPanel::reset_control(const Rows& t_rows, u32 t_setting) const -> Re
 		}
 
 		case CORNER_ROUNDNESS:
+		case GLASS_TINT:
 		case AUTO_LOCK: {
 			return slider_control_rect(row, m_fonts);
 		}
@@ -1323,6 +1377,7 @@ auto SettingsPanel::reset_control(const Rows& t_rows, u32 t_setting) const -> Re
 		case LIGHT_INTENSITY:
 		case GRAIN_INTENSITY:
 		case TRAIL_STRENGTH:
+		case GLASS_BLUR:
 		case ANIMATION_SPEED:
 		case COUNT: {
 			break;
@@ -1356,6 +1411,10 @@ auto SettingsPanel::reset_slider(u32 t_setting) -> std::optional<SettingsPanel::
 
 		case TRAIL_STRENGTH: {
 			return SliderKind::TRAIL_STRENGTH;
+		}
+
+		case GLASS_BLUR: {
+			return SliderKind::GLASS_BLUR;
 		}
 
 		case ANIMATION_SPEED: {
@@ -1440,6 +1499,14 @@ auto SettingsPanel::is_default(u32 t_setting) const -> bool
 
 		case TRAIL_STRENGTH: {
 			return same(m_settings->caret_trail_strength, defaults.caret_trail_strength);
+		}
+
+		case GLASS_BLUR: {
+			return same(m_settings->glass_blur, defaults.glass_blur);
+		}
+
+		case GLASS_TINT: {
+			return same(m_settings->glass_tint, defaults.glass_tint);
 		}
 
 		case ANIMATION_SPEED: {
@@ -1547,6 +1614,16 @@ auto SettingsPanel::reset_to_default(u32 t_setting) -> void
 
 		case TRAIL_STRENGTH: {
 			m_settings->caret_trail_strength = defaults.caret_trail_strength;
+			break;
+		}
+
+		case GLASS_BLUR: {
+			m_settings->glass_blur = defaults.glass_blur;
+			break;
+		}
+
+		case GLASS_TINT: {
+			m_settings->glass_tint = defaults.glass_tint;
 			break;
 		}
 
@@ -1746,6 +1823,7 @@ auto SettingsPanel::update(float t_delta_seconds) -> void
 		dragging(SliderKind::ANIMATION_SPEED) ? m_settings->animation_speed : ease_value(m_animation_speed_shown, m_settings->animation_speed);
 	m_corner_roundness_shown =
 		dragging(SliderKind::CORNER_ROUNDNESS) ? m_settings->corner_roundness : ease_value(m_corner_roundness_shown, m_settings->corner_roundness);
+	m_glass_tint_shown = dragging(SliderKind::GLASS_TINT) ? m_settings->glass_tint : ease_value(m_glass_tint_shown, m_settings->glass_tint);
 	for (u32 i = 0; i < K_PERCENT_SLIDER_COUNT; i += 1) {
 		const PercentSlider& slider = K_PERCENT_SLIDERS[i];
 		const auto           kind   = static_cast<SliderKind>(static_cast<u32>(SliderKind::PATTERN_STRENGTH) + i);
@@ -2283,10 +2361,12 @@ auto SettingsPanel::draw_chrome(DrawList* t_draw_list, const Layout& t_layout, u
 	const Font& body = m_fonts->body;
 
 	if (t_layout.docked) {
-		t_draw_list->add_rect(t_layout.panel, faded(g_theme.surface, t_alpha));
+		controls::draw_glass(t_draw_list, t_layout.panel, rounded(0.0f), controls::GlassSurface::SHEET, t_alpha, false);
 	} else {
-		t_draw_list->add_bordered_rect(t_layout.panel, rounded(K_PANEL_RADIUS), faded(g_theme.surface, t_alpha), faded(g_theme.border, t_alpha),
-		                               K_PANEL_BORDER);
+		const RoundnessScope corners{controls::K_POPUP_ROUNDNESS};
+
+		controls::draw_glass(t_draw_list, t_layout.panel, rounded(K_PANEL_RADIUS), controls::GlassSurface::SHEET, t_alpha, false);
+		t_draw_list->add_rounded_outline(t_layout.panel, rounded(K_PANEL_RADIUS), K_PANEL_BORDER, faded(g_theme.border, t_alpha));
 	}
 
 	const Rect back         = back_button_rect(t_layout.header);
@@ -2308,8 +2388,6 @@ auto SettingsPanel::draw_rail(DrawList* t_draw_list, const Layout& t_layout, u8 
 
 	t_draw_list->add_rect(Rect{t_layout.rail.right(), t_layout.rail.y, 1.0f, t_layout.rail.h}, faded(g_theme.separator, t_alpha));
 
-	const Color active_fill = hovered(g_theme.surface);
-
 	for (u32 i = 0; i < K_SETTINGS_TAB_COUNT; i += 1) {
 		const auto tab       = static_cast<SettingsTab>(i);
 		const Rect item      = tab_rect(t_layout, tab);
@@ -2317,14 +2395,14 @@ auto SettingsPanel::draw_rail(DrawList* t_draw_list, const Layout& t_layout, u8 
 
 		if (!is_active && pointer_live && item.contains(m_mouse)) {
 			t_draw_list->add_rounded_rect(item.inset(0.0f, K_TAB_GAP * 0.5f), rounded(K_CONTROL_RADIUS),
-			                              faded(mix(g_theme.surface, active_fill, K_HOVERED_TAB_FILL), t_alpha));
+			                              faded(controls::glass_highlight(K_HOVERED_TAB_FILL), t_alpha));
 		}
 	}
 
 	if (!searching) {
 		const Rect first_tab = tab_rect(t_layout, SettingsTab::APPEARANCE);
 		const Rect active{first_tab.x, snapped_to_pixel(first_tab.y + m_tab_indicator * height), first_tab.w, height};
-		t_draw_list->add_rounded_rect(active.inset(0.0f, K_TAB_GAP * 0.5f), rounded(K_CONTROL_RADIUS), faded(active_fill, t_alpha));
+		t_draw_list->add_rounded_rect(active.inset(0.0f, K_TAB_GAP * 0.5f), rounded(K_CONTROL_RADIUS), faded(controls::glass_highlight(), t_alpha));
 	}
 
 	for (u32 i = 0; i < K_SETTINGS_TAB_COUNT; i += 1) {
@@ -2413,15 +2491,15 @@ auto SettingsPanel::draw_appearance(DrawList* t_draw_list, const Layout& t_layou
 	if (is_on_screen(t_layout, t_rows.accent)) {
 		const Rect  swatch     = swatch_rect(t_rows.accent);
 		const Rect  ring       = swatch.inset(-(K_SWATCH_RING_GAP + K_SWATCH_RING));
-		const Rect  gap        = swatch.inset(-K_SWATCH_RING_GAP);
 		const bool  hovered    = !has_popup_open() && hits(t_layout, t_rows.accent, ring, m_mouse);
 		const Color ring_color = m_color_picker.is_open() ? accent : (hovered ? g_theme.text_dim : g_theme.border);
 		const Color shown{static_cast<u8>(std::lround(m_accent_shown[0])), static_cast<u8>(std::lround(m_accent_shown[1])),
 		                  static_cast<u8>(std::lround(m_accent_shown[2])), accent.a};
 
 		draw_label(t_draw_list, t_rows, &Rows::accent, ring, t_alpha);
-		t_draw_list->add_rounded_rect(ring, rounded(ring.w * 0.5f), faded(ring_color, t_alpha));
-		t_draw_list->add_rounded_rect(gap, rounded(gap.w * 0.5f), faded(g_theme.popup, t_alpha));
+
+		const RoundnessScope circles{K_CIRCLE_ROUNDNESS};
+		t_draw_list->add_rounded_outline(ring, rounded(ring.w * 0.5f), K_SWATCH_RING, faded(ring_color, t_alpha));
 		t_draw_list->add_rounded_rect(swatch, rounded(swatch.w * 0.5f), faded(shown, t_alpha));
 	}
 }
@@ -2451,8 +2529,12 @@ auto SettingsPanel::draw_pattern_popup(DrawList* t_draw_list, const Rows& t_rows
 	const Rect  popup{resting.x, snapped_to_pixel(resting.y - K_PATTERN_POPUP_RISE * (1.0f - amount)), resting.w, resting.h};
 	const float preview_height = std::round(pattern_tile_size().x * K_TILE_ASPECT);
 
-	controls::draw_popup_shadow(t_draw_list, popup, K_PATTERN_POPUP_RADIUS, amount);
-	t_draw_list->add_bordered_rect(popup, rounded(K_PATTERN_POPUP_RADIUS), faded(g_theme.popup, alpha), faded(g_theme.border, alpha), 1.0f);
+	{
+		const RoundnessScope corners{controls::K_POPUP_ROUNDNESS};
+
+		controls::draw_popup_shadow(t_draw_list, popup, K_PATTERN_POPUP_RADIUS, amount);
+		controls::draw_glass(t_draw_list, popup, rounded(K_PATTERN_POPUP_RADIUS), controls::GlassSurface::MENU, alpha);
+	}
 
 	for (u32 i = 0; i < K_BACKGROUND_COUNT; i += 1) {
 		const Rect  cell = pattern_tile(popup, i);
@@ -2463,8 +2545,8 @@ auto SettingsPanel::draw_pattern_popup(DrawList* t_draw_list, const Rows& t_rows
 		if (ring > 0.01f) {
 			const float outer = K_TILE_RING_GAP + K_TILE_RING;
 
-			t_draw_list->add_rounded_rect(preview.inset(-outer), rounded(K_TILE_RADIUS + outer), faded(m_settings->accent, static_cast<u8>(alpha * ring)));
-			t_draw_list->add_rounded_rect(preview.inset(-K_TILE_RING_GAP), rounded(K_TILE_RADIUS + K_TILE_RING_GAP), faded(g_theme.popup, alpha));
+			t_draw_list->add_rounded_outline(preview.inset(-outer), rounded(K_TILE_RADIUS + outer), K_TILE_RING,
+			                                 faded(m_settings->accent, static_cast<u8>(alpha * ring)));
 		}
 
 		t_draw_list->add_rounded_rect(preview, rounded(K_TILE_RADIUS), faded(hovered ? g_theme.border : g_theme.separator, alpha));
@@ -2512,6 +2594,49 @@ auto SettingsPanel::draw_segment_choice(DrawList*     t_draw_list,
 	}
 }
 
+// Sliders that sit in a row of their own, under that row's label, rather than folding out of a toggle.
+auto SettingsPanel::column_slider_row(SliderKind t_slider) -> Rect Rows::*
+{
+	switch (t_slider) {
+		using enum SliderKind;
+
+		case CORNER_ROUNDNESS: {
+			return &Rows::corner_roundness;
+		}
+
+		case AUTO_LOCK: {
+			return &Rows::auto_lock;
+		}
+
+		default: {
+			return nullptr;
+		}
+	}
+}
+
+auto SettingsPanel::slider_caption(SliderKind t_slider) -> std::string_view
+{
+	switch (t_slider) {
+		using enum SliderKind;
+
+		case ANIMATION_SPEED: {
+			return "Speed";
+		}
+
+		case GLASS_BLUR: {
+			return "Blur";
+		}
+
+		case GLASS_TINT: {
+			return "Tint";
+		}
+
+		default: {
+			return "Strength";
+		}
+	}
+}
+
 auto SettingsPanel::draw_sliders(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void
 {
 	const auto  last_stop    = static_cast<float>(K_AUTO_LOCK_STOP_COUNT - 1);
@@ -2525,17 +2650,18 @@ auto SettingsPanel::draw_sliders(DrawList* t_draw_list, const Layout& t_layout, 
 		const auto  alpha      = static_cast<u8>(t_alpha * visibility * visibility);
 		if (!is_on_screen(t_layout, line) || alpha == 0) continue;
 
-		const bool in_column = slider == SliderKind::CORNER_ROUNDNESS || slider == SliderKind::AUTO_LOCK;
-		const bool auto_lock = slider == SliderKind::AUTO_LOCK;
-		const Rect bounds    = slider_rect(t_rows, slider);
+		Rect Rows::* const column    = column_slider_row(slider);
+		const bool         in_column = column != nullptr;
+		const bool         auto_lock = slider == SliderKind::AUTO_LOCK;
+		const Rect         bounds    = slider_rect(t_rows, slider);
 
 		if (in_column) {
-			draw_label(t_draw_list, t_rows, auto_lock ? &Rows::auto_lock : &Rows::corner_roundness, bounds, t_alpha);
+			draw_label(t_draw_list, t_rows, column, bounds, t_alpha);
 		}
 
 		const SliderLook look{
 			.readout  = slider_readout(slider, readout),
-			.caption  = in_column ? "" : (slider == SliderKind::ANIMATION_SPEED ? "Speed" : "Strength"),
+			.caption  = in_column ? "" : slider_caption(slider),
 			.fraction = slider_fraction(slider),
 			.hover    = m_slider_hover[i],
 			.accent   = auto_lock ? mix(m_settings->accent, g_theme.text_faint, never_amount) : m_settings->accent,
@@ -2559,7 +2685,8 @@ auto SettingsPanel::draw_cards(DrawList* t_draw_list, const Layout& t_layout, co
 	for (const Rect& card : t_rows.cards) {
 		if (!is_on_screen(t_layout, card)) continue;
 
-		t_draw_list->add_bordered_rect(card, rounded(K_CARD_RADIUS), faded(g_theme.popup, t_alpha), faded(g_theme.separator, t_alpha), 1.0f);
+		t_draw_list->add_rounded_rect(card, rounded(K_CARD_RADIUS), faded(controls::glass_highlight(K_CARD_WASH), t_alpha));
+		t_draw_list->add_rounded_outline(card, rounded(K_CARD_RADIUS), 1.0f, faded(g_theme.separator, t_alpha));
 	}
 
 	std::optional<u32> group;
@@ -2571,7 +2698,7 @@ auto SettingsPanel::draw_cards(DrawList* t_draw_list, const Layout& t_layout, co
 		const bool first = group != spec.group;
 		group            = spec.group;
 
-		if (first || !is_on_screen(t_layout, row)) continue;
+		if (first || spec.row == &Rows::glass_tint || !is_on_screen(t_layout, row)) continue;
 
 		t_draw_list->add_rect(Rect{row.x + K_ROW_INSET_X, row.y, t_rows.row_width - K_ROW_INSET_X * 2.0f, 1.0f}, faded(g_theme.separator, t_alpha));
 	}
@@ -2660,7 +2787,7 @@ auto SettingsPanel::draw(DrawList* t_draw_list) -> void
 
 	if (!current.docked) {
 		const Vec2 window = m_window->size();
-		t_draw_list->add_rect(Rect{0.0f, 0.0f, window.x, window.y}, faded(g_theme.scrim, alpha));
+		controls::draw_popup_backdrop(t_draw_list, Rect{0.0f, 0.0f, window.x, window.y}, m_open_amount);
 	}
 
 	const float scale = current.docked ? 1.0f : K_PANEL_CLOSED_SCALE + (1.0f - K_PANEL_CLOSED_SCALE) * m_open_amount;
@@ -2695,18 +2822,11 @@ auto SettingsPanel::draw(DrawList* t_draw_list) -> void
 
 	t_draw_list->pop_clip();
 
-	const Rect                  card_span{region.x + K_CARD_MARGIN_X, content.y, region.w - K_CARD_MARGIN_X * 2.0f, content.h};
-	const Scrollable::EdgeFades fades         = m_rows_scroll.edge_fades(card_span, scroll);
-	const float                 header_shadow = std::clamp(m_rows_scroll.offset() / K_HEADER_SHADOW_TRAVEL, 0.0f, 1.0f);
+	const float header_shadow = std::clamp(m_rows_scroll.offset() / K_HEADER_SHADOW_TRAVEL, 0.0f, 1.0f);
 
 	if (header_shadow > 0.0f) {
 		const Color shadow = faded(g_theme.shadow, static_cast<u8>(alpha * K_HEADER_SHADOW_ALPHA * header_shadow));
 		t_draw_list->add_gradient(Rect{region.x, content.y, region.w, K_HEADER_SHADOW_HEIGHT}, shadow, shadow, faded(shadow, 0), faded(shadow, 0));
-	}
-
-	if (fades.bottom.h > 0.0f) {
-		const Color surface = faded(g_theme.surface, alpha);
-		t_draw_list->add_gradient(fades.bottom, faded(surface, 0), faded(surface, 0), surface, surface);
 	}
 
 	t_draw_list->add_rect(Rect{current.header.x, divider_y, current.header.w, divider_thickness}, faded(g_theme.separator, alpha));

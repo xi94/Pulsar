@@ -43,7 +43,17 @@ struct BackdropConstants {
 	float padding;
 };
 
+// The blur passes read step as the distance between taps. The glass draw reads the frame size, and as step the texel size of the
+// level it samples.
+struct BlurConstants {
+	float target_width;
+	float target_height;
+	float step_x;
+	float step_y;
+};
+
 static_assert(sizeof(ViewportConstants) == 16);
+static_assert(sizeof(BlurConstants) == 16);
 static_assert(sizeof(BannerGlowConstants) == 32);
 static_assert(sizeof(ShadowConstants) == 16);
 static_assert(sizeof(OutlineCountdownConstants) == 48);
@@ -54,6 +64,7 @@ union EffectConstants {
 	ShadowConstants           shadow;
 	OutlineCountdownConstants outline_countdown;
 	BackdropConstants         backdrop;
+	BlurConstants             blur;
 };
 
 struct RenderFrame {
@@ -77,7 +88,20 @@ struct ScissorRect {
 	i32 bottom;
 };
 
+constexpr u32 K_BLUR_LEVEL_COUNT = 4;
+
+// Glass blurs at one level of a chain that halves the frame at each step, level 0 being half size.
+struct BlurPlan {
+	u32   level;
+	u32   iterations;
+	float step;
+
+	auto operator==(const BlurPlan&) const -> bool = default;
+};
+
 [[nodiscard]] auto pixel_scale(const RenderFrame& t_frame) -> float;
+[[nodiscard]] auto blur_level_extent(u32 t_frame_extent, u32 t_level) -> u32;
+[[nodiscard]] auto blur_plan(const RenderFrame& t_frame, const DrawCommand& t_command) -> BlurPlan;
 [[nodiscard]] auto scissor_for(const RenderFrame& t_frame, const DrawCommand& t_command) -> ScissorRect;
 [[nodiscard]] auto viewport_constants(const RenderFrame& t_frame) -> ViewportConstants;
 [[nodiscard]] auto backdrop_constants(const RenderFrame& t_frame) -> BackdropConstants;
@@ -94,6 +118,11 @@ class RenderBackend {
 	[[nodiscard]] virtual auto init(const os::Window* t_window) -> bool      = 0;
 	virtual auto resize(u32 t_physical_width, u32 t_physical_height) -> void = 0;
 	virtual auto render(const RenderFrame& t_frame) -> void                  = 0;
+
+	[[nodiscard]] virtual auto supports_backdrop_blur() const -> bool
+	{
+		return false;
+	}
 
 	[[nodiscard]] virtual auto create_texture(u32 t_slot, std::span<const TextureLevel> t_levels, bool t_updatable) -> bool = 0;
 	virtual auto update_texture(u32 t_slot, u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rgba_pixels) -> void   = 0;

@@ -6,6 +6,7 @@
 #include "core/animation.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
+#include "ui/controls.h"
 #include "ui/text.h"
 #include "ui/theme.h"
 
@@ -60,6 +61,8 @@ auto Tooltip::draw(DrawList* t_draw_list, const Fonts* t_fonts, Rect t_bounds, u
 {
 	if (m_visible_amount <= 0.001f || m_length == 0) return;
 
+	const RoundnessScope corners{controls::K_POPUP_ROUNDNESS};
+
 	const Font&            font = t_fonts->secondary;
 	const std::string_view text{m_text, m_length};
 
@@ -78,6 +81,6 @@ auto Tooltip::draw(DrawList* t_draw_list, const Fonts* t_fonts, Rect t_bounds, u
 
 	const auto alpha = static_cast<u8>(t_alpha * m_visible_amount);
 
-	t_draw_list->add_bordered_rect(bubble, rounded(K_CORNER_RADIUS), faded(g_theme.popup, alpha), faded(g_theme.border, alpha), 1.0f);
+	controls::draw_glass(t_draw_list, bubble, rounded(K_CORNER_RADIUS), controls::GlassSurface::SOFT, alpha);
 	draw_text(t_draw_list, font, Vec2{bubble.x + K_PADDING_X, font.centered_baseline(bubble)}, text, faded(g_theme.text, alpha));
 }

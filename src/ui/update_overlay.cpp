@@ -795,8 +795,13 @@ auto UpdateOverlay::draw(DrawList* t_draw_list) -> void
 	const u8      alpha       = to_alpha(m_open_amount * m_content_fade);
 	const float   rise        = (1.0f - m_content_fade) * K_CONTENT_RISE;
 
-	controls::draw_popup_shadow(t_draw_list, current.popover, K_POPOVER_RADIUS, m_open_amount);
-	t_draw_list->add_bordered_rect(current.popover, rounded(K_POPOVER_RADIUS), faded(g_theme.popup, frame_alpha), faded(g_theme.border, frame_alpha), 1.0f);
+	{
+		const RoundnessScope corners{controls::K_POPUP_ROUNDNESS};
+
+		controls::draw_popup_shadow(t_draw_list, current.popover, K_POPOVER_RADIUS, m_open_amount);
+		controls::draw_glass(t_draw_list, current.popover, rounded(K_POPOVER_RADIUS), controls::GlassSurface::MENU, frame_alpha);
+	}
+
 	t_draw_list->push_clip(current.popover.inset(1.0f));
 
 	draw_title(t_draw_list, content, Rect{current.popover.x, current.title_top + rise, current.popover.w, body.line_height()}, alpha);

@@ -176,8 +176,13 @@ auto Toasts::draw(DrawList* t_draw_list) -> void
 	const auto  alpha = to_alpha(m_presence);
 
 	const float corner_radius = std::min(card.h * 0.5f, K_MAX_CORNER_RADIUS);
-	controls::draw_popup_shadow(t_draw_list, card, corner_radius, m_presence);
-	t_draw_list->add_bordered_rect(card, rounded(corner_radius), faded(with_alpha(g_theme.popup, 244), alpha), faded(g_theme.border, alpha), 1.0f);
+
+	{
+		const RoundnessScope corners{controls::K_POPUP_ROUNDNESS};
+
+		controls::draw_popup_shadow(t_draw_list, card, corner_radius, m_presence);
+		controls::draw_glass(t_draw_list, card, rounded(corner_radius), controls::GlassSurface::MENU, alpha);
+	}
 
 	if (m_icon) {
 		const float first_line_center = card.y + K_PADDING_Y + font.line_height() * 0.5f;

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <optional>
 #include <string>
 
 #include "core/debug_log.h"
@@ -23,12 +24,12 @@ constexpr GLuint  K_UV_ATTRIBUTE       = 1;
 constexpr GLuint  K_COLOR_ATTRIBUTE    = 2;
 
 constexpr const char* K_FRAGMENT_ENTRY_POINTS[]{
-	"ps_solid", "ps_textured", "ps_banner_glow", "ps_color_picker", "ps_shadow", "ps_outline_countdown", "ps_backdrop", "ps_backdrop_plain",
+	"ps_solid", "ps_textured", "ps_banner_glow", "ps_color_picker", "ps_shadow", "ps_outline_countdown", "ps_backdrop", "ps_backdrop_plain", "ps_backdrop_blur",
 };
 
 static_assert(std::size(K_FRAGMENT_ENTRY_POINTS) == K_SHADER_KIND_COUNT);
 
-constexpr const char* K_EFFECT_BLOCK_NAMES[]{"BannerGlowConstants", "ShadowConstants", "OutlineCountdownConstants", "BackdropConstants"};
+constexpr const char* K_EFFECT_BLOCK_NAMES[]{"BannerGlowConstants", "ShadowConstants", "OutlineCountdownConstants", "BackdropConstants", "BlurConstants"};
 
 [[nodiscard]] auto load_functions(Gl* t_gl, const GlContext& t_context) -> bool
 {
@@ -47,6 +48,13 @@ constexpr const char* K_EFFECT_BLOCK_NAMES[]{"BannerGlowConstants", "ShadowConst
 {
 	return reinterpret_cast<const void*>(t_offset);
 }
+
+struct BlurTarget {
+	GLuint  texture     = 0;
+	GLuint  framebuffer = 0;
+	GLsizei width       = 0;
+	GLsizei height      = 0;
+};
 
 struct OpenGlBackend final : RenderBackend {
 	GlContext context;
@@ -68,11 +76,24 @@ struct OpenGlBackend final : RenderBackend {
 
 	GLuint textures[Renderer::K_MAX_TEXTURES]{};
 
+	// The frame so far, then halved level by level. Each level has a second target the blur passes bounce through.
+	GLuint     downsample_program = 0;
+	GLuint     blur_program       = 0;
+	GLuint     fullscreen_array   = 0;
+	BlurTarget capture;
+	BlurTarget levels[K_BLUR_LEVEL_COUNT][2];
+	bool       blur_ready = false;
+
 	~OpenGlBackend() override;
 
 	[[nodiscard]] auto init(const os::Window* t_window) -> bool override;
 	auto resize(u32 t_physical_width, u32 t_physical_height) -> void override;
 	auto render(const RenderFrame& t_frame) -> void override;
+
+	[[nodiscard]] auto supports_backdrop_blur() const -> bool override
+	{
+		return blur_ready;
+	}
 
 	[[nodiscard]] auto create_texture(u32 t_slot, std::span<const TextureLevel> t_levels, bool t_updatable) -> bool override;
 	auto update_texture(u32 t_slot, u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rgba_pixels) -> void override;
@@ -85,6 +106,10 @@ struct OpenGlBackend final : RenderBackend {
 	auto bind_block(GLuint t_program, const char* t_name, GLuint t_binding) const -> void;
 	auto create_msaa_target() -> void;
 	auto size_msaa_target() -> void;
+	[[nodiscard]] auto create_blur_programs() -> bool;
+	[[nodiscard]] auto size_blur_target(GLsizei t_width, GLsizei t_height, BlurTarget* t_target) const -> bool;
+	auto size_blur_targets() -> void;
+	auto blur_frame(BlurPlan t_plan) -> void;
 	auto draw_command(const RenderFrame& t_frame, const DrawCommand& t_command) -> void;
 };
 
@@ -103,6 +128,20 @@ OpenGlBackend::~OpenGlBackend()
 	gl.delete_samplers(1, &sampler);
 	gl.delete_framebuffers(1, &msaa_framebuffer);
 	gl.delete_renderbuffers(1, &msaa_color);
+
+	gl.delete_program(downsample_program);
+	gl.delete_program(blur_program);
+	gl.delete_vertex_arrays(1, &fullscreen_array);
+
+	gl.delete_framebuffers(1, &capture.framebuffer);
+	gl.delete_textures(1, &capture.texture);
+
+	for (const auto& level : levels) {
+		for (const BlurTarget& target : level) {
+			gl.delete_framebuffers(1, &target.framebuffer);
+			gl.delete_textures(1, &target.texture);
+		}
+	}
 }
 
 auto OpenGlBackend::init(const os::Window* t_window) -> bool
@@ -125,6 +164,13 @@ auto OpenGlBackend::init(const os::Window* t_window) -> bool
 	if (!create_programs() || !create_buffers()) return false;
 
 	create_msaa_target();
+
+	if (create_blur_programs()) {
+		size_blur_targets();
+	} else {
+		debug_log::write(K_LOG_CATEGORY, "the glass blur shaders did not build - glass draws without blur");
+	}
+
 	gl.enable(GL_BLEND);
 	gl.blend_func_separate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -141,6 +187,7 @@ auto OpenGlBackend::resize(u32 t_physical_width, u32 t_physical_height) -> void
 
 	context.resize();
 	size_msaa_target();
+	size_blur_targets();
 }
 
 auto OpenGlBackend::render(const RenderFrame& t_frame) -> void
@@ -169,7 +216,19 @@ auto OpenGlBackend::render(const RenderFrame& t_frame) -> void
 			gl.buffer_sub_data(GL_UNIFORM_BUFFER, 0, sizeof(viewport), &viewport);
 
 			gl.enable(GL_SCISSOR_TEST);
+			// Glass needs a fresh blur of what is drawn before it, but a run of glass shapes that blur alike can share one.
+			std::optional<BlurPlan> blurred;
+
 			for (const DrawCommand& command : draw_list->commands()) {
+				if (command.shader != ShaderKind::BACKDROP_BLUR) {
+					blurred.reset();
+				} else if (!blur_ready) {
+					continue;
+				} else if (const BlurPlan plan = blur_plan(t_frame, command); blurred != plan) {
+					blur_frame(plan);
+					blurred = plan;
+				}
+
 				draw_command(t_frame, command);
 			}
 		}
@@ -376,14 +435,134 @@ auto OpenGlBackend::size_msaa_target() -> void
 	msaa_color       = 0;
 }
 
+auto OpenGlBackend::create_blur_programs() -> bool
+{
+	const char* const vertex_sources[]{K_GLSL_VERSION, K_FULLSCREEN_VERTEX_SHADER_SOURCE};
+	const GLuint      vertex_shader = compile_shader(GL_VERTEX_SHADER, vertex_sources);
+	if (vertex_shader == 0) return false;
+
+	const auto program = [&](const char* t_entry_point) {
+		const std::string entry_point = std::string{"#define PS_MAIN "} + t_entry_point + "\n";
+		const char* const fragment_sources[]{K_GLSL_VERSION, entry_point.c_str(), K_FRAGMENT_SHADER_SOURCE};
+		const GLuint      fragment_shader = compile_shader(GL_FRAGMENT_SHADER, fragment_sources);
+		const GLuint      linked          = fragment_shader != 0 ? link_program(vertex_shader, fragment_shader) : 0;
+
+		gl.delete_shader(fragment_shader);
+		return linked;
+	};
+
+	downsample_program = program("ps_downsample");
+	blur_program       = program("ps_blur");
+	gl.delete_shader(vertex_shader);
+	gl.gen_vertex_arrays(1, &fullscreen_array);
+
+	return downsample_program != 0 && blur_program != 0 && fullscreen_array != 0;
+}
+
+auto OpenGlBackend::size_blur_target(GLsizei t_width, GLsizei t_height, BlurTarget* t_target) const -> bool
+{
+	if (t_target->texture == 0) {
+		gl.gen_textures(1, &t_target->texture);
+	}
+
+	if (t_target->framebuffer == 0) {
+		gl.gen_framebuffers(1, &t_target->framebuffer);
+	}
+
+	t_target->width  = std::max<GLsizei>(t_width, 1);
+	t_target->height = std::max<GLsizei>(t_height, 1);
+
+	gl.bind_texture(GL_TEXTURE_2D, t_target->texture);
+	gl.tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+	gl.tex_image_2d(GL_TEXTURE_2D, 0, GL_RGBA8, t_target->width, t_target->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+	gl.bind_framebuffer(GL_FRAMEBUFFER, t_target->framebuffer);
+	gl.framebuffer_texture_2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t_target->texture, 0);
+
+	const bool complete = gl.check_framebuffer_status(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+	gl.bind_framebuffer(GL_FRAMEBUFFER, msaa_framebuffer);
+
+	return complete;
+}
+
+auto OpenGlBackend::size_blur_targets() -> void
+{
+	if (fullscreen_array == 0) return;
+
+	blur_ready = size_blur_target(width, height, &capture);
+
+	for (u32 level = 0; level < K_BLUR_LEVEL_COUNT; level += 1) {
+		const auto level_width  = static_cast<GLsizei>(blur_level_extent(static_cast<u32>(width), level));
+		const auto level_height = static_cast<GLsizei>(blur_level_extent(static_cast<u32>(height), level));
+
+		for (BlurTarget& target : levels[level]) {
+			blur_ready = blur_ready && size_blur_target(level_width, level_height, &target);
+		}
+	}
+
+	if (!blur_ready) {
+		debug_log::write(K_LOG_CATEGORY, "glass blur targets are incomplete - glass draws without blur");
+	}
+}
+
+// Copies what is drawn so far out of the frame, halves it down to the plan's level and blurs it there, then puts the frame's own
+// state back.
+auto OpenGlBackend::blur_frame(BlurPlan t_plan) -> void
+{
+	PULSAR_PROFILE_SCOPE("Render.Blur");
+
+	gl.disable(GL_SCISSOR_TEST);
+	gl.bind_framebuffer(GL_READ_FRAMEBUFFER, msaa_framebuffer);
+	gl.bind_framebuffer(GL_DRAW_FRAMEBUFFER, capture.framebuffer);
+	gl.blit_framebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+	gl.disable(GL_BLEND);
+	gl.bind_vertex_array(fullscreen_array);
+	gl.bind_buffer(GL_UNIFORM_BUFFER, effect_buffer);
+
+	const auto pass = [&](const BlurTarget& t_target, const BlurTarget& t_source, GLuint t_program, float t_step_x, float t_step_y) {
+		const BlurConstants constants{.step_x = t_step_x, .step_y = t_step_y};
+
+		gl.bind_framebuffer(GL_FRAMEBUFFER, t_target.framebuffer);
+		gl.viewport(0, 0, t_target.width, t_target.height);
+		gl.buffer_sub_data(GL_UNIFORM_BUFFER, 0, sizeof(constants), &constants);
+		gl.use_program(t_program);
+		gl.bind_texture(GL_TEXTURE_2D, t_source.texture);
+		gl.draw_arrays(GL_TRIANGLES, 0, 3);
+	};
+
+	const BlurTarget* source = &capture;
+
+	for (u32 level = 0; level <= t_plan.level; level += 1) {
+		pass(levels[level][0], *source, downsample_program, 1.0f / static_cast<float>(source->width), 1.0f / static_cast<float>(source->height));
+		source = &levels[level][0];
+	}
+
+	const BlurTarget* blurred = levels[t_plan.level];
+	const float       step_x  = t_plan.step / static_cast<float>(blurred[0].width);
+	const float       step_y  = t_plan.step / static_cast<float>(blurred[0].height);
+
+	for (u32 i = 0; i < t_plan.iterations; i += 1) {
+		pass(blurred[1], blurred[0], blur_program, step_x, 0.0f);
+		pass(blurred[0], blurred[1], blur_program, 0.0f, step_y);
+	}
+
+	gl.bind_framebuffer(GL_FRAMEBUFFER, msaa_framebuffer);
+	gl.viewport(0, 0, width, height);
+	gl.bind_vertex_array(vertex_array);
+	gl.enable(GL_BLEND);
+	gl.enable(GL_SCISSOR_TEST);
+}
+
 auto OpenGlBackend::draw_command(const RenderFrame& t_frame, const DrawCommand& t_command) -> void
 {
 	GLuint image = 0;
-
 	if (t_command.shader == ShaderKind::TEXTURED) {
 		if (!t_command.texture->is_valid()) return;
 
 		image = textures[t_command.texture->slot()];
+	} else if (t_command.shader == ShaderKind::BACKDROP_BLUR) {
+		image = levels[blur_plan(t_frame, t_command).level][0].texture;
 	}
 
 	EffectConstants effect{};

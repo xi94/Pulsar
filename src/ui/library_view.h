@@ -5,6 +5,7 @@
 
 #include "core/library.h"
 #include "ui/commands.h"
+#include "ui/list_popup.h"
 #include "ui/scrollable.h"
 #include "ui/text_input.h"
 
@@ -65,11 +66,10 @@ class LibraryView {
 	[[nodiscard]] auto cursor() const -> CursorKind;
 
   private:
-	static constexpr u32 K_FIELD_COUNT      = 3;
-	static constexpr u32 K_USERNAME         = 0;
-	static constexpr u32 K_PASSWORD         = 1;
-	static constexpr u32 K_NOTE             = 2;
-	static constexpr u32 K_MAX_REGION_CHIPS = 20;
+	static constexpr u32 K_FIELD_COUNT = 3;
+	static constexpr u32 K_USERNAME    = 0;
+	static constexpr u32 K_PASSWORD    = 1;
+	static constexpr u32 K_NOTE        = 2;
 
 	enum class Target : u8 {
 		NONE,
@@ -129,8 +129,7 @@ class LibraryView {
 		Rect  labels[K_FIELD_COUNT + 2];
 		Rect  fields[K_FIELD_COUNT];
 		Rect  reveal;
-		Rect  regions[K_MAX_REGION_CHIPS];
-		u32   region_count;
+		Rect  region;
 		Rect  games[K_MAX_GAMES];
 		bool  has_games;
 		Rect  remove;
@@ -177,7 +176,6 @@ class LibraryView {
 	[[nodiscard]] auto form_extra(const Layout& t_layout) const -> float;
 	[[nodiscard]] auto form_card(const Layout& t_layout, const VisibleAccounts& t_accounts) const -> Rect;
 	[[nodiscard]] auto form_layout(Rect t_card) const -> FormLayout;
-	[[nodiscard]] auto region_chips(std::string_view (&t_labels)[K_MAX_REGION_CHIPS]) const -> u32;
 	[[nodiscard]] auto row_rect(const Layout& t_layout, const VisibleAccounts& t_accounts, u32 t_row) const -> Rect;
 	[[nodiscard]] auto lifted_rect(const Layout& t_layout) const -> Rect;
 	[[nodiscard]] auto star_rect(const Layout& t_layout, Rect t_row) const -> Rect;
@@ -208,6 +206,7 @@ class LibraryView {
 	auto focus_field(std::optional<u32> t_field) -> void;
 	auto focus_filter(bool t_focused) -> void;
 	auto toggle_shown_game(u32 t_game) -> void;
+	auto open_region_list() -> void;
 	auto refresh_filter() -> void;
 	auto reveal_row(AccountRef t_account) -> void;
 	auto lift_row(u32 t_row, Vec2 t_point) -> void;
@@ -260,11 +259,11 @@ class LibraryView {
 	float                     m_form_height = 0.0f;
 	TextInput                 m_fields[K_FIELD_COUNT];
 	char                      m_region[8]{};
-	u16                       m_visible_mask     = 0;
-	bool                      m_regions_expanded = false;
-	bool                      m_show_required    = false;
-	bool                      m_delete_armed     = false;
-	float                     m_armed_seconds    = 0.0f;
+	u16                       m_visible_mask  = 0;
+	bool                      m_show_required = false;
+	bool                      m_delete_armed  = false;
+	float                     m_armed_seconds = 0.0f;
 
 	std::optional<DeletedAccount> m_deleted;
+	ListPopup                     m_region_list;
 };

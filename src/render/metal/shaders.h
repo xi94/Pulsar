@@ -377,4 +377,79 @@ constexpr const char* K_SHADER_SOURCE = R"(
 	{
 		return backdrop_color(input, backdrop, false);
 	}
+
+	struct BlurConstants {
+		float2 target_size;
+		float2 texel_step;
+	};
+
+	// Reads the blurred level as a cubic B-spline in four bilinear taps. Plain bilinear stretched over many pixels shows the level's
+	// texels as blocks; the spline is smooth across them.
+	float3 sample_blurred(texture2d<float> image, sampler image_sampler, float2 uv, float2 texel)
+	{
+		float2 coord = uv / texel - 0.5;
+		float2 base = floor(coord);
+		float2 f = coord - base;
+		float2 f2 = f * f;
+		float2 f3 = f2 * f;
+		float2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0;
+		float2 w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+		float2 w3 = f3 / 6.0;
+		float2 g0 = w0 + w1;
+		float2 g1 = 1.0 - g0;
+		float2 t0 = (base - 0.5 + w1 / g0) * texel;
+		float2 t1 = (base + 1.5 + w3 / g1) * texel;
+
+		return (image.sample(image_sampler, t0).rgb * g0.x + image.sample(image_sampler, float2(t1.x, t0.y)).rgb * g1.x) * g0.y +
+		       (image.sample(image_sampler, float2(t0.x, t1.y)).rgb * g0.x + image.sample(image_sampler, t1).rgb * g1.x) * g1.y;
+	}
+
+	fragment float4 ps_backdrop_blur(PixelInput input [[stage_in]], constant BlurConstants& blur [[buffer(1)]], texture2d<float> image [[texture(0)]],
+									 sampler image_sampler [[sampler(0)]])
+	{
+		float3 rgb = sample_blurred(image, image_sampler, input.position.xy / blur.target_size, blur.texel_step);
+		float luma = dot(rgb, float3(0.299, 0.587, 0.114));
+		rgb = mix(float3(luma), rgb, 1.15) + (backdrop_noise(input.position.xy) - 0.5) * (4.0 / 255.0);
+		return float4(saturate(rgb), input.color.a);
+	}
+
+	struct FullscreenOutput {
+		float4 position [[position]];
+		float2 uv;
+	};
+
+	vertex FullscreenOutput vs_fullscreen(uint vertex_id [[vertex_id]])
+	{
+		FullscreenOutput output;
+		float2 uv = float2(float((vertex_id << 1) & 2), float(vertex_id & 2));
+		output.position = float4(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0.0, 1.0);
+		output.uv = uv;
+		return output;
+	}
+
+	// Halves its source through five taps, a small tent rather than a box, so fine detail does not alias into the level below.
+	fragment float4 ps_downsample(FullscreenOutput input [[stage_in]], constant BlurConstants& blur [[buffer(1)]], texture2d<float> image [[texture(0)]],
+								  sampler image_sampler [[sampler(0)]])
+	{
+		float2 diagonal = float2(blur.texel_step.x, -blur.texel_step.y);
+		float4 sum = image.sample(image_sampler, input.uv) * 4.0;
+		sum += image.sample(image_sampler, input.uv - blur.texel_step) + image.sample(image_sampler, input.uv + blur.texel_step);
+		sum += image.sample(image_sampler, input.uv - diagonal) + image.sample(image_sampler, input.uv + diagonal);
+		return sum * 0.125;
+	}
+
+	fragment float4 ps_blur(FullscreenOutput input [[stage_in]], constant BlurConstants& blur [[buffer(1)]], texture2d<float> image [[texture(0)]],
+							sampler image_sampler [[sampler(0)]])
+	{
+		const float offsets[4] = {0.0, 1.411764706, 3.294117647, 5.176470588};
+		const float weights[4] = {0.196482550, 0.296906965, 0.094470398, 0.010381362};
+
+		float4 sum = image.sample(image_sampler, input.uv) * weights[0];
+		for (int i = 1; i < 4; i++) {
+			sum += image.sample(image_sampler, input.uv + blur.texel_step * offsets[i]) * weights[i];
+			sum += image.sample(image_sampler, input.uv - blur.texel_step * offsets[i]) * weights[i];
+		}
+
+		return sum;
+	}
 )";

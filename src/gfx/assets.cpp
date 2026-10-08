@@ -19,7 +19,9 @@
 #include "embeds/icons/CarouselIcon.hpp"
 #include "embeds/icons/CheckedIcon.hpp"
 #include "embeds/icons/Close.hpp"
+#include "embeds/icons/CopyIcon.hpp"
 #include "embeds/icons/DownloadIcon.hpp"
+#include "embeds/icons/EditBoxIcon.hpp"
 #include "embeds/icons/EditIcon.hpp"
 #include "embeds/icons/EyeHiddenIcon.hpp"
 #include "embeds/icons/EyeVisible.hpp"
@@ -30,6 +32,7 @@
 #include "embeds/icons/GridIcon.hpp"
 #include "embeds/icons/IconsIcon.hpp"
 #include "embeds/icons/ImageIcon.hpp"
+#include "embeds/icons/KeyIcon.hpp"
 #include "embeds/icons/LeagueIcon.hpp"
 #include "embeds/icons/LibraryIcon.hpp"
 #include "embeds/icons/ListArrow.hpp"
@@ -41,8 +44,8 @@
 #include "embeds/icons/Settings.hpp"
 #include "embeds/icons/ShelfIcon.hpp"
 #include "embeds/icons/TFTIcon.hpp"
+#include "embeds/icons/TrashIcon.hpp"
 #include "embeds/icons/UpdateIcon.hpp"
-#include "embeds/icons/UsernameIcon.hpp"
 #include "embeds/icons/ValorantIcon.hpp"
 
 #include "stb/stb_image.h"
@@ -109,7 +112,6 @@ constexpr EncodedAsset K_ENCODED_ASSETS[]{
 	{Asset::ICON_RESET, icon::reset_icon, "ResetIcon"},
 	{Asset::ICON_ACCOUNT, icon::account_icon, "AccountIcon"},
 	{Asset::ICON_IMAGE, icon::image_icon, "ImageIcon"},
-	{Asset::ICON_USERNAME, icon::username_icon, "UsernameIcon"},
 	{Asset::ICON_LOCK, icon::lock_icon, "LockIcon"},
 	{Asset::ICON_FOLDER, icon::folder_icon, "FolderBlankIcon"},
 	{Asset::ICON_FILE, icon::file_icon, "FileIcon"},
@@ -121,6 +123,10 @@ constexpr EncodedAsset K_ENCODED_ASSETS[]{
 	{Asset::ICON_TWO_XKO, icon::two_xko_icon, "2XKOIcon"},
 	{Asset::ICON_RUNETERRA, icon::runeterra_icon, "RuneterraIcon"},
 	{Asset::ICON_TEAMFIGHT_TACTICS, icon::teamfight_tactics_icon, "TFTIcon"},
+	{Asset::ICON_EDIT_BOX, icon::edit_box_icon, "EditBoxIcon"},
+	{Asset::ICON_COPY, icon::copy_icon, "CopyIcon"},
+	{Asset::ICON_KEY, icon::key_icon, "KeyIcon"},
+	{Asset::ICON_TRASH, icon::trash_icon, "TrashIcon"},
 	{Asset::BANNER_LEAGUE_OF_LEGENDS, banner::league_of_legends, "LeagueOfLegends"},
 	{Asset::BANNER_VALORANT, banner::valorant, "Valorant"},
 	{Asset::BANNER_TWO_XKO, banner::two_xko, "2XKO"},
