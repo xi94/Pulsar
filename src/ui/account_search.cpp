@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "core/animation.h"
+#include "core/settings.h"
 #include "core/str.h"
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
@@ -65,8 +66,14 @@ constexpr u8               K_FOOTER_ALPHA     = 110;
 }
 }
 
-AccountSearch::AccountSearch(const Library* t_library, const Fonts* t_fonts, const Assets* t_assets, const os::Window* t_window, CommandQueue* t_commands)
+AccountSearch::AccountSearch(const Library*    t_library,
+                             const Settings*   t_settings,
+                             const Fonts*      t_fonts,
+                             const Assets*     t_assets,
+                             const os::Window* t_window,
+                             CommandQueue*     t_commands)
 	: m_library(t_library)
+	, m_settings(t_settings)
 	, m_fonts(t_fonts)
 	, m_assets(t_assets)
 	, m_window(t_window)
@@ -559,7 +566,7 @@ auto AccountSearch::draw_header(DrawList* t_draw_list, const Layout& t_layout, u
 		const Rect icon{header.x + K_HEADER_PADDING, header.center().y - K_HEADER_ICON_SIZE * 0.5f, K_HEADER_ICON_SIZE, K_HEADER_ICON_SIZE};
 
 		controls::draw_magnifier(t_draw_list, icon, faded(g_theme.text_dim, t_alpha));
-		m_query.draw(t_draw_list, body, query_text_rect(t_layout), faded(g_theme.text, t_alpha), faded(g_theme.text_dim, t_alpha), query_text_rect(t_layout));
+		m_query.draw(t_draw_list, body, query_text_rect(t_layout), faded(g_theme.text, t_alpha), faded(m_settings->accent, t_alpha), query_text_rect(t_layout));
 		controls::draw_shortcut(t_draw_list, secondary, Vec2{header.right() - K_HEADER_PADDING, header.center().y}, "Esc", g_theme.popup, t_alpha);
 		return;
 	}

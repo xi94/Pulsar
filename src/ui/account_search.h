@@ -11,13 +11,19 @@
 
 class Assets;
 struct Fonts;
+struct Settings;
 namespace os {
 class Window;
 }
 
 class AccountSearch : public Widget {
   public:
-	AccountSearch(const Library* t_library, const Fonts* t_fonts, const Assets* t_assets, const os::Window* t_window, CommandQueue* t_commands);
+	AccountSearch(const Library*    t_library,
+	              const Settings*   t_settings,
+	              const Fonts*      t_fonts,
+	              const Assets*     t_assets,
+	              const os::Window* t_window,
+	              CommandQueue*     t_commands);
 
 	auto open() -> void;
 	auto close() -> void;
@@ -91,6 +97,7 @@ class AccountSearch : public Widget {
 	auto draw_footer(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void;
 
 	const Library*    m_library;
+	const Settings*   m_settings;
 	const Fonts*      m_fonts;
 	const Assets*     m_assets;
 	const os::Window* m_window;
