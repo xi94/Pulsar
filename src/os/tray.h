@@ -12,6 +12,7 @@ namespace os {
 enum class TrayEventType : u8 {
 	NONE,
 	SHOW_WINDOW,
+	LOCK,
 	EXIT,
 	QUICK_LOGIN,
 };
@@ -34,16 +35,22 @@ struct TrayGame {
 
 struct TrayAccount {
 	char label[64];
+	char region[8];
 	i32  game;
 	i32  row;
 };
 
+// The menu follows the app's theme. A background that isn't fully opaque lets the system's frosted glass show through it.
 struct TrayColors {
 	Color background;
-	Color hover;
-	Color text;
-	Color text_disabled;
+	Color border;
 	Color separator;
+	Color text;
+	Color text_dim;
+	Color text_disabled;
+	Color accent;
+	Color accent_ink;
+	bool  dark;
 
 	auto operator==(const TrayColors&) const -> bool = default;
 };
@@ -54,6 +61,7 @@ struct TrayMenu {
 	TrayAccount accounts[K_TRAY_MAX_ACCOUNTS];
 	u32         account_count;
 	bool        locked;
+	bool        can_lock;
 };
 
 class Tray {
@@ -68,6 +76,7 @@ class Tray {
 
 	auto on_menu_open(std::function<void(TrayMenu*)> t_fill_menu) -> void;
 	auto set_game_icon(u32 t_game, std::span<const u8> t_png) -> void;
+	auto set_logo(std::span<const u8> t_png) -> void;
 	auto set_colors(const TrayColors& t_colors) -> void;
 	auto set_locked(bool t_locked) -> void;
 

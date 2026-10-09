@@ -36,6 +36,7 @@ constexpr float K_PICKER_POLL_SECONDS       = 0.1f;
 constexpr float K_INTRO_SECONDS             = 0.5f;
 constexpr float K_INTRO_MAX_STEP            = 1.0f / 30.0f;
 constexpr float K_INTRO_START_SCALE         = 0.97f;
+constexpr float K_TRAY_ACCENT_TINT          = 0.06f;
 
 constexpr float K_STATUS_PADDING        = 14.0f;
 constexpr float K_STATUS_MARK_SIZE      = 15.0f;
@@ -286,6 +287,7 @@ auto App::add_games() -> void
 		m_library.game_count += 1;
 	}
 
+	m_tray.set_logo(Assets::encoded_bytes(Asset::ICON_LOGO));
 	m_tray.on_menu_open([this](os::TrayMenu* t_menu) { fill_tray_menu(t_menu); });
 }
 
@@ -551,6 +553,8 @@ auto App::fill_tray_menu(os::TrayMenu* t_menu) const -> void
 {
 	if (m_locked) return;
 
+	t_menu->can_lock = m_settings.master_password_enabled;
+
 	for (const u8 game : m_carousel.order()) {
 		if (t_menu->game_count == os::K_TRAY_MAX_GAMES) break;
 
@@ -570,6 +574,7 @@ auto App::fill_tray_menu(os::TrayMenu* t_menu) const -> void
 
 			os::TrayAccount* item = &t_menu->accounts[t_menu->account_count];
 			copy_to(note.empty() ? std::string_view{account->username} : note, item->label);
+			copy_to(std::string_view{account->region}, item->region);
 			item->game = static_cast<i32>(game);
 			item->row  = static_cast<i32>(row);
 
@@ -585,12 +590,20 @@ auto App::pump_input() -> void
 
 	m_window.pump_messages();
 	m_window.set_close_to_tray(m_settings.close_to_tray && m_tray.is_icon_visible());
+	// The tray menu sits on the desktop rather than over the app, so it takes the deeper surface colour with a hint of the accent to look like part
+	// of Pulsar, and is as opaque as the account popup.
+	const bool tray_glass = m_settings.glass && m_settings.glass_blur > 0.0f;
+	const u8   tray_tint  = tray_glass ? controls::glass_tint_alpha(controls::GlassSurface::SHEET) : 255;
 	m_tray.set_colors(os::TrayColors{
-		.background    = g_theme.popup,
-		.hover         = mix(g_theme.popup, m_settings.accent, 0.42f),
-		.text          = g_theme.text,
-		.text_disabled = g_theme.text_faint,
+		.background    = with_alpha(mix(g_theme.surface, m_settings.accent, K_TRAY_ACCENT_TINT), tray_tint),
+		.border        = g_theme.border,
 		.separator     = g_theme.separator,
+		.text          = g_theme.text,
+		.text_dim      = g_theme.text_dim,
+		.text_disabled = g_theme.text_faint,
+		.accent        = m_settings.accent,
+		.accent_ink    = controls::ink_on(m_settings.accent),
+		.dark          = luminance(g_theme.popup) < 0.5f,
 	});
 
 	handle_tray_event();
@@ -617,6 +630,11 @@ auto App::handle_tray_event() -> void
 
 		case SHOW_WINDOW: {
 			m_window.restore();
+			break;
+		}
+
+		case LOCK: {
+			lock_vault();
 			break;
 		}
 

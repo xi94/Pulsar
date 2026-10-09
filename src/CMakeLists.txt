@@ -106,8 +106,8 @@ if (WIN32)
 
   find_package(Threads REQUIRED)
   target_link_libraries(pulsar_platform PUBLIC pulsar_portable "${SODIUM_LIB_DIR}/libsodium.lib" Threads::Threads)
-  target_link_libraries(pulsar_platform PUBLIC shell32 dwmapi UIAutomationCore ole32 oleaut32 dbghelp comctl32 winhttp msimg32 d3d11 dxgi d3dcompiler opengl32
-                                               version)
+  target_link_libraries(pulsar_platform PUBLIC shell32 dwmapi UIAutomationCore ole32 oleaut32 dbghelp comctl32 winhttp d3d11 dxgi d3dcompiler opengl32
+                                               version d2d1 dwrite shcore)
 
   add_executable (Pulsar
     "main.cpp"

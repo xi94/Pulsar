@@ -75,6 +75,8 @@ auto draw_popup_shadow(DrawList* t_draw_list, Rect t_popup, float t_radius, floa
 // colour.
 auto set_glass(bool t_supported, bool t_enabled, float t_tint, float t_blur) -> void;
 [[nodiscard]] auto glass_highlight(float t_amount = 1.0f) -> Color;
+// How opaque a surface's tint is at the current Tint setting, for glass drawn outside the app's own window.
+[[nodiscard]] auto glass_tint_alpha(GlassSurface t_surface) -> u8;
 // Panels over the whole window blur it as well as dimming it, so they need less of the usual scrim.
 auto draw_popup_backdrop(DrawList* t_draw_list, Rect t_rect, float t_amount) -> void;
 auto draw_glass(DrawList* t_draw_list, Rect t_rect, CornerRadii t_radii, GlassSurface t_surface, u8 t_alpha, bool t_framed = true) -> void;

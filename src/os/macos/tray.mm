@@ -70,13 +70,7 @@ struct Tray::Native {
 	PulsarMenuTarget* target = nil;
 	std::string       tooltip;
 	bool              locked = false;
-	TrayColors        colors{
-		.background    = {32, 32, 36, 255},
-		.hover         = {68, 60, 124, 255},
-		.text          = {232, 232, 236, 255},
-		.text_disabled = {108, 108, 116, 255},
-		.separator     = {50, 50, 56, 255},
-	};
+	TrayColors        colors{};
 
 	std::span<const u8> game_icon_sources[K_TRAY_MAX_GAMES]{};
 	NSImage*            game_icons[K_TRAY_MAX_GAMES]{};
@@ -147,6 +141,9 @@ auto Tray::set_game_icon(u32 t_game, std::span<const u8> t_png) -> void
 	m_native->game_icon_sources[t_game] = t_png;
 	m_native->game_icons[t_game]        = nil;
 }
+
+// The menu bar's menu is the system's own and shows the app icon, not the logo.
+auto Tray::set_logo(std::span<const u8>) -> void {}
 
 auto Tray::set_colors(const TrayColors& t_colors) -> void
 {
