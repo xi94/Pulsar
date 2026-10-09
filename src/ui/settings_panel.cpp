@@ -1352,7 +1352,6 @@ auto SettingsPanel::reset_control(const Rows& t_rows, u32 t_setting) const -> Re
 		}
 
 		case CORNER_ROUNDNESS:
-		case GLASS_TINT:
 		case AUTO_LOCK: {
 			return slider_control_rect(row, m_fonts);
 		}
@@ -1378,6 +1377,7 @@ auto SettingsPanel::reset_control(const Rows& t_rows, u32 t_setting) const -> Re
 		case GRAIN_INTENSITY:
 		case TRAIL_STRENGTH:
 		case GLASS_BLUR:
+		case GLASS_TINT:
 		case ANIMATION_SPEED:
 		case COUNT: {
 			break;
@@ -1415,6 +1415,10 @@ auto SettingsPanel::reset_slider(u32 t_setting) -> std::optional<SettingsPanel::
 
 		case GLASS_BLUR: {
 			return SliderKind::GLASS_BLUR;
+		}
+
+		case GLASS_TINT: {
+			return SliderKind::GLASS_TINT;
 		}
 
 		case ANIMATION_SPEED: {
