@@ -124,6 +124,12 @@ class RenderBackend {
 		return false;
 	}
 
+	// A driver update or a GPU reset can take the device away. A lost backend draws nothing until the Renderer replaces it.
+	[[nodiscard]] virtual auto is_device_lost() const -> bool
+	{
+		return false;
+	}
+
 	[[nodiscard]] virtual auto create_texture(u32 t_slot, std::span<const TextureLevel> t_levels, bool t_updatable) -> bool = 0;
 	virtual auto update_texture(u32 t_slot, u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rgba_pixels) -> void   = 0;
 	virtual auto destroy_texture(u32 t_slot) -> void                                                                        = 0;

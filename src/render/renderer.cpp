@@ -44,6 +44,13 @@ auto Texture::update(u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rg
 	}
 }
 
+auto Texture::restore(std::span<const TextureLevel> t_levels) -> void
+{
+	if (is_valid()) {
+		m_renderer->restore_texture(m_slot, t_levels);
+	}
+}
+
 auto graphics_api_name(GraphicsApi t_api) -> std::string_view
 {
 	return t_api == GraphicsApi::OPENGL ? "OpenGL" : native_render_backend_name();
@@ -197,7 +204,7 @@ auto Renderer::resize(const os::Window* t_window) -> void
 {
 	const u32 width  = t_window->physical_width();
 	const u32 height = t_window->physical_height();
-	if (width == 0 || height == 0 || (width == m_physical_width && height == m_physical_height)) return;
+	if (m_backend == nullptr || width == 0 || height == 0 || (width == m_physical_width && height == m_physical_height)) return;
 
 	m_backend->resize(width, height);
 	remember_size(t_window);
@@ -205,6 +212,8 @@ auto Renderer::resize(const os::Window* t_window) -> void
 
 auto Renderer::render(const DrawList* t_draw_list, Color t_clear_color) -> void
 {
+	if (m_backend == nullptr) return;
+
 	m_backend->render(RenderFrame{
 		.draw_list           = t_draw_list,
 		.clear_color         = t_clear_color,
@@ -225,12 +234,35 @@ auto Renderer::supports_backdrop_blur() const -> bool
 	return m_backend != nullptr && m_backend->supports_backdrop_blur();
 }
 
+auto Renderer::is_device_lost() const -> bool
+{
+	return m_backend == nullptr || m_backend->is_device_lost();
+}
+
+// Builds a new device after the old one was lost. Every texture slot stays with the Texture that holds it, but the new device starts empty,
+// so their owners upload their pixels again once this succeeds.
+auto Renderer::recover(const os::Window* t_window) -> bool
+{
+	m_backend.reset();
+
+	std::unique_ptr<RenderBackend> backend = create_backend(m_api);
+	if (!backend->init(t_window)) return false;
+
+	m_backend = std::move(backend);
+	remember_size(t_window);
+
+	const std::string_view name = graphics_api_name(m_api);
+	debug_log::write(K_LOG_CATEGORY, "rebuilt the %.*s device after it was lost", static_cast<int>(name.size()), name.data());
+
+	return true;
+}
+
 auto Renderer::create_texture(std::span<const TextureLevel> t_levels, bool t_updatable) -> u32
 {
 	const u32 slot = allocate_texture_slot();
 	if (slot == K_INVALID_TEXTURE_SLOT) return K_INVALID_TEXTURE_SLOT;
 
-	if (!m_backend->create_texture(slot, t_levels, t_updatable)) {
+	if (m_backend == nullptr || !m_backend->create_texture(slot, t_levels, t_updatable)) {
 		release_texture_slot(slot);
 		return K_INVALID_TEXTURE_SLOT;
 	}
@@ -240,13 +272,25 @@ auto Renderer::create_texture(std::span<const TextureLevel> t_levels, bool t_upd
 
 auto Renderer::update_texture(u32 t_slot, u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rgba_pixels) -> void
 {
-	m_backend->update_texture(t_slot, t_x, t_y, t_width, t_height, t_rgba_pixels);
+	if (m_backend != nullptr) {
+		m_backend->update_texture(t_slot, t_x, t_y, t_width, t_height, t_rgba_pixels);
+	}
 }
 
 auto Renderer::destroy_texture(u32 t_slot) -> void
 {
-	m_backend->destroy_texture(t_slot);
+	if (m_backend != nullptr) {
+		m_backend->destroy_texture(t_slot);
+	}
+
 	release_texture_slot(t_slot);
+}
+
+auto Renderer::restore_texture(u32 t_slot, std::span<const TextureLevel> t_levels) -> void
+{
+	if (m_backend != nullptr) {
+		static_cast<void>(m_backend->create_texture(t_slot, t_levels, false));
+	}
 }
 
 auto Renderer::allocate_texture_slot() -> u32

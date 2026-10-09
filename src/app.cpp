@@ -31,6 +31,7 @@ constexpr auto  K_WIPE_GRACE                = std::chrono::milliseconds(600);
 constexpr float K_IDLE_POLL_SECONDS         = 0.25f;
 constexpr auto  K_RESUME_FRAME_TIME         = std::chrono::microseconds(16667);
 constexpr auto  K_CLIPBOARD_SECRET_LIFETIME = std::chrono::seconds(30);
+constexpr auto  K_GRAPHICS_RETRY            = std::chrono::seconds(1);
 constexpr float K_PICKER_POLL_SECONDS       = 0.1f;
 constexpr float K_INTRO_SECONDS             = 0.5f;
 constexpr float K_INTRO_MAX_STEP            = 1.0f / 30.0f;
@@ -1047,6 +1048,24 @@ auto App::reload_fonts() -> bool
 	return load();
 }
 
+// A driver update or a GPU reset takes the device away. Pulsar draws nothing until a new device comes up, trying about once a second,
+// then uploads its images and fonts again.
+auto App::recover_graphics() -> void
+{
+	if (!m_renderer.is_device_lost()) return;
+
+	if (Clock::now() < m_graphics_retry_at || !m_renderer.recover(&m_window)) {
+		m_graphics_retry_at = std::max(m_graphics_retry_at, Clock::now() + K_GRAPHICS_RETRY);
+		animation::request_frame_after(std::chrono::duration<float>(K_GRAPHICS_RETRY).count());
+		return;
+	}
+
+	m_assets.restore(&m_renderer);
+	m_snowfall.create_texture(&m_renderer);
+	static_cast<void>(reload_fonts());
+	animation::request_frame();
+}
+
 auto App::frame() -> void
 {
 	if (m_in_frame) return;
@@ -1212,6 +1231,7 @@ auto App::run() -> void
 		announce_first_run_after_update();
 		announce_unreadable_storage();
 		frame();
+		recover_graphics();
 
 		m_updater.update();
 		announce_update_stage();

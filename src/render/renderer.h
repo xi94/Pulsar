@@ -30,6 +30,7 @@ class Texture {
 
 	[[nodiscard]] auto is_valid() const -> bool;
 	auto update(u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rgba_pixels) -> void;
+	auto restore(std::span<const TextureLevel> t_levels) -> void;
 
 	[[nodiscard]] auto slot() const -> u32
 	{
@@ -99,10 +100,13 @@ class Renderer {
 
 	auto render(const DrawList* t_draw_list, Color t_clear_color) -> void;
 	[[nodiscard]] auto supports_backdrop_blur() const -> bool;
+	[[nodiscard]] auto is_device_lost() const -> bool;
+	[[nodiscard]] auto recover(const os::Window* t_window) -> bool;
 
 	[[nodiscard]] auto create_texture(std::span<const TextureLevel> t_levels, bool t_updatable) -> u32;
 	auto update_texture(u32 t_slot, u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rgba_pixels) -> void;
 	auto destroy_texture(u32 t_slot) -> void;
+	auto restore_texture(u32 t_slot, std::span<const TextureLevel> t_levels) -> void;
 
   private:
 	[[nodiscard]] auto allocate_texture_slot() -> u32;

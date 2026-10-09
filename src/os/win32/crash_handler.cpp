@@ -39,25 +39,27 @@ std::atomic<bool> g_handling_crash{false};
 	return buffer;
 }
 
+// Names the module the address is in. A crash often happens inside a system or driver DLL rather than in Pulsar itself.
 [[nodiscard]] auto module_relative_address(void* t_address) -> std::wstring
 {
-	const HMODULE module = GetModuleHandleW(nullptr);
+	constexpr DWORD FLAGS = GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT;
+
+	wchar_t buffer[MAX_PATH + 32];
+	HMODULE module = nullptr;
+
+	if (!GetModuleHandleExW(FLAGS, static_cast<LPCWSTR>(t_address), &module)) {
+		swprintf_s(buffer, L"0x%p (not in any loaded module)", t_address);
+		return buffer;
+	}
 
 	wchar_t module_path[MAX_PATH]{};
 	GetModuleFileNameW(module, module_path, MAX_PATH);
 
 	const wchar_t* last_separator = wcsrchr(module_path, L'\\');
 	const wchar_t* module_name    = last_separator != nullptr ? last_separator + 1 : module_path;
+	const auto     offset         = reinterpret_cast<uptr>(t_address) - reinterpret_cast<uptr>(module);
 
-	const auto base    = reinterpret_cast<uptr>(module);
-	const auto address = reinterpret_cast<uptr>(t_address);
-
-	wchar_t buffer[MAX_PATH + 32];
-	if (address >= base) {
-		swprintf_s(buffer, L"%s+0x%llX", module_name, static_cast<unsigned long long>(address - base));
-	} else {
-		swprintf_s(buffer, L"%s (address outside module: 0x%p)", module_name, t_address);
-	}
+	swprintf_s(buffer, L"%s+0x%llX", module_name, static_cast<unsigned long long>(offset));
 
 	return buffer;
 }
@@ -66,7 +68,8 @@ std::atomic<bool> g_handling_crash{false};
 {
 	if (t_directory.empty()) return {};
 
-	const std::wstring path = t_directory + L"\\" + os::win32::K_APP_NAME_WIDE + L"_" + t_tag + L"_" + timestamp() + L".dmp";
+	const std::wstring name = std::wstring{os::win32::K_APP_NAME_WIDE} + L"_" + os::win32::to_wide(K_APP_VERSION) + L"_" + t_tag + L"_" + timestamp() + L".dmp";
+	const std::wstring path = t_directory + L"\\" + name;
 	const HANDLE       file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 	if (file == INVALID_HANDLE_VALUE) return {};
 
@@ -100,7 +103,7 @@ auto show_crash_dialog(const std::wstring& t_reason, const std::wstring& t_locat
 {
 	std::wstring content = L"An unexpected error occurred and the app needs to close. A crash report has been saved "
 	                       L"locally.\n\nError: " +
-	                       t_reason + L"\nLocation: " + t_location;
+	                       t_reason + L"\nLocation: " + t_location + L"\nVersion: " + os::win32::to_wide(K_APP_VERSION);
 	content += t_dump_path.empty() ? L"\n\nThe crash report itself could not be saved." : L"\n\nSaved to:\n" + t_dump_path;
 
 	const std::wstring instruction = std::wstring{os::win32::K_APP_NAME_WIDE} + L" has stopped working";

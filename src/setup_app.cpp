@@ -1,5 +1,6 @@
 #include "setup_app.h"
 
+#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -21,6 +22,7 @@ constexpr float K_HEADING_FONT_SCALE        = 1.3f;
 constexpr float K_TITLE_FONT_SCALE          = 1.75f;
 constexpr float K_IDLE_POLL_SECONDS         = 0.25f;
 constexpr auto  K_RESUME_FRAME_TIME         = std::chrono::microseconds(16667);
+constexpr auto  K_GRAPHICS_RETRY            = std::chrono::seconds(1);
 constexpr float K_CONTROL_ICON_SIZE         = 16.0f;
 }
 
@@ -98,6 +100,7 @@ auto SetupApp::run() -> SetupOutcome
 		}
 
 		frame();
+		recover_graphics();
 
 		if (const std::optional<SetupOutcome> outcome = m_screen.outcome()) return *outcome;
 
@@ -182,6 +185,23 @@ auto SetupApp::redraw_while_moving() -> void
 
 	m_renderer.resize(&m_window);
 	frame();
+}
+
+// Same as the main window: after the device is lost, keep trying for a new one and upload everything again once it comes up.
+auto SetupApp::recover_graphics() -> void
+{
+	if (!m_renderer.is_device_lost()) return;
+
+	const auto now = std::chrono::steady_clock::now();
+	if (now < m_graphics_retry_at || !m_renderer.recover(&m_window)) {
+		m_graphics_retry_at = std::max(m_graphics_retry_at, now + K_GRAPHICS_RETRY);
+		animation::request_frame_after(std::chrono::duration<float>(K_GRAPHICS_RETRY).count());
+		return;
+	}
+
+	m_assets.restore(&m_renderer);
+	static_cast<void>(reload_fonts());
+	animation::request_frame();
 }
 
 auto SetupApp::frame() -> void

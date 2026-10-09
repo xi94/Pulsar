@@ -65,6 +65,7 @@ class Assets {
 
 	auto begin_decode() -> void;
 	[[nodiscard]] auto finish_upload(Renderer* t_renderer) -> bool;
+	auto restore(Renderer* t_renderer) -> void;
 
 	[[nodiscard]] auto get(Asset t_asset) const -> const Texture*
 	{
@@ -87,6 +88,7 @@ class Assets {
 	};
 
 	[[nodiscard]] static auto with_mipmaps(const u8* t_rgba_pixels, u32 t_width, u32 t_height) -> DecodedImage;
+	[[nodiscard]] static auto levels_of(const DecodedImage& t_image) -> std::vector<TextureLevel>;
 	[[nodiscard]] static auto upload(Renderer* t_renderer, const DecodedImage& t_image) -> std::unique_ptr<Texture>;
 
 	std::unique_ptr<Texture>  m_textures[K_ASSET_COUNT];

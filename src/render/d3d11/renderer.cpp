@@ -77,6 +77,12 @@ template <typename Constants>
 	return SUCCEEDED(t_device->CreateBuffer(&desc, nullptr, t_out_buffer->ReleaseAndGetAddressOf()));
 }
 
+[[nodiscard]] auto means_device_lost(HRESULT t_result) -> bool
+{
+	return t_result == DXGI_ERROR_DEVICE_REMOVED || t_result == DXGI_ERROR_DEVICE_RESET || t_result == DXGI_ERROR_DEVICE_HUNG ||
+	       t_result == DXGI_ERROR_DRIVER_INTERNAL_ERROR;
+}
+
 auto upload(ID3D11DeviceContext* t_context, ID3D11Buffer* t_buffer, const void* t_data, usize t_bytes) -> void
 {
 	D3D11_MAPPED_SUBRESOURCE mapped{};
@@ -136,6 +142,9 @@ struct D3D11Backend final : RenderBackend {
 	BlurTarget levels[K_BLUR_LEVEL_COUNT][2];
 	bool       blur_ready = false;
 
+	// Set once the device is gone, after which nothing more is sent to it. The Renderer builds a new backend.
+	bool device_lost = false;
+
 	[[nodiscard]] auto init(const os::Window* t_window) -> bool override;
 	auto resize(u32 t_physical_width, u32 t_physical_height) -> void override;
 	auto render(const RenderFrame& t_frame) -> void override;
@@ -143,6 +152,11 @@ struct D3D11Backend final : RenderBackend {
 	[[nodiscard]] auto supports_backdrop_blur() const -> bool override
 	{
 		return blur_ready;
+	}
+
+	[[nodiscard]] auto is_device_lost() const -> bool override
+	{
+		return device_lost;
 	}
 
 	[[nodiscard]] auto create_texture(u32 t_slot, std::span<const TextureLevel> t_levels, bool t_updatable) -> bool override;
@@ -160,7 +174,7 @@ struct D3D11Backend final : RenderBackend {
 	auto size_blur_targets(u32 t_width, u32 t_height) -> void;
 	auto blur_frame(const RenderFrame& t_frame, BlurPlan t_plan) -> void;
 
-	auto upload_geometry(const DrawList* t_draw_list) -> void;
+	[[nodiscard]] auto upload_geometry(const DrawList* t_draw_list) -> bool;
 	auto bind_shared_state(const RenderFrame& t_frame) const -> void;
 	auto apply_clip(const RenderFrame& t_frame, const DrawCommand& t_command) const -> void;
 	auto draw_command(const RenderFrame& t_frame, const DrawCommand& t_command) -> void;
@@ -217,10 +231,15 @@ auto D3D11Backend::init(const os::Window* t_window) -> bool
 
 auto D3D11Backend::resize(u32 t_physical_width, u32 t_physical_height) -> void
 {
+	if (device_lost) return;
+
 	render_target_view.Reset();
 	back_buffer.Reset();
-	swap_chain->ResizeBuffers(0, t_physical_width, t_physical_height, DXGI_FORMAT_UNKNOWN, 0);
-	create_render_target_view();
+
+	if (FAILED(swap_chain->ResizeBuffers(0, t_physical_width, t_physical_height, DXGI_FORMAT_UNKNOWN, 0)) || !create_render_target_view()) {
+		device_lost = true;
+		return;
+	}
 
 	set_viewport(t_physical_width, t_physical_height);
 	size_blur_targets(t_physical_width, t_physical_height);
@@ -228,7 +247,14 @@ auto D3D11Backend::resize(u32 t_physical_width, u32 t_physical_height) -> void
 
 auto D3D11Backend::render(const RenderFrame& t_frame) -> void
 {
+	if (device_lost) return;
+
 	ID3D11RenderTargetView* const render_target = render_target_view.Get();
+	if (render_target == nullptr) {
+		device_lost = true;
+		return;
+	}
+
 	context->OMSetRenderTargets(1, &render_target, nullptr);
 
 	const Color clear = t_frame.clear_color;
@@ -239,7 +265,11 @@ auto D3D11Backend::render(const RenderFrame& t_frame) -> void
 		PULSAR_PROFILE_SCOPE("Render.Submit");
 
 		if (!t_frame.draw_list->commands().empty()) {
-			upload_geometry(t_frame.draw_list);
+			if (!upload_geometry(t_frame.draw_list)) {
+				device_lost = true;
+				return;
+			}
+
 			bind_shared_state(t_frame);
 
 			// Glass needs a fresh blur of what is drawn before it, but a run of glass shapes that blur alike can share one.
@@ -262,7 +292,9 @@ auto D3D11Backend::render(const RenderFrame& t_frame) -> void
 
 	{
 		PULSAR_PROFILE_SCOPE("Render.Present");
-		swap_chain->Present(1, 0);
+		if (means_device_lost(swap_chain->Present(1, 0))) {
+			device_lost = true;
+		}
 	}
 }
 
@@ -298,9 +330,12 @@ auto D3D11Backend::create_texture(u32 t_slot, std::span<const TextureLevel> t_le
 
 auto D3D11Backend::update_texture(u32 t_slot, u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rgba_pixels) -> void
 {
+	ID3D11Texture2D* const texture = textures[t_slot].texture.Get();
+	if (device_lost || texture == nullptr) return;
+
 	const D3D11_BOX region{.left = t_x, .top = t_y, .front = 0, .right = t_x + t_width, .bottom = t_y + t_height, .back = 1};
 
-	context->UpdateSubresource(textures[t_slot].texture.Get(), 0, &region, t_rgba_pixels, t_width * 4, 0);
+	context->UpdateSubresource(texture, 0, &region, t_rgba_pixels, t_width * 4, 0);
 }
 
 auto D3D11Backend::destroy_texture(u32 t_slot) -> void
@@ -561,21 +596,18 @@ auto D3D11Backend::create_index_buffer(u32 t_capacity) -> bool
 	return true;
 }
 
-auto D3D11Backend::upload_geometry(const DrawList* t_draw_list) -> void
+auto D3D11Backend::upload_geometry(const DrawList* t_draw_list) -> bool
 {
 	const auto vertices = t_draw_list->vertices();
 	const auto indices  = t_draw_list->indices();
 
-	if (vertices.size() > vertex_capacity) {
-		create_vertex_buffer(static_cast<u32>(vertices.size()) * 2);
-	}
-
-	if (indices.size() > index_capacity) {
-		create_index_buffer(static_cast<u32>(indices.size()) * 2);
-	}
+	if (vertices.size() > vertex_capacity && !create_vertex_buffer(static_cast<u32>(vertices.size()) * 2)) return false;
+	if (indices.size() > index_capacity && !create_index_buffer(static_cast<u32>(indices.size()) * 2)) return false;
 
 	upload(context.Get(), vertex_buffer.Get(), vertices.data(), vertices.size_bytes());
 	upload(context.Get(), index_buffer.Get(), indices.data(), indices.size_bytes());
+
+	return true;
 }
 
 auto D3D11Backend::bind_shared_state(const RenderFrame& t_frame) const -> void

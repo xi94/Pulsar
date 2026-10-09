@@ -106,6 +106,7 @@ class App {
 
 	auto redraw_while_resizing() -> void;
 	auto reload_fonts() -> bool;
+	auto recover_graphics() -> void;
 	auto frame() -> void;
 	auto render() -> void;
 	auto draw_status_bar() -> void;
@@ -158,6 +159,7 @@ class App {
 
 	std::optional<Clock::time_point> m_save_due;
 	std::optional<Clock::time_point> m_wipe_due;
+	Clock::time_point                m_graphics_retry_at;
 	std::optional<VaultKey>          m_replaced_vault_key;
 	std::optional<ClipboardSecret>   m_clipboard_secret;
 

@@ -160,7 +160,7 @@ auto Assets::create_texture(Renderer* t_renderer, const u8* t_rgba_pixels, u32 t
 	return texture->is_valid() ? std::move(texture) : nullptr;
 }
 
-auto Assets::upload(Renderer* t_renderer, const DecodedImage& t_image) -> std::unique_ptr<Texture>
+auto Assets::levels_of(const DecodedImage& t_image) -> std::vector<TextureLevel>
 {
 	std::vector<TextureLevel> levels;
 	levels.reserve(t_image.levels.size());
@@ -169,7 +169,12 @@ auto Assets::upload(Renderer* t_renderer, const DecodedImage& t_image) -> std::u
 		levels.push_back(TextureLevel{t_image.pixels.data() + level.offset, level.width, level.height});
 	}
 
-	return std::make_unique<Texture>(t_renderer, levels);
+	return levels;
+}
+
+auto Assets::upload(Renderer* t_renderer, const DecodedImage& t_image) -> std::unique_ptr<Texture>
+{
+	return std::make_unique<Texture>(t_renderer, levels_of(t_image));
 }
 
 auto Assets::with_mipmaps(const u8* t_rgba_pixels, u32 t_width, u32 t_height) -> Assets::DecodedImage
@@ -257,4 +262,24 @@ auto Assets::finish_upload(Renderer* t_renderer) -> bool
 	m_decoded = {};
 
 	return all_uploaded;
+}
+
+// After the renderer rebuilds a lost device, every image is decoded again into the texture that already holds its slot, so pointers to
+// those textures stay good.
+auto Assets::restore(Renderer* t_renderer) -> void
+{
+	begin_decode();
+	m_decoder.join();
+
+	for (usize i = 0; i < K_ASSET_COUNT; i += 1) {
+		if (m_decoded[i].levels.empty()) continue;
+
+		if (m_textures[i] != nullptr) {
+			m_textures[i]->restore(levels_of(m_decoded[i]));
+		} else {
+			m_textures[i] = upload(t_renderer, m_decoded[i]);
+		}
+	}
+
+	m_decoded = {};
 }

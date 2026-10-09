@@ -25,6 +25,7 @@ class SetupApp {
   private:
 	[[nodiscard]] auto create() -> bool;
 	auto reload_fonts() -> bool;
+	auto recover_graphics() -> void;
 	auto handle_input(const os::InputEvent& t_event) -> void;
 	auto redraw_while_moving() -> void;
 	auto frame() -> void;
@@ -49,4 +50,5 @@ class SetupApp {
 	bool                                  m_pointer_down   = false;
 	std::chrono::steady_clock::time_point m_last_frame_time;
 	bool                                  m_in_frame = false;
+	std::chrono::steady_clock::time_point m_graphics_retry_at;
 };
