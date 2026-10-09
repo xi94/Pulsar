@@ -90,6 +90,8 @@ constexpr float K_ROW_RADIUS         = 10.0f;
 constexpr float K_SCROLLBAR_MARGIN   = 4.0f;
 constexpr float K_ROW_TEXT_GAP       = 6.0f;
 constexpr float K_ROW_HOVER_SHARE    = 0.3f;
+constexpr float K_ROW_BLEED          = 8.0f;
+constexpr float K_SELECTED_ALPHA     = 38.0f;
 constexpr float K_LIST_END_PADDING   = 10.0f;
 constexpr float K_HOVER_EASE_RATE    = 20.0f;
 constexpr float K_PILL_RADIUS        = 7.0f;
@@ -107,11 +109,10 @@ constexpr float            K_ACTION_BUTTON_WIDTH     = 108.0f;
 constexpr float            K_ACTION_BUTTON_GAP       = 16.0f;
 constexpr std::string_view K_PERMISSION_BUTTON_LABEL = "Open settings";
 
-constexpr float K_EMPTY_ICON_SIZE    = 52.0f;
-constexpr float K_EMPTY_ICON_RADIUS  = 12.0f;
-constexpr float K_EMPTY_GAP          = 16.0f;
-constexpr float K_EMPTY_LINE_GAP     = 4.0f;
-constexpr float K_EMPTY_BUTTON_WIDTH = 140.0f;
+constexpr float            K_EMPTY_LINE_GAP = 4.0f;
+constexpr float            K_ZONE_TOP_INSET = 4.0f;
+constexpr std::string_view K_ZONE_TITLE     = "Add your first account";
+constexpr std::string_view K_ZONE_HINT      = "Save a Riot login once, then sign in with one click.";
 
 constexpr float            K_FORM_TOP_PADDING          = 14.0f;
 constexpr float            K_FORM_COLUMN_GAP           = 12.0f;
@@ -248,7 +249,7 @@ auto draw_input_box(DrawList* t_draw_list, Rect t_rect, Color t_border, bool t_f
 
 [[nodiscard]] auto row_highlight(Rect t_row) -> Rect
 {
-	return Rect{t_row.x - 8.0f, t_row.y + 3.0f, t_row.w + 16.0f, t_row.h - 6.0f};
+	return Rect{t_row.x - K_ROW_BLEED, t_row.y + 3.0f, t_row.w + K_ROW_BLEED * 2.0f, t_row.h - 6.0f};
 }
 
 // The popup is glass, which shows whatever is under it, so its shadow is drawn in strips around it and never beneath it.
@@ -745,9 +746,11 @@ auto AccountModal::open(i32 t_game) -> void
 	m_game        = t_game;
 	m_mode        = Mode::ACCOUNT_LIST;
 	m_rows_scroll = Scrollable{};
+	m_zone_hover  = 0.0f;
 	m_search.set_focused(false);
 	clear_search();
 	reset_row_motion();
+	m_selection.clear();
 }
 
 auto AccountModal::detached_game() const -> i32
@@ -761,6 +764,7 @@ auto AccountModal::close() -> void
 	m_region_list.close();
 	m_search.set_focused(false);
 	cancel_row_drag();
+	m_selection.clear();
 }
 
 auto AccountModal::quick_login(u32 t_game, AccountRef t_account) -> void
@@ -815,6 +819,7 @@ auto AccountModal::start_adding() -> void
 	m_mode          = Mode::EDIT_ACCOUNT;
 	m_form_scroll   = Scrollable{};
 	m_edited.reset();
+	m_selection.clear();
 	m_region[0] = '\0';
 	m_region_list.close();
 	m_search.set_focused(false);
@@ -838,6 +843,7 @@ auto AccountModal::start_editing(AccountRef t_account) -> void
 	m_form_scroll   = Scrollable{};
 	m_edited        = t_account;
 	m_search.set_focused(false);
+	m_selection.clear();
 
 	const Account* account = m_library->account(t_account);
 	field(EditField::NOTE)->set_value(account->note);
@@ -909,15 +915,57 @@ auto AccountModal::save_edit() -> void
 
 auto AccountModal::delete_account(AccountRef t_account) -> void
 {
+	delete_accounts(std::span{&t_account, 1});
+}
+
+auto AccountModal::delete_picked() -> void
+{
+	const VisibleAccounts accounts = displayed_accounts();
+	AccountRef            picked[K_MAX_VISIBLE_ACCOUNTS];
+	u32                   count = 0;
+
+	for (u32 row = 0; row < accounts.count; row += 1) {
+		if (m_selection.contains(row)) {
+			picked[count] = accounts.refs[row];
+			count += 1;
+		}
+	}
+
+	m_selection.clear();
+	delete_accounts(std::span{picked, count});
+}
+
+// One toast undoes the whole delete, however many accounts went in it.
+auto AccountModal::delete_accounts(std::span<const AccountRef> t_accounts) -> void
+{
+	if (t_accounts.empty()) return;
+
 	forget_deleted();
 
-	m_deleted = DeletedAccount{*m_library->account(t_account), t_account};
-	m_library->remove_account(t_account);
-	follow_removal(t_account);
+	AccountRef doomed[K_MAX_VISIBLE_ACCOUNTS];
+	const auto count = static_cast<u32>(std::min<usize>(t_accounts.size(), K_MAX_VISIBLE_ACCOUNTS));
+	std::copy_n(t_accounts.begin(), count, doomed);
+	sort_for_removal(std::span{doomed, count});
+
+	// Reserved up front so the list never moves, which would leave copies of the passwords behind.
+	m_deleted.reserve(count);
+
+	for (const AccountRef account : std::span{doomed, count}) {
+		DeletedAccount& deleted = m_deleted.emplace_back();
+		deleted.account         = *m_library->account(account);
+		deleted.position        = account;
+
+		m_library->remove_account(account);
+		follow_removal(account);
+	}
+
 	reset_row_motion();
 
+	char several[64];
+	std::snprintf(several, sizeof(several), "%u accounts deleted. Click to undo.", count);
+
 	m_toasts->notify(Notification{
-		.message     = "Account deleted. Click to undo.",
+		.message     = count == 1 ? std::string_view{"Account deleted. Click to undo."} : std::string_view{several},
 		.on_click    = Command{.type = CommandType::UNDO_DELETE},
 		.seconds     = K_UNDO_SECONDS,
 		.always_show = true,
@@ -926,27 +974,55 @@ auto AccountModal::delete_account(AccountRef t_account) -> void
 
 auto AccountModal::forget_deleted() -> void
 {
-	if (!m_deleted) return;
-
-	sodium_memzero(&m_deleted->account, sizeof(Account));
-	m_deleted.reset();
-}
-
-auto AccountModal::undo_delete() -> void
-{
-	if (!m_deleted) return;
-
-	const std::optional<AccountRef> restored = m_library->insert_account(m_deleted->position, m_deleted->account);
-	forget_deleted();
-
-	if (!restored) {
-		notify("There's no room left to restore that account.");
-		return;
+	for (DeletedAccount& deleted : m_deleted) {
+		sodium_memzero(&deleted.account, sizeof(Account));
 	}
 
-	follow_insert(*restored);
+	m_deleted.clear();
+}
+
+// Brings back everything the last delete took, each account in its old place. Several come back picked, so it's clear which they are.
+auto AccountModal::undo_delete() -> void
+{
+	if (m_deleted.empty()) return;
+
+	const auto total = static_cast<u32>(m_deleted.size());
+	AccountRef restored[K_MAX_VISIBLE_ACCOUNTS];
+	u32        count = 0;
+
+	for (auto deleted = m_deleted.rbegin(); deleted != m_deleted.rend(); ++deleted) {
+		const std::optional<AccountRef> back = m_library->insert_account(deleted->position, deleted->account);
+		if (!back) continue;
+
+		follow_insert(*back);
+		restored[count] = *back;
+		count += 1;
+	}
+
+	forget_deleted();
+
+	if (count < total) {
+		notify(total == 1 ? "There's no room left to restore that account." : "There's no room left to restore them all.");
+	}
+
+	if (count == 0) return;
+
 	reset_row_motion();
-	reveal_account(*restored);
+
+	if (count > 1) {
+		const VisibleAccounts after = displayed_accounts();
+		m_selection.clear();
+
+		for (u32 row = 0; row < after.count; row += 1) {
+			if (std::ranges::contains(std::span{restored, count}, after.refs[row])) {
+				m_selection.toggle(row);
+			}
+		}
+
+		m_selection.remember(after);
+	}
+
+	reveal_account(restored[0]);
 }
 
 auto AccountModal::row_account(i32 t_row) const -> std::optional<AccountRef>
@@ -983,7 +1059,8 @@ auto AccountModal::toggle_favorite(AccountRef t_account) -> void
 	const VisibleAccounts after = displayed_accounts();
 	for (u32 i = 0; i < after.count; i += 1) {
 		if (after.refs[i] == t_account) {
-			m_raised_row = i;
+			m_raised.reset();
+			m_raised.set(i);
 		}
 	}
 }
@@ -1067,24 +1144,50 @@ auto AccountModal::drag_range(const VisibleAccounts& t_accounts, u32 t_row) cons
 	return RowRange{favorites, t_accounts.count - 1};
 }
 
+// Where the held row's top is in the list. It follows the pointer, but the block stays in its part of the list.
 auto AccountModal::lifted_top(const AccountRows& t_rows) const -> float
 {
-	const RowRange range   = drag_range(t_rows.accounts, m_drag.from_row);
-	const float    pointer = m_mouse.y - t_rows.region.y + m_rows_scroll.offset();
+	const float pointer = m_mouse.y - t_rows.region.y + m_rows_scroll.offset();
 
-	return std::clamp(pointer - m_drag.grab_offset, range.first * t_rows.row_height, range.last * t_rows.row_height);
+	return m_drag.clamp_top(pointer - m_drag.grab_offset, t_rows.row_height);
 }
 
+// Lifted rows travel as one block under the pointer, each easing into its place in it from where it was picked up.
+auto AccountModal::raised_top(const AccountRows& t_rows, u32 t_row) const -> float
+{
+	if (m_drag.lifted) return lifted_top(t_rows) + m_drag.place_in_block(t_row) * t_rows.row_height + m_row_offsets[t_row];
+
+	return t_row * t_rows.row_height + m_row_offsets[t_row];
+}
+
+// Rows can be picked only where they can be dragged: in the whole list.
+auto AccountModal::can_select() const -> bool
+{
+	return has_game() && m_mode == Mode::ACCOUNT_LIST && m_search.value().empty();
+}
+
+// Grabbing one of several picked rows lifts them all, and grabbing any other row lets go of the picked ones.
 auto AccountModal::lift_row(const AccountRows& t_rows, u32 t_row, Vec2 t_point) -> void
 {
-	const float top     = t_row * t_rows.row_height + m_row_offsets[t_row];
-	const float pointer = t_point.y - t_rows.region.y + m_rows_scroll.offset();
+	const RowRange section = drag_range(t_rows.accounts, t_row);
+	const float    height  = t_rows.row_height;
+	const float    top     = t_row * height + m_row_offsets[t_row];
+	const float    pointer = t_point.y - t_rows.region.y + m_rows_scroll.offset();
 
-	m_drag.lifted      = true;
-	m_drag.from_row    = t_row;
-	m_drag.target_row  = t_row;
+	m_drag.lift(t_row, m_selection.rows(), section.first, section.last);
 	m_drag.grab_offset = pointer - top;
-	m_raised_row       = t_row;
+
+	if (m_drag.rows.count() == 1) {
+		m_selection.clear();
+	}
+
+	for (u32 row = section.first; row <= section.last; row += 1) {
+		if (m_drag.rows[row]) {
+			m_row_offsets[row] = row * height + m_row_offsets[row] - (top + m_drag.place_in_block(row) * height);
+		}
+	}
+
+	m_raised = m_drag.rows;
 	m_search.set_focused(false);
 }
 
@@ -1095,33 +1198,71 @@ auto AccountModal::drop_row() -> void
 		return;
 	}
 
-	const AccountRows rows = account_rows(layout());
-	const u32         from = m_drag.from_row;
-	const u32         to   = m_drag.target_row;
+	const VisibleAccounts accounts = displayed_accounts();
+	const RowDrag         drag     = m_drag;
 
-	if (from < rows.accounts.count) {
-		m_row_offsets[from] = lifted_top(rows) - from * rows.row_height;
-	}
+	cancel_row_drag();
 
-	m_drag = RowDrag{};
-
-	if (from >= rows.accounts.count || to >= rows.accounts.count) {
+	if (drag.from_row >= accounts.count || !has_game()) {
 		reset_row_motion();
 		return;
 	}
 
-	if (from != to) {
-		m_library->move_visible_account(static_cast<u32>(m_game), from, to);
-		animate_reorder(rows.accounts);
+	u32 moved[K_MAX_VISIBLE_ACCOUNTS];
+	u32 count = 0;
+
+	for (u32 row = 0; row < accounts.count; row += 1) {
+		if (drag.rows[row]) {
+			moved[count] = row;
+			count += 1;
+		}
 	}
 
-	m_raised_row = to;
+	m_library->move_visible_accounts(static_cast<u32>(m_game), std::span{moved, count}, drag.insert);
+	animate_reorder(accounts);
+
+	m_raised.reset();
+	m_selection.clear();
+
+	for (u32 row = drag.insert; row < drag.insert + count; row += 1) {
+		m_raised.set(row);
+	}
+
+	if (count > 1) {
+		m_selection.select_block(drag.insert, count);
+	}
+
+	m_selection.remember(displayed_accounts());
 }
 
+// Lets go without moving anything. Lifted rows measure their offsets from their own places again, so they glide back to them.
 auto AccountModal::cancel_row_drag() -> void
 {
-	m_drag.target_row = m_drag.from_row;
-	drop_row();
+	if (m_drag.lifted) {
+		const AccountRows rows = account_rows(layout());
+		const float       top  = lifted_top(rows);
+
+		for (u32 row = 0; row < K_MAX_VISIBLE_ACCOUNTS; row += 1) {
+			if (m_drag.rows[row]) {
+				m_row_offsets[row] += top + m_drag.place_in_block(row) * rows.row_height - row * rows.row_height;
+			}
+		}
+	}
+
+	m_drag = RowDrag{};
+}
+
+auto AccountModal::scroll_near_edges(const AccountRows& t_rows, float t_delta_seconds) -> void
+{
+	const float zone  = t_rows.row_height * K_AUTO_SCROLL_ZONE;
+	const float above = t_rows.region.y + zone - m_mouse.y;
+	const float below = m_mouse.y - (t_rows.region.bottom() - zone);
+
+	if (above > 0.0f) {
+		m_rows_scroll.scroll_by(-K_AUTO_SCROLL_SPEED * std::min(above / zone, 1.0f) * t_delta_seconds, t_rows.scroll);
+	} else if (below > 0.0f) {
+		m_rows_scroll.scroll_by(K_AUTO_SCROLL_SPEED * std::min(below / zone, 1.0f) * t_delta_seconds, t_rows.scroll);
+	}
 }
 
 auto AccountModal::update_row_drag(float t_delta_seconds) -> void
@@ -1134,52 +1275,75 @@ auto AccountModal::update_row_drag(float t_delta_seconds) -> void
 	}
 
 	if (m_drag.lifted) {
-		const float zone  = height * K_AUTO_SCROLL_ZONE;
-		const float above = rows.region.y + zone - m_mouse.y;
-		const float below = m_mouse.y - (rows.region.bottom() - zone);
-
-		if (above > 0.0f) {
-			m_rows_scroll.scroll_by(-K_AUTO_SCROLL_SPEED * std::min(above / zone, 1.0f) * t_delta_seconds, rows.scroll);
-		} else if (below > 0.0f) {
-			m_rows_scroll.scroll_by(K_AUTO_SCROLL_SPEED * std::min(below / zone, 1.0f) * t_delta_seconds, rows.scroll);
-		}
-
-		const RowRange range = drag_range(rows.accounts, m_drag.from_row);
-		const auto     slot  = static_cast<u32>(std::lround(lifted_top(rows) / height));
-		m_drag.target_row    = std::clamp(slot, range.first, range.last);
+		scroll_near_edges(rows, t_delta_seconds);
+		m_drag.aim(lifted_top(rows), height);
 	}
 
-	for (u32 i = 0; i < rows.accounts.count; i += 1) {
-		if (m_drag.lifted && i == m_drag.from_row) continue;
+	bool raised_settled = true;
 
-		float target = 0.0f;
-		if (m_drag.lifted && m_drag.from_row < i && i <= m_drag.target_row) {
-			target = -height;
-		} else if (m_drag.lifted && m_drag.target_row <= i && i < m_drag.from_row) {
-			target = height;
-		}
+	for (u32 i = 0; i < rows.accounts.count; i += 1) {
+		const bool  makes_room = m_drag.lifted && !m_drag.rows[i];
+		const float target     = makes_room ? m_drag.shift(i) * height : 0.0f;
 
 		m_row_offsets[i] = animation::ease_toward(m_row_offsets[i], target, K_ROW_SHIFT_EASE_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS);
+		raised_settled   = raised_settled && (!m_raised[i] || m_row_offsets[i] == 0.0f);
 	}
 
 	m_lift_amount = animation::ease_toward(m_lift_amount, m_drag.lifted ? 1.0f : 0.0f, K_LIFT_EASE_RATE, t_delta_seconds);
 
-	const bool raised_settled = !m_raised_row || *m_raised_row >= rows.accounts.count || m_row_offsets[*m_raised_row] == 0.0f;
 	if (!m_drag.lifted && m_lift_amount == 0.0f && raised_settled) {
-		m_raised_row.reset();
+		m_raised.reset();
 	}
+}
+
+// The box reaches over more rows as the list scrolls under it, so it follows the pointer every frame and not only when it moves.
+auto AccountModal::update_marquee(float t_delta_seconds) -> void
+{
+	if (!m_selection.is_boxing()) return;
+
+	if (!can_select()) {
+		m_selection.cancel_box();
+		return;
+	}
+
+	const AccountRows rows = account_rows(layout());
+
+	if (m_selection.box_shown()) {
+		scroll_near_edges(rows, t_delta_seconds);
+		animation::request_frame();
+	}
+
+	m_selection.drag_box(m_mouse, content_to_screen(rows, 0.0f), rows.row_height, rows.accounts.count);
+}
+
+// Ctrl, or Cmd on a Mac, picks a row or puts it back, and Shift picks every row from the last one picked.
+auto AccountModal::select_with_modifiers(u32 t_row) -> bool
+{
+	const os::Modifiers keys = os::modifiers();
+	if (!can_select() || (!keys.shortcut && !keys.shift)) return false;
+
+	if (keys.shift) {
+		m_selection.extend_to(t_row);
+	} else {
+		m_selection.toggle(t_row);
+	}
+
+	return true;
 }
 
 auto AccountModal::update_row_hover(float t_delta_seconds) -> void
 {
 	const Layout      current = layout();
 	const AccountRows rows    = account_rows(current);
-	const bool        live    = m_open && !m_drag.lifted && !m_rows_scroll.is_dragging();
+	const bool        live    = m_open && !m_drag.lifted && !m_rows_scroll.is_dragging() && !m_selection.is_boxing();
 	const i32         hovered = live ? row_at(current, rows, m_mouse) : -1;
 
 	for (u32 i = 0; i < K_MAX_VISIBLE_ACCOUNTS; i += 1) {
 		m_row_hover[i] = animation::ease_toward(m_row_hover[i], static_cast<i32>(i) == hovered ? 1.0f : 0.0f, K_HOVER_EASE_RATE, t_delta_seconds);
 	}
+
+	const bool zone_lit = live && has_game() && rows.accounts.count == 0 && m_search.value().empty() && empty_zone(current, rows.region).contains(m_mouse);
+	m_zone_hover        = animation::ease_toward(m_zone_hover, zone_lit ? 1.0f : 0.0f, K_HOVER_EASE_RATE, t_delta_seconds);
 }
 
 auto AccountModal::animate_reorder(const VisibleAccounts& t_before) -> void
@@ -1205,7 +1369,7 @@ auto AccountModal::reset_row_motion() -> void
 	m_drag = RowDrag{};
 	std::fill(std::begin(m_row_offsets), std::end(m_row_offsets), 0.0f);
 	std::fill(std::begin(m_row_hover), std::end(m_row_hover), 0.0f);
-	m_raised_row.reset();
+	m_raised.reset();
 	m_lift_amount = 0.0f;
 }
 
@@ -1240,7 +1404,7 @@ auto AccountModal::request_tooltip() -> void
 
 auto AccountModal::request_row_tooltip(const Layout& t_layout) -> void
 {
-	if (m_drag.lifted || m_drag.pressed_row) return;
+	if (m_drag.lifted || m_drag.pressed_row || m_selection.is_boxing()) return;
 
 	const Rect add = add_button_rect(t_layout.main_column);
 	if (add.contains(m_mouse)) {
@@ -1281,7 +1445,7 @@ auto AccountModal::update(float t_delta_seconds) -> void
 		m_game = -1;
 	}
 
-	if (m_deleted && !m_toasts->is_offering(CommandType::UNDO_DELETE)) {
+	if (!m_deleted.empty() && !m_toasts->is_offering(CommandType::UNDO_DELETE)) {
 		forget_deleted();
 	}
 
@@ -1297,9 +1461,15 @@ auto AccountModal::update(float t_delta_seconds) -> void
 
 			if (has_game()) {
 				refresh_search();
+				m_selection.follow(displayed_accounts());
+			}
+
+			if (!can_select()) {
+				m_selection.clear();
 			}
 
 			m_rows_scroll.update(t_delta_seconds);
+			update_marquee(t_delta_seconds);
 			update_row_drag(t_delta_seconds);
 			update_row_hover(t_delta_seconds);
 			break;
@@ -1389,7 +1559,17 @@ auto AccountModal::handle_list_press(const Layout& t_layout, Vec2 t_point) -> vo
 	}
 
 	const i32 row = row_at(t_layout, rows, t_point);
-	if (row < 0 || is_row_button_hit(row_rect(t_layout, rows, static_cast<u32>(row)), t_point)) return;
+
+	if (row < 0) {
+		if (can_select() && rows.accounts.count > 0 && rows.region.contains(t_point)) {
+			const os::Modifiers keys = os::modifiers();
+			m_selection.begin_box(t_point, content_to_screen(rows, 0.0f), keys.shortcut || keys.shift);
+		}
+
+		return;
+	}
+
+	if (is_row_button_hit(row_rect(t_layout, rows, static_cast<u32>(row)), t_point) || select_with_modifiers(static_cast<u32>(row))) return;
 
 	m_drag.pressed_row = static_cast<u32>(row);
 	m_drag.press_point = t_point;
@@ -1422,6 +1602,11 @@ auto AccountModal::on_pointer_move(Vec2 t_point) -> bool
 
 	if (m_form_scroll.is_dragging()) {
 		m_form_scroll.on_pointer_move(t_point.y, form_scroll(current.main_column));
+	}
+
+	if (m_selection.is_boxing()) {
+		const AccountRows rows = account_rows(current);
+		m_selection.drag_box(t_point, content_to_screen(rows, 0.0f), rows.row_height, rows.accounts.count);
 	}
 
 	if (m_drag.pressed_row && !m_drag.lifted && m_search.value().empty()) {
@@ -1459,9 +1644,19 @@ auto AccountModal::on_pointer_up(Vec2 t_point) -> bool
 		return true;
 	}
 
+	if (m_selection.is_boxing()) {
+		m_selection.end_box();
+		return true;
+	}
+
 	if (m_drag.lifted) {
 		drop_row();
 		return true;
+	}
+
+	// A plain click on a row lets go of the picked rows.
+	if (m_drag.pressed_row) {
+		m_selection.clear();
 	}
 
 	m_drag.pressed_row.reset();
@@ -1541,7 +1736,7 @@ auto AccountModal::handle_list_click(const Layout& t_layout, Vec2 t_point) -> vo
 
 	const AccountRows rows = account_rows(t_layout);
 
-	if (rows.accounts.count == 0 && m_search.value().empty() && empty_state(rows.region).button.contains(t_point)) {
+	if (rows.accounts.count == 0 && m_search.value().empty() && empty_zone(t_layout, rows.region).contains(t_point)) {
 		start_adding();
 		return;
 	}
@@ -1640,7 +1835,11 @@ auto AccountModal::on_right_click(Vec2 t_point) -> bool
 	const i32         row  = row_at(current, rows, t_point);
 
 	if (row >= 0) {
-		m_commands->push(Command{.type = CommandType::SHOW_ACCOUNT_MENU, .index = row, .position = t_point});
+		if (!m_selection.contains(static_cast<u32>(row))) {
+			m_selection.clear();
+		}
+
+		m_commands->push(Command{.type = CommandType::SHOW_ACCOUNT_MENU, .index = row, .position = t_point, .picked = m_selection.count()});
 	}
 
 	return true;
@@ -1667,13 +1866,18 @@ auto AccountModal::on_scroll(Vec2, float t_wheel_delta) -> bool
 
 auto AccountModal::handle_list_key(os::Key t_key) -> bool
 {
-	if (m_drag.lifted) return true;
+	if (m_drag.lifted || m_selection.is_boxing()) return true;
 
 	const bool control = os::modifiers().shortcut;
 
 	if (control && t_key == os::Key::F && is_search_visible()) {
 		m_search.set_focused(true);
 		m_search.apply(TextEdit::SELECT_ALL);
+		return true;
+	}
+
+	if (control && t_key == os::Key::A && !m_search.is_focused() && can_select()) {
+		m_selection.select_block(0, displayed_accounts().count);
 		return true;
 	}
 
@@ -1708,6 +1912,10 @@ auto AccountModal::on_key_down(os::Key t_key) -> bool
 			m_mode = Mode::ACCOUNT_LIST;
 		} else if (m_mode == Mode::ACCOUNT_LIST && m_drag.lifted) {
 			cancel_row_drag();
+		} else if (m_mode == Mode::ACCOUNT_LIST && m_selection.is_boxing()) {
+			m_selection.cancel_box();
+		} else if (m_mode == Mode::ACCOUNT_LIST && !m_selection.is_empty()) {
+			m_selection.clear();
 		} else if (m_mode == Mode::ACCOUNT_LIST && !m_search.value().empty()) {
 			clear_search();
 		} else if (m_mode == Mode::ACCOUNT_LIST && m_search.is_focused()) {
@@ -1782,6 +1990,7 @@ auto AccountModal::on_char(u32 t_character) -> bool
 auto AccountModal::list_cursor(const Layout& t_layout) const -> CursorKind
 {
 	if (m_drag.lifted) return CursorKind::MOVE;
+	if (m_selection.is_boxing()) return CursorKind::ARROW;
 
 	const Rect main   = t_layout.main_column;
 	const Rect search = search_rect(main);
@@ -1791,9 +2000,7 @@ auto AccountModal::list_cursor(const Layout& t_layout) const -> CursorKind
 	if (add_button_rect(main).contains(m_mouse)) return CursorKind::HAND;
 
 	const AccountRows rows = account_rows(t_layout);
-	if (rows.accounts.count == 0 && m_search.value().empty() && empty_state(rows.region).button.contains(m_mouse)) {
-		return CursorKind::HAND;
-	}
+	if (rows.accounts.count == 0 && m_search.value().empty() && empty_zone(t_layout, rows.region).contains(m_mouse)) return CursorKind::HAND;
 
 	if (m_rows_scroll.is_over_track(m_mouse, rows.scroll)) return CursorKind::HAND;
 
@@ -2012,7 +2219,8 @@ auto AccountModal::draw_search(DrawList* t_draw_list, Rect t_main, u8 t_alpha) -
 	controls::draw_search_field(t_draw_list, m_fonts->secondary, search, K_SEARCH_INSET, &m_search, m_mouse, m_settings->accent, t_alpha);
 }
 
-auto AccountModal::draw_account_row(DrawList* t_draw_list, Rect t_row, const Account* t_account, bool t_raised, float t_hover, u8 t_alpha) const -> void
+auto AccountModal::draw_account_row(DrawList* t_draw_list, Rect t_row, const Account* t_account, bool t_raised, bool t_selected, float t_hover, u8 t_alpha)
+	const -> void
 {
 	const Rect  highlight   = row_highlight(t_row);
 	const bool  interactive = !m_drag.lifted && !t_raised;
@@ -2021,9 +2229,11 @@ auto AccountModal::draw_account_row(DrawList* t_draw_list, Rect t_row, const Acc
 
 	if (t_raised && m_lift_amount > 0.0f) {
 		const auto lift_alpha = static_cast<u8>(t_alpha * m_lift_amount);
-
-		controls::draw_popup_shadow(t_draw_list, highlight, K_ROW_RADIUS, m_lift_amount * t_alpha / 255.0f);
 		t_draw_list->add_bordered_rect(highlight, rounded(K_ROW_RADIUS), faded(g_theme.popup, lift_alpha), faded(g_theme.border, lift_alpha), 1.0f);
+	}
+
+	if (t_selected) {
+		t_draw_list->add_rounded_rect(highlight, rounded(K_ROW_RADIUS), with_alpha(accent, static_cast<u8>(K_SELECTED_ALPHA * t_alpha / 255.0f)));
 	}
 
 	if (hover > 0.0f) {
@@ -2081,46 +2291,22 @@ auto AccountModal::draw_account_row(DrawList* t_draw_list, Rect t_row, const Acc
 	draw_text_centered(t_draw_list, secondary, pill_rect, K_LOGIN_LABEL, faded(controls::ink_on(accent), pill_alpha));
 }
 
-auto AccountModal::empty_state(Rect t_region) const -> AccountModal::EmptyState
+// With no accounts the list is one dashed area as wide as the rows' highlights, and a click anywhere in it adds the first one.
+auto AccountModal::empty_zone(const Layout& t_layout, Rect t_region) const -> Rect
 {
-	const Font& body          = m_fonts->body;
-	const Font& secondary     = m_fonts->secondary;
-	const float button_height = action_button_height(m_fonts);
-	const float stack_height  = K_EMPTY_ICON_SIZE + K_EMPTY_GAP + body.line_height() + K_EMPTY_LINE_GAP + secondary.line_height() + K_EMPTY_GAP + button_height;
-	const float center_x      = t_region.center().x;
-	const float top           = t_region.center().y - stack_height * 0.5f;
+	const Rect  main   = t_layout.main_column;
+	const float left   = snapped_to_pixel(main.x + K_ROW_PADDING - K_ROW_BLEED);
+	const float right  = snapped_to_pixel(main.right() - K_ROW_PADDING + K_ROW_BLEED);
+	const float top    = snapped_to_pixel(t_region.y + K_ZONE_TOP_INSET);
+	const float bottom = snapped_to_pixel(t_region.bottom() - (K_ROW_PADDING - K_ROW_BLEED));
 
-	EmptyState state{};
-	state.icon           = Rect{center_x - K_EMPTY_ICON_SIZE * 0.5f, top, K_EMPTY_ICON_SIZE, K_EMPTY_ICON_SIZE};
-	state.title_baseline = state.icon.bottom() + K_EMPTY_GAP + body.ascent;
-	state.hint_baseline  = state.icon.bottom() + K_EMPTY_GAP + body.line_height() + K_EMPTY_LINE_GAP + secondary.ascent;
-	state.button = Rect{center_x - K_EMPTY_BUTTON_WIDTH * 0.5f,
-	                    state.icon.bottom() + K_EMPTY_GAP + body.line_height() + K_EMPTY_LINE_GAP + secondary.line_height() + K_EMPTY_GAP, K_EMPTY_BUTTON_WIDTH,
-	                    button_height};
-
-	return state;
+	return Rect{left, top, right - left, std::max(0.0f, bottom - top)};
 }
 
-auto AccountModal::draw_empty_state(DrawList* t_draw_list, Rect t_region, u8 t_alpha) const -> void
+auto AccountModal::draw_empty_state(DrawList* t_draw_list, const Layout& t_layout, Rect t_region, u8 t_alpha) const -> void
 {
-	const Game&                game      = m_library->games[static_cast<u32>(m_game)];
-	const EmptyState           state     = empty_state(t_region);
-	const Font&                body      = m_fonts->body;
-	const Font&                secondary = m_fonts->secondary;
-	constexpr std::string_view TITLE     = "No accounts yet";
-	constexpr std::string_view HINT      = "Add one to log in with a single click.";
-
-	if (game.icon != nullptr) {
-		t_draw_list->add_image(state.icon, game.icon, faded(K_COLOR_ON_ART, t_alpha), rounded(K_EMPTY_ICON_RADIUS));
-	} else {
-		t_draw_list->add_rounded_rect(state.icon, rounded(K_EMPTY_ICON_RADIUS), faded(game.accent, t_alpha));
-	}
-
-	draw_text(t_draw_list, body, Vec2{t_region.center().x - text_width(body, TITLE) * 0.5f, state.title_baseline}, TITLE, faded(g_theme.text, t_alpha));
-	draw_text(t_draw_list, secondary, Vec2{t_region.center().x - text_width(secondary, HINT) * 0.5f, state.hint_baseline}, HINT,
-	          faded(g_theme.text_dim, t_alpha));
-	controls::draw_button(t_draw_list, body, state.button, "Add account", controls::ButtonStyle::ACCENT, m_settings->accent, true,
-	                      state.button.contains(m_mouse), t_alpha);
+	controls::draw_drop_zone(t_draw_list, m_assets, m_fonts->body, m_fonts->secondary, empty_zone(t_layout, t_region), K_ZONE_TITLE, K_ZONE_HINT,
+	                         m_settings->accent, m_zone_hover, t_alpha);
 }
 
 auto AccountModal::draw_no_matches(DrawList* t_draw_list, Rect t_region, u8 t_alpha) const -> void
@@ -2145,7 +2331,7 @@ auto AccountModal::draw_account_list(DrawList* t_draw_list, const Layout& t_layo
 
 	if (rows.accounts.count == 0) {
 		if (m_search.value().empty()) {
-			draw_empty_state(t_draw_list, rows.region, t_alpha);
+			draw_empty_state(t_draw_list, t_layout, rows.region, t_alpha);
 		} else {
 			draw_no_matches(t_draw_list, rows.region, t_alpha);
 		}
@@ -2158,7 +2344,8 @@ auto AccountModal::draw_account_list(DrawList* t_draw_list, const Layout& t_layo
 
 auto AccountModal::draw_account_rows(DrawList* t_draw_list, const Layout& t_layout, const AccountRows& t_rows, u8 t_alpha) -> void
 {
-	const AccountRows& rows = t_rows;
+	const AccountRows& rows   = t_rows;
+	const RowSet&      raised = m_drag.lifted ? m_drag.rows : m_raised;
 
 	t_draw_list->push_clip(rows.region);
 
@@ -2168,27 +2355,40 @@ auto AccountModal::draw_account_rows(DrawList* t_draw_list, const Layout& t_layo
 	t_draw_list->add_rect(Rect{first.x, content_to_screen(rows, 0.0f), first.w, 1.0f}, separator);
 
 	for (u32 i = 0; i < rows.accounts.count; i += 1) {
-		if (m_raised_row == i) continue;
+		if (raised[i]) continue;
 
 		const Rect row = row_rect(t_layout, rows, i);
 		if (!row.overlaps_vertically(rows.region)) continue;
 
 		t_draw_list->add_rect(Rect{first.x, row.bottom() - 1.0f, first.w, 1.0f}, separator);
-		draw_account_row(t_draw_list, row, m_library->account(rows.accounts.refs[i]), false, m_row_hover[i], t_alpha);
+		draw_account_row(t_draw_list, row, m_library->account(rows.accounts.refs[i]), false, m_selection.contains(i), m_row_hover[i], t_alpha);
 	}
 
-	if (m_raised_row && *m_raised_row < rows.accounts.count) {
-		const u32   raised = *m_raised_row;
-		const float top    = m_drag.lifted ? lifted_top(rows) : raised * rows.row_height + m_row_offsets[raised];
-		const Rect  row    = row_rect_at(t_layout, rows, top);
+	// Lifted rows go on top, with all their shadows first so none falls across another lifted row.
+	for (u32 i = 0; i < rows.accounts.count && m_lift_amount > 0.0f; i += 1) {
+		if (raised[i]) {
+			const Rect row = row_rect_at(t_layout, rows, raised_top(rows, i));
+			controls::draw_popup_shadow(t_draw_list, row_highlight(row), K_ROW_RADIUS, m_lift_amount * t_alpha / 255.0f);
+		}
+	}
 
+	for (u32 i = 0; i < rows.accounts.count; i += 1) {
+		if (!raised[i]) continue;
+
+		const Rect row = row_rect_at(t_layout, rows, raised_top(rows, i));
 		t_draw_list->add_rect(Rect{first.x, row.bottom() - 1.0f, first.w, 1.0f}, faded(separator, static_cast<u8>(255.0f * (1.0f - m_lift_amount))));
-		draw_account_row(t_draw_list, row, m_library->account(rows.accounts.refs[raised]), true, 0.0f, t_alpha);
+		draw_account_row(t_draw_list, row, m_library->account(rows.accounts.refs[i]), true, m_selection.contains(i), 0.0f, t_alpha);
 	}
 
 	t_draw_list->pop_clip();
 
 	m_rows_scroll.draw(t_draw_list, rows.scroll, m_mouse, t_alpha);
+
+	if (m_selection.box_shown()) {
+		t_draw_list->push_clip(rows.region);
+		controls::draw_marquee(t_draw_list, m_selection.box_rect(content_to_screen(rows, 0.0f)), m_settings->accent, t_alpha);
+		t_draw_list->pop_clip();
+	}
 }
 
 auto AccountModal::draw_login_progress(DrawList* t_draw_list, Rect t_main, u8 t_alpha) const -> void

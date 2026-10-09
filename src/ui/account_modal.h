@@ -1,11 +1,14 @@
 #pragma once
 
 #include <optional>
+#include <span>
 #include <string_view>
+#include <vector>
 
 #include "core/library.h"
 #include "ui/commands.h"
 #include "ui/list_popup.h"
+#include "ui/row_selection.h"
 #include "ui/scrollable.h"
 #include "ui/text_input.h"
 #include "ui/tooltip.h"
@@ -52,6 +55,7 @@ class AccountModal : public Widget {
 	auto undo_delete() -> void;
 	auto edit_row(i32 t_row) -> void;
 	auto delete_row(i32 t_row) -> void;
+	auto delete_picked() -> void;
 	auto forget_secrets() -> void;
 
 	[[nodiscard]] auto account_at_row(i32 t_row) const -> const Account*;
@@ -99,13 +103,6 @@ class AccountModal : public Widget {
 		ScrollGeometry  scroll;
 	};
 
-	struct EmptyState {
-		Rect  icon;
-		float title_baseline;
-		float hint_baseline;
-		Rect  button;
-	};
-
 	static constexpr u32 K_FORM_ROW_COUNT = K_FIELD_COUNT + 2;
 	static constexpr u32 K_REGION_ROW     = K_FIELD_COUNT;
 	static constexpr u32 K_SHOW_IN_ROW    = K_FIELD_COUNT + 1;
@@ -129,20 +126,11 @@ class AccountModal : public Widget {
 		u32 last;
 	};
 
-	struct RowDrag {
-		std::optional<u32> pressed_row;
-		Vec2               press_point{};
-		bool               lifted      = false;
-		u32                from_row    = 0;
-		u32                target_row  = 0;
-		float              grab_offset = 0.0f;
-	};
-
 	[[nodiscard]] auto has_game() const -> bool;
 	[[nodiscard]] auto back_badge_rect(const Layout& t_layout) const -> Rect;
 	auto request_tooltip() -> void;
 	auto request_row_tooltip(const Layout& t_layout) -> void;
-	[[nodiscard]] auto empty_state(Rect t_region) const -> EmptyState;
+	[[nodiscard]] auto empty_zone(const Layout& t_layout, Rect t_region) const -> Rect;
 	[[nodiscard]] auto floating_panel_size() const -> Vec2;
 	[[nodiscard]] auto expanded_form_panel_height(float t_panel_width) const -> float;
 	[[nodiscard]] auto is_docked() const -> bool;
@@ -208,6 +196,7 @@ class AccountModal : public Widget {
 	[[nodiscard]] auto has_changes() const -> bool;
 	auto save_edit() -> void;
 	auto delete_account(AccountRef t_account) -> void;
+	auto delete_accounts(std::span<const AccountRef> t_accounts) -> void;
 	auto forget_deleted() -> void;
 	auto toggle_favorite(AccountRef t_account) -> void;
 	auto follow_insert(AccountRef t_inserted) -> void;
@@ -223,10 +212,15 @@ class AccountModal : public Widget {
 	[[nodiscard]] auto is_search_visible() const -> bool;
 	[[nodiscard]] auto drag_range(const VisibleAccounts& t_accounts, u32 t_row) const -> RowRange;
 	[[nodiscard]] auto lifted_top(const AccountRows& t_rows) const -> float;
+	[[nodiscard]] auto raised_top(const AccountRows& t_rows, u32 t_row) const -> float;
+	[[nodiscard]] auto can_select() const -> bool;
 	auto lift_row(const AccountRows& t_rows, u32 t_row, Vec2 t_point) -> void;
 	auto drop_row() -> void;
 	auto cancel_row_drag() -> void;
 	auto update_row_drag(float t_delta_seconds) -> void;
+	auto update_marquee(float t_delta_seconds) -> void;
+	auto scroll_near_edges(const AccountRows& t_rows, float t_delta_seconds) -> void;
+	auto select_with_modifiers(u32 t_row) -> bool;
 	auto update_row_hover(float t_delta_seconds) -> void;
 	auto animate_reorder(const VisibleAccounts& t_before) -> void;
 	auto reset_row_motion() -> void;
@@ -246,11 +240,11 @@ class AccountModal : public Widget {
 	auto draw_morphing_art(DrawList* t_draw_list, const Layout& t_layout, float t_scale) const -> void;
 	auto draw_list_header(DrawList* t_draw_list, Rect t_main, float t_rows_top, u8 t_alpha) -> void;
 	auto draw_search(DrawList* t_draw_list, Rect t_main, u8 t_alpha) -> void;
-	auto draw_empty_state(DrawList* t_draw_list, Rect t_region, u8 t_alpha) const -> void;
+	auto draw_empty_state(DrawList* t_draw_list, const Layout& t_layout, Rect t_region, u8 t_alpha) const -> void;
 	auto draw_no_matches(DrawList* t_draw_list, Rect t_region, u8 t_alpha) const -> void;
 	auto draw_account_list(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) -> void;
 	auto draw_account_rows(DrawList* t_draw_list, const Layout& t_layout, const AccountRows& t_rows, u8 t_alpha) -> void;
-	auto draw_account_row(DrawList* t_draw_list, Rect t_row, const Account* t_account, bool t_raised, float t_hover, u8 t_alpha) const -> void;
+	auto draw_account_row(DrawList* t_draw_list, Rect t_row, const Account* t_account, bool t_raised, bool t_selected, float t_hover, u8 t_alpha) const -> void;
 	auto draw_login_progress(DrawList* t_draw_list, Rect t_main, u8 t_alpha) const -> void;
 	auto draw_edit_header(DrawList* t_draw_list, Rect t_main, u8 t_alpha) const -> void;
 	auto draw_show_in(DrawList* t_draw_list, const FormLayout& t_form, u8 t_alpha) const -> void;
@@ -281,13 +275,15 @@ class AccountModal : public Widget {
 	TextInput m_search;
 	char      m_applied_query[K_TEXT_INPUT_CAPACITY]{};
 
-	RowDrag            m_drag;
-	float              m_row_offsets[K_MAX_VISIBLE_ACCOUNTS]{};
-	float              m_row_hover[K_MAX_VISIBLE_ACCOUNTS]{};
-	std::optional<u32> m_raised_row;
-	float              m_lift_amount = 0.0f;
+	RowDrag      m_drag;
+	RowSelection m_selection;
+	float        m_row_offsets[K_MAX_VISIBLE_ACCOUNTS]{};
+	float        m_row_hover[K_MAX_VISIBLE_ACCOUNTS]{};
+	RowSet       m_raised;
+	float        m_lift_amount = 0.0f;
+	float        m_zone_hover  = 0.0f;
 
-	std::optional<DeletedAccount> m_deleted;
+	std::vector<DeletedAccount> m_deleted;
 
 	TextInput                 m_fields[K_FIELD_COUNT];
 	std::optional<AccountRef> m_edited;

@@ -55,6 +55,9 @@ struct VisibleAccounts {
 	}
 };
 
+// Orders accounts to be removed from the last place in each game to the first. Removing one then never moves those still to go, and
+// inserting them back in the opposite order puts each where it was.
+auto sort_for_removal(std::span<AccountRef> t_refs) -> void;
 auto shift_after_insert(std::optional<AccountRef>* t_ref, AccountRef t_inserted) -> void;
 auto shift_after_removal(std::optional<AccountRef>* t_ref, AccountRef t_removed) -> void;
 
@@ -67,7 +70,8 @@ struct Library {
 	[[nodiscard]] auto add_account(u32 t_game, const Account& t_account) -> std::optional<AccountRef>;
 	[[nodiscard]] auto insert_account(AccountRef t_where, const Account& t_account) -> std::optional<AccountRef>;
 	auto remove_account(AccountRef t_ref) -> void;
-	auto move_visible_account(u32 t_game, u32 t_from_row, u32 t_to_row) -> void;
+	// Takes the rows out, keeping their order, and puts them back together starting at t_insert among the rows that are left.
+	auto move_visible_accounts(u32 t_game, std::span<const u32> t_rows, u32 t_insert) -> void;
 	auto number_unordered_accounts() -> void;
 	auto wipe_accounts() -> void;
 

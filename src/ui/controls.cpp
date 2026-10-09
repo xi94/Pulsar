@@ -41,6 +41,24 @@ constexpr u8    K_REGION_CHIP_ALPHA      = 22;
 constexpr float K_DETAIL_DOT_SIZE        = 3.0f;
 constexpr float K_DETAIL_DOT_GAP         = 7.0f;
 
+constexpr float K_DASH_THICKNESS     = 1.5f;
+constexpr float K_MARQUEE_RADIUS     = 6.0f;
+constexpr float K_MARQUEE_DASH       = 6.0f;
+constexpr float K_MARQUEE_GAP        = 4.0f;
+constexpr float K_MARQUEE_FILL_ALPHA = 26.0f;
+constexpr float K_MARQUEE_EDGE_ALPHA = 230.0f;
+constexpr float K_ZONE_RADIUS        = 14.0f;
+constexpr float K_ZONE_DASH          = 7.0f;
+constexpr float K_ZONE_GAP           = 5.0f;
+constexpr u8    K_ZONE_REST_ALPHA    = 5;
+constexpr u8    K_ZONE_HOVER_ALPHA   = 16;
+constexpr u8    K_ZONE_DISC_ALPHA    = 18;
+constexpr float K_ZONE_PLUS_SIZE     = 44.0f;
+constexpr float K_ZONE_PLUS_ICON     = 18.0f;
+constexpr float K_ZONE_TEXT_GAP      = 14.0f;
+constexpr float K_ZONE_LINE_GAP      = 4.0f;
+constexpr float K_ZONE_TEXT_MARGIN   = 16.0f;
+
 constexpr float K_GLASS_BLUR_REFERENCE = 0.5f;
 
 // Each GlassSurface's blur as a Gaussian sigma in logical pixels at 50% Blur, and how opaque its tint is at the default Tint.
@@ -109,6 +127,12 @@ auto stroke_closed(DrawList* t_draw_list, std::span<const Vec2> t_points, float 
 		const Vec2 reach{(to.x - from.x) / length * t_thickness * 0.5f, (to.y - from.y) / length * t_thickness * 0.5f};
 		t_draw_list->add_line(Vec2{from.x - reach.x, from.y - reach.y}, Vec2{to.x + reach.x, to.y + reach.y}, t_thickness, t_color);
 	}
+}
+
+// Like mix, but the alpha moves along with the colour.
+[[nodiscard]] auto blended(Color t_from, Color t_to, float t_amount) -> Color
+{
+	return with_alpha(mix(t_from, t_to, t_amount), static_cast<u8>(lerp(static_cast<float>(t_from.a), static_cast<float>(t_to.a), t_amount)));
 }
 
 [[nodiscard]] auto disabled_button_look() -> ButtonLook
@@ -556,6 +580,66 @@ auto controls::draw_search_field(DrawList*   t_draw_list,
 
 	const Rect clear = search_clear_rect(t_search);
 	draw_x(t_draw_list, clear.inset(1.5f), faded(clear.contains(t_mouse) ? g_theme.text : g_theme.text_faint, t_alpha));
+}
+
+auto controls::draw_marquee(DrawList* t_draw_list, Rect t_box, Color t_accent, u8 t_alpha) -> void
+{
+	const float left = snapped_to_pixel(t_box.x);
+	const float top  = snapped_to_pixel(t_box.y);
+	const Rect  box{left, top, snapped_to_pixel(t_box.right()) - left, snapped_to_pixel(t_box.bottom()) - top};
+
+	t_draw_list->add_rounded_rect(box, rounded(K_MARQUEE_RADIUS), with_alpha(t_accent, static_cast<u8>(K_MARQUEE_FILL_ALPHA * t_alpha / 255)));
+	t_draw_list->add_dashed_outline(box, K_MARQUEE_RADIUS, K_DASH_THICKNESS, K_MARQUEE_DASH, K_MARQUEE_GAP,
+	                                with_alpha(t_accent, static_cast<u8>(K_MARQUEE_EDGE_ALPHA * t_alpha / 255)));
+}
+
+auto controls::draw_drop_zone(DrawList*        t_draw_list,
+                              const Assets*    t_assets,
+                              const Font&      t_title_font,
+                              const Font&      t_hint_font,
+                              Rect             t_zone,
+                              std::string_view t_title,
+                              std::string_view t_hint,
+                              Color            t_accent,
+                              float            t_hover,
+                              u8               t_alpha) -> void
+{
+	const float hover = std::clamp(t_hover, 0.0f, 1.0f);
+	const Color fill  = blended(with_alpha(g_theme.text, K_ZONE_REST_ALPHA), with_alpha(t_accent, K_ZONE_HOVER_ALPHA), hover);
+	const Color edge  = mix(g_theme.border, t_accent, hover);
+
+	t_draw_list->add_rounded_rect(t_zone, rounded(K_ZONE_RADIUS), faded(fill, t_alpha));
+	t_draw_list->add_dashed_outline(t_zone, K_ZONE_RADIUS, K_DASH_THICKNESS, K_ZONE_DASH, K_ZONE_GAP, faded(edge, t_alpha));
+
+	const float text_height = t_title_font.line_height() + K_ZONE_LINE_GAP + t_hint_font.line_height();
+	const float top         = snapped_to_pixel(t_zone.center().y - (K_ZONE_PLUS_SIZE + K_ZONE_TEXT_GAP + text_height) * 0.5f);
+	const float center_x    = t_zone.center().x;
+	const float max_width   = std::max(0.0f, t_zone.w - K_ZONE_TEXT_MARGIN * 2.0f);
+	const Rect  plus{snapped_to_pixel(center_x - K_ZONE_PLUS_SIZE * 0.5f), top, K_ZONE_PLUS_SIZE, K_ZONE_PLUS_SIZE};
+	const Rect  icon = plus.inset((K_ZONE_PLUS_SIZE - K_ZONE_PLUS_ICON) * 0.5f);
+
+	{
+		const RoundnessScope circle{K_CIRCLE_ROUNDNESS};
+		const Color          disc = blended(with_alpha(g_theme.text, K_ZONE_DISC_ALPHA), t_accent, hover);
+
+		if (hover > 0.0f) {
+			draw_lift(t_draw_list, plus, plus.w * 0.5f, t_accent, static_cast<u8>(t_alpha * hover));
+		}
+
+		t_draw_list->add_rounded_rect(plus, rounded(plus.w * 0.5f), faded(disc, t_alpha));
+	}
+
+	t_draw_list->add_image(icon, t_assets->get(Asset::ICON_ADD), faded(mix(g_theme.text_dim, ink_on(t_accent), hover), t_alpha));
+
+	const float title_width = std::min(text_width(t_title_font, t_title), max_width);
+	const float hint_width  = std::min(text_width(t_hint_font, t_hint), max_width);
+	const float title_y     = plus.bottom() + K_ZONE_TEXT_GAP + t_title_font.ascent;
+	const float hint_y      = plus.bottom() + K_ZONE_TEXT_GAP + t_title_font.line_height() + K_ZONE_LINE_GAP + t_hint_font.ascent;
+
+	draw_text_truncated(t_draw_list, t_title_font, Vec2{snapped_to_pixel(center_x - title_width * 0.5f), title_y}, t_title, max_width,
+	                    faded(g_theme.text, t_alpha));
+	draw_text_truncated(t_draw_list, t_hint_font, Vec2{snapped_to_pixel(center_x - hint_width * 0.5f), hint_y}, t_hint, max_width,
+	                    faded(g_theme.text_dim, t_alpha));
 }
 
 auto controls::region_chip_width(const Font& t_font, std::string_view t_region) -> float

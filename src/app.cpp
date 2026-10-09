@@ -841,6 +841,11 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
+		case DELETE_PICKED_ROWS: {
+			m_account_modal.delete_picked();
+			break;
+		}
+
 		case LOCK_VAULT: {
 			lock_vault();
 			break;
@@ -892,6 +897,11 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
+		case DELETE_PICKED_IN_PLACE: {
+			m_carousel.library_view()->delete_picked();
+			break;
+		}
+
 		case COPY_ACCOUNT_USERNAME: {
 			if (const Account* account = account_for(t_command.account)) {
 				os::set_clipboard_text(account->username);
@@ -918,6 +928,11 @@ auto App::process(const Command& t_command) -> void
 
 auto App::open_account_menu(const Command& t_command) -> void
 {
+	if (t_command.picked > 1) {
+		open_picked_menu(t_command);
+		return;
+	}
+
 	if (t_command.index < 0) {
 		open_library_account_menu(t_command);
 		return;
@@ -950,6 +965,19 @@ auto App::open_library_account_menu(const Command& t_command) -> void
 		{.label = "Delete", .command = remove, .icon = Asset::ICON_TRASH, .destructive = true},
 		{.label = "Copy username", .command = copy_username, .icon = Asset::ICON_COPY, .separated = true},
 		{.label = "Copy password", .command = Command{.type = CommandType::COPY_ACCOUNT_PASSWORD, .account = target}, .icon = Asset::ICON_KEY},
+	};
+
+	m_context_menu.open(t_command.position, items, m_window.size());
+}
+
+// Several picked accounts share a menu with only Delete in it, which deletes all of them.
+auto App::open_picked_menu(const Command& t_command) -> void
+{
+	const CommandType remove = t_command.index < 0 ? CommandType::DELETE_PICKED_IN_PLACE : CommandType::DELETE_PICKED_ROWS;
+	std::snprintf(m_picked_label, sizeof(m_picked_label), "Delete %u accounts", t_command.picked);
+
+	const ContextMenuItem items[]{
+		{.label = m_picked_label, .command = Command{.type = remove}, .icon = Asset::ICON_TRASH, .destructive = true},
 	};
 
 	m_context_menu.open(t_command.position, items, m_window.size());

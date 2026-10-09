@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <ctime>
 #include <iterator>
+#include <span>
 #include <utility>
 
 #include <sodium.h>
@@ -30,7 +31,6 @@ constexpr float K_PADDING_BOTTOM         = 16.0f;
 constexpr float K_HEADER_GAP             = 16.0f;
 constexpr float K_TITLE_GAP              = 16.0f;
 constexpr float K_LABELS_PADDING_Y       = 4.0f;
-constexpr float K_LABELS_GAP             = 6.0f;
 constexpr float K_ROWS_BLEED             = 8.0f;
 constexpr float K_FILTER_SHARE           = 0.28f;
 constexpr float K_FILTER_MIN_WIDTH       = 120.0f;
@@ -50,6 +50,7 @@ constexpr float K_STAR_SIZE              = 24.0f;
 constexpr float K_STAR_ICON_INSET        = 4.0f;
 constexpr float K_ROW_HOVER_SHARE        = 0.3f;
 constexpr float K_HIGHLIGHT_INSET_Y      = 2.0f;
+constexpr float K_SELECTED_ALPHA         = 38.0f;
 constexpr float K_COLUMN_GAP             = 16.0f;
 constexpr float K_MIN_ACCOUNT_WIDTH      = 140.0f;
 constexpr float K_PILL_PADDING_X         = 12.0f;
@@ -113,11 +114,8 @@ constexpr float K_UNDO_SECONDS           = 6.0f;
 constexpr float K_SUCCESS_LINGER_SECONDS = 2.5f;
 constexpr float K_FAILURE_LINGER_SECONDS = 8.0f;
 constexpr float K_FLASH_SECONDS          = 1.2f;
-constexpr float K_EMPTY_ICON_SIZE        = 52.0f;
-constexpr float K_EMPTY_ICON_RADIUS      = 12.0f;
-constexpr float K_EMPTY_GAP              = 16.0f;
 constexpr float K_EMPTY_LINE_GAP         = 4.0f;
-constexpr float K_EMPTY_BUTTON_WIDTH     = 140.0f;
+constexpr float K_ZONE_MIN_HEIGHT        = 160.0f;
 constexpr u32   K_FILTER_MAX_LENGTH      = 64;
 constexpr Color K_COLOR_IMAGE{255, 255, 255, 255};
 
@@ -130,6 +128,8 @@ constexpr std::string_view K_RETRY_LABEL      = "Try again";
 constexpr std::string_view K_PERMISSION_LABEL = "Open settings";
 constexpr std::string_view K_ADD_LABEL        = "Add account";
 constexpr std::string_view K_OPTIONAL_SUFFIX  = " (optional)";
+constexpr std::string_view K_ZONE_TITLE       = "Add your first account";
+constexpr std::string_view K_ZONE_HINT        = "Save a Riot login once, then sign in with one click.";
 constexpr std::string_view K_FIELD_LABELS[]{"Username", "Password", "Note"};
 
 [[nodiscard]] auto eased_out(float t_amount) -> float
@@ -220,11 +220,13 @@ auto LibraryView::show_game(i32 t_game) -> void
 	reset_row_motion();
 	blur();
 
-	m_game    = t_game;
-	m_appear  = 0.0f;
-	m_scroll  = Scrollable{};
-	m_pressed = Hit{};
-	m_hovered = Hit{};
+	m_game       = t_game;
+	m_appear     = 0.0f;
+	m_scroll     = Scrollable{};
+	m_pressed    = Hit{};
+	m_hovered    = Hit{};
+	m_zone_hover = 0.0f;
+	m_selection.clear();
 	m_filter.set_value("");
 	m_applied_filter[0] = '\0';
 	m_flash_account.reset();
@@ -293,7 +295,7 @@ auto LibraryView::layout() const -> LibraryView::Layout
 	layout.labels =
 		Rect{left - K_ROWS_BLEED, layout.header.bottom() + K_HEADER_GAP, width + K_ROWS_BLEED * 2.0f, caption.line_height() + K_LABELS_PADDING_Y * 2.0f};
 
-	const float rows_top = layout.labels.bottom() + K_LABELS_GAP;
+	const float rows_top = layout.labels.bottom();
 	layout.rows          = Rect{layout.labels.x, rows_top, layout.labels.w, std::max(0.0f, m_bounds.bottom() - rows_top)};
 	layout.row_height    = snapped_to_pixel(std::max(body.line_height() + K_ROW_LINE_GAP + secondary.line_height(), K_PILL_HEIGHT) + K_ROW_PADDING_Y * 2.0f);
 	layout.columns       = columns(layout.rows.w);
@@ -491,9 +493,12 @@ auto LibraryView::row_rect(const Layout& t_layout, const VisibleAccounts& t_acco
 	return Rect{t_layout.rows.x, pushed ? y + form_extra(t_layout) : y, t_layout.rows.w, t_layout.row_height};
 }
 
-auto LibraryView::lifted_rect(const Layout& t_layout) const -> Rect
+// Lifted rows travel as one block under the pointer, each easing into its place in it from where it was picked up.
+auto LibraryView::dragged_rect(const Layout& t_layout, u32 t_row) const -> Rect
 {
-	return Rect{t_layout.rows.x, t_layout.rows.y - m_scroll.offset() + lifted_top(t_layout, shown_accounts()), t_layout.rows.w, t_layout.row_height};
+	const float top = lifted_top(t_layout) + m_drag.place_in_block(t_row) * pitch(t_layout) + m_row_offsets[t_row];
+
+	return Rect{t_layout.rows.x, t_layout.rows.y - m_scroll.offset() + top, t_layout.rows.w, t_layout.row_height};
 }
 
 auto LibraryView::star_rect(const Layout& t_layout, Rect t_row) const -> Rect
@@ -525,25 +530,15 @@ auto LibraryView::scroll_geometry(const Layout& t_layout, const VisibleAccounts&
 	return ScrollGeometry{track, content_height(t_layout, t_accounts), t_layout.rows.h};
 }
 
-auto LibraryView::empty_state(const Layout& t_layout) const -> LibraryView::EmptyState
+// With no accounts the rows' place is one dashed area, and a click anywhere in it adds the first one.
+auto LibraryView::empty_zone(const Layout& t_layout) const -> Rect
 {
-	const Font& body      = m_fonts->body;
-	const Font& secondary = m_fonts->secondary;
-	const float button    = std::max(30.0f, body.line_height() + 12.0f);
-	const float text      = body.line_height() + K_EMPTY_LINE_GAP + secondary.line_height();
-	const float stack     = K_EMPTY_ICON_SIZE + K_EMPTY_GAP + text + K_EMPTY_GAP + button;
-	const Rect  area{m_bounds.x, t_layout.labels.y, m_bounds.w, std::max(0.0f, m_bounds.bottom() - t_layout.labels.y)};
-	const float center_x = area.center().x;
-	const float top      = snapped_to_pixel(std::max(area.y, area.center().y - stack * 0.5f - K_HEADER_GAP));
+	const float left   = snapped_to_pixel(t_layout.rows.x);
+	const float top    = snapped_to_pixel(t_layout.labels.y);
+	const float right  = snapped_to_pixel(t_layout.rows.right());
+	const float bottom = snapped_to_pixel(std::max(t_layout.labels.y + K_ZONE_MIN_HEIGHT, m_bounds.bottom() - K_PADDING_BOTTOM));
 
-	EmptyState state{};
-	state.icon           = Rect{snapped_to_pixel(center_x - K_EMPTY_ICON_SIZE * 0.5f), top, K_EMPTY_ICON_SIZE, K_EMPTY_ICON_SIZE};
-	state.title_baseline = state.icon.bottom() + K_EMPTY_GAP + body.ascent;
-	state.hint_baseline  = state.icon.bottom() + K_EMPTY_GAP + body.line_height() + K_EMPTY_LINE_GAP + secondary.ascent;
-	state.button =
-		Rect{snapped_to_pixel(center_x - K_EMPTY_BUTTON_WIDTH * 0.5f), state.icon.bottom() + K_EMPTY_GAP + text + K_EMPTY_GAP, K_EMPTY_BUTTON_WIDTH, button};
-
-	return state;
+	return Rect{left, top, right - left, bottom - top};
 }
 
 auto LibraryView::shows_login(AccountRef t_account) const -> bool
@@ -580,7 +575,7 @@ auto LibraryView::hit_at(Vec2 t_point) const -> LibraryView::Hit
 
 	if (accounts.count == 0 && !form_shown()) {
 		const bool empty = m_filter.value().empty();
-		return empty && empty_state(layout).button.contains(t_point) ? Hit{Target::ADD} : Hit{};
+		return empty && empty_zone(layout).contains(t_point) ? Hit{Target::ADD} : Hit{};
 	}
 
 	if (!layout.rows.contains(t_point) || m_scroll.is_over_track(t_point, scroll_geometry(layout, accounts))) return Hit{};
@@ -665,13 +660,12 @@ auto LibraryView::drag_range(const VisibleAccounts& t_accounts, u32 t_row) const
 	return RowRange{favorites, t_accounts.count - 1};
 }
 
-auto LibraryView::lifted_top(const Layout& t_layout, const VisibleAccounts& t_accounts) const -> float
+// Where the held row's top is in the list. It follows the pointer, but the block stays in its part of the list.
+auto LibraryView::lifted_top(const Layout& t_layout) const -> float
 {
-	const RowRange range   = drag_range(t_accounts, m_drag.from_row);
-	const float    pointer = m_mouse.y - t_layout.rows.y + m_scroll.offset();
-	const float    step    = pitch(t_layout);
+	const float pointer = m_mouse.y - t_layout.rows.y + m_scroll.offset();
 
-	return std::clamp(pointer - m_drag.grab_offset, range.first * step, range.last * step);
+	return m_drag.clamp_top(pointer - m_drag.grab_offset, pitch(t_layout));
 }
 
 auto LibraryView::focused_field() const -> std::optional<u32>
@@ -681,6 +675,18 @@ auto LibraryView::focused_field() const -> std::optional<u32>
 	}
 
 	return std::nullopt;
+}
+
+// Rows can be picked only where they can be dragged: in the whole list, with no form open.
+auto LibraryView::can_select() const -> bool
+{
+	return has_game() && m_filter.value().empty() && !form_shown();
+}
+
+// A box is drawn from the list's empty space: below the last row and in the margins beside the rows.
+auto LibraryView::marquee_area(const Layout& t_layout) const -> Rect
+{
+	return Rect{m_bounds.x, t_layout.rows.y, m_bounds.w, t_layout.rows.h};
 }
 
 auto LibraryView::activate(Hit t_hit) -> void
@@ -754,8 +760,12 @@ auto LibraryView::activate(Hit t_hit) -> void
 			break;
 		}
 
+		case ROW: {
+			m_selection.clear();
+			break;
+		}
+
 		case NONE:
-		case ROW:
 		case FILTER:
 		case FIELD:
 		case FORM: {
@@ -784,7 +794,8 @@ auto LibraryView::toggle_favorite(AccountRef t_account) -> void
 	animate_reorder(before);
 
 	if (const std::optional<u32> row = row_of(shown_accounts(), t_account)) {
-		m_raised_row = *row;
+		m_raised.reset();
+		m_raised.set(*row);
 	}
 }
 
@@ -810,6 +821,7 @@ auto LibraryView::open_form(std::optional<AccountRef> t_account) -> void
 	}
 
 	cancel_drag();
+	m_selection.clear();
 
 	if (form_shown()) {
 		close_form(false);
@@ -917,22 +929,58 @@ auto LibraryView::save_form() -> void
 
 auto LibraryView::delete_account(AccountRef t_account) -> void
 {
+	delete_accounts(std::span{&t_account, 1});
+}
+
+auto LibraryView::delete_picked() -> void
+{
+	const VisibleAccounts accounts = shown_accounts();
+	AccountRef            picked[K_MAX_VISIBLE_ACCOUNTS];
+	u32                   count = 0;
+
+	for (u32 row = 0; row < accounts.count; row += 1) {
+		if (m_selection.contains(row)) {
+			picked[count] = accounts.refs[row];
+			count += 1;
+		}
+	}
+
+	m_selection.clear();
+	delete_accounts(std::span{picked, count});
+}
+
+// One toast undoes the whole delete, however many accounts went in it.
+auto LibraryView::delete_accounts(std::span<const AccountRef> t_accounts) -> void
+{
+	if (t_accounts.empty()) return;
+
 	forget_deleted();
 
 	const Layout              layout = this->layout();
 	const VisibleAccounts     before = shown_accounts();
 	const std::optional<u32>  edited = form_row(before);
 	const float               extra  = form_extra(layout);
-	const std::optional<u32>  gone   = row_of(before, t_account);
+	const std::optional<u32>  gone   = row_of(before, t_accounts.front());
 	std::optional<AccountRef> flash  = m_flash_account;
 
-	m_deleted.emplace();
-	m_deleted->account  = *m_library->account(t_account);
-	m_deleted->position = t_account;
+	AccountRef doomed[K_MAX_VISIBLE_ACCOUNTS];
+	const auto count = static_cast<u32>(std::min<usize>(t_accounts.size(), K_MAX_VISIBLE_ACCOUNTS));
+	std::copy_n(t_accounts.begin(), count, doomed);
+	sort_for_removal(std::span{doomed, count});
 
-	m_library->remove_account(t_account);
-	m_session->follow_removal(t_account);
-	shift_after_removal(&flash, t_account);
+	// Reserved up front so the list never moves, which would leave copies of the passwords behind.
+	m_deleted.reserve(count);
+
+	for (const AccountRef account : std::span{doomed, count}) {
+		DeletedAccount& deleted = m_deleted.emplace_back();
+		deleted.account         = *m_library->account(account);
+		deleted.position        = account;
+
+		m_library->remove_account(account);
+		m_session->follow_removal(account);
+		shift_after_removal(&flash, account);
+	}
+
 	m_flash_account = flash;
 	close_form(false);
 
@@ -949,42 +997,73 @@ auto LibraryView::delete_account(AccountRef t_account) -> void
 		}
 	}
 
+	char several[64];
+	std::snprintf(several, sizeof(several), "%u accounts deleted. Click to undo.", count);
+
 	m_toasts->notify(Notification{
-		.message     = "Account deleted. Click to undo.",
+		.message     = count == 1 ? std::string_view{"Account deleted. Click to undo."} : std::string_view{several},
 		.on_click    = Command{.type = CommandType::UNDO_LIBRARY_DELETE},
 		.seconds     = K_UNDO_SECONDS,
 		.always_show = true,
 	});
 }
 
+// Brings back everything the last delete took, each account in its old place. Several come back picked, so it's clear which they are.
 auto LibraryView::undo_delete() -> void
 {
-	if (!m_deleted) return;
+	if (m_deleted.empty()) return;
 
-	const VisibleAccounts           before   = shown_accounts();
-	const std::optional<AccountRef> restored = m_library->insert_account(m_deleted->position, m_deleted->account);
-	forget_deleted();
+	const VisibleAccounts before = shown_accounts();
+	const auto            total  = static_cast<u32>(m_deleted.size());
+	AccountRef            restored[K_MAX_VISIBLE_ACCOUNTS];
+	u32                   count = 0;
 
-	if (!restored) {
-		m_toasts->notify(Notification{.message = "There's no room left to restore that account."});
-		return;
+	for (auto deleted = m_deleted.rbegin(); deleted != m_deleted.rend(); ++deleted) {
+		const std::optional<AccountRef> back = m_library->insert_account(deleted->position, deleted->account);
+		if (!back) continue;
+
+		m_session->follow_insert(*back);
+		shift_after_insert(&m_flash_account, *back);
+		restored[count] = *back;
+		count += 1;
 	}
 
-	m_session->follow_insert(*restored);
-	shift_after_insert(&m_flash_account, *restored);
+	forget_deleted();
+
+	if (count < total) {
+		m_toasts->notify(Notification{.message = total == 1 ? "There's no room left to restore that account." : "There's no room left to restore them all."});
+	}
+
+	if (count == 0) return;
+
 	animate_reorder(before);
 
-	m_flash_account = restored;
-	m_flash         = 1.0f;
-	reveal_row(*restored);
+	if (count == 1) {
+		m_flash_account = restored[0];
+		m_flash         = 1.0f;
+	} else {
+		const VisibleAccounts after = shown_accounts();
+		m_selection.clear();
+
+		for (u32 row = 0; row < after.count; row += 1) {
+			if (std::ranges::contains(std::span{restored, count}, after.refs[row])) {
+				m_selection.toggle(row);
+			}
+		}
+
+		m_selection.remember(after);
+	}
+
+	reveal_row(restored[0]);
 }
 
 auto LibraryView::forget_deleted() -> void
 {
-	if (!m_deleted) return;
+	for (DeletedAccount& deleted : m_deleted) {
+		sodium_memzero(&deleted.account, sizeof(Account));
+	}
 
-	sodium_memzero(&m_deleted->account, sizeof(Account));
-	m_deleted.reset();
+	m_deleted.clear();
 }
 
 auto LibraryView::forget_secrets() -> void
@@ -1063,18 +1142,31 @@ auto LibraryView::reveal_row(AccountRef t_account) -> void
 	m_scroll.reveal(rect.y, rect.bottom(), layout.rows.y, layout.rows.bottom(), scroll_geometry(layout, accounts));
 }
 
+// Grabbing one of several picked rows lifts them all, and grabbing any other row lets go of the picked ones.
 auto LibraryView::lift_row(u32 t_row, Vec2 t_point) -> void
 {
-	const Layout layout  = this->layout();
-	const float  top     = t_row * pitch(layout) + m_row_offsets[t_row];
-	const float  pointer = t_point.y - layout.rows.y + m_scroll.offset();
+	const Layout          layout   = this->layout();
+	const VisibleAccounts accounts = shown_accounts();
+	const RowRange        section  = drag_range(accounts, t_row);
+	const float           step     = pitch(layout);
+	const float           top      = t_row * step + m_row_offsets[t_row];
+	const float           pointer  = t_point.y - layout.rows.y + m_scroll.offset();
 
-	m_drag.lifted      = true;
-	m_drag.from_row    = t_row;
-	m_drag.target_row  = t_row;
+	m_drag.lift(t_row, m_selection.rows(), section.first, section.last);
 	m_drag.grab_offset = pointer - top;
-	m_raised_row       = t_row;
-	m_pressed          = Hit{};
+
+	if (m_drag.rows.count() == 1) {
+		m_selection.clear();
+	}
+
+	for (u32 row = section.first; row <= section.last; row += 1) {
+		if (m_drag.rows[row]) {
+			m_row_offsets[row] = row * step + m_row_offsets[row] - (top + m_drag.place_in_block(row) * step);
+		}
+	}
+
+	m_raised  = m_drag.rows;
+	m_pressed = Hit{};
 	blur();
 }
 
@@ -1085,34 +1177,72 @@ auto LibraryView::drop_row() -> void
 		return;
 	}
 
-	const Layout          layout   = this->layout();
 	const VisibleAccounts accounts = shown_accounts();
-	const u32             from     = m_drag.from_row;
-	const u32             to       = m_drag.target_row;
+	const RowDrag         drag     = m_drag;
 
-	if (from < accounts.count) {
-		m_row_offsets[from] = lifted_top(layout, accounts) - from * pitch(layout);
-	}
+	cancel_drag();
 
-	m_drag = RowDrag{};
-
-	if (from >= accounts.count || to >= accounts.count || !has_game()) {
+	if (drag.from_row >= accounts.count || !has_game()) {
 		reset_row_motion();
 		return;
 	}
 
-	if (from != to) {
-		m_library->move_visible_account(static_cast<u32>(m_game), from, to);
-		animate_reorder(accounts);
+	u32 moved[K_MAX_VISIBLE_ACCOUNTS];
+	u32 count = 0;
+
+	for (u32 row = 0; row < accounts.count; row += 1) {
+		if (drag.rows[row]) {
+			moved[count] = row;
+			count += 1;
+		}
 	}
 
-	m_raised_row = to;
+	m_library->move_visible_accounts(static_cast<u32>(m_game), std::span{moved, count}, drag.insert);
+	animate_reorder(accounts);
+
+	m_raised.reset();
+	m_selection.clear();
+
+	for (u32 row = drag.insert; row < drag.insert + count; row += 1) {
+		m_raised.set(row);
+	}
+
+	if (count > 1) {
+		m_selection.select_block(drag.insert, count);
+	}
+
+	m_selection.remember(shown_accounts());
 }
 
+// Lets go without moving anything. Lifted rows measure their offsets from their own places again, so they glide back to them.
 auto LibraryView::cancel_drag() -> void
 {
-	m_drag.target_row = m_drag.from_row;
-	drop_row();
+	if (m_drag.lifted) {
+		const Layout layout = this->layout();
+		const float  step   = pitch(layout);
+		const float  top    = lifted_top(layout);
+
+		for (u32 row = 0; row < K_MAX_VISIBLE_ACCOUNTS; row += 1) {
+			if (m_drag.rows[row]) {
+				m_row_offsets[row] += top + m_drag.place_in_block(row) * step - row * step;
+			}
+		}
+	}
+
+	m_drag = RowDrag{};
+}
+
+auto LibraryView::scroll_near_edges(const Layout& t_layout, const VisibleAccounts& t_accounts, float t_delta_seconds) -> void
+{
+	const float zone  = t_layout.row_height * K_AUTO_SCROLL_ZONE;
+	const float above = t_layout.rows.y + zone - m_mouse.y;
+	const float below = m_mouse.y - (t_layout.rows.bottom() - zone);
+
+	if (above > 0.0f) {
+		m_scroll.scroll_by(-K_AUTO_SCROLL_SPEED * std::min(above / zone, 1.0f) * t_delta_seconds, scroll_geometry(t_layout, t_accounts));
+	} else if (below > 0.0f) {
+		m_scroll.scroll_by(K_AUTO_SCROLL_SPEED * std::min(below / zone, 1.0f) * t_delta_seconds, scroll_geometry(t_layout, t_accounts));
+	}
 }
 
 auto LibraryView::update_drag(float t_delta_seconds) -> void
@@ -1126,42 +1256,62 @@ auto LibraryView::update_drag(float t_delta_seconds) -> void
 	}
 
 	if (m_drag.lifted) {
-		const float zone  = layout.row_height * K_AUTO_SCROLL_ZONE;
-		const float above = layout.rows.y + zone - m_mouse.y;
-		const float below = m_mouse.y - (layout.rows.bottom() - zone);
-		const auto  geom  = scroll_geometry(layout, accounts);
-
-		if (above > 0.0f) {
-			m_scroll.scroll_by(-K_AUTO_SCROLL_SPEED * std::min(above / zone, 1.0f) * t_delta_seconds, geom);
-		} else if (below > 0.0f) {
-			m_scroll.scroll_by(K_AUTO_SCROLL_SPEED * std::min(below / zone, 1.0f) * t_delta_seconds, geom);
-		}
-
-		const RowRange range = drag_range(accounts, m_drag.from_row);
-		const auto     slot  = static_cast<u32>(std::lround(lifted_top(layout, accounts) / step));
-		m_drag.target_row    = std::clamp(slot, range.first, range.last);
+		scroll_near_edges(layout, accounts, t_delta_seconds);
+		m_drag.aim(lifted_top(layout), step);
 		animation::request_frame();
 	}
 
-	for (u32 i = 0; i < accounts.count; i += 1) {
-		if (m_drag.lifted && i == m_drag.from_row) continue;
+	bool raised_settled = true;
 
-		float target = 0.0f;
-		if (m_drag.lifted && m_drag.from_row < i && i <= m_drag.target_row) {
-			target = -step;
-		} else if (m_drag.lifted && m_drag.target_row <= i && i < m_drag.from_row) {
-			target = step;
-		}
+	for (u32 i = 0; i < accounts.count; i += 1) {
+		const bool  makes_room = m_drag.lifted && !m_drag.rows[i];
+		const float target     = makes_room ? m_drag.shift(i) * step : 0.0f;
 
 		m_row_offsets[i] = animation::ease_toward(m_row_offsets[i], target, K_SHIFT_EASE_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS);
+		raised_settled   = raised_settled && (!m_raised[i] || m_row_offsets[i] == 0.0f);
 	}
 
 	m_lift_amount = animation::ease_toward(m_lift_amount, m_drag.lifted ? 1.0f : 0.0f, K_LIFT_EASE_RATE, t_delta_seconds);
 
-	const bool raised_settled = !m_raised_row || *m_raised_row >= accounts.count || m_row_offsets[*m_raised_row] == 0.0f;
 	if (!m_drag.lifted && m_lift_amount == 0.0f && raised_settled) {
-		m_raised_row.reset();
+		m_raised.reset();
 	}
+}
+
+// The box reaches over more rows as the list scrolls under it, so it follows the pointer every frame and not only when it moves.
+auto LibraryView::update_marquee(float t_delta_seconds) -> void
+{
+	if (!m_selection.is_boxing()) return;
+
+	if (!can_select()) {
+		m_selection.cancel_box();
+		return;
+	}
+
+	const Layout          layout   = this->layout();
+	const VisibleAccounts accounts = shown_accounts();
+
+	if (m_selection.box_shown()) {
+		scroll_near_edges(layout, accounts, t_delta_seconds);
+		animation::request_frame();
+	}
+
+	m_selection.drag_box(m_mouse, layout.rows.y - m_scroll.offset(), pitch(layout), accounts.count);
+}
+
+// Ctrl, or Cmd on a Mac, picks a row or puts it back, and Shift picks every row from the last one picked.
+auto LibraryView::select_with_modifiers(u32 t_row) -> bool
+{
+	const os::Modifiers keys = os::modifiers();
+	if (!can_select() || (!keys.shortcut && !keys.shift)) return false;
+
+	if (keys.shift) {
+		m_selection.extend_to(t_row);
+	} else {
+		m_selection.toggle(t_row);
+	}
+
+	return true;
 }
 
 // Rows that changed places start where they were and slide to where they are now.
@@ -1187,7 +1337,7 @@ auto LibraryView::reset_row_motion() -> void
 {
 	m_drag = RowDrag{};
 	std::fill(std::begin(m_row_offsets), std::end(m_row_offsets), 0.0f);
-	m_raised_row.reset();
+	m_raised.reset();
 	m_lift_amount = 0.0f;
 }
 
@@ -1203,12 +1353,17 @@ auto LibraryView::update(float t_delta_seconds) -> void
 
 	refresh_filter();
 
-	if (m_deleted && !m_toasts->is_offering(CommandType::UNDO_LIBRARY_DELETE)) {
+	if (!m_deleted.empty() && !m_toasts->is_offering(CommandType::UNDO_LIBRARY_DELETE)) {
 		forget_deleted();
 	}
 
 	const Layout          layout   = this->layout();
 	const VisibleAccounts accounts = shown_accounts();
+
+	m_selection.follow(accounts);
+	if (!can_select()) {
+		m_selection.clear();
+	}
 
 	if (m_form_open && m_form_account && !row_of(accounts, *m_form_account)) {
 		close_form(false);
@@ -1245,10 +1400,14 @@ auto LibraryView::update(float t_delta_seconds) -> void
 		}
 	}
 
-	m_hovered = m_scroll.is_dragging() || m_drag.lifted ? Hit{} : hit_at(m_mouse);
+	update_marquee(t_delta_seconds);
 
-	const bool add_lit = m_hovered.target == Target::ADD;
+	m_hovered = m_scroll.is_dragging() || m_drag.lifted || m_selection.is_boxing() ? Hit{} : hit_at(m_mouse);
+
+	const bool on_add  = m_hovered.target == Target::ADD;
+	const bool add_lit = on_add && layout.add.contains(m_mouse);
 	m_add_hover        = animation::ease_toward(m_add_hover, add_lit ? 1.0f : 0.0f, K_HOVER_EASE_RATE, t_delta_seconds);
+	m_zone_hover       = animation::ease_toward(m_zone_hover, on_add && !add_lit ? 1.0f : 0.0f, K_HOVER_EASE_RATE, t_delta_seconds);
 
 	for (u32 row = 0; row < accounts.count; row += 1) {
 		const bool lit   = is_row_target(m_hovered.target) && m_hovered.index == row;
@@ -1301,8 +1460,22 @@ auto LibraryView::on_pointer_down(Vec2 t_point) -> void
 		}
 
 		case ROW: {
+			if (select_with_modifiers(hit.index)) {
+				m_pressed = Hit{};
+				break;
+			}
+
 			m_drag.pressed_row = hit.index;
 			m_drag.press_point = t_point;
+			break;
+		}
+
+		case NONE: {
+			if (can_select() && accounts.count > 0 && marquee_area(layout).contains(t_point)) {
+				const os::Modifiers keys = os::modifiers();
+				m_selection.begin_box(t_point, layout.rows.y - m_scroll.offset(), keys.shortcut || keys.shift);
+			}
+
 			break;
 		}
 
@@ -1344,6 +1517,11 @@ auto LibraryView::on_pointer_move(Vec2 t_point) -> bool
 		return true;
 	}
 
+	if (m_selection.is_boxing()) {
+		m_selection.drag_box(t_point, layout.rows.y - m_scroll.offset(), pitch(layout), accounts.count);
+		return true;
+	}
+
 	const bool can_reorder = m_filter.value().empty() && !form_shown();
 
 	if (m_drag.pressed_row && !m_drag.lifted && can_reorder) {
@@ -1379,6 +1557,12 @@ auto LibraryView::on_pointer_up(Vec2 t_point) -> bool
 		m_scroll.on_pointer_up();
 		m_pressed = Hit{};
 		m_drag    = RowDrag{};
+		return true;
+	}
+
+	if (m_selection.is_boxing()) {
+		m_selection.end_box();
+		m_pressed = Hit{};
 		return true;
 	}
 
@@ -1423,7 +1607,13 @@ auto LibraryView::on_right_click(Vec2 t_point) -> void
 	}
 
 	if (is_row_target(hit.target) && hit.index < accounts.count && !m_drag.lifted) {
-		m_commands->push(Command{.type = CommandType::SHOW_ACCOUNT_MENU, .index = -1, .position = t_point, .account = accounts.refs[hit.index]});
+		if (!m_selection.contains(hit.index)) {
+			m_selection.clear();
+		}
+
+		const Command menu{
+			.type = CommandType::SHOW_ACCOUNT_MENU, .index = -1, .position = t_point, .account = accounts.refs[hit.index], .picked = m_selection.count()};
+		m_commands->push(menu);
 	}
 }
 
@@ -1450,6 +1640,14 @@ auto LibraryView::on_key_down(os::Key t_key) -> bool
 	if (m_drag.lifted) {
 		if (t_key == os::Key::ESCAPE) {
 			cancel_drag();
+		}
+
+		return true;
+	}
+
+	if (m_selection.is_boxing()) {
+		if (t_key == os::Key::ESCAPE) {
+			m_selection.cancel_box();
 		}
 
 		return true;
@@ -1520,6 +1718,16 @@ auto LibraryView::on_key_down(os::Key t_key) -> bool
 		}
 	}
 
+	if (t_key == os::Key::ESCAPE && !m_selection.is_empty()) {
+		m_selection.clear();
+		return true;
+	}
+
+	if (t_key == os::Key::A && os::modifiers().shortcut && can_select()) {
+		m_selection.select_block(0, shown_accounts().count);
+		return true;
+	}
+
 	return false;
 }
 
@@ -1552,6 +1760,7 @@ auto LibraryView::on_char(u32 t_character) -> bool
 auto LibraryView::drop_press() -> void
 {
 	m_pressed = Hit{};
+	m_selection.end_box();
 
 	if (m_drag.lifted) {
 		drop_row();
@@ -1568,6 +1777,7 @@ auto LibraryView::cursor() const -> CursorKind
 {
 	if (m_region_list.is_open()) return m_region_list.cursor(m_mouse);
 	if (m_drag.lifted) return CursorKind::MOVE;
+	if (m_selection.is_boxing()) return CursorKind::ARROW;
 	if (m_scroll.is_dragging()) return CursorKind::DRAG;
 	if (m_filter.is_selecting() || std::ranges::any_of(m_fields, [](const TextInput& t_field) { return t_field.is_selecting(); })) return CursorKind::I_BEAM;
 
@@ -1634,7 +1844,8 @@ auto LibraryView::draw_labels(DrawList* t_draw_list, const Layout& t_layout, u8 
 		draw_text(t_draw_list, caption, Vec2{labels.x + columns.played, baseline}, "Last played", color);
 	}
 
-	t_draw_list->add_rect(Rect{labels.x + K_ROW_INSET, labels.bottom() - 1.0f, labels.w - K_ROW_INSET * 2.0f, 1.0f}, faded(g_theme.separator, t_alpha));
+	// The rows start right under this line and draw only the lines under them, so this one is the list's top edge and runs as wide.
+	t_draw_list->add_rect(Rect{labels.x, labels.bottom() - 1.0f, labels.w, 1.0f}, faded(g_theme.separator, t_alpha));
 }
 
 auto LibraryView::draw_row(DrawList* t_draw_list, const Layout& t_layout, Rect t_row, AccountRef t_account, u32 t_index, bool t_raised, u8 t_alpha) const
@@ -1650,9 +1861,12 @@ auto LibraryView::draw_row(DrawList* t_draw_list, const Layout& t_layout, Rect t
 
 	if (t_raised && m_lift_amount > 0.0f) {
 		const u8 lift = scaled_alpha(t_alpha, m_lift_amount);
-
-		controls::draw_popup_shadow(t_draw_list, t_row, K_ROW_RADIUS, m_lift_amount * t_alpha / 255.0f);
 		t_draw_list->add_bordered_rect(t_row, rounded(K_ROW_RADIUS), faded(g_theme.popup, lift), faded(g_theme.border, lift), 1.0f);
+	}
+
+	if (m_selection.contains(t_index)) {
+		t_draw_list->add_rounded_rect(t_row.inset(0.0f, K_HIGHLIGHT_INSET_Y), rounded(K_ROW_RADIUS),
+		                              with_alpha(accent, static_cast<u8>(K_SELECTED_ALPHA * t_alpha / 255.0f)));
 	}
 
 	const float lit = logging ? 1.0f : hover * K_ROW_HOVER_SHARE;
@@ -1921,25 +2135,8 @@ auto LibraryView::draw_form(DrawList* t_draw_list, const Layout& t_layout, const
 
 auto LibraryView::draw_empty_state(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void
 {
-	const Game&                game      = m_library->games[static_cast<u32>(m_game)];
-	const EmptyState           state     = empty_state(t_layout);
-	const Font&                body      = m_fonts->body;
-	const Font&                secondary = m_fonts->secondary;
-	const float                center_x  = state.icon.center().x;
-	constexpr std::string_view TITLE     = "No accounts yet";
-	constexpr std::string_view HINT      = "Add one to log in with a single click.";
-
-	if (game.icon != nullptr) {
-		t_draw_list->add_image(state.icon, game.icon, faded(K_COLOR_IMAGE, t_alpha), rounded(K_EMPTY_ICON_RADIUS));
-	} else {
-		t_draw_list->add_rounded_rect(state.icon, rounded(K_EMPTY_ICON_RADIUS), faded(game.accent, t_alpha));
-	}
-
-	draw_text(t_draw_list, body, Vec2{snapped_to_pixel(center_x - text_width(body, TITLE) * 0.5f), state.title_baseline}, TITLE, faded(g_theme.text, t_alpha));
-	draw_text(t_draw_list, secondary, Vec2{snapped_to_pixel(center_x - text_width(secondary, HINT) * 0.5f), state.hint_baseline}, HINT,
-	          faded(g_theme.text_dim, t_alpha));
-	controls::draw_button(t_draw_list, body, state.button, K_ADD_LABEL, controls::ButtonStyle::ACCENT, m_settings->accent, true,
-	                      m_hovered.target == Target::ADD && state.button.contains(m_mouse), t_alpha);
+	controls::draw_drop_zone(t_draw_list, m_assets, m_fonts->body, m_fonts->secondary, empty_zone(t_layout), K_ZONE_TITLE, K_ZONE_HINT, m_settings->accent,
+	                         m_zone_hover, t_alpha);
 }
 
 auto LibraryView::draw_no_matches(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void
@@ -1983,23 +2180,18 @@ auto LibraryView::draw(DrawList* t_draw_list, u8 t_alpha) -> void
 	draw_labels(t_draw_list, layout, header);
 
 	const std::optional<u32> edited = form_row(accounts);
-	const std::optional<u32> raised = m_drag.lifted ? std::optional<u32>{m_drag.from_row} : m_raised_row;
+	const RowSet&            raised = m_drag.lifted ? m_drag.rows : m_raised;
 
 	t_draw_list->push_clip(layout.rows);
 
 	for (u32 row = 0; row < accounts.count; row += 1) {
-		if (edited == row || raised == row) continue;
+		if (edited == row || raised[row]) continue;
 
 		const float entrance = row_entrance(row);
 		const Rect  rect     = row_rect(layout, accounts, row).moved(Vec2{0.0f, snapped_to_pixel((1.0f - entrance) * K_ROW_RISE)});
 		if (entrance <= 0.0f || !rect.overlaps_vertically(layout.rows)) continue;
 
-		const Color separator = faded(g_theme.separator, scaled_alpha(t_alpha, entrance));
-		if (row == 0) {
-			t_draw_list->add_rect(Rect{rect.x, rect.y, rect.w, 1.0f}, separator);
-		}
-
-		t_draw_list->add_rect(Rect{rect.x, rect.bottom() - 1.0f, rect.w, 1.0f}, separator);
+		t_draw_list->add_rect(Rect{rect.x, rect.bottom() - 1.0f, rect.w, 1.0f}, faded(g_theme.separator, scaled_alpha(t_alpha, entrance)));
 		draw_row(t_draw_list, layout, rect, accounts.refs[row], row, false, scaled_alpha(t_alpha, entrance));
 	}
 
@@ -2007,9 +2199,21 @@ auto LibraryView::draw(DrawList* t_draw_list, u8 t_alpha) -> void
 		draw_form(t_draw_list, layout, accounts, form_card(layout, accounts), t_alpha);
 	}
 
-	if (raised && *raised < accounts.count && edited != raised) {
-		const Rect rect = m_drag.lifted ? lifted_rect(layout) : row_rect(layout, accounts, *raised);
-		draw_row(t_draw_list, layout, rect, accounts.refs[*raised], *raised, true, t_alpha);
+	// Lifted rows go on top, with all their shadows first so none falls across another lifted row.
+	const auto raised_rect = [&](u32 t_row) { return m_drag.lifted ? dragged_rect(layout, t_row) : row_rect(layout, accounts, t_row); };
+
+	for (u32 row = 0; row < accounts.count && m_lift_amount > 0.0f; row += 1) {
+		if (raised[row] && edited != row) {
+			controls::draw_popup_shadow(t_draw_list, raised_rect(row), K_ROW_RADIUS, m_lift_amount * t_alpha / 255.0f);
+		}
+	}
+
+	for (u32 row = 0; row < accounts.count; row += 1) {
+		if (!raised[row] || edited == row) continue;
+
+		const Rect rect = raised_rect(row);
+		t_draw_list->add_rect(Rect{rect.x, rect.bottom() - 1.0f, rect.w, 1.0f}, faded(g_theme.separator, scaled_alpha(t_alpha, 1.0f - m_lift_amount)));
+		draw_row(t_draw_list, layout, rect, accounts.refs[row], row, true, t_alpha);
 	}
 
 	t_draw_list->pop_clip();
@@ -2017,5 +2221,12 @@ auto LibraryView::draw(DrawList* t_draw_list, u8 t_alpha) -> void
 	const ScrollGeometry geometry = scroll_geometry(layout, accounts);
 	m_scroll.draw_edge_fade(t_draw_list, layout.rows, geometry, faded(g_theme.window, t_alpha));
 	m_scroll.draw(t_draw_list, geometry, m_mouse, t_alpha);
+
+	if (m_selection.box_shown()) {
+		t_draw_list->push_clip(marquee_area(layout));
+		controls::draw_marquee(t_draw_list, m_selection.box_rect(layout.rows.y - m_scroll.offset()), m_settings->accent, t_alpha);
+		t_draw_list->pop_clip();
+	}
+
 	m_region_list.draw(t_draw_list, m_mouse);
 }

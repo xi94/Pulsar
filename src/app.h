@@ -96,6 +96,7 @@ class App {
 	auto process(const Command& t_command) -> void;
 	auto open_account_menu(const Command& t_command) -> void;
 	auto open_library_account_menu(const Command& t_command) -> void;
+	auto open_picked_menu(const Command& t_command) -> void;
 	auto open_text_menu(const Command& t_command) -> void;
 	auto fill_tray_menu(os::TrayMenu* t_menu) const -> void;
 
@@ -136,6 +137,7 @@ class App {
 	UpdateOverlay  m_update_overlay;
 	AccountSearch  m_account_search;
 	ContextMenu    m_context_menu;
+	char           m_picked_label[32]{};
 	TitleBar       m_title_bar;
 	TruncationHint m_truncation_hint;
 #ifdef PULSAR_PROFILING

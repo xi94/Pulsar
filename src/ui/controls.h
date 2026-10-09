@@ -95,6 +95,20 @@ auto draw_button(DrawList*        t_draw_list,
                  bool             t_hovered,
                  u8               t_alpha) -> void;
 
+// The box dragged out over a list to pick rows.
+auto draw_marquee(DrawList* t_draw_list, Rect t_box, Color t_accent, u8 t_alpha) -> void;
+// A list with nothing in it yet: a dashed area to click, with a plus and two lines of text, that takes the accent on hover.
+auto draw_drop_zone(DrawList*        t_draw_list,
+                    const Assets*    t_assets,
+                    const Font&      t_title_font,
+                    const Font&      t_hint_font,
+                    Rect             t_zone,
+                    std::string_view t_title,
+                    std::string_view t_hint,
+                    Color            t_accent,
+                    float            t_hover,
+                    u8               t_alpha) -> void;
+
 [[nodiscard]] auto region_chip_width(const Font& t_font, std::string_view t_region) -> float;
 auto draw_region_chip(DrawList* t_draw_list, const Font& t_font, float t_x, float t_center_y, std::string_view t_region, u8 t_alpha) -> void;
 auto draw_account_details(DrawList* t_draw_list, const Font& t_font, Vec2 t_baseline, float t_max_width, const Account& t_account, u8 t_alpha) -> void;

@@ -1,7 +1,9 @@
 #include "core/library.h"
 
 #include <algorithm>
+#include <bitset>
 #include <cassert>
+#include <cstddef>
 #include <span>
 #include <vector>
 
@@ -75,15 +77,28 @@ auto Library::remove_account(AccountRef t_ref) -> void
 	sodium_memzero(&game->accounts[game->account_count], sizeof(Account));
 }
 
-auto Library::move_visible_account(u32 t_game, u32 t_from_row, u32 t_to_row) -> void
+auto Library::move_visible_accounts(u32 t_game, std::span<const u32> t_rows, u32 t_insert) -> void
 {
 	const VisibleAccounts visible = visible_accounts(t_game);
-	if (t_from_row >= visible.count || t_to_row >= visible.count || t_from_row == t_to_row) return;
 
-	std::vector<AccountRef> sequence(visible.refs, visible.refs + visible.count);
-	const AccountRef        moved = sequence[t_from_row];
-	sequence.erase(sequence.begin() + t_from_row);
-	sequence.insert(sequence.begin() + t_to_row, moved);
+	std::bitset<K_MAX_VISIBLE_ACCOUNTS> taken;
+	for (const u32 row : t_rows) {
+		if (row < visible.count) {
+			taken.set(row);
+		}
+	}
+
+	if (taken.none()) return;
+
+	std::vector<AccountRef> block;
+	std::vector<AccountRef> sequence;
+
+	for (u32 i = 0; i < visible.count; i += 1) {
+		(taken[i] ? block : sequence).push_back(visible.refs[i]);
+	}
+
+	const auto insert = static_cast<std::ptrdiff_t>(std::min<usize>(t_insert, sequence.size()));
+	sequence.insert(sequence.begin() + insert, block.begin(), block.end());
 
 	std::vector<u32> orders;
 	orders.reserve(sequence.size());
@@ -166,6 +181,11 @@ auto Library::visible_account(u32 t_game, u32 t_row) const -> std::optional<Acco
 	if (t_row >= visible.count) return std::nullopt;
 
 	return visible.refs[t_row];
+}
+
+auto sort_for_removal(std::span<AccountRef> t_refs) -> void
+{
+	std::ranges::sort(t_refs, [](AccountRef t_a, AccountRef t_b) { return t_a.game != t_b.game ? t_a.game > t_b.game : t_a.index > t_b.index; });
 }
 
 auto shift_after_insert(std::optional<AccountRef>* t_ref, AccountRef t_inserted) -> void

@@ -28,6 +28,7 @@ enum class CommandType : u8 {
 	UNDO_DELETE,
 	EDIT_ROW,
 	DELETE_ROW,
+	DELETE_PICKED_ROWS,
 	LOCK_VAULT,
 	OPEN_ACCOUNT_SEARCH,
 	EDIT_ACCOUNT,
@@ -35,6 +36,7 @@ enum class CommandType : u8 {
 	UNDO_LIBRARY_DELETE,
 	EDIT_ACCOUNT_IN_PLACE,
 	DELETE_ACCOUNT_IN_PLACE,
+	DELETE_PICKED_IN_PLACE,
 	COPY_ACCOUNT_USERNAME,
 	COPY_ACCOUNT_PASSWORD,
 	LOCATE_RIOT_CLIENT,
@@ -57,6 +59,8 @@ struct Command {
 	TextInput*  text_input = nullptr;
 	TextEdit    text_edit  = TextEdit::COPY;
 	AccountRef  account{};
+	// For an account menu: how many rows are picked, when the clicked row is one of them.
+	u32 picked = 0;
 };
 
 class CommandQueue {

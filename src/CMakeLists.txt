@@ -34,6 +34,7 @@ add_library (pulsar_portable OBJECT
   "ui/list_popup.cpp"
   "ui/login_session.cpp"
   "ui/profiler_overlay.cpp"
+  "ui/row_selection.cpp"
   "ui/scrollable.cpp"
   "ui/settings_panel.cpp"
   "ui/setup_screen.cpp"

@@ -1,11 +1,14 @@
 #pragma once
 
 #include <optional>
+#include <span>
 #include <string_view>
+#include <vector>
 
 #include "core/library.h"
 #include "ui/commands.h"
 #include "ui/list_popup.h"
+#include "ui/row_selection.h"
 #include "ui/scrollable.h"
 #include "ui/text_input.h"
 
@@ -61,6 +64,7 @@ class LibraryView {
 	auto toggle_favorite(AccountRef t_account) -> void;
 	auto edit(AccountRef t_account) -> void;
 	auto delete_account(AccountRef t_account) -> void;
+	auto delete_picked() -> void;
 	auto undo_delete() -> void;
 	auto forget_secrets() -> void;
 
@@ -135,22 +139,6 @@ class LibraryView {
 		float height;
 	};
 
-	struct EmptyState {
-		Rect  icon;
-		float title_baseline;
-		float hint_baseline;
-		Rect  button;
-	};
-
-	struct RowDrag {
-		std::optional<u32> pressed_row;
-		Vec2               press_point{};
-		bool               lifted      = false;
-		u32                from_row    = 0;
-		u32                target_row  = 0;
-		float              grab_offset = 0.0f;
-	};
-
 	struct DeletedAccount {
 		Account    account;
 		AccountRef position;
@@ -174,13 +162,13 @@ class LibraryView {
 	[[nodiscard]] auto form_card(const Layout& t_layout, const VisibleAccounts& t_accounts) const -> Rect;
 	[[nodiscard]] auto form_layout(Rect t_card) const -> FormLayout;
 	[[nodiscard]] auto row_rect(const Layout& t_layout, const VisibleAccounts& t_accounts, u32 t_row) const -> Rect;
-	[[nodiscard]] auto lifted_rect(const Layout& t_layout) const -> Rect;
+	[[nodiscard]] auto dragged_rect(const Layout& t_layout, u32 t_row) const -> Rect;
 	[[nodiscard]] auto star_rect(const Layout& t_layout, Rect t_row) const -> Rect;
 	[[nodiscard]] auto login_rect(const Layout& t_layout, Rect t_row, std::string_view t_label) const -> Rect;
 	[[nodiscard]] auto field_text_rect(const FormLayout& t_form, u32 t_field) const -> Rect;
 	[[nodiscard]] auto content_height(const Layout& t_layout, const VisibleAccounts& t_accounts) const -> float;
 	[[nodiscard]] auto scroll_geometry(const Layout& t_layout, const VisibleAccounts& t_accounts) const -> ScrollGeometry;
-	[[nodiscard]] auto empty_state(const Layout& t_layout) const -> EmptyState;
+	[[nodiscard]] auto empty_zone(const Layout& t_layout) const -> Rect;
 	[[nodiscard]] auto shows_login(AccountRef t_account) const -> bool;
 	[[nodiscard]] auto login_action(AccountRef t_account) const -> std::string_view;
 	[[nodiscard]] auto hit_at(Vec2 t_point) const -> Hit;
@@ -188,8 +176,10 @@ class LibraryView {
 	[[nodiscard]] auto form_hit(Rect t_card, Vec2 t_point) const -> Hit;
 	[[nodiscard]] auto row_entrance(u32 t_row) const -> float;
 	[[nodiscard]] auto drag_range(const VisibleAccounts& t_accounts, u32 t_row) const -> RowRange;
-	[[nodiscard]] auto lifted_top(const Layout& t_layout, const VisibleAccounts& t_accounts) const -> float;
+	[[nodiscard]] auto lifted_top(const Layout& t_layout) const -> float;
 	[[nodiscard]] auto focused_field() const -> std::optional<u32>;
+	[[nodiscard]] auto can_select() const -> bool;
+	[[nodiscard]] auto marquee_area(const Layout& t_layout) const -> Rect;
 
 	auto activate(Hit t_hit) -> void;
 	auto request_login(AccountRef t_account) -> void;
@@ -197,6 +187,7 @@ class LibraryView {
 	auto close_form(bool t_animated) -> void;
 	auto clear_form() -> void;
 	auto save_form() -> void;
+	auto delete_accounts(std::span<const AccountRef> t_accounts) -> void;
 	auto reveal_form(const Layout& t_layout, const VisibleAccounts& t_accounts) -> void;
 	auto forget_deleted() -> void;
 	auto focus_field(std::optional<u32> t_field) -> void;
@@ -209,6 +200,9 @@ class LibraryView {
 	auto drop_row() -> void;
 	auto cancel_drag() -> void;
 	auto update_drag(float t_delta_seconds) -> void;
+	auto update_marquee(float t_delta_seconds) -> void;
+	auto scroll_near_edges(const Layout& t_layout, const VisibleAccounts& t_accounts, float t_delta_seconds) -> void;
+	auto select_with_modifiers(u32 t_row) -> bool;
 	auto animate_reorder(const VisibleAccounts& t_before) -> void;
 	auto reset_row_motion() -> void;
 
@@ -235,16 +229,18 @@ class LibraryView {
 	Scrollable m_scroll;
 	Hit        m_pressed;
 	Hit        m_hovered;
-	float      m_add_hover = 0.0f;
+	float      m_add_hover  = 0.0f;
+	float      m_zone_hover = 0.0f;
 	float      m_row_hover[K_MAX_VISIBLE_ACCOUNTS]{};
 
 	TextInput m_filter;
 	char      m_applied_filter[K_TEXT_INPUT_CAPACITY]{};
 
-	RowDrag            m_drag;
-	float              m_row_offsets[K_MAX_VISIBLE_ACCOUNTS]{};
-	std::optional<u32> m_raised_row;
-	float              m_lift_amount = 0.0f;
+	RowDrag      m_drag;
+	RowSelection m_selection;
+	float        m_row_offsets[K_MAX_VISIBLE_ACCOUNTS]{};
+	RowSet       m_raised;
+	float        m_lift_amount = 0.0f;
 
 	std::optional<AccountRef> m_flash_account;
 	float                     m_flash = 0.0f;
@@ -259,6 +255,6 @@ class LibraryView {
 	bool                      m_show_required = false;
 	bool                      m_reveal_form   = false;
 
-	std::optional<DeletedAccount> m_deleted;
-	ListPopup                     m_region_list;
+	std::vector<DeletedAccount> m_deleted;
+	ListPopup                   m_region_list;
 };

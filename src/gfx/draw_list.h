@@ -164,6 +164,8 @@ class DrawList {
 	auto add_banner_glow(Rect t_card, float t_card_radius, float t_glow_size, Color t_color) -> void;
 	auto add_shadow(Rect t_rect, float t_corner_radius, float t_blur, Color t_color) -> void;
 	auto add_outline_countdown(Rect t_path, float t_corner_radius, float t_remaining, float t_thickness, Color t_color) -> void;
+	// Dashes just inside the edge of a rounded rectangle. They stretch a little so a whole number of them goes round evenly.
+	auto add_dashed_outline(Rect t_rect, float t_radius, float t_thickness, float t_dash, float t_gap, Color t_color) -> void;
 
   private:
 	auto note_cover(Rect t_rect, Color t_color) -> void;

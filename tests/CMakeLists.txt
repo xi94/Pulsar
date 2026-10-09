@@ -8,6 +8,7 @@
 # A new file needs only to be listed here; TEST_CASE registers itself. Pass part of a test name to the executable to run just those.
 add_executable (pulsar_tests
   "main.cpp"
+  "library_test.cpp"
   "os_test.cpp"
   "riot_test.cpp"
   "text_input_test.cpp"

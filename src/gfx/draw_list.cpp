@@ -714,3 +714,58 @@ auto DrawList::add_outline_countdown(Rect t_path, float t_corner_radius, float t
 	target(ShaderKind::OUTLINE_COUNTDOWN, nullptr, {}, outline);
 	push_quad(quad, K_FULL_UV, pack(t_color));
 }
+
+auto DrawList::add_dashed_outline(Rect t_rect, float t_radius, float t_thickness, float t_dash, float t_gap, Color t_color) -> void
+{
+	// Arcs are drawn as short straight pieces, and neighbouring pieces share their ends so the dashes stay unbroken.
+	constexpr float PIECE = 3.0f;
+	constexpr float NUDGE = 0.05f;
+
+	struct Edges {
+		Vec2 left;
+		Vec2 right;
+	};
+
+	if (t_color.a == 0 || t_thickness <= 0.0f || t_dash <= 0.0f || t_rect.w <= t_thickness * 2.0f || t_rect.h <= t_thickness * 2.0f) return;
+
+	const float half      = t_thickness * 0.5f;
+	const float gap       = std::max(t_gap, 0.0f);
+	const Rect  path      = t_rect.inset(half);
+	const float radius    = std::clamp(scaled_radius(t_radius) - half, 0.0f, std::min(path.w, path.h) * 0.5f);
+	const float perimeter = (path.w - radius * 2.0f) * 2.0f + (path.h - radius * 2.0f) * 2.0f + std::numbers::pi_v<float> * 2.0f * radius;
+	const float count     = std::max(1.0f, std::round(perimeter / (t_dash + gap)));
+	const float period    = perimeter / count;
+	const float dash      = period * t_dash / (t_dash + gap);
+	const auto  pieces    = static_cast<u32>(std::ceil(dash / PIECE));
+	const u32   color     = pack(t_color);
+
+	const auto edges_at = [&](float t_distance) {
+		const Vec2  point  = rounded_path_point(path, radius, t_distance);
+		const Vec2  ahead  = rounded_path_point(path, radius, t_distance + NUDGE);
+		const Vec2  behind = rounded_path_point(path, radius, t_distance - NUDGE);
+		const float length = std::max(std::hypot(ahead.x - behind.x, ahead.y - behind.y), 0.0001f);
+		const Vec2  side{(behind.y - ahead.y) / length * half, (ahead.x - behind.x) / length * half};
+
+		return Edges{Vec2{point.x + side.x, point.y + side.y}, Vec2{point.x - side.x, point.y - side.y}};
+	};
+
+	target(ShaderKind::SOLID);
+
+	for (u32 i = 0; i < static_cast<u32>(count); i += 1) {
+		const float start = static_cast<float>(i) * period;
+		Edges       from  = edges_at(start);
+
+		for (u32 piece = 1; piece <= pieces; piece += 1) {
+			const Edges    to = edges_at(start + dash * static_cast<float>(piece) / static_cast<float>(pieces));
+			const Vertex2D corners[4]{
+				{from.left.x, from.left.y, 0.0f, 0.0f, color},
+				{to.left.x, to.left.y, 0.0f, 0.0f, color},
+				{to.right.x, to.right.y, 0.0f, 0.0f, color},
+				{from.right.x, from.right.y, 0.0f, 0.0f, color},
+			};
+
+			push_quad(corners);
+			from = to;
+		}
+	}
+}
