@@ -884,6 +884,14 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
+		case DELETE_ACCOUNT_IN_PLACE: {
+			if (account_for(t_command.account) != nullptr) {
+				m_carousel.library_view()->delete_account(t_command.account);
+			}
+
+			break;
+		}
+
 		case COPY_ACCOUNT_USERNAME: {
 			if (const Account* account = account_for(t_command.account)) {
 				os::set_clipboard_text(account->username);
@@ -934,11 +942,14 @@ auto App::open_library_account_menu(const Command& t_command) -> void
 	const Account* account = account_for(t_command.account);
 	if (account == nullptr) return;
 
-	const Command         copy_username{.type = CommandType::COPY_ACCOUNT_USERNAME, .account = t_command.account};
+	const AccountRef      target = t_command.account;
+	const Command         remove{.type = CommandType::DELETE_ACCOUNT_IN_PLACE, .account = target};
+	const Command         copy_username{.type = CommandType::COPY_ACCOUNT_USERNAME, .account = target};
 	const ContextMenuItem items[]{
-		{.label = "Edit", .command = Command{.type = CommandType::EDIT_ACCOUNT_IN_PLACE, .account = t_command.account}, .icon = Asset::ICON_EDIT_BOX},
+		{.label = "Edit", .command = Command{.type = CommandType::EDIT_ACCOUNT_IN_PLACE, .account = target}, .icon = Asset::ICON_EDIT_BOX},
+		{.label = "Delete", .command = remove, .icon = Asset::ICON_TRASH, .destructive = true},
 		{.label = "Copy username", .command = copy_username, .icon = Asset::ICON_COPY, .separated = true},
-		{.label = "Copy password", .command = Command{.type = CommandType::COPY_ACCOUNT_PASSWORD, .account = t_command.account}, .icon = Asset::ICON_KEY},
+		{.label = "Copy password", .command = Command{.type = CommandType::COPY_ACCOUNT_PASSWORD, .account = target}, .icon = Asset::ICON_KEY},
 	};
 
 	m_context_menu.open(t_command.position, items, m_window.size());

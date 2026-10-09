@@ -27,7 +27,6 @@ namespace {
 constexpr float K_PADDING_X              = 28.0f;
 constexpr float K_PADDING_TOP            = 20.0f;
 constexpr float K_PADDING_BOTTOM         = 16.0f;
-constexpr float K_SUBTITLE_GAP           = 2.0f;
 constexpr float K_HEADER_GAP             = 16.0f;
 constexpr float K_TITLE_GAP              = 16.0f;
 constexpr float K_LABELS_PADDING_Y       = 4.0f;
@@ -45,22 +44,18 @@ constexpr float K_ADD_ICON_SIZE          = 14.0f;
 constexpr float K_ADD_ICON_GAP           = 6.0f;
 constexpr float K_ROW_PADDING_Y          = 9.0f;
 constexpr float K_ROW_LINE_GAP           = 3.0f;
-constexpr float K_ROW_GAP                = 2.0f;
 constexpr float K_ROW_RADIUS             = 8.0f;
 constexpr float K_ROW_INSET              = 10.0f;
-constexpr float K_STAR_INSET             = 4.0f;
-constexpr float K_STAR_COLUMN            = 26.0f;
 constexpr float K_STAR_SIZE              = 24.0f;
 constexpr float K_STAR_ICON_INSET        = 4.0f;
-constexpr float K_ACCOUNT_GAP            = 6.0f;
+constexpr float K_ROW_HOVER_SHARE        = 0.3f;
+constexpr float K_HIGHLIGHT_INSET_Y      = 2.0f;
 constexpr float K_COLUMN_GAP             = 16.0f;
 constexpr float K_MIN_ACCOUNT_WIDTH      = 140.0f;
 constexpr float K_PILL_PADDING_X         = 12.0f;
 constexpr float K_PILL_HEIGHT            = 26.0f;
 constexpr float K_PILL_RADIUS            = 7.0f;
 constexpr float K_PILL_SLIDE             = 6.0f;
-constexpr float K_EDIT_SIZE              = 26.0f;
-constexpr float K_EDIT_ICON_INSET        = 6.0f;
 constexpr float K_ACTION_GAP             = 6.0f;
 constexpr float K_CHECK_SIZE             = 18.0f;
 constexpr float K_PROGRESS_HEIGHT        = 2.0f;
@@ -114,11 +109,6 @@ constexpr float K_BUTTON_HEIGHT          = 28.0f;
 constexpr float K_BUTTON_PADDING_X       = 16.0f;
 constexpr float K_BUTTON_MIN_WIDTH       = 72.0f;
 constexpr float K_BUTTON_GAP             = 8.0f;
-constexpr float K_DELETE_PADDING_X       = 10.0f;
-constexpr float K_COUNTDOWN_SIZE         = 14.0f;
-constexpr float K_COUNTDOWN_GAP          = 6.0f;
-constexpr float K_DANGER_TINT            = 0.22f;
-constexpr float K_DELETE_CONFIRM_SECONDS = 3.0f;
 constexpr float K_UNDO_SECONDS           = 6.0f;
 constexpr float K_SUCCESS_LINGER_SECONDS = 2.5f;
 constexpr float K_FAILURE_LINGER_SECONDS = 8.0f;
@@ -139,8 +129,6 @@ constexpr std::string_view K_CANCEL_LABEL     = "Cancel";
 constexpr std::string_view K_RETRY_LABEL      = "Try again";
 constexpr std::string_view K_PERMISSION_LABEL = "Open settings";
 constexpr std::string_view K_ADD_LABEL        = "Add account";
-constexpr std::string_view K_DELETE_LABEL     = "Delete";
-constexpr std::string_view K_DELETE_ARMED     = "Delete for good";
 constexpr std::string_view K_OPTIONAL_SUFFIX  = " (optional)";
 constexpr std::string_view K_FIELD_LABELS[]{"Username", "Password", "Note"};
 
@@ -185,7 +173,6 @@ auto LibraryView::is_row_target(Target t_target) -> bool
 
 		case ROW:
 		case STAR:
-		case EDIT:
 		case LOGIN:
 		case CANCEL_LOGIN:
 		case PERMISSION: {
@@ -293,9 +280,8 @@ auto LibraryView::layout() const -> LibraryView::Layout
 	const float width     = std::max(0.0f, m_bounds.w - K_PADDING_X * 2.0f);
 
 	Layout layout{};
-	layout.header            = Rect{left, m_bounds.y + K_PADDING_TOP, width, title.line_height() + K_SUBTITLE_GAP + secondary.line_height()};
-	layout.title_baseline    = layout.header.y + title.ascent;
-	layout.subtitle_baseline = layout.header.y + title.line_height() + K_SUBTITLE_GAP + secondary.ascent;
+	layout.header         = Rect{left, m_bounds.y + K_PADDING_TOP, width, std::max(title.line_height(), K_CONTROL_HEIGHT)};
+	layout.title_baseline = title.centered_baseline(layout.header);
 
 	const float add_width    = K_ADD_PADDING_X * 2.0f + K_ADD_ICON_SIZE + K_ADD_ICON_GAP + text_width(secondary, K_ADD_LABEL);
 	const float filter_width = std::clamp(width * K_FILTER_SHARE, K_FILTER_MIN_WIDTH, K_FILTER_MAX_WIDTH);
@@ -323,9 +309,9 @@ auto LibraryView::columns(float t_row_width) const -> LibraryView::Columns
 	const float login     = text_width(secondary, K_LOGIN_LABEL) + K_PILL_PADDING_X * 2.0f;
 
 	Columns columns{};
-	columns.star         = K_STAR_INSET;
-	columns.account      = columns.star + K_STAR_COLUMN + K_ACCOUNT_GAP;
-	columns.actions      = t_row_width - K_ROW_INSET - (K_EDIT_SIZE + K_ACTION_GAP + login);
+	columns.account      = K_ROW_INSET;
+	columns.star         = t_row_width - K_ROW_INSET - login - K_ACTION_GAP - K_STAR_SIZE;
+	columns.actions      = columns.star;
 	columns.played_width = std::max(text_width(caption, "Last played"), text_width(secondary, "11 months ago"));
 	columns.region_width = std::max(text_width(caption, "Region"), controls::region_chip_width(secondary, "EUNE"));
 	columns.show_region  = true;
@@ -353,7 +339,7 @@ auto LibraryView::columns(float t_row_width) const -> LibraryView::Columns
 
 auto LibraryView::pitch(const Layout& t_layout) const -> float
 {
-	return t_layout.row_height + K_ROW_GAP;
+	return t_layout.row_height;
 }
 
 auto LibraryView::form_shown() const -> bool
@@ -371,7 +357,7 @@ auto LibraryView::form_row(const VisibleAccounts& t_accounts) const -> std::opti
 auto LibraryView::form_extra(const Layout& t_layout) const -> float
 {
 	if (!form_shown()) return 0.0f;
-	if (!m_form_account) return (m_form_height + K_ROW_GAP) * m_form_amount;
+	if (!m_form_account) return m_form_height * m_form_amount;
 
 	return std::max(0.0f, m_form_height - t_layout.row_height) * m_form_amount;
 }
@@ -388,6 +374,18 @@ auto LibraryView::form_card(const Layout& t_layout, const VisibleAccounts& t_acc
 	const float height = t_layout.row_height + std::max(0.0f, m_form_height - t_layout.row_height) * m_form_amount;
 
 	return Rect{t_layout.rows.x, top + *row * pitch(t_layout) + m_row_offsets[*row], t_layout.rows.w, height};
+}
+
+// Keeps an opening form in view, scrolling against the room it takes once fully open. A form taller than the pane shows its top.
+auto LibraryView::reveal_form(const Layout& t_layout, const VisibleAccounts& t_accounts) -> void
+{
+	const Rect  card       = form_card(t_layout, t_accounts);
+	const float open_extra = m_form_account ? std::max(0.0f, m_form_height - t_layout.row_height) : m_form_height;
+
+	ScrollGeometry geometry = scroll_geometry(t_layout, t_accounts);
+	geometry.content_height += open_extra * (1.0f - m_form_amount);
+
+	m_scroll.reveal(card.y, card.y + std::min(m_form_height, t_layout.rows.h), t_layout.rows.y, t_layout.rows.bottom(), geometry);
 }
 
 auto LibraryView::form_layout(Rect t_card) const -> LibraryView::FormLayout
@@ -463,12 +461,6 @@ auto LibraryView::form_layout(Rect t_card) const -> LibraryView::FormLayout
 	form.save                = Rect{inner.right() - save_width, y, save_width, K_BUTTON_HEIGHT};
 	form.cancel              = Rect{form.save.x - K_BUTTON_GAP - cancel_width, y, cancel_width, K_BUTTON_HEIGHT};
 
-	if (m_form_account) {
-		const std::string_view label     = m_delete_armed ? K_DELETE_ARMED : K_DELETE_LABEL;
-		const float            countdown = m_delete_armed ? K_COUNTDOWN_SIZE + K_COUNTDOWN_GAP : 0.0f;
-		form.remove = Rect{inner.x - K_DELETE_PADDING_X, y, text_width(secondary, label) + countdown + K_DELETE_PADDING_X * 2.0f, K_BUTTON_HEIGHT};
-	}
-
 	const Rect password = form.fields[K_PASSWORD];
 	form.reveal =
 		Rect{password.right() - K_REVEAL_SIZE - K_REVEAL_MARGIN, snapped_to_pixel(password.center().y - K_REVEAL_SIZE * 0.5f), K_REVEAL_SIZE, K_REVEAL_SIZE};
@@ -506,7 +498,7 @@ auto LibraryView::lifted_rect(const Layout& t_layout) const -> Rect
 
 auto LibraryView::star_rect(const Layout& t_layout, Rect t_row) const -> Rect
 {
-	const float x = t_row.x + t_layout.columns.star + (K_STAR_COLUMN - K_STAR_SIZE) * 0.5f;
+	const float x = t_row.x + t_layout.columns.star;
 
 	return Rect{x, snapped_to_pixel(t_row.center().y - K_STAR_SIZE * 0.5f), K_STAR_SIZE, K_STAR_SIZE};
 }
@@ -518,16 +510,9 @@ auto LibraryView::login_rect(const Layout&, Rect t_row, std::string_view t_label
 	return Rect{t_row.right() - K_ROW_INSET - width, snapped_to_pixel(t_row.center().y - K_PILL_HEIGHT * 0.5f), width, K_PILL_HEIGHT};
 }
 
-auto LibraryView::edit_rect(const Layout& t_layout, Rect t_row) const -> Rect
-{
-	const Rect login = login_rect(t_layout, t_row, K_LOGIN_LABEL);
-
-	return Rect{login.x - K_ACTION_GAP - K_EDIT_SIZE, snapped_to_pixel(t_row.center().y - K_EDIT_SIZE * 0.5f), K_EDIT_SIZE, K_EDIT_SIZE};
-}
-
 auto LibraryView::content_height(const Layout& t_layout, const VisibleAccounts& t_accounts) const -> float
 {
-	const float rows = t_accounts.count == 0 ? 0.0f : t_accounts.count * pitch(t_layout) - K_ROW_GAP;
+	const float rows = static_cast<float>(t_accounts.count) * pitch(t_layout);
 
 	return rows + form_extra(t_layout) + K_PADDING_BOTTOM;
 }
@@ -619,8 +604,6 @@ auto LibraryView::hit_at(Vec2 t_point) const -> LibraryView::Hit
 
 auto LibraryView::row_hit(const Layout& t_layout, Rect t_row, AccountRef t_account, u32 t_index, Vec2 t_point) const -> LibraryView::Hit
 {
-	if (star_rect(t_layout, t_row).contains(t_point)) return Hit{Target::STAR, t_index};
-
 	if (shows_login(t_account)) {
 		const std::string_view action = login_action(t_account);
 		if (action.empty() || !login_rect(t_layout, t_row, action).contains(t_point)) return Hit{Target::ROW, t_index};
@@ -630,7 +613,7 @@ auto LibraryView::row_hit(const Layout& t_layout, Rect t_row, AccountRef t_accou
 		return Hit{Target::LOGIN, t_index};
 	}
 
-	if (edit_rect(t_layout, t_row).contains(t_point)) return Hit{Target::EDIT, t_index};
+	if (star_rect(t_layout, t_row).contains(t_point)) return Hit{Target::STAR, t_index};
 	if (login_rect(t_layout, t_row, K_LOGIN_LABEL).contains(t_point)) return Hit{Target::LOGIN, t_index};
 
 	return Hit{Target::ROW, t_index};
@@ -654,7 +637,6 @@ auto LibraryView::form_hit(Rect t_card, Vec2 t_point) const -> LibraryView::Hit
 		}
 	}
 
-	if (m_form_account && form.remove.contains(t_point)) return Hit{Target::DELETE};
 	if (form.cancel.contains(t_point)) return Hit{Target::CANCEL_FORM};
 	if (form.save.contains(t_point)) return Hit{Target::SAVE};
 
@@ -710,7 +692,6 @@ auto LibraryView::activate(Hit t_hit) -> void
 	switch (t_hit.target) {
 		using enum Target;
 
-		case ROW:
 		case LOGIN: {
 			if (on_row) {
 				request_login(account);
@@ -722,14 +703,6 @@ auto LibraryView::activate(Hit t_hit) -> void
 		case STAR: {
 			if (on_row) {
 				toggle_favorite(account);
-			}
-
-			break;
-		}
-
-		case EDIT: {
-			if (on_row) {
-				edit(account);
 			}
 
 			break;
@@ -771,19 +744,6 @@ auto LibraryView::activate(Hit t_hit) -> void
 			break;
 		}
 
-		case DELETE: {
-			if (!m_form_account) break;
-
-			if (m_delete_armed) {
-				delete_account(*m_form_account);
-			} else {
-				m_delete_armed  = true;
-				m_armed_seconds = K_DELETE_CONFIRM_SECONDS;
-			}
-
-			break;
-		}
-
 		case CANCEL_FORM: {
 			close_form(true);
 			break;
@@ -795,6 +755,7 @@ auto LibraryView::activate(Hit t_hit) -> void
 		}
 
 		case NONE:
+		case ROW:
 		case FILTER:
 		case FIELD:
 		case FORM: {
@@ -858,7 +819,7 @@ auto LibraryView::open_form(std::optional<AccountRef> t_account) -> void
 	m_form_account  = t_account;
 	m_form_amount   = 0.0f;
 	m_show_required = false;
-	m_delete_armed  = false;
+	m_reveal_form   = true;
 	m_region_list.close();
 
 	if (t_account) {
@@ -905,7 +866,6 @@ auto LibraryView::clear_form() -> void
 	sodium_memzero(m_region, sizeof(m_region));
 	m_form_account.reset();
 	m_show_required = false;
-	m_delete_armed  = false;
 }
 
 auto LibraryView::save_form() -> void
@@ -1260,22 +1220,14 @@ auto LibraryView::update(float t_delta_seconds) -> void
 		m_form_amount      = animation::ease_toward(m_form_amount, m_form_open ? 1.0f : 0.0f, K_FORM_EASE_RATE, t_delta_seconds,
 		                                            animation::K_SETTLED_PIXELS / std::max(m_form_height, 1.0f));
 
-		if (m_form_open && (m_form_amount < 1.0f || m_form_height != target)) {
-			const Rect card = form_card(layout, accounts);
-			m_scroll.reveal(card.y, card.y + m_form_height, layout.rows.y, layout.rows.bottom(), scroll_geometry(layout, accounts));
+		const bool settling = m_form_amount < 1.0f || m_form_height != target;
+		if (m_form_open && (settling || m_reveal_form)) {
+			reveal_form(layout, accounts);
+			m_reveal_form = settling;
 		}
 
 		if (!m_form_open && m_form_amount == 0.0f) {
 			clear_form();
-		}
-	}
-
-	if (m_delete_armed) {
-		m_armed_seconds -= t_delta_seconds;
-		animation::request_frame();
-
-		if (m_armed_seconds <= 0.0f) {
-			m_delete_armed = false;
 		}
 	}
 
@@ -1630,6 +1582,7 @@ auto LibraryView::cursor() const -> CursorKind
 		}
 
 		case NONE:
+		case ROW:
 		case FORM: {
 			const bool over_track = m_scroll.is_over_track(m_mouse, scroll_geometry(layout(), shown_accounts()));
 			return over_track ? CursorKind::HAND : CursorKind::ARROW;
@@ -1650,28 +1603,6 @@ auto LibraryView::draw_header(DrawList* t_draw_list, const Layout& t_layout, u8 
 
 	draw_text_truncated(t_draw_list, title, Vec2{t_layout.header.x, t_layout.title_baseline}, game.title,
 	                    std::max(0.0f, t_layout.filter.x - K_TITLE_GAP - t_layout.header.x), faded(g_theme.text, t_alpha));
-
-	const VisibleAccounts all  = m_library->visible_accounts(static_cast<u32>(m_game));
-	i64                   last = 0;
-	for (const AccountRef ref : all.view()) {
-		last = std::max(last, m_library->account(ref)->last_used);
-	}
-
-	char       count[32];
-	char       played[64];
-	char       relative[32];
-	const auto total   = static_cast<unsigned>(all.count);
-	const int  counted = all.count == 0 ? std::snprintf(count, sizeof(count), "No accounts yet")
-	                                    : std::snprintf(count, sizeof(count), "%u account%s", total, total == 1 ? "" : "s");
-	int        written = 0;
-	if (last != 0) {
-		const std::string_view when = relative_time(last, std::time(nullptr), relative);
-		written                     = std::snprintf(played, sizeof(played), "last played %.*s", static_cast<int>(when.size()), when.data());
-	}
-
-	controls::draw_dotted(t_draw_list, secondary, Vec2{t_layout.header.x, t_layout.subtitle_baseline}, {count, static_cast<usize>(std::max(counted, 0))},
-	                      {played, static_cast<usize>(std::max(written, 0))}, std::max(0.0f, t_layout.filter.x - K_TITLE_GAP - t_layout.header.x),
-	                      faded(g_theme.text_faint, t_alpha));
 
 	controls::draw_search_field(t_draw_list, secondary, t_layout.filter, K_FILTER_INSET, &m_filter, m_mouse, accent, t_alpha);
 
@@ -1716,7 +1647,6 @@ auto LibraryView::draw_row(DrawList* t_draw_list, const Layout& t_layout, Rect t
 	const Color    accent    = m_settings->accent;
 	const bool     logging   = shows_login(t_account);
 	const float    hover     = t_raised ? 0.0f : m_row_hover[t_index];
-	const bool     pressed   = !t_raised && m_pressed == Hit{Target::ROW, t_index} && m_hovered == m_pressed;
 
 	if (t_raised && m_lift_amount > 0.0f) {
 		const u8 lift = scaled_alpha(t_alpha, m_lift_amount);
@@ -1725,28 +1655,13 @@ auto LibraryView::draw_row(DrawList* t_draw_list, const Layout& t_layout, Rect t
 		t_draw_list->add_bordered_rect(t_row, rounded(K_ROW_RADIUS), faded(g_theme.popup, lift), faded(g_theme.border, lift), 1.0f);
 	}
 
-	if (pressed) {
-		t_draw_list->add_rounded_rect(t_row, rounded(K_ROW_RADIUS), faded(g_theme.row_selected, t_alpha));
-	} else if (hover > 0.0f || logging) {
-		t_draw_list->add_rounded_rect(t_row, rounded(K_ROW_RADIUS), faded(g_theme.row_hover, scaled_alpha(t_alpha, logging ? 1.0f : hover)));
+	const float lit = logging ? 1.0f : hover * K_ROW_HOVER_SHARE;
+	if (lit > 0.0f) {
+		t_draw_list->add_rounded_rect(t_row.inset(0.0f, K_HIGHLIGHT_INSET_Y), rounded(K_ROW_RADIUS), faded(controls::glass_highlight(lit), t_alpha));
 	}
 
 	if (m_flash_account == t_account && m_flash > 0.0f) {
 		t_draw_list->add_rounded_rect(t_row, rounded(K_ROW_RADIUS), with_alpha(accent, static_cast<u8>(K_FLASH_ALPHA * m_flash * t_alpha / 255.0f)));
-	}
-
-	const Rect star         = star_rect(t_layout, t_row);
-	const bool star_hovered = !t_raised && m_hovered == Hit{Target::STAR, t_index};
-
-	if (star_hovered) {
-		controls::draw_circular_hover(t_draw_list, star, g_theme.shadow, g_theme.control_hover, t_alpha);
-	}
-
-	if (account.favorite) {
-		controls::draw_favorite(t_draw_list, m_assets, star.inset(K_STAR_ICON_INSET), true, faded(accent, t_alpha));
-	} else if (hover > 0.0f) {
-		controls::draw_favorite(t_draw_list, m_assets, star.inset(K_STAR_ICON_INSET), false,
-		                        faded(star_hovered ? g_theme.text : g_theme.text_faint, scaled_alpha(t_alpha, hover)));
 	}
 
 	const float x           = t_row.x + columns.account;
@@ -1796,6 +1711,21 @@ auto LibraryView::draw_row(DrawList* t_draw_list, const Layout& t_layout, Rect t
 		                    faded(color, t_alpha));
 	}
 
+	const Rect star         = star_rect(t_layout, t_row);
+	const bool star_clear   = action.empty() || button.x > star.right();
+	const bool star_hovered = !t_raised && m_hovered == Hit{Target::STAR, t_index};
+
+	if (star_hovered) {
+		controls::draw_circular_hover(t_draw_list, star, g_theme.shadow, g_theme.control_hover, t_alpha);
+	}
+
+	if (account.favorite && star_clear) {
+		controls::draw_favorite(t_draw_list, m_assets, star.inset(K_STAR_ICON_INSET), true, faded(accent, t_alpha));
+	} else if (hover > 0.0f && !logging) {
+		controls::draw_favorite(t_draw_list, m_assets, star.inset(K_STAR_ICON_INSET), false,
+		                        faded(star_hovered ? g_theme.text : g_theme.text_faint, scaled_alpha(t_alpha, hover)));
+	}
+
 	if (logging) {
 		draw_login_state(t_draw_list, t_layout, t_row, t_account, t_index, t_alpha);
 		return;
@@ -1803,16 +1733,7 @@ auto LibraryView::draw_row(DrawList* t_draw_list, const Layout& t_layout, Rect t
 
 	if (hover <= 0.0f) return;
 
-	const Rect edit         = edit_rect(t_layout, t_row);
-	const bool edit_hovered = m_hovered == Hit{Target::EDIT, t_index};
-	const u8   shown        = scaled_alpha(t_alpha, hover);
-
-	if (edit_hovered) {
-		controls::draw_circular_hover(t_draw_list, edit, g_theme.shadow, g_theme.control_hover, t_alpha);
-	}
-
-	t_draw_list->add_image(edit.inset(K_EDIT_ICON_INSET), m_assets->get(Asset::ICON_EDIT), faded(edit_hovered ? g_theme.text : g_theme.text_dim, shown));
-
+	const u8   shown = scaled_alpha(t_alpha, hover);
 	const Rect login = login_rect(t_layout, t_row, K_LOGIN_LABEL).moved(Vec2{snapped_to_pixel((1.0f - hover) * K_PILL_SLIDE), 0.0f});
 	draw_pill(t_draw_list, secondary, login, K_LOGIN_LABEL, accent, controls::ink_on(accent), shown);
 }
@@ -1992,26 +1913,6 @@ auto LibraryView::draw_form(DrawList* t_draw_list, const Layout& t_layout, const
 		}
 	}
 
-	if (m_form_account) {
-		const Rect  remove  = form.remove;
-		const bool  hovered = live && remove.contains(m_mouse);
-		const Color danger  = m_delete_armed ? controls::confirm_red() : g_theme.error;
-		const float text_x  = remove.x + K_DELETE_PADDING_X;
-
-		if (hovered || m_delete_armed) {
-			t_draw_list->add_rounded_rect(remove, rounded(K_PILL_RADIUS), faded(mix(g_theme.popup, danger, K_DANGER_TINT), content));
-		}
-
-		draw_text(t_draw_list, secondary, Vec2{text_x, secondary.centered_baseline(remove)}, m_delete_armed ? K_DELETE_ARMED : K_DELETE_LABEL,
-		          faded(danger, content));
-
-		if (m_delete_armed) {
-			const Rect ring{remove.right() - K_DELETE_PADDING_X - K_COUNTDOWN_SIZE, snapped_to_pixel(remove.center().y - K_COUNTDOWN_SIZE * 0.5f),
-			                K_COUNTDOWN_SIZE, K_COUNTDOWN_SIZE};
-			controls::draw_circular_countdown(t_draw_list, ring, std::max(0.0f, m_armed_seconds / K_DELETE_CONFIRM_SECONDS), faded(danger, content));
-		}
-	}
-
 	controls::draw_button(t_draw_list, body, form.cancel, "Cancel", controls::ButtonStyle::GHOST, accent, true, live && form.cancel.contains(m_mouse), content);
 	controls::draw_button(t_draw_list, body, form.save, "Save", controls::ButtonStyle::ACCENT, accent, true, live && form.save.contains(m_mouse), content);
 
@@ -2093,6 +1994,12 @@ auto LibraryView::draw(DrawList* t_draw_list, u8 t_alpha) -> void
 		const Rect  rect     = row_rect(layout, accounts, row).moved(Vec2{0.0f, snapped_to_pixel((1.0f - entrance) * K_ROW_RISE)});
 		if (entrance <= 0.0f || !rect.overlaps_vertically(layout.rows)) continue;
 
+		const Color separator = faded(g_theme.separator, scaled_alpha(t_alpha, entrance));
+		if (row == 0) {
+			t_draw_list->add_rect(Rect{rect.x, rect.y, rect.w, 1.0f}, separator);
+		}
+
+		t_draw_list->add_rect(Rect{rect.x, rect.bottom() - 1.0f, rect.w, 1.0f}, separator);
 		draw_row(t_draw_list, layout, rect, accounts.refs[row], row, false, scaled_alpha(t_alpha, entrance));
 	}
 

@@ -609,25 +609,3 @@ auto controls::draw_account_details(DrawList* t_draw_list, const Font& t_font, V
 	                              faded(g_theme.text_faint, t_alpha));
 	draw_text_truncated(t_draw_list, t_font, Vec2{when_x, t_baseline.y}, when, t_baseline.x + t_max_width - when_x, faded(g_theme.text_faint, t_alpha));
 }
-
-// Two pieces of text joined by a small dot, like an account count and when one was last played.
-auto controls::draw_dotted(DrawList*        t_draw_list,
-                           const Font&      t_font,
-                           Vec2             t_baseline,
-                           std::string_view t_first,
-                           std::string_view t_second,
-                           float            t_max_width,
-                           Color            t_color) -> void
-{
-	draw_text_truncated(t_draw_list, t_font, t_baseline, t_first, t_max_width, t_color);
-
-	const float dot_x    = t_baseline.x + std::min(text_width(t_font, t_first), t_max_width) + K_DETAIL_DOT_GAP;
-	const float second_x = dot_x + K_DETAIL_DOT_SIZE + K_DETAIL_DOT_GAP;
-	const float room     = t_baseline.x + t_max_width - second_x;
-	if (t_second.empty() || room <= 0.0f) return;
-
-	const float dot_y = t_baseline.y - t_font.ascent * 0.33f - K_DETAIL_DOT_SIZE * 0.5f;
-
-	t_draw_list->add_rounded_rect(Rect{dot_x, dot_y, K_DETAIL_DOT_SIZE, K_DETAIL_DOT_SIZE}, rounded(K_DETAIL_DOT_SIZE * 0.5f), t_color);
-	draw_text_truncated(t_draw_list, t_font, Vec2{second_x, t_baseline.y}, t_second, room, t_color);
-}

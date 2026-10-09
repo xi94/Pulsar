@@ -60,6 +60,7 @@ class LibraryView {
 
 	auto toggle_favorite(AccountRef t_account) -> void;
 	auto edit(AccountRef t_account) -> void;
+	auto delete_account(AccountRef t_account) -> void;
 	auto undo_delete() -> void;
 	auto forget_secrets() -> void;
 
@@ -75,7 +76,6 @@ class LibraryView {
 		NONE,
 		ROW,
 		STAR,
-		EDIT,
 		LOGIN,
 		CANCEL_LOGIN,
 		PERMISSION,
@@ -86,7 +86,6 @@ class LibraryView {
 		REVEAL,
 		REGION,
 		SHOW_IN,
-		DELETE,
 		CANCEL_FORM,
 		SAVE,
 		FORM,
@@ -115,7 +114,6 @@ class LibraryView {
 	struct Layout {
 		Rect    header;
 		float   title_baseline;
-		float   subtitle_baseline;
 		Rect    filter;
 		Rect    add;
 		Rect    labels;
@@ -132,7 +130,6 @@ class LibraryView {
 		Rect  region;
 		Rect  games[K_MAX_GAMES];
 		bool  has_games;
-		Rect  remove;
 		Rect  cancel;
 		Rect  save;
 		float height;
@@ -180,7 +177,6 @@ class LibraryView {
 	[[nodiscard]] auto lifted_rect(const Layout& t_layout) const -> Rect;
 	[[nodiscard]] auto star_rect(const Layout& t_layout, Rect t_row) const -> Rect;
 	[[nodiscard]] auto login_rect(const Layout& t_layout, Rect t_row, std::string_view t_label) const -> Rect;
-	[[nodiscard]] auto edit_rect(const Layout& t_layout, Rect t_row) const -> Rect;
 	[[nodiscard]] auto field_text_rect(const FormLayout& t_form, u32 t_field) const -> Rect;
 	[[nodiscard]] auto content_height(const Layout& t_layout, const VisibleAccounts& t_accounts) const -> float;
 	[[nodiscard]] auto scroll_geometry(const Layout& t_layout, const VisibleAccounts& t_accounts) const -> ScrollGeometry;
@@ -201,7 +197,7 @@ class LibraryView {
 	auto close_form(bool t_animated) -> void;
 	auto clear_form() -> void;
 	auto save_form() -> void;
-	auto delete_account(AccountRef t_account) -> void;
+	auto reveal_form(const Layout& t_layout, const VisibleAccounts& t_accounts) -> void;
 	auto forget_deleted() -> void;
 	auto focus_field(std::optional<u32> t_field) -> void;
 	auto focus_filter(bool t_focused) -> void;
@@ -261,8 +257,7 @@ class LibraryView {
 	char                      m_region[8]{};
 	u16                       m_visible_mask  = 0;
 	bool                      m_show_required = false;
-	bool                      m_delete_armed  = false;
-	float                     m_armed_seconds = 0.0f;
+	bool                      m_reveal_form   = false;
 
 	std::optional<DeletedAccount> m_deleted;
 	ListPopup                     m_region_list;

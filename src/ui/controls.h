@@ -98,12 +98,5 @@ auto draw_button(DrawList*        t_draw_list,
 [[nodiscard]] auto region_chip_width(const Font& t_font, std::string_view t_region) -> float;
 auto draw_region_chip(DrawList* t_draw_list, const Font& t_font, float t_x, float t_center_y, std::string_view t_region, u8 t_alpha) -> void;
 auto draw_account_details(DrawList* t_draw_list, const Font& t_font, Vec2 t_baseline, float t_max_width, const Account& t_account, u8 t_alpha) -> void;
-auto draw_dotted(DrawList*        t_draw_list,
-                 const Font&      t_font,
-                 Vec2             t_baseline,
-                 std::string_view t_first,
-                 std::string_view t_second,
-                 float            t_max_width,
-                 Color            t_color) -> void;
 
 }
