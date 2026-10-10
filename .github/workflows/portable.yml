@@ -1,10 +1,10 @@
 name: Build
 
-# Every push builds both apps and runs the tests. Pushing a version tag (git tag v0.8.0 && git push origin v0.8.0) also makes a
-# draft release with Pulsar.exe and the DMG attached. The update signing key never leaves your PC, so finish the release there:
-#   gh release download v0.8.0 --pattern Pulsar.exe --dir release
+# Every push builds both apps and runs the tests. Pushing a version tag (git tag v0.8.2 && git push origin v0.8.2) also makes a
+# draft release with the macOS DMG attached. Pulsar.exe comes from your PC, so update.json is signed for the exact file people
+# download, and the signing key never leaves it. Copy your Release build to release/Pulsar.exe, then:
 #   sign_release --exe release/Pulsar.exe --notes-file release/notes.txt --out release/update.json
-#   gh release upload v0.8.0 release/update.json
+#   gh release upload v0.8.2 release/Pulsar.exe release/update.json
 # then publish the draft on GitHub.
 
 on:
@@ -53,15 +53,10 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: Pulsar-Windows
-          path: build/src/Release/Pulsar.exe
-
   release:
     name: Draft release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [macos, windows]
+    needs: macos
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -85,4 +80,4 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "$GITHUB_REF_NAME" --notes ""
-          gh release upload "$GITHUB_REF_NAME" artifacts/Pulsar.exe "artifacts/Pulsar-${GITHUB_REF_NAME#v}.dmg" --clobber
+          gh release upload "$GITHUB_REF_NAME" "artifacts/Pulsar-${GITHUB_REF_NAME#v}.dmg" --clobber
