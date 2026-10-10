@@ -71,14 +71,65 @@ constexpr float K_ACCOUNTS_OVERLAP = 4.0f;
 constexpr float K_AIM_SLOP         = 12.0f;
 constexpr float K_HOVER_EASE_RATE  = 20.0f;
 constexpr float K_HOVER_ALPHA      = 0.16f;
+constexpr float K_QUIT_REST_RED    = 0.65f;
 constexpr float K_CHIP_ALPHA       = 0.09f;
 constexpr float K_SETTLED          = 0.005f;
 constexpr float K_BODY_SIZE        = 13.0f;
 constexpr float K_CAPTION_SIZE     = 12.0f;
 constexpr float K_CHIP_TEXT_SIZE   = 11.0f;
 
+constexpr UINT_PTR K_TOAST_TIMER   = 4;
+constexpr UINT     K_TOAST_TICK_MS = 15;
+
+constexpr float K_TOAST_MARGIN          = 12.0f;
+constexpr float K_TOAST_SHADOW          = 16.0f;
+constexpr float K_TOAST_SHADOW_DROP     = 3.0f;
+constexpr float K_TOAST_SHADOW_ALPHA    = 0.28f;
+constexpr u32   K_TOAST_SHADOW_LAYERS   = 12;
+constexpr float K_TOAST_RADIUS          = 9.0f;
+constexpr float K_TOAST_PADDING         = 11.0f;
+constexpr float K_TOAST_PILL_WIDTH      = 224.0f;
+constexpr float K_TOAST_PILL_HEIGHT     = 38.0f;
+constexpr float K_TOAST_CARD_WIDTH      = 262.0f;
+constexpr float K_TOAST_LINE_CENTER     = 15.5f;
+constexpr float K_TOAST_BAR_TOP         = 27.0f;
+constexpr float K_TOAST_BAR_HEIGHT      = 3.0f;
+constexpr float K_TOAST_TRACK_ALPHA     = 0.1f;
+constexpr float K_TOAST_LOGO_SIZE       = 15.0f;
+constexpr float K_TOAST_ICON_GAP        = 8.0f;
+constexpr float K_TOAST_GLYPH_SIZE      = 14.0f;
+constexpr float K_TOAST_COUNT_WIDTH     = 26.0f;
+constexpr float K_TOAST_HEADER_HEIGHT   = 18.0f;
+constexpr float K_TOAST_MESSAGE_GAP     = 3.0f;
+constexpr float K_TOAST_MESSAGE_MAX     = 48.0f;
+constexpr float K_TOAST_BUTTON_GAP      = 10.0f;
+constexpr float K_TOAST_BUTTON_HEIGHT   = 24.0f;
+constexpr float K_TOAST_BUTTON_PADDING  = 10.0f;
+constexpr float K_TOAST_BUTTON_SPACING  = 6.0f;
+constexpr float K_TOAST_BUTTON_RADIUS   = 6.0f;
+constexpr float K_TOAST_TEXT_SIZE       = 12.0f;
+constexpr float K_TOAST_COUNT_SIZE      = 11.0f;
+constexpr float K_TOAST_MESSAGE_SIZE    = 11.5f;
+constexpr float K_TOAST_GHOST_ALPHA     = 0.08f;
+constexpr float K_TOAST_GHOST_HOVER     = 0.07f;
+constexpr float K_TOAST_ERROR_EDGE      = 0.6f;
+constexpr float K_TOAST_SLIDE           = 14.0f;
+constexpr float K_TOAST_IN_SECONDS      = 0.22f;
+constexpr float K_TOAST_GROW_SECONDS    = 0.22f;
+constexpr float K_TOAST_DONE_SECONDS    = 0.25f;
+constexpr float K_TOAST_BAR_EASE_RATE   = 9.0f;
+constexpr float K_TOAST_SUCCESS_SECONDS = 2.0f;
+constexpr float K_TOAST_ERROR_SECONDS   = 5.0f;
+constexpr float K_TOAST_FADE_SHARE      = 0.45f;
+
+constexpr i32 K_TOAST_RETRY = 0;
+constexpr i32 K_TOAST_OPEN  = 1;
+constexpr i32 K_TOAST_BODY  = 2;
+
 constexpr const wchar_t* K_FONT_FAMILIES[]{L"Segoe UI Variable Text", L"Segoe UI"};
 constexpr const wchar_t* K_LOGIN_LABEL = L"Login";
+constexpr const wchar_t* K_RETRY_LABEL = L"Retry";
+constexpr wchar_t        K_ELLIPSIS    = 0x2026;
 
 enum class RowKind : u8 {
 	BRAND,
@@ -95,6 +146,8 @@ enum class Glyph : u8 {
 	LOCK,
 	POWER,
 	CHEVRON,
+	CHECK_CIRCLE,
+	ALERT_CIRCLE,
 };
 
 struct Row {
@@ -105,6 +158,7 @@ struct Row {
 	i32               item         = -1;
 	i32               icon         = -1;
 	os::TrayEventType action       = os::TrayEventType::NONE;
+	bool              destructive  = false;
 	float             label_x      = 0.0f;
 	float             detail_width = 0.0f;
 	float             top          = 0.0f;
@@ -118,6 +172,10 @@ struct TextFormats {
 	ComPtr<IDWriteTextFormat> count;
 	ComPtr<IDWriteTextFormat> chip;
 	ComPtr<IDWriteTextFormat> button;
+	ComPtr<IDWriteTextFormat> message;
+	ComPtr<IDWriteTextFormat> toast_text;
+	ComPtr<IDWriteTextFormat> toast_title;
+	ComPtr<IDWriteTextFormat> toast_count;
 };
 
 // One window of the menu: the games with the app's actions under them, or the accounts of the game being pointed at.
@@ -132,6 +190,45 @@ struct Panel {
 	bool                          tracking_leave = false;
 	ComPtr<ID2D1Bitmap>           game_icons[os::K_TRAY_MAX_GAMES];
 	ComPtr<ID2D1Bitmap>           logo;
+};
+
+// The small window by the tray that follows a login: a slim pill with the login's progress, which grows into a card when it fails.
+struct LoginToast {
+	HWND                                  window   = nullptr;
+	HDC                                   canvas   = nullptr;
+	HBITMAP                               pixels   = nullptr;
+	HGDIOBJ                               replaced = nullptr;
+	SIZE                                  size{};
+	ComPtr<ID2D1DCRenderTarget>           target;
+	ComPtr<ID2D1Bitmap>                   logo;
+	os::TrayLogin                         login{};
+	std::wstring                          status;
+	std::wstring                          account;
+	RECT                                  work{};
+	float                                 scale          = 1.0f;
+	bool                                  active         = false;
+	bool                                  leaving        = false;
+	bool                                  hovered        = false;
+	bool                                  tracking_leave = false;
+	i32                                   hot            = -1;
+	float                                 appear         = 0.0f;
+	float                                 card           = 0.0f;
+	float                                 done           = 0.0f;
+	float                                 bar            = 0.0f;
+	float                                 linger         = 0.0f;
+	float                                 message_height = 0.0f;
+	float                                 card_height    = 0.0f;
+	float                                 retry_width    = 0.0f;
+	float                                 open_width     = 0.0f;
+	float                                 button_hover[2]{};
+	std::chrono::steady_clock::time_point last_tick;
+};
+
+struct ToastCard {
+	D2D1_RECT_F header;
+	D2D1_RECT_F message;
+	D2D1_RECT_F retry;
+	D2D1_RECT_F open;
 };
 
 struct Painter {
@@ -160,6 +257,60 @@ struct Painter {
 [[nodiscard]] auto snapped(float t_dips, float t_scale) -> float
 {
 	return std::round(t_dips * t_scale) / t_scale;
+}
+
+[[nodiscard]] auto eased_out(float t_amount) -> float
+{
+	const float rest = 1.0f - std::clamp(t_amount, 0.0f, 1.0f);
+
+	return 1.0f - rest * rest * rest;
+}
+
+[[nodiscard]] auto smoothed(float t_amount) -> float
+{
+	const float amount = std::clamp(t_amount, 0.0f, 1.0f);
+
+	return amount * amount * (3.0f - 2.0f * amount);
+}
+
+[[nodiscard]] auto approached(float t_value, float t_target, float t_step) -> float
+{
+	return t_value < t_target ? std::min(t_value + t_step, t_target) : std::max(t_value - t_step, t_target);
+}
+
+[[nodiscard]] auto contains(const D2D1_RECT_F& t_rect, float t_x, float t_y) -> bool
+{
+	return t_x >= t_rect.left && t_x < t_rect.right && t_y >= t_rect.top && t_y < t_rect.bottom;
+}
+
+// The toast's shape inside its window, which keeps room around it for the shadow. It grows from the pill into the card with its bottom right
+// corner, the one nearest the tray, held still.
+[[nodiscard]] auto toast_shape(const LoginToast& t_toast, float t_window_width, float t_window_height) -> D2D1_RECT_F
+{
+	const float grow   = smoothed(t_toast.card);
+	const float width  = lerp(K_TOAST_PILL_WIDTH, K_TOAST_CARD_WIDTH, grow);
+	const float height = lerp(K_TOAST_PILL_HEIGHT, t_toast.card_height, grow);
+	const float right  = t_window_width - K_TOAST_SHADOW;
+	const float bottom = t_window_height - K_TOAST_SHADOW;
+
+	return D2D1::RectF(right - width, bottom - height, right, bottom);
+}
+
+[[nodiscard]] auto toast_card(const LoginToast& t_toast, const D2D1_RECT_F& t_shape) -> ToastCard
+{
+	const float left      = t_shape.left + K_TOAST_PADDING;
+	const float text_left = left + K_TOAST_LOGO_SIZE + K_TOAST_ICON_GAP;
+	const float top       = t_shape.top + K_TOAST_PADDING;
+	const float message   = top + K_TOAST_HEADER_HEIGHT + K_TOAST_MESSAGE_GAP;
+	const float buttons   = message + t_toast.message_height + K_TOAST_BUTTON_GAP;
+	const float open_left = text_left + t_toast.retry_width + K_TOAST_BUTTON_SPACING;
+
+	return ToastCard{
+		.header  = D2D1::RectF(left, top, t_shape.right - K_TOAST_PADDING, top + K_TOAST_HEADER_HEIGHT),
+		.message = D2D1::RectF(text_left, message, t_shape.right - K_TOAST_PADDING, message + t_toast.message_height),
+		.retry   = D2D1::RectF(text_left, buttons, text_left + t_toast.retry_width, buttons + K_TOAST_BUTTON_HEIGHT),
+		.open    = D2D1::RectF(open_left, buttons, open_left + t_toast.open_width, buttons + K_TOAST_BUTTON_HEIGHT),
+	};
 }
 
 [[nodiscard]] auto is_selectable(const Row& t_row) -> bool
@@ -358,6 +509,19 @@ struct Painter {
 	return std::ceil(metrics.widthIncludingTrailingWhitespace);
 }
 
+[[nodiscard]] auto text_height(IDWriteFactory* t_writer, IDWriteTextFormat* t_format, std::wstring_view t_text, float t_width) -> float
+{
+	ComPtr<IDWriteTextLayout> layout;
+	if (t_format == nullptr || FAILED(t_writer->CreateTextLayout(t_text.data(), static_cast<UINT32>(t_text.size()), t_format, t_width, 1024.0f, &layout))) {
+		return 0.0f;
+	}
+
+	DWRITE_TEXT_METRICS metrics{};
+	layout->GetMetrics(&metrics);
+
+	return std::ceil(metrics.height);
+}
+
 auto draw_label(ID2D1RenderTarget* t_target,
                 IDWriteTextFormat* t_format,
                 std::wstring_view  t_text,
@@ -445,6 +609,24 @@ auto draw_glyph(ID2D1RenderTarget* t_target, const Painter& t_painter, Glyph t_g
 			break;
 		}
 
+		case CHECK_CIRCLE: {
+			t_target->DrawEllipse(D2D1::Ellipse(at(12.0f, 12.0f), 9.0f * unit, 9.0f * unit), t_brush, stroke, t_painter.stroke);
+			trace([&](ID2D1GeometrySink* t_sink) {
+				t_sink->BeginFigure(at(9.0f, 12.0f), D2D1_FIGURE_BEGIN_HOLLOW);
+				t_sink->AddLine(at(11.0f, 14.0f));
+				t_sink->AddLine(at(15.0f, 10.0f));
+				t_sink->EndFigure(D2D1_FIGURE_END_OPEN);
+			});
+			break;
+		}
+
+		case ALERT_CIRCLE: {
+			t_target->DrawEllipse(D2D1::Ellipse(at(12.0f, 12.0f), 9.0f * unit, 9.0f * unit), t_brush, stroke, t_painter.stroke);
+			t_target->DrawLine(at(12.0f, 8.0f), at(12.0f, 12.0f), t_brush, stroke, t_painter.stroke);
+			dot(12.0f, 16.0f, stroke * 0.5f);
+			break;
+		}
+
 		case NONE: {
 			break;
 		}
@@ -459,13 +641,13 @@ auto draw_glyph(ID2D1RenderTarget* t_target, const Painter& t_painter, Glyph t_g
 	return D2D1::RectF(left, top, left + t_size, top + t_size);
 }
 
-auto draw_bitmap(ID2D1RenderTarget* t_target, ID2D1Bitmap* t_bitmap, float t_left, float t_middle, float t_scale) -> void
+auto draw_bitmap(ID2D1RenderTarget* t_target, ID2D1Bitmap* t_bitmap, float t_left, float t_middle, float t_scale, float t_opacity = 1.0f) -> void
 {
 	const D2D1_SIZE_F size = t_bitmap->GetSize();
 	const float       left = snapped(t_left, t_scale);
 	const float       top  = snapped(t_middle - size.height * 0.5f, t_scale);
 
-	t_target->DrawBitmap(t_bitmap, D2D1::RectF(left, top, left + size.width, top + size.height), 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+	t_target->DrawBitmap(t_bitmap, D2D1::RectF(left, top, left + size.width, top + size.height), t_opacity, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
 }
 
 auto paint_panel(ID2D1RenderTarget* t_target, const Painter& t_painter, const Panel& t_panel) -> void
@@ -505,7 +687,7 @@ auto paint_panel(ID2D1RenderTarget* t_target, const Painter& t_painter, const Pa
 
 		if (row.hover > 0.0f && is_selectable(row) && row.kind != RowKind::ACCOUNT) {
 			const D2D1_ROUNDED_RECT pill{D2D1::RectF(box.left, box.top + 1.0f, box.right, box.bottom - 1.0f), K_ROW_RADIUS, K_ROW_RADIUS};
-			t_target->FillRoundedRectangle(pill, paint(colors.accent, K_HOVER_ALPHA * row.hover));
+			t_target->FillRoundedRectangle(pill, paint(row.destructive ? colors.error : colors.accent, K_HOVER_ALPHA * row.hover));
 		}
 
 		switch (row.kind) {
@@ -577,9 +759,15 @@ auto paint_panel(ID2D1RenderTarget* t_target, const Painter& t_painter, const Pa
 				break;
 			}
 
+			// Quit is red from the start and turns fully red under the pointer, so it never reads like the harmless actions above it.
 			case ACTION: {
-				draw_glyph(t_target, t_painter, row.glyph, centered_box(left + (K_ICON_SIZE - K_GLYPH_SIZE) * 0.5f, middle, K_GLYPH_SIZE, scale), paint(ink));
-				draw_label(t_target, formats.body.Get(), row.label, row.label_x, right, box, paint(colors.text));
+				const D2D1_RECT_F glyph = centered_box(left + (K_ICON_SIZE - K_GLYPH_SIZE) * 0.5f, middle, K_GLYPH_SIZE, scale);
+				const Color       rest  = mix(colors.text_dim, colors.error, K_QUIT_REST_RED);
+				const Color       icon  = row.destructive ? mix(rest, colors.error, row.hover) : ink;
+				const Color       label = row.destructive ? mix(colors.text, colors.error, row.hover) : colors.text;
+
+				draw_glyph(t_target, t_painter, row.glyph, glyph, paint(icon));
+				draw_label(t_target, formats.body.Get(), row.label, row.label_x, right, box, paint(label));
 				break;
 			}
 
@@ -600,6 +788,119 @@ auto paint_panel(ID2D1RenderTarget* t_target, const Painter& t_painter, const Pa
 			}
 		}
 	}
+}
+
+auto paint_toast(ID2D1RenderTarget* t_target, const Painter& t_painter, const LoginToast& t_toast) -> void
+{
+	const os::TrayColors& colors     = t_painter.colors;
+	const TextFormats&    formats    = *t_painter.formats;
+	const float           scale      = t_painter.scale;
+	const D2D1_SIZE_F     size       = t_target->GetSize();
+	const D2D1_RECT_F     shape      = toast_shape(t_toast, size.width, size.height);
+	const float           grow       = smoothed(t_toast.card);
+	const float           pill_alpha = std::clamp(1.0f - grow / K_TOAST_FADE_SHARE, 0.0f, 1.0f);
+	const float           card_alpha = std::clamp((grow - (1.0f - K_TOAST_FADE_SHARE)) / K_TOAST_FADE_SHARE, 0.0f, 1.0f);
+
+	ComPtr<ID2D1SolidColorBrush> brush;
+	if (FAILED(t_target->CreateSolidColorBrush(to_d2d(colors.text), &brush))) return;
+
+	const auto paint = [&](Color t_color, float t_opacity = 1.0f) {
+		brush->SetColor(to_d2d(t_color, t_opacity));
+		return brush.Get();
+	};
+
+	t_target->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
+
+	// Stacked layers of faint black make a soft shadow without a blur pass.
+	for (u32 layer = K_TOAST_SHADOW_LAYERS; layer > 0; layer -= 1) {
+		const float       spread = static_cast<float>(layer) * (K_TOAST_SHADOW - K_TOAST_SHADOW_DROP) / static_cast<float>(K_TOAST_SHADOW_LAYERS);
+		const D2D1_RECT_F area =
+			D2D1::RectF(shape.left - spread, shape.top - spread + K_TOAST_SHADOW_DROP, shape.right + spread, shape.bottom + spread + K_TOAST_SHADOW_DROP);
+		const D2D1_ROUNDED_RECT shadow{area, K_TOAST_RADIUS + spread, K_TOAST_RADIUS + spread};
+
+		t_target->FillRoundedRectangle(shadow, paint(Color{0, 0, 0, 255}, K_TOAST_SHADOW_ALPHA / static_cast<float>(K_TOAST_SHADOW_LAYERS)));
+	}
+
+	const float             half = 0.5f / scale;
+	const D2D1_ROUNDED_RECT body{shape, K_TOAST_RADIUS, K_TOAST_RADIUS};
+	const D2D1_ROUNDED_RECT edge{D2D1::RectF(shape.left + half, shape.top + half, shape.right - half, shape.bottom - half), K_TOAST_RADIUS, K_TOAST_RADIUS};
+
+	t_target->FillRoundedRectangle(body, paint(with_alpha(colors.background, 255)));
+	t_target->DrawRoundedRectangle(edge, paint(mix(colors.border, colors.error, grow * K_TOAST_ERROR_EDGE)), 1.0f / scale);
+
+	const float left      = shape.left + K_TOAST_PADDING;
+	const float right     = shape.right - K_TOAST_PADDING;
+	const float text_left = left + K_TOAST_LOGO_SIZE + K_TOAST_ICON_GAP;
+
+	// While the pill grows into the card, what's inside stays inside the outline.
+	t_target->PushAxisAlignedClip(shape, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+
+	if (pill_alpha > 0.0f) {
+		const D2D1_RECT_F line{left, shape.top + K_TOAST_LINE_CENTER - K_TOAST_HEADER_HEIGHT * 0.5f, right,
+		                       shape.top + K_TOAST_LINE_CENTER + K_TOAST_HEADER_HEIGHT * 0.5f};
+		const bool        succeeded = t_toast.login.state == os::TrayLoginState::SUCCEEDED;
+		const float       middle    = (line.top + line.bottom) * 0.5f;
+
+		if (t_toast.logo) {
+			draw_bitmap(t_target, t_toast.logo.Get(), left, middle, scale, pill_alpha);
+		}
+
+		const std::wstring status = succeeded ? L"Logged in as " + t_toast.account : t_toast.status;
+		draw_label(t_target, formats.toast_text.Get(), status, text_left, right - K_TOAST_COUNT_WIDTH, line, paint(colors.text, pill_alpha));
+
+		if (t_toast.login.step > 0 && t_toast.done < 1.0f) {
+			const std::wstring count = std::to_wstring(t_toast.login.step) + L"/" + std::to_wstring(t_toast.login.step_count);
+			draw_label(t_target, formats.toast_count.Get(), count, right - K_TOAST_COUNT_WIDTH, right, line,
+			           paint(colors.text_disabled, pill_alpha * (1.0f - t_toast.done)));
+		}
+
+		if (t_toast.done > 0.0f) {
+			const D2D1_RECT_F check = centered_box(right - K_TOAST_GLYPH_SIZE, middle, K_TOAST_GLYPH_SIZE, scale);
+			draw_glyph(t_target, t_painter, Glyph::CHECK_CIRCLE, check, paint(colors.success, pill_alpha * t_toast.done));
+		}
+
+		const float             top    = snapped(shape.top + K_TOAST_BAR_TOP, scale);
+		const float             radius = K_TOAST_BAR_HEIGHT * 0.5f;
+		const D2D1_ROUNDED_RECT track{D2D1::RectF(left, top, right, top + K_TOAST_BAR_HEIGHT), radius, radius};
+
+		t_target->FillRoundedRectangle(track, paint(colors.text, K_TOAST_TRACK_ALPHA * pill_alpha));
+
+		if (t_toast.bar > 0.0f) {
+			const float             reach = std::max((right - left) * std::clamp(t_toast.bar, 0.0f, 1.0f), K_TOAST_BAR_HEIGHT);
+			const D2D1_ROUNDED_RECT filled{D2D1::RectF(left, top, left + reach, top + K_TOAST_BAR_HEIGHT), radius, radius};
+			t_target->FillRoundedRectangle(filled, paint(mix(colors.accent, colors.success, t_toast.done), pill_alpha));
+		}
+	}
+
+	if (card_alpha > 0.0f) {
+		const ToastCard card   = toast_card(t_toast, shape);
+		const float     middle = (card.header.top + card.header.bottom) * 0.5f;
+
+		if (t_toast.logo) {
+			draw_bitmap(t_target, t_toast.logo.Get(), card.header.left, middle, scale, card_alpha);
+		}
+
+		const D2D1_RECT_F alert = centered_box(card.header.right - K_TOAST_GLYPH_SIZE, middle, K_TOAST_GLYPH_SIZE, scale);
+		draw_glyph(t_target, t_painter, Glyph::ALERT_CIRCLE, alert, paint(colors.error, card_alpha));
+		draw_label(t_target, formats.toast_title.Get(), L"Couldn't log in to " + t_toast.account, text_left, alert.left - K_TOAST_ICON_GAP, card.header,
+		           paint(colors.text, card_alpha));
+
+		t_target->DrawText(t_toast.status.c_str(), static_cast<UINT32>(t_toast.status.size()), formats.message.Get(), card.message,
+		                   paint(colors.text_dim, card_alpha), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+
+		const D2D1_ROUNDED_RECT retry{card.retry, K_TOAST_BUTTON_RADIUS, K_TOAST_BUTTON_RADIUS};
+		const D2D1_ROUNDED_RECT open{card.open, K_TOAST_BUTTON_RADIUS, K_TOAST_BUTTON_RADIUS};
+
+		t_target->FillRoundedRectangle(retry, paint(colors.accent, card_alpha));
+		t_target->FillRoundedRectangle(retry, paint(Color{255, 255, 255, 255}, K_LOGIN_LIFT * t_toast.button_hover[0] * card_alpha));
+		draw_label(t_target, formats.button.Get(), K_RETRY_LABEL, card.retry.left, card.retry.right, card.retry, paint(colors.accent_ink, card_alpha));
+
+		t_target->FillRoundedRectangle(open, paint(colors.text, (K_TOAST_GHOST_ALPHA + K_TOAST_GHOST_HOVER * t_toast.button_hover[1]) * card_alpha));
+		draw_label(t_target, formats.button.Get(), std::wstring{L"Open "} + os::win32::K_APP_NAME_WIDE, card.open.left, card.open.right, card.open,
+		           paint(colors.text, card_alpha));
+	}
+
+	t_target->PopAxisAlignedClip();
 }
 
 [[nodiscard]] auto inside_triangle(POINT t_point, POINT t_a, POINT t_b, POINT t_c) -> bool
@@ -638,6 +939,8 @@ struct Tray::Native {
 		.text_disabled = {108, 108, 116, 255},
 		.accent        = {203, 166, 247, 255},
 		.accent_ink    = {24, 25, 30, 255},
+		.success       = {80, 200, 120, 255},
+		.error         = {220, 90, 80, 255},
 		.dark          = true,
 	};
 
@@ -670,11 +973,14 @@ struct Tray::Native {
 	bool              animating = false;
 	Clock::time_point last_tick;
 
+	LoginToast toast;
+
 	static auto CALLBACK window_proc(HWND t_window, UINT t_message, WPARAM t_wparam, LPARAM t_lparam) -> LRESULT;
 	static auto CALLBACK popup_proc(HWND t_window, UINT t_message, WPARAM t_wparam, LPARAM t_lparam) -> LRESULT;
 
 	[[nodiscard]] auto handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam) -> LRESULT;
 	[[nodiscard]] auto handle_popup_message(HWND t_window, UINT t_message, WPARAM t_wparam, LPARAM t_lparam) -> LRESULT;
+	[[nodiscard]] auto handle_toast_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam) -> LRESULT;
 
 	auto add_icon() -> bool;
 	auto remove_icon() -> void;
@@ -710,6 +1016,15 @@ struct Tray::Native {
 	auto watch() -> void;
 	auto start_animation() -> void;
 	auto animate() -> void;
+
+	[[nodiscard]] auto ensure_toast() -> bool;
+	auto create_toast_target() -> bool;
+	auto show_login(const TrayLogin& t_login) -> void;
+	auto hide_login() -> void;
+	[[nodiscard]] auto toast_size() const -> SIZE;
+	[[nodiscard]] auto toast_hit(LPARAM t_lparam) const -> i32;
+	auto render_toast() -> void;
+	auto step_toast() -> void;
 };
 
 Tray::Tray()
@@ -740,6 +1055,23 @@ Tray::~Tray()
 
 	if (native->locked_icon != nullptr) {
 		DestroyIcon(native->locked_icon);
+	}
+
+	LoginToast* toast = &native->toast;
+	toast->target.Reset();
+
+	if (toast->window != nullptr) {
+		KillTimer(toast->window, K_TOAST_TIMER);
+		DestroyWindow(toast->window);
+	}
+
+	if (toast->pixels != nullptr) {
+		SelectObject(toast->canvas, toast->replaced);
+		DeleteObject(toast->pixels);
+	}
+
+	if (toast->canvas != nullptr) {
+		DeleteDC(toast->canvas);
 	}
 }
 
@@ -796,6 +1128,16 @@ auto Tray::set_locked(bool t_locked) -> void
 	}
 
 	native->update_icon();
+}
+
+auto Tray::show_login(const TrayLogin& t_login) -> void
+{
+	m_native->show_login(t_login);
+}
+
+auto Tray::hide_login() -> void
+{
+	m_native->hide_login();
 }
 
 auto Tray::is_icon_visible() const -> bool
@@ -877,7 +1219,17 @@ auto Tray::Native::ensure_popup() -> bool
 	formats.count         = make_format(writer.Get(), family, K_CAPTION_SIZE, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_ALIGNMENT_TRAILING);
 	formats.chip          = make_format(writer.Get(), family, K_CHIP_TEXT_SIZE, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_ALIGNMENT_CENTER);
 	formats.button        = make_format(writer.Get(), family, K_CAPTION_SIZE, DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_TEXT_ALIGNMENT_CENTER);
-	login_width           = text_width(writer.Get(), formats.button.Get(), K_LOGIN_LABEL) + K_LOGIN_PADDING * 2.0f;
+	formats.message       = make_format(writer.Get(), family, K_TOAST_MESSAGE_SIZE, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_ALIGNMENT_LEADING);
+	formats.toast_text    = make_format(writer.Get(), family, K_TOAST_TEXT_SIZE, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_ALIGNMENT_LEADING);
+	formats.toast_title   = make_format(writer.Get(), family, K_TOAST_TEXT_SIZE, DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_TEXT_ALIGNMENT_LEADING);
+	formats.toast_count   = make_format(writer.Get(), family, K_TOAST_COUNT_SIZE, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_ALIGNMENT_TRAILING);
+
+	if (formats.message) {
+		formats.message->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
+		formats.message->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
+	}
+
+	login_width = text_width(writer.Get(), formats.button.Get(), K_LOGIN_LABEL) + K_LOGIN_PADDING * 2.0f;
 
 	const HINSTANCE instance = GetModuleHandleW(nullptr);
 
@@ -962,7 +1314,7 @@ auto Tray::Native::build_games() -> void
 		games.rows.push_back(Row{.kind = RowKind::ACTION, .label = L"Lock vault", .glyph = Glyph::LOCK, .action = TrayEventType::LOCK});
 	}
 
-	games.rows.push_back(Row{.kind = RowKind::ACTION, .label = L"Quit", .glyph = Glyph::POWER, .action = TrayEventType::EXIT});
+	games.rows.push_back(Row{.kind = RowKind::ACTION, .label = L"Quit", .glyph = Glyph::POWER, .action = TrayEventType::EXIT, .destructive = true});
 }
 
 auto Tray::Native::build_accounts(i32 t_game) -> void
@@ -1625,6 +1977,8 @@ auto Tray::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lpar
 
 auto Tray::Native::handle_popup_message(HWND t_window, UINT t_message, WPARAM t_wparam, LPARAM t_lparam) -> LRESULT
 {
+	if (t_window == toast.window && toast.window != nullptr) return handle_toast_message(t_message, t_wparam, t_lparam);
+
 	Panel* panel = nullptr;
 	if (t_window == games.window) {
 		panel = &games;
@@ -1714,6 +2068,319 @@ auto Tray::Native::handle_popup_message(HWND t_window, UINT t_message, WPARAM t_
 	}
 
 	return DefWindowProcW(t_window, t_message, t_wparam, t_lparam);
+}
+
+auto Tray::Native::ensure_toast() -> bool
+{
+	if (toast.target) return true;
+	if (!ensure_popup()) return false;
+
+	if (toast.window == nullptr) {
+		const HINSTANCE   instance = GetModuleHandleW(nullptr);
+		const WNDCLASSEXW toast_class{
+			.cbSize        = sizeof(WNDCLASSEXW),
+			.lpfnWndProc   = popup_proc,
+			.hInstance     = instance,
+			.hCursor       = LoadCursorW(nullptr, IDC_ARROW),
+			.lpszClassName = os::win32::K_LOGIN_TOAST_CLASS_NAME,
+		};
+
+		if (RegisterClassExW(&toast_class) == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+			debug_log::write(K_LOG_CATEGORY, "RegisterClassExW for the login toast failed, err=%lu", GetLastError());
+			return false;
+		}
+
+		// Layered so it can fade and carry its own soft shadow. It never takes focus, which would pull the game or the Riot Client out of the front.
+		toast.window = CreateWindowExW(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE, os::win32::K_LOGIN_TOAST_CLASS_NAME, L"", WS_POPUP,
+		                               0, 0, 1, 1, nullptr, nullptr, instance, this);
+		toast.canvas = CreateCompatibleDC(nullptr);
+	}
+
+	if (toast.window == nullptr || toast.canvas == nullptr || !create_toast_target()) {
+		debug_log::write(K_LOG_CATEGORY, "failed to create the login toast, err=%lu", GetLastError());
+		return false;
+	}
+
+	return true;
+}
+
+auto Tray::Native::create_toast_target() -> bool
+{
+	const D2D1_RENDER_TARGET_PROPERTIES properties =
+		D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+
+	toast.logo.Reset();
+	if (FAILED(factory->CreateDCRenderTarget(&properties, &toast.target))) return false;
+
+	toast.target->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+
+	return true;
+}
+
+auto Tray::Native::show_login(const TrayLogin& t_login) -> void
+{
+	if (!ensure_toast()) return;
+
+	const bool starting = !toast.active;
+	const bool changed  = starting || t_login.state != toast.login.state;
+
+	toast.login   = t_login;
+	toast.status  = win32::to_wide(t_login.status);
+	toast.account = win32::to_wide(t_login.account);
+	toast.leaving = false;
+
+	if (toast.status.ends_with(L"...")) {
+		toast.status.replace(toast.status.size() - 3, 3, 1, K_ELLIPSIS);
+	}
+
+	if (starting) {
+		const HMONITOR monitor = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+		MONITORINFO    info{.cbSize = sizeof(MONITORINFO)};
+		GetMonitorInfoW(monitor, &info);
+
+		UINT dpi_x = 96;
+		UINT dpi_y = 96;
+		GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y);
+
+		const float new_scale = static_cast<float>(dpi_x) / K_REFERENCE_DPI;
+		if (new_scale != toast.scale) {
+			toast.logo.Reset();
+		}
+
+		toast.scale           = new_scale;
+		toast.work            = info.rcWork;
+		toast.appear          = 0.0f;
+		toast.card            = t_login.state == TrayLoginState::FAILED ? 1.0f : 0.0f;
+		toast.done            = t_login.state == TrayLoginState::SUCCEEDED ? 1.0f : 0.0f;
+		toast.bar             = t_login.progress;
+		toast.hovered         = false;
+		toast.hot             = -1;
+		toast.button_hover[0] = 0.0f;
+		toast.button_hover[1] = 0.0f;
+		toast.active          = true;
+		toast.last_tick       = Clock::now();
+	}
+
+	if (t_login.state == TrayLoginState::FAILED) {
+		const float        width      = K_TOAST_CARD_WIDTH - K_TOAST_PADDING * 2.0f - K_TOAST_LOGO_SIZE - K_TOAST_ICON_GAP;
+		const std::wstring open_label = std::wstring{L"Open "} + win32::K_APP_NAME_WIDE;
+		toast.message_height          = std::min(text_height(writer.Get(), formats.message.Get(), toast.status, width), K_TOAST_MESSAGE_MAX);
+		toast.retry_width             = text_width(writer.Get(), formats.button.Get(), K_RETRY_LABEL) + K_TOAST_BUTTON_PADDING * 2.0f;
+		toast.open_width              = text_width(writer.Get(), formats.button.Get(), open_label) + K_TOAST_BUTTON_PADDING * 2.0f;
+		toast.card_height =
+			K_TOAST_PADDING * 2.0f + K_TOAST_HEADER_HEIGHT + K_TOAST_MESSAGE_GAP + toast.message_height + K_TOAST_BUTTON_GAP + K_TOAST_BUTTON_HEIGHT;
+	}
+
+	if (changed) {
+		toast.linger = t_login.state == TrayLoginState::SUCCEEDED ? K_TOAST_SUCCESS_SECONDS : K_TOAST_ERROR_SECONDS;
+	}
+
+	if (starting) {
+		render_toast();
+		ShowWindow(toast.window, SW_SHOWNOACTIVATE);
+		SetTimer(toast.window, K_TOAST_TIMER, K_TOAST_TICK_MS, nullptr);
+	}
+}
+
+auto Tray::Native::hide_login() -> void
+{
+	if (toast.active) {
+		toast.leaving = true;
+	}
+}
+
+// Room for the card when the login failed or the pill is still growing back from it, and for the shadow all round.
+auto Tray::Native::toast_size() const -> SIZE
+{
+	const bool  card   = toast.card > 0.0f || toast.login.state == TrayLoginState::FAILED;
+	const float width  = (card ? K_TOAST_CARD_WIDTH : K_TOAST_PILL_WIDTH) + K_TOAST_SHADOW * 2.0f;
+	const float height = (card ? std::max(K_TOAST_PILL_HEIGHT, toast.card_height) : K_TOAST_PILL_HEIGHT) + K_TOAST_SHADOW * 2.0f;
+
+	return SIZE{static_cast<LONG>(std::ceil(width * toast.scale)), static_cast<LONG>(std::ceil(height * toast.scale))};
+}
+
+auto Tray::Native::toast_hit(LPARAM t_lparam) const -> i32
+{
+	const float       x     = static_cast<float>(static_cast<short>(LOWORD(t_lparam))) / toast.scale;
+	const float       y     = static_cast<float>(static_cast<short>(HIWORD(t_lparam))) / toast.scale;
+	const D2D1_RECT_F shape = toast_shape(toast, static_cast<float>(toast.size.cx) / toast.scale, static_cast<float>(toast.size.cy) / toast.scale);
+
+	if (!contains(shape, x, y)) return -1;
+	if (toast.login.state != TrayLoginState::FAILED) return K_TOAST_BODY;
+	if (toast.card < 1.0f) return -1;
+
+	const ToastCard card = toast_card(toast, shape);
+	if (contains(card.retry, x, y)) return K_TOAST_RETRY;
+	if (contains(card.open, x, y)) return K_TOAST_OPEN;
+
+	return -1;
+}
+
+auto Tray::Native::render_toast() -> void
+{
+	if (!toast.target) return;
+
+	const SIZE size = toast_size();
+
+	if (toast.pixels == nullptr || size.cx != toast.size.cx || size.cy != toast.size.cy) {
+		if (toast.pixels != nullptr) {
+			SelectObject(toast.canvas, toast.replaced);
+			DeleteObject(toast.pixels);
+		}
+
+		BITMAPINFO format{};
+		format.bmiHeader = BITMAPINFOHEADER{
+			.biSize        = sizeof(BITMAPINFOHEADER),
+			.biWidth       = size.cx,
+			.biHeight      = -size.cy,
+			.biPlanes      = 1,
+			.biBitCount    = 32,
+			.biCompression = BI_RGB,
+		};
+
+		void* bits   = nullptr;
+		toast.pixels = CreateDIBSection(toast.canvas, &format, DIB_RGB_COLORS, &bits, nullptr, 0);
+		if (toast.pixels == nullptr) return;
+
+		toast.replaced = SelectObject(toast.canvas, toast.pixels);
+		toast.size     = size;
+	}
+
+	const RECT  bounds{0, 0, size.cx, size.cy};
+	const float dpi = K_REFERENCE_DPI * toast.scale;
+
+	toast.target->BindDC(toast.canvas, &bounds);
+	toast.target->SetDpi(dpi, dpi);
+
+	if (!toast.logo) {
+		toast.logo = make_bitmap(toast.target.Get(), logo_source, K_TOAST_LOGO_SIZE, 0.0f, toast.scale);
+	}
+
+	Painter look = painter();
+	look.scale   = toast.scale;
+
+	toast.target->BeginDraw();
+	paint_toast(toast.target.Get(), look, toast);
+
+	if (toast.target->EndDraw() == D2DERR_RECREATE_TARGET) {
+		toast.target.Reset();
+		create_toast_target();
+		return;
+	}
+
+	const float   shown = eased_out(toast.appear);
+	const auto    inset = static_cast<LONG>(std::lround((K_TOAST_SHADOW - K_TOAST_MARGIN) * toast.scale));
+	const auto    slide = static_cast<LONG>(std::lround((1.0f - shown) * K_TOAST_SLIDE * toast.scale));
+	POINT         position{toast.work.right + inset - size.cx, toast.work.bottom + inset - size.cy + slide};
+	POINT         origin{0, 0};
+	SIZE          extent = size;
+	BLENDFUNCTION blend{AC_SRC_OVER, 0, static_cast<BYTE>(std::lround(shown * 255.0f)), AC_SRC_ALPHA};
+
+	UpdateLayeredWindow(toast.window, nullptr, &position, &extent, toast.canvas, &origin, 0, &blend, ULW_ALPHA);
+}
+
+// Slides and fades the toast in, grows it into the card when the login fails, and lets it go a while after the login ends. The pointer resting
+// on it holds it open.
+auto Tray::Native::step_toast() -> void
+{
+	const Clock::time_point now     = Clock::now();
+	const float             seconds = std::min(std::chrono::duration<float>(now - toast.last_tick).count(), 0.05f);
+	const TrayLoginState    state   = toast.login.state;
+	const float             blend   = 1.0f - std::exp(-K_TOAST_BAR_EASE_RATE * seconds);
+	const float             hover   = 1.0f - std::exp(-K_HOVER_EASE_RATE * seconds);
+
+	toast.last_tick = now;
+
+	if (state != TrayLoginState::RUNNING && !toast.hovered && !toast.leaving) {
+		toast.linger -= seconds;
+
+		if (toast.linger <= 0.0f) {
+			toast.leaving = true;
+		}
+	}
+
+	toast.appear = approached(toast.appear, toast.leaving ? 0.0f : 1.0f, seconds / K_TOAST_IN_SECONDS);
+	toast.card   = approached(toast.card, state == TrayLoginState::FAILED ? 1.0f : 0.0f, seconds / K_TOAST_GROW_SECONDS);
+	toast.done   = approached(toast.done, state == TrayLoginState::SUCCEEDED ? 1.0f : 0.0f, seconds / K_TOAST_DONE_SECONDS);
+	toast.bar += ((state == TrayLoginState::SUCCEEDED ? 1.0f : toast.login.progress) - toast.bar) * blend;
+
+	for (i32 button = 0; button < 2; button += 1) {
+		toast.button_hover[button] += ((toast.hot == button ? 1.0f : 0.0f) - toast.button_hover[button]) * hover;
+	}
+
+	if (toast.leaving && toast.appear <= 0.0f) {
+		toast.active = false;
+		KillTimer(toast.window, K_TOAST_TIMER);
+		ShowWindow(toast.window, SW_HIDE);
+		return;
+	}
+
+	render_toast();
+}
+
+auto Tray::Native::handle_toast_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam) -> LRESULT
+{
+	switch (t_message) {
+		case WM_MOUSEACTIVATE: {
+			return MA_NOACTIVATE;
+		}
+
+		case WM_MOUSEMOVE: {
+			if (!toast.tracking_leave) {
+				TRACKMOUSEEVENT track{.cbSize = sizeof(TRACKMOUSEEVENT), .dwFlags = TME_LEAVE, .hwndTrack = toast.window};
+				toast.tracking_leave = TrackMouseEvent(&track) != FALSE;
+			}
+
+			const float x = static_cast<float>(static_cast<short>(LOWORD(t_lparam))) / toast.scale;
+			const float y = static_cast<float>(static_cast<short>(HIWORD(t_lparam))) / toast.scale;
+
+			toast.hot = toast_hit(t_lparam);
+			toast.hovered =
+				contains(toast_shape(toast, static_cast<float>(toast.size.cx) / toast.scale, static_cast<float>(toast.size.cy) / toast.scale), x, y);
+			SetCursor(LoadCursorW(nullptr, toast.hot >= 0 ? IDC_HAND : IDC_ARROW));
+			return 0;
+		}
+
+		case WM_MOUSELEAVE: {
+			toast.tracking_leave = false;
+			toast.hovered        = false;
+			toast.hot            = -1;
+			return 0;
+		}
+
+		case WM_SETCURSOR: {
+			SetCursor(LoadCursorW(nullptr, toast.hot >= 0 ? IDC_HAND : IDC_ARROW));
+			return TRUE;
+		}
+
+		case WM_LBUTTONUP: {
+			const i32 hit = toast_hit(t_lparam);
+
+			if (hit == K_TOAST_RETRY) {
+				pending_event = TrayEvent{.type = TrayEventType::RETRY_LOGIN};
+				toast.linger  = K_TOAST_ERROR_SECONDS;
+			} else if (hit == K_TOAST_OPEN || hit == K_TOAST_BODY) {
+				pending_event = TrayEvent{.type = TrayEventType::SHOW_WINDOW};
+				toast.leaving = true;
+			}
+
+			return 0;
+		}
+
+		case WM_TIMER: {
+			if (t_wparam == K_TOAST_TIMER) {
+				step_toast();
+			}
+
+			return 0;
+		}
+
+		default: {
+			break;
+		}
+	}
+
+	return DefWindowProcW(toast.window, t_message, t_wparam, t_lparam);
 }
 
 auto CALLBACK Tray::Native::window_proc(HWND t_window, UINT t_message, WPARAM t_wparam, LPARAM t_lparam) -> LRESULT

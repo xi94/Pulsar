@@ -145,6 +145,11 @@ auto Tray::set_game_icon(u32 t_game, std::span<const u8> t_png) -> void
 // The menu bar's menu is the system's own and shows the app icon, not the logo.
 auto Tray::set_logo(std::span<const u8>) -> void {}
 
+// The small login window by the tray is Windows only for now. On a Mac the app's own login progress shows instead.
+auto Tray::show_login(const TrayLogin&) -> void {}
+
+auto Tray::hide_login() -> void {}
+
 auto Tray::set_colors(const TrayColors& t_colors) -> void
 {
 	m_native->colors = t_colors;

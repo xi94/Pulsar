@@ -99,6 +99,7 @@ class App {
 	auto open_picked_menu(const Command& t_command) -> void;
 	auto open_text_menu(const Command& t_command) -> void;
 	auto fill_tray_menu(os::TrayMenu* t_menu) const -> void;
+	auto update_login_toast() -> void;
 
 	auto announce_update_stage() -> void;
 	auto announce_first_run_after_update() -> void;
@@ -152,6 +153,7 @@ class App {
 	UpdateStage m_announced_update_stage       = UpdateStage::IDLE;
 	Vec2        m_mouse{-1.0f, -1.0f};
 	bool        m_pointer_down = false;
+	bool        m_login_toast  = false;
 
 	std::chrono::steady_clock::time_point m_start_time;
 	std::chrono::steady_clock::time_point m_last_frame_time;

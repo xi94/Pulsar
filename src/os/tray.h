@@ -15,6 +15,7 @@ enum class TrayEventType : u8 {
 	LOCK,
 	EXIT,
 	QUICK_LOGIN,
+	RETRY_LOGIN,
 };
 
 struct TrayEvent {
@@ -50,9 +51,27 @@ struct TrayColors {
 	Color text_disabled;
 	Color accent;
 	Color accent_ink;
+	Color success;
+	Color error;
 	bool  dark;
 
 	auto operator==(const TrayColors&) const -> bool = default;
+};
+
+enum class TrayLoginState : u8 {
+	RUNNING,
+	SUCCEEDED,
+	FAILED,
+};
+
+// A login shown in the small window by the tray: its status while it runs, then how it went.
+struct TrayLogin {
+	TrayLoginState state = TrayLoginState::RUNNING;
+	char           account[64]{};
+	char           status[160]{};
+	u32            step       = 0;
+	u32            step_count = 0;
+	float          progress   = 0.0f;
 };
 
 struct TrayMenu {
@@ -79,6 +98,10 @@ class Tray {
 	auto set_logo(std::span<const u8> t_png) -> void;
 	auto set_colors(const TrayColors& t_colors) -> void;
 	auto set_locked(bool t_locked) -> void;
+
+	// Shows a login in the small window by the tray, or brings it up to date. A finished login closes itself after a moment.
+	auto show_login(const TrayLogin& t_login) -> void;
+	auto hide_login() -> void;
 
 	[[nodiscard]] auto is_icon_visible() const -> bool;
 	[[nodiscard]] auto take_event() -> TrayEvent;

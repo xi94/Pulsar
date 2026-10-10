@@ -52,6 +52,12 @@ constexpr os::AppMenuItem K_APP_MENU_ITEMS[]{
 
 static_assert(os::K_TRAY_MAX_GAMES >= K_MAX_GAMES);
 
+// The name the tray uses for an account: its note when it has one, which is how people tell their accounts apart, and otherwise its username.
+[[nodiscard]] auto short_name(const Account& t_account) -> std::string_view
+{
+	return t_account.note[0] != '\0' ? std::string_view{t_account.note} : std::string_view{t_account.username};
+}
+
 auto log_startup_phase(const char* t_phase) -> void
 {
 	using Clock = std::chrono::steady_clock;
@@ -541,6 +547,43 @@ auto App::account_for(AccountRef t_account) const -> const Account*
 	return m_library.account(t_account);
 }
 
+// A login that runs while Pulsar isn't the window in front shows in a small window by the tray, because the app is in the tray or the Riot Client
+// has opened over it. Once shown for a login, it follows that login to the end.
+auto App::update_login_toast() -> void
+{
+	const std::optional<AccountRef> shown   = m_login_session.shown_account();
+	const bool                      running = shown && !m_login_session.is_finished();
+
+	if (running && !m_window.is_focused()) {
+		m_login_toast = true;
+	}
+
+	if (!m_login_toast) return;
+
+	const Account* account = shown ? account_for(*shown) : nullptr;
+	if (account == nullptr || m_login_session.stage() == LoginStage::CANCELLED) {
+		m_tray.hide_login();
+		m_login_toast = false;
+		return;
+	}
+
+	os::TrayLogin login{
+		.state      = os::TrayLoginState::RUNNING,
+		.step       = m_login_session.step(),
+		.step_count = LoginSession::K_STEP_COUNT,
+		.progress   = m_login_session.step_progress(),
+	};
+
+	if (!running) {
+		login.state   = m_login_session.stage() == LoginStage::SUCCESS ? os::TrayLoginState::SUCCEEDED : os::TrayLoginState::FAILED;
+		m_login_toast = false;
+	}
+
+	copy_to(short_name(*account), login.account);
+	copy_to(m_login_session.status(), login.status);
+	m_tray.show_login(login);
+}
+
 auto App::clear_clipboard_secret() -> void
 {
 	if (!m_clipboard_secret) return;
@@ -569,11 +612,10 @@ auto App::fill_tray_menu(os::TrayMenu* t_menu) const -> void
 		entry->account_count = 0;
 
 		for (u32 row = 0; row < visible.count && t_menu->account_count < os::K_TRAY_MAX_ACCOUNTS; row += 1) {
-			const Account*         account = m_library.account(visible.refs[row]);
-			const std::string_view note    = account->note;
+			const Account* account = m_library.account(visible.refs[row]);
 
 			os::TrayAccount* item = &t_menu->accounts[t_menu->account_count];
-			copy_to(note.empty() ? std::string_view{account->username} : note, item->label);
+			copy_to(short_name(*account), item->label);
 			copy_to(std::string_view{account->region}, item->region);
 			item->game = static_cast<i32>(game);
 			item->row  = static_cast<i32>(row);
@@ -603,6 +645,8 @@ auto App::pump_input() -> void
 		.text_disabled = g_theme.text_faint,
 		.accent        = m_settings.accent,
 		.accent_ink    = controls::ink_on(m_settings.accent),
+		.success       = g_theme.success,
+		.error         = g_theme.error,
 		.dark          = luminance(g_theme.popup) < 0.5f,
 	});
 
@@ -635,6 +679,14 @@ auto App::handle_tray_event() -> void
 
 		case LOCK: {
 			lock_vault();
+			break;
+		}
+
+		case RETRY_LOGIN: {
+			if (!m_locked) {
+				m_login_session.retry();
+			}
+
 			break;
 		}
 
@@ -1152,6 +1204,7 @@ auto App::frame() -> void
 	{
 		PULSAR_PROFILE_SCOPE("Widgets.Update");
 		m_login_session.update(delta_seconds);
+		update_login_toast();
 		m_widgets.update(m_mouse, delta_seconds);
 	}
 

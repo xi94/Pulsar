@@ -17,6 +17,7 @@ class LoginSession {
 	LoginSession(Library* t_library, Settings* t_settings, CommandQueue* t_commands);
 
 	auto request(u32 t_game, AccountRef t_account) -> void;
+	auto retry() -> void;
 	auto cancel() -> void;
 	auto dismiss() -> void;
 	auto update(float t_delta_seconds) -> void;
@@ -29,6 +30,7 @@ class LoginSession {
 	[[nodiscard]] auto shows(u32 t_game, AccountRef t_account) const -> bool;
 	[[nodiscard]] auto stage() const -> LoginStage;
 	[[nodiscard]] auto step() const -> u32;
+	[[nodiscard]] auto step_progress() const -> float;
 	[[nodiscard]] auto asks_for_permission() const -> bool;
 
 	[[nodiscard]] auto status() const -> std::string_view
@@ -64,6 +66,11 @@ class LoginSession {
 	[[nodiscard]] auto finished_seconds() const -> float
 	{
 		return m_finished_seconds;
+	}
+
+	[[nodiscard]] auto shown_account() const -> std::optional<AccountRef>
+	{
+		return m_shown;
 	}
 
   private:

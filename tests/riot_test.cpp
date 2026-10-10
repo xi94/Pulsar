@@ -138,8 +138,8 @@ TEST_CASE("a remembered client path that's gone isn't used")
 
 TEST_CASE("errors the Riot Client shows become the right message")
 {
-	CHECK(std::string_view{login_failure_message("Your login credentials don't match an account in our system.")} == "Invalid username or password.");
+	CHECK(std::string_view{login_failure_message("Your login credentials don't match an account in our system.")} == "Wrong username or password.");
 	CHECK(std::string_view{login_failure_message("Sorry, we're having trouble signing you in right now. Please try again later.")}.starts_with(
-		"Something went wrong"));
-	CHECK(std::string_view{login_failure_message("")}.starts_with("The Riot Client didn't sign in"));
+		"Riot's servers are busy"));
+	CHECK(std::string_view{login_failure_message("")}.starts_with("Sign-in failed"));
 }

@@ -178,6 +178,13 @@ auto LoginSession::start(PendingLogin t_login) -> void
 	m_login.start(account->username, account->password, m_library->games[t_login.game].launch_product, m_settings->riot_client_path);
 }
 
+auto LoginSession::retry() -> void
+{
+	if (m_shown) {
+		request(m_shown_game, *m_shown);
+	}
+}
+
 auto LoginSession::cancel() -> void
 {
 	m_queued.reset();
@@ -319,6 +326,21 @@ auto LoginSession::stage() const -> LoginStage
 auto LoginSession::step() const -> u32
 {
 	return m_queued ? 0 : stage_step(m_login.stage());
+}
+
+// The progress counted in steps, so a bar split into one part per step fills each part during its own step.
+auto LoginSession::step_progress() const -> float
+{
+	constexpr LoginStage STEPS[K_STEP_COUNT]{LoginStage::WAITING_FOR_PROCESS, LoginStage::CONNECTING, LoginStage::AUTHENTICATING, LoginStage::LAUNCHING};
+
+	float filled = 0.0f;
+
+	for (const LoginStage step : STEPS) {
+		const StageSpan span = *stage_span(step);
+		filled += std::clamp((m_progress - span.start) / (span.end - span.start), 0.0f, 1.0f);
+	}
+
+	return filled / static_cast<float>(K_STEP_COUNT);
 }
 
 auto LoginSession::asks_for_permission() const -> bool

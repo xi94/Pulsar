@@ -17,13 +17,13 @@ constexpr auto K_CANCEL_GRACE_PERIOD    = std::chrono::milliseconds(5000);
 constexpr auto K_SHUTDOWN_JOIN_TIMEOUT  = std::chrono::milliseconds(3000);
 constexpr auto K_FINISHED_JOIN_TIMEOUT  = std::chrono::milliseconds(50);
 
-constexpr const char* K_INVALID_CREDENTIALS_MESSAGE = "Invalid username or password.";
-constexpr const char* K_SERVER_ERROR_MESSAGE        = "Something went wrong - Riot's servers might be overloaded. Try again in a moment.";
-constexpr const char* K_UNRECOGNIZED_ERROR_MESSAGE  = "The Riot Client didn't sign in - check the username and password and try again.";
-constexpr const char* K_GAME_IN_PROGRESS_MESSAGE    = "A game is already running - close it before switching accounts.";
-constexpr const char* K_NO_RIOT_CLIENT_MESSAGE      = "Couldn't find the Riot Client - set its location in Settings.";
-constexpr const char* K_LAUNCH_FAILED_MESSAGE       = "Couldn't launch the Riot Client.";
-constexpr const char* K_UNRESPONSIVE_CLIENT_MESSAGE = "The Riot Client stopped responding - try again.";
+constexpr const char* K_INVALID_CREDENTIALS_MESSAGE = "Wrong username or password.";
+constexpr const char* K_SERVER_ERROR_MESSAGE        = "Riot's servers are busy. Try again soon.";
+constexpr const char* K_UNRECOGNIZED_ERROR_MESSAGE  = "Sign-in failed. Check the username and password.";
+constexpr const char* K_GAME_IN_PROGRESS_MESSAGE    = "Close the running game first.";
+constexpr const char* K_NO_RIOT_CLIENT_MESSAGE      = "Riot Client not found. Set it in Settings.";
+constexpr const char* K_LAUNCH_FAILED_MESSAGE       = "The Riot Client wouldn't start.";
+constexpr const char* K_UNRESPONSIVE_CLIENT_MESSAGE = "The Riot Client stopped responding.";
 
 [[nodiscard]] auto stage_name(LoginStage t_stage) -> const char*
 {
