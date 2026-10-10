@@ -474,6 +474,16 @@ auto refresh_registration() -> void
 	}
 }
 
+auto starts_with_system() -> bool
+{
+	return has_value(K_RUN_KEY, K_RUN_VALUE);
+}
+
+auto set_starts_with_system(bool t_enabled) -> void
+{
+	set_start_with_windows(t_enabled, running_executable());
+}
+
 auto is_main_window_open() -> bool
 {
 	const HWND window = FindWindowW(os::win32::K_MAIN_WINDOW_CLASS_NAME, nullptr);

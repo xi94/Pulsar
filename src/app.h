@@ -98,7 +98,7 @@ class App {
 	auto open_library_account_menu(const Command& t_command) -> void;
 	auto open_picked_menu(const Command& t_command) -> void;
 	auto open_text_menu(const Command& t_command) -> void;
-	auto fill_tray_menu(os::TrayMenu* t_menu) const -> void;
+	auto fill_tray_menu(os::TrayMenu* t_menu) -> void;
 	auto update_login_toast() -> void;
 
 	auto announce_update_stage() -> void;
@@ -150,6 +150,7 @@ class App {
 	bool        m_just_updated                 = false;
 	bool        m_unreadable_storage_announced = false;
 	bool        m_in_frame                     = false;
+	bool        m_start_with_system            = false;
 	UpdateStage m_announced_update_stage       = UpdateStage::IDLE;
 	Vec2        m_mouse{-1.0f, -1.0f};
 	bool        m_pointer_down = false;

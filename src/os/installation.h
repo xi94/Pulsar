@@ -32,6 +32,8 @@ struct Installed {
 [[nodiscard]] auto should_offer_setup() -> bool;
 auto mark_setup_complete() -> void;
 auto refresh_registration() -> void;
+[[nodiscard]] auto starts_with_system() -> bool;
+auto set_starts_with_system(bool t_enabled) -> void;
 [[nodiscard]] auto is_main_window_open() -> bool;
 [[nodiscard]] auto close_running_app(std::string_view t_only_executable = {}) -> bool;
 auto finish_pending_removal() -> void;

@@ -482,6 +482,16 @@ auto controls::set_glass(bool t_supported, bool t_enabled, float t_tint, float t
 	g_glass_blur_scale = t_blur / K_GLASS_BLUR_REFERENCE;
 }
 
+auto controls::glass_tint_alpha(float t_tint) -> u8
+{
+	return g_glass_available ? to_alpha(std::clamp(t_tint, 0.0f, 1.0f)) : 255;
+}
+
+auto controls::glass_blur(GlassSurface t_surface) -> float
+{
+	return g_glass_blurs ? glass_spread(t_surface) : 0.0f;
+}
+
 // Rows on glass are lit with a thin wash of the text colour, so the glass still shows through them.
 auto controls::glass_highlight(float t_amount) -> Color
 {

@@ -78,6 +78,7 @@ constexpr float K_CORNER_ROUNDNESS_MAX    = 1.5f;
 constexpr float K_GLASS_TINT_MIN          = 0.3f;
 constexpr float K_GLASS_TINT_MAX          = 1.0f;
 constexpr float K_GLASS_TINT_DEFAULT      = 0.64f;
+constexpr float K_TRAY_TINT_DEFAULT       = 0.78f;
 constexpr float K_GLASS_BLUR_DEFAULT      = 0.3f;
 constexpr float K_FONT_SIZE_MIN           = 10.0f;
 constexpr float K_FONT_SIZE_MAX           = 24.0f;
@@ -104,6 +105,7 @@ struct Settings {
 	bool            glass                      = true;
 	float           glass_blur                 = K_GLASS_BLUR_DEFAULT;
 	float           glass_tint                 = K_GLASS_TINT_DEFAULT;
+	float           tray_tint                  = K_TRAY_TINT_DEFAULT;
 
 	float font_size           = 13.0f;
 	float secondary_font_size = 12.0f;
@@ -116,6 +118,8 @@ struct Settings {
 	bool        hide_from_capture       = true;
 	bool        block_overlay_injection = true;
 	bool        close_to_tray           = false;
+	bool        start_with_system       = false;
+	bool        start_minimized         = true;
 	GraphicsApi renderer                = GraphicsApi::NATIVE;
 	u32         auto_lock_minutes       = 0;
 	char        riot_client_path[K_PATH_CAPACITY]{};

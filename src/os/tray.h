@@ -16,6 +16,7 @@ enum class TrayEventType : u8 {
 	EXIT,
 	QUICK_LOGIN,
 	RETRY_LOGIN,
+	SHOW_UPDATES,
 };
 
 struct TrayEvent {
@@ -41,7 +42,8 @@ struct TrayAccount {
 	i32  row;
 };
 
-// The menu and the login toast follow the app's theme.
+// The menu and the login toast follow the app's theme. A background that isn't fully opaque is frosted glass over a copy of the screen
+// behind, blurred by blur DIPs.
 struct TrayColors {
 	Color background;
 	Color border;
@@ -53,8 +55,16 @@ struct TrayColors {
 	Color accent_ink;
 	Color success;
 	Color error;
+	float blur;
 
 	auto operator==(const TrayColors&) const -> bool = default;
+};
+
+// An update the tray menu offers at its top right.
+enum class TrayUpdate : u8 {
+	NONE,
+	AVAILABLE,
+	INSTALLING,
 };
 
 enum class TrayLoginState : u8 {
@@ -80,6 +90,7 @@ struct TrayMenu {
 	u32         account_count;
 	bool        locked;
 	bool        can_lock;
+	TrayUpdate  update;
 };
 
 class Tray {
@@ -90,6 +101,8 @@ class Tray {
 	Tray(const Tray&)                    = delete;
 	auto operator=(const Tray&) -> Tray& = delete;
 
+	[[nodiscard]] static auto supports_glass() -> bool;
+
 	auto create(std::string_view t_tooltip) -> bool;
 
 	auto on_menu_open(std::function<void(TrayMenu*)> t_fill_menu) -> void;
@@ -97,6 +110,7 @@ class Tray {
 	auto set_logo(std::span<const u8> t_png) -> void;
 	auto set_colors(const TrayColors& t_colors) -> void;
 	auto set_locked(bool t_locked) -> void;
+	auto set_update(TrayUpdate t_update) -> void;
 
 	// Shows a login in the small window by the tray, or brings it up to date. A finished login closes itself after a moment.
 	auto show_login(const TrayLogin& t_login) -> void;

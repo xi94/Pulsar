@@ -15,6 +15,8 @@
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
+#include "os/installation.h"
+#include "os/tray.h"
 #include "os/window.h"
 #include "render/renderer.h"
 #include "ui/controls.h"
@@ -124,6 +126,7 @@ constexpr float K_TILE_RING_RATE              = 16.0f;
 
 constexpr std::string_view K_CLOSE_CHOICE_LABELS[]{"Minimize to tray", "Quit"};
 constexpr std::string_view K_CARET_STYLE_LABELS[]{"Bar", "Block", "Underline"};
+constexpr std::string_view K_STARTUP_LABELS[]{"Off", "Minimized", "Open"};
 constexpr float            K_SEGMENT_PADDING_X  = 12.0f;
 constexpr float            K_SEGMENT_INSET      = 2.0f;
 constexpr float            K_SEGMENT_SLIDE_RATE = 18.0f;
@@ -149,6 +152,13 @@ constexpr auto K_THEME_NAMES = [] {
 
 	return names;
 }();
+
+[[nodiscard]] auto startup_selection(const Settings* t_settings) -> float
+{
+	if (!t_settings->start_with_system) return 0.0f;
+
+	return t_settings->start_minimized ? 1.0f : 2.0f;
+}
 
 [[nodiscard]] auto fraction_in(float t_value, float t_min, float t_max) -> float
 {
@@ -521,8 +531,11 @@ const SettingsPanel::RowSpec SettingsPanel::K_ROW_SPECS[]{
 	{&Rows::glass, SettingsTab::APPEARANCE, 4, "Frosted glass", "",
 	 "blur popups menus translucent transparent acrylic vibrancy frost background strength tint opacity"},
 	{&Rows::glass_tint, SettingsTab::APPEARANCE, 4, "", "", "glass tint popups menus opacity darkness transparency see through"},
+	{&Rows::tray_tint, SettingsTab::APPEARANCE, 4, "", "", "glass tray menu system tray notification area taskbar tint opacity transparency see through"},
 	{&Rows::animations, SettingsTab::BEHAVIOR, 5, "Animations", "", "motion effects reduce animate popups speed fast slow"},
 	{&Rows::notifications, SettingsTab::BEHAVIOR, 6, "Notifications", "", "toast popup alert confirmation messages"},
+	{&Rows::start_with_system, SettingsTab::BEHAVIOR, 6, "Start with Windows", "",
+	 "startup boot sign in login launch automatically autostart run minimized tray open hidden"},
 	{&Rows::close_to_tray, SettingsTab::BEHAVIOR, 6, "When closing", "", "close to tray minimize quit exit background system tray hide"},
 	{&Rows::renderer, SettingsTab::BEHAVIOR, 6, "Renderer", "Restart Pulsar to switch.", "graphics gpu direct3d directx metal opengl driver"},
 	{&Rows::riot_client, SettingsTab::BEHAVIOR, 7, "Location", "Found automatically when you log in.",
@@ -596,6 +609,7 @@ auto SettingsPanel::sync_with_settings() -> void
 	m_animation_speed_shown     = m_settings->animation_speed;
 	m_corner_roundness_shown    = m_settings->corner_roundness;
 	m_glass_tint_shown          = m_settings->glass_tint;
+	m_tray_tint_shown           = m_settings->tray_tint;
 	for (u32 i = 0; i < K_PERCENT_SLIDER_COUNT; i += 1) {
 		m_percent_shown[i]  = m_settings->*K_PERCENT_SLIDERS[i].value;
 		m_percent_reveal[i] = K_PERCENT_SLIDERS[i].shown(m_settings) ? 1.0f : 0.0f;
@@ -615,6 +629,7 @@ auto SettingsPanel::sync_with_settings() -> void
 		m_pattern_ring[i] = i == static_cast<u32>(m_settings->background_style) ? 1.0f : 0.0f;
 	}
 
+	m_startup_choice_shown  = startup_selection(m_settings);
 	m_close_choice_shown    = m_settings->close_to_tray ? 0.0f : 1.0f;
 	m_renderer_choice_shown = m_settings->renderer == GraphicsApi::OPENGL ? 1.0f : 0.0f;
 	m_caret_style_shown     = static_cast<float>(m_settings->caret_style);
@@ -759,15 +774,19 @@ auto SettingsPanel::matches_search(const RowSpec& t_spec) const -> bool
 
 auto SettingsPanel::is_listed(const RowSpec& t_spec) const -> bool
 {
+	if (t_spec.row == &Rows::start_with_system && !os::installation::is_supported()) return false;
+	if (t_spec.row == &Rows::tray_tint && !os::Tray::supports_glass()) return false;
+
 	return is_searching() ? matches_search(t_spec) : t_spec.tab == m_tab;
 }
 
-// Glass tint folds out under Frosted glass, opening and closing with it.
+// Glass tint and the tray menu's tint fold out under Frosted glass, opening and closing with it.
 auto SettingsPanel::row_extent(const RowSpec& t_spec) const -> float
 {
 	const float height = *t_spec.description == '\0' ? single_row_height(m_fonts) : row_height(m_fonts);
+	const bool  folds  = t_spec.row == &Rows::glass_tint || t_spec.row == &Rows::tray_tint;
 
-	return t_spec.row == &Rows::glass_tint ? height * slider_visibility(SliderKind::GLASS_BLUR) : height;
+	return folds ? height * slider_visibility(SliderKind::GLASS_BLUR) : height;
 }
 
 auto SettingsPanel::inline_slider_left(Rect t_row) const -> float
@@ -822,6 +841,10 @@ auto SettingsPanel::slider_line(const Rows& t_rows, SliderKind t_slider) const -
 			return t_rows.glass_tint;
 		}
 
+		case TRAY_TINT: {
+			return t_rows.tray_tint;
+		}
+
 		case COUNT: {
 			break;
 		}
@@ -847,7 +870,8 @@ auto SettingsPanel::slider_rect(const Rows& t_rows, SliderKind t_slider) const -
 		case GRAIN_STRENGTH:
 		case TRAIL_STRENGTH:
 		case GLASS_BLUR:
-		case GLASS_TINT: {
+		case GLASS_TINT:
+		case TRAY_TINT: {
 			return inline_slider_rect(line, pattern_select_rect(line, m_fonts), inline_slider_left(line), m_fonts);
 		}
 
@@ -888,7 +912,8 @@ auto SettingsPanel::slider_visibility(SliderKind t_slider) const -> float
 			return m_animation_speed_reveal;
 		}
 
-		case GLASS_TINT: {
+		case GLASS_TINT:
+		case TRAY_TINT: {
 			return slider_visibility(SliderKind::GLASS_BLUR);
 		}
 
@@ -927,6 +952,10 @@ auto SettingsPanel::slider_fraction(SliderKind t_slider) const -> float
 			return fraction_in(m_glass_tint_shown, K_GLASS_TINT_MIN, K_GLASS_TINT_MAX);
 		}
 
+		case TRAY_TINT: {
+			return fraction_in(m_tray_tint_shown, K_GLASS_TINT_MIN, K_GLASS_TINT_MAX);
+		}
+
 		case AUTO_LOCK: {
 			return m_auto_lock_shown / static_cast<float>(K_AUTO_LOCK_STOP_COUNT - 1);
 		}
@@ -962,6 +991,11 @@ auto SettingsPanel::slider_readout(SliderKind t_slider, char (&t_buffer)[16]) co
 
 		case GLASS_TINT: {
 			written = std::snprintf(t_buffer, sizeof(t_buffer), "%.0f%%", m_glass_tint_shown * 100.0f);
+			break;
+		}
+
+		case TRAY_TINT: {
+			written = std::snprintf(t_buffer, sizeof(t_buffer), "%.0f%%", m_tray_tint_shown * 100.0f);
 			break;
 		}
 
@@ -1031,6 +1065,11 @@ auto SettingsPanel::apply_slider(SliderKind t_slider, float t_fraction) -> void
 
 		case GLASS_TINT: {
 			m_settings->glass_tint = value_at(t_fraction, K_GLASS_TINT_MIN, K_GLASS_TINT_MAX);
+			break;
+		}
+
+		case TRAY_TINT: {
+			m_settings->tray_tint = value_at(t_fraction, K_GLASS_TINT_MIN, K_GLASS_TINT_MAX);
 			break;
 		}
 
@@ -1295,8 +1334,16 @@ auto SettingsPanel::reset_row(const Rows& t_rows, u32 t_setting) const -> Rect
 			return t_rows.glass_tint;
 		}
 
+		case TRAY_TINT: {
+			return t_rows.tray_tint;
+		}
+
 		case ANIMATION_SPEED: {
 			return t_rows.animations;
+		}
+
+		case STARTUP: {
+			return t_rows.start_with_system;
 		}
 
 		case CLOSE_TO_TRAY: {
@@ -1356,6 +1403,10 @@ auto SettingsPanel::reset_control(const Rows& t_rows, u32 t_setting) const -> Re
 			return slider_control_rect(row, m_fonts);
 		}
 
+		case STARTUP: {
+			return segment_choice_rect(row, K_STARTUP_LABELS);
+		}
+
 		case CLOSE_TO_TRAY: {
 			return segment_choice_rect(row, K_CLOSE_CHOICE_LABELS);
 		}
@@ -1378,6 +1429,7 @@ auto SettingsPanel::reset_control(const Rows& t_rows, u32 t_setting) const -> Re
 		case TRAIL_STRENGTH:
 		case GLASS_BLUR:
 		case GLASS_TINT:
+		case TRAY_TINT:
 		case ANIMATION_SPEED:
 		case COUNT: {
 			break;
@@ -1419,6 +1471,10 @@ auto SettingsPanel::reset_slider(u32 t_setting) -> std::optional<SettingsPanel::
 
 		case GLASS_TINT: {
 			return SliderKind::GLASS_TINT;
+		}
+
+		case TRAY_TINT: {
+			return SliderKind::TRAY_TINT;
 		}
 
 		case ANIMATION_SPEED: {
@@ -1513,8 +1569,16 @@ auto SettingsPanel::is_default(u32 t_setting) const -> bool
 			return same(m_settings->glass_tint, defaults.glass_tint);
 		}
 
+		case TRAY_TINT: {
+			return same(m_settings->tray_tint, defaults.tray_tint);
+		}
+
 		case ANIMATION_SPEED: {
 			return same(m_settings->animation_speed, defaults.animation_speed);
+		}
+
+		case STARTUP: {
+			return m_settings->start_with_system == defaults.start_with_system && m_settings->start_minimized == defaults.start_minimized;
 		}
 
 		case CLOSE_TO_TRAY: {
@@ -1626,6 +1690,11 @@ auto SettingsPanel::reset_to_default(u32 t_setting) -> void
 			break;
 		}
 
+		case TRAY_TINT: {
+			m_settings->tray_tint = defaults.tray_tint;
+			break;
+		}
+
 		case GLASS_TINT: {
 			m_settings->glass_tint = defaults.glass_tint;
 			break;
@@ -1634,6 +1703,12 @@ auto SettingsPanel::reset_to_default(u32 t_setting) -> void
 		case ANIMATION_SPEED: {
 			m_settings->animation_speed = defaults.animation_speed;
 			animation::set_speed(m_settings->animation_speed);
+			break;
+		}
+
+		case STARTUP: {
+			m_settings->start_with_system = defaults.start_with_system;
+			m_settings->start_minimized   = defaults.start_minimized;
 			break;
 		}
 
@@ -1828,6 +1903,7 @@ auto SettingsPanel::update(float t_delta_seconds) -> void
 	m_corner_roundness_shown =
 		dragging(SliderKind::CORNER_ROUNDNESS) ? m_settings->corner_roundness : ease_value(m_corner_roundness_shown, m_settings->corner_roundness);
 	m_glass_tint_shown = dragging(SliderKind::GLASS_TINT) ? m_settings->glass_tint : ease_value(m_glass_tint_shown, m_settings->glass_tint);
+	m_tray_tint_shown  = dragging(SliderKind::TRAY_TINT) ? m_settings->tray_tint : ease_value(m_tray_tint_shown, m_settings->tray_tint);
 	for (u32 i = 0; i < K_PERCENT_SLIDER_COUNT; i += 1) {
 		const PercentSlider& slider = K_PERCENT_SLIDERS[i];
 		const auto           kind   = static_cast<SliderKind>(static_cast<u32>(SliderKind::PATTERN_STRENGTH) + i);
@@ -1846,7 +1922,8 @@ auto SettingsPanel::update(float t_delta_seconds) -> void
 		m_pattern_ring[i]  = animation::ease_toward(m_pattern_ring[i], target, K_TILE_RING_RATE, t_delta_seconds);
 	}
 
-	m_close_choice_shown = animation::ease_toward(m_close_choice_shown, m_settings->close_to_tray ? 0.0f : 1.0f, K_SEGMENT_SLIDE_RATE, t_delta_seconds);
+	m_startup_choice_shown = animation::ease_toward(m_startup_choice_shown, startup_selection(m_settings), K_SEGMENT_SLIDE_RATE, t_delta_seconds);
+	m_close_choice_shown   = animation::ease_toward(m_close_choice_shown, m_settings->close_to_tray ? 0.0f : 1.0f, K_SEGMENT_SLIDE_RATE, t_delta_seconds);
 	m_renderer_choice_shown =
 		animation::ease_toward(m_renderer_choice_shown, m_settings->renderer == GraphicsApi::OPENGL ? 1.0f : 0.0f, K_SEGMENT_SLIDE_RATE, t_delta_seconds);
 	m_caret_style_shown   = animation::ease_toward(m_caret_style_shown, static_cast<float>(m_settings->caret_style), K_SEGMENT_SLIDE_RATE, t_delta_seconds);
@@ -1900,7 +1977,7 @@ auto SettingsPanel::update_hover_hints(float t_delta_seconds) -> void
 		const auto slider = static_cast<SliderKind>(i);
 		const bool engaged =
 			m_slider_drags[i].is_pressed() || (pointer_live && slider_visibility(slider) > 0.5f &&
-		                                       hits(current, slider_line(current_rows, slider), slider_hit_rect(current_rows, slider), m_mouse));
+			                                   hits(current, slider_line(current_rows, slider), slider_hit_rect(current_rows, slider), m_mouse));
 
 		m_slider_hover[i] = animation::ease_toward(m_slider_hover[i], engaged ? 1.0f : 0.0f, K_SLIDER_HOVER_RATE, t_delta_seconds);
 	}
@@ -2112,6 +2189,21 @@ auto SettingsPanel::handle_click(Vec2 t_point) -> void
 	const Rect renderer_choice = segment_choice_rect(current_rows.renderer, m_renderer_labels);
 	if (hits(current, current_rows.renderer, renderer_choice, t_point)) {
 		m_settings->renderer = t_point.x < choice_segment(renderer_choice, m_renderer_labels, 1).x ? GraphicsApi::NATIVE : GraphicsApi::OPENGL;
+	}
+
+	const Rect startup_choice = segment_choice_rect(current_rows.start_with_system, K_STARTUP_LABELS);
+	if (hits(current, current_rows.start_with_system, startup_choice, t_point)) {
+		for (u32 i = 0; i < std::size(K_STARTUP_LABELS); i += 1) {
+			if (choice_segment(startup_choice, K_STARTUP_LABELS, i).contains(t_point)) {
+				m_settings->start_with_system = i > 0;
+
+				if (i > 0) {
+					m_settings->start_minimized = i == 1;
+				}
+			}
+		}
+
+		return;
 	}
 
 	const Rect close_choice = segment_choice_rect(current_rows.close_to_tray, K_CLOSE_CHOICE_LABELS);
@@ -2340,6 +2432,7 @@ auto SettingsPanel::cursor() const -> CursorKind
 		{current_rows.font_size, stepper_plus(font_size)},
 		{current_rows.secondary_font_size, stepper_minus(secondary_size)},
 		{current_rows.secondary_font_size, stepper_plus(secondary_size)},
+		{current_rows.start_with_system, segment_choice_rect(current_rows.start_with_system, K_STARTUP_LABELS)},
 		{current_rows.close_to_tray, segment_choice_rect(current_rows.close_to_tray, K_CLOSE_CHOICE_LABELS)},
 		{current_rows.renderer, segment_choice_rect(current_rows.renderer, m_renderer_labels)},
 		{current_rows.caret_style, segment_choice_rect(current_rows.caret_style, K_CARET_STYLE_LABELS)},
@@ -2635,6 +2728,10 @@ auto SettingsPanel::slider_caption(SliderKind t_slider) -> std::string_view
 			return "Tint";
 		}
 
+		case TRAY_TINT: {
+			return "Tray menu";
+		}
+
 		default: {
 			return "Strength";
 		}
@@ -2702,7 +2799,7 @@ auto SettingsPanel::draw_cards(DrawList* t_draw_list, const Layout& t_layout, co
 		const bool first = group != spec.group;
 		group            = spec.group;
 
-		if (first || spec.row == &Rows::glass_tint || !is_on_screen(t_layout, row)) continue;
+		if (first || spec.row == &Rows::glass_tint || spec.row == &Rows::tray_tint || !is_on_screen(t_layout, row)) continue;
 
 		t_draw_list->add_rect(Rect{row.x + K_ROW_INSET_X, row.y, t_rows.row_width - K_ROW_INSET_X * 2.0f, 1.0f}, faded(g_theme.separator, t_alpha));
 	}
@@ -2811,6 +2908,7 @@ auto SettingsPanel::draw(DrawList* t_draw_list) -> void
 	draw_captions(t_draw_list, current, current_rows, alpha);
 	draw_appearance(t_draw_list, current, current_rows, alpha);
 	draw_pattern_row(t_draw_list, current, current_rows, alpha);
+	draw_segment_choice(t_draw_list, current, current_rows, &Rows::start_with_system, K_STARTUP_LABELS, m_startup_choice_shown, alpha);
 	draw_segment_choice(t_draw_list, current, current_rows, &Rows::close_to_tray, K_CLOSE_CHOICE_LABELS, m_close_choice_shown, alpha);
 	draw_segment_choice(t_draw_list, current, current_rows, &Rows::renderer, m_renderer_labels, m_renderer_choice_shown, alpha);
 	draw_segment_choice(t_draw_list, current, current_rows, &Rows::caret_style, K_CARET_STYLE_LABELS, m_caret_style_shown, alpha);

@@ -43,6 +43,13 @@ auto mark_setup_complete() -> void {}
 
 auto refresh_registration() -> void {}
 
+auto starts_with_system() -> bool
+{
+	return false;
+}
+
+auto set_starts_with_system(bool) -> void {}
+
 auto is_main_window_open() -> bool
 {
 	return false;

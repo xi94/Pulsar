@@ -116,6 +116,37 @@ auto log_startup_phase(const char* t_phase) -> void
 	return "";
 }
 
+// An update that failed to install or was cancelled is still there to get, so the tray offers it again.
+[[nodiscard]] auto tray_update(UpdateStage t_stage) -> os::TrayUpdate
+{
+	switch (t_stage) {
+		using enum UpdateStage;
+
+		case AVAILABLE:
+		case MANUAL_UPGRADE_REQUIRED:
+		case UPDATE_FAILED:
+		case CANCELLED: {
+			return os::TrayUpdate::AVAILABLE;
+		}
+
+		case DOWNLOADING:
+		case VERIFYING:
+		case INSTALLING:
+		case READY_TO_RELAUNCH: {
+			return os::TrayUpdate::INSTALLING;
+		}
+
+		case IDLE:
+		case CHECKING:
+		case UP_TO_DATE:
+		case CHECK_FAILED: {
+			break;
+		}
+	}
+
+	return os::TrayUpdate::NONE;
+}
+
 auto guard_against_overlays(bool t_block_injection) -> void
 {
 	os::register_app_identity();
@@ -183,6 +214,8 @@ auto App::start(bool t_from_startup) -> App::StartResult
 
 	log_startup_phase("LoadSettings");
 	const storage::LoadResult settings_result = storage::load_settings(&m_settings);
+	m_settings.start_with_system              = os::installation::starts_with_system();
+	m_start_with_system                       = m_settings.start_with_system;
 
 	log_startup_phase("GuardAgainstOverlays");
 	guard_against_overlays(m_settings.block_overlay_injection);
@@ -229,7 +262,7 @@ auto App::start(bool t_from_startup) -> App::StartResult
 	log_startup_phase("FirstFrame");
 	frame();
 
-	if (!t_from_startup) {
+	if (!t_from_startup || !m_settings.start_minimized) {
 		m_window.show();
 	} else if (!m_settings.close_to_tray || !m_tray.is_icon_visible()) {
 		m_window.show_minimized();
@@ -592,8 +625,11 @@ auto App::clear_clipboard_secret() -> void
 	m_clipboard_secret.reset();
 }
 
-auto App::fill_tray_menu(os::TrayMenu* t_menu) const -> void
+auto App::fill_tray_menu(os::TrayMenu* t_menu) -> void
 {
+	m_updater.check_for_update();
+	t_menu->update = tray_update(m_updater.stage());
+
 	if (m_locked) return;
 
 	t_menu->can_lock = m_settings.master_password_enabled;
@@ -633,9 +669,9 @@ auto App::pump_input() -> void
 	m_window.pump_messages();
 	m_window.set_close_to_tray(m_settings.close_to_tray && m_tray.is_icon_visible());
 	// The tray menu sits on the desktop rather than over the app, so it takes the deeper surface colour with a hint of the accent to look like part
-	// of Pulsar.
+	// of Pulsar. It blurs like the app's menus, with a tint of its own.
 	m_tray.set_colors(os::TrayColors{
-		.background    = mix(g_theme.surface, m_settings.accent, K_TRAY_ACCENT_TINT),
+		.background    = with_alpha(mix(g_theme.surface, m_settings.accent, K_TRAY_ACCENT_TINT), controls::glass_tint_alpha(m_settings.tray_tint)),
 		.border        = g_theme.border,
 		.separator     = g_theme.separator,
 		.text          = g_theme.text,
@@ -645,9 +681,11 @@ auto App::pump_input() -> void
 		.accent_ink    = controls::ink_on(m_settings.accent),
 		.success       = g_theme.success,
 		.error         = g_theme.error,
+		.blur          = controls::glass_blur(controls::GlassSurface::MENU),
 	});
 
 	handle_tray_event();
+	m_tray.set_update(tray_update(m_updater.stage()));
 
 	for (const os::InputEvent& event : m_window.input_events()) {
 		handle_input(event);
@@ -684,6 +722,12 @@ auto App::handle_tray_event() -> void
 				m_login_session.retry();
 			}
 
+			break;
+		}
+
+		case SHOW_UPDATES: {
+			m_window.restore();
+			m_commands.push(Command{.type = CommandType::OPEN_UPDATE_OVERLAY});
 			break;
 		}
 
@@ -798,6 +842,10 @@ auto App::process(const Command& t_command) -> void
 
 		case OPEN_SETTINGS: {
 			if (m_locked) break;
+
+			// Setup can change whether Pulsar starts with the system, so the panel shows what is set now.
+			m_settings.start_with_system = os::installation::starts_with_system();
+			m_start_with_system          = m_settings.start_with_system;
 
 			m_app_menu.close();
 			m_settings_panel.open();
@@ -1353,6 +1401,11 @@ auto App::run() -> void
 		}
 
 		m_window.set_excluded_from_capture(m_settings.hide_from_capture);
+
+		if (m_settings.start_with_system != m_start_with_system) {
+			m_start_with_system = m_settings.start_with_system;
+			os::installation::set_starts_with_system(m_start_with_system);
+		}
 
 		const float requested_wait = animation::take_idle_wait(K_IDLE_POLL_SECONDS);
 		const float wait           = m_window.is_hidden() || m_window.is_minimized() ? K_IDLE_POLL_SECONDS : requested_wait;

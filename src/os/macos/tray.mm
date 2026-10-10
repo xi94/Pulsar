@@ -150,6 +150,14 @@ auto Tray::show_login(const TrayLogin&) -> void {}
 
 auto Tray::hide_login() -> void {}
 
+// The menu bar's own menu shows no update status.
+auto Tray::set_update(TrayUpdate) -> void {}
+
+auto Tray::supports_glass() -> bool
+{
+	return false;
+}
+
 auto Tray::set_colors(const TrayColors& t_colors) -> void
 {
 	m_native->colors = t_colors;

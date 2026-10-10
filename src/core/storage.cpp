@@ -45,6 +45,7 @@ constexpr BoolSetting K_BOOL_SETTINGS[]{
 	{"exclude_account_list_from_capture", &Settings::hide_from_capture},
 	{"block_overlay_injection", &Settings::block_overlay_injection},
 	{"close_to_tray", &Settings::close_to_tray},
+	{"start_minimized", &Settings::start_minimized},
 };
 
 constexpr FloatSetting K_FLOAT_SETTINGS[]{
@@ -58,6 +59,7 @@ constexpr FloatSetting K_FLOAT_SETTINGS[]{
 	{"caret_trail_strength", &Settings::caret_trail_strength, 0.0f, 1.0f},
 	{"glass_blur", &Settings::glass_blur, 0.0f, 1.0f},
 	{"glass_tint", &Settings::glass_tint, K_GLASS_TINT_MIN, K_GLASS_TINT_MAX},
+	{"tray_tint", &Settings::tray_tint, K_GLASS_TINT_MIN, K_GLASS_TINT_MAX},
 };
 
 bool g_settings_writable = true;

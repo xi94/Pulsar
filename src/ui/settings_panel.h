@@ -47,7 +47,9 @@ enum class ResettableSetting : u8 {
 	TRAIL_STRENGTH,
 	GLASS_BLUR,
 	GLASS_TINT,
+	TRAY_TINT,
 	ANIMATION_SPEED,
+	STARTUP,
 	CLOSE_TO_TRAY,
 	RENDERER,
 	AUTO_LOCK,
@@ -95,6 +97,7 @@ class SettingsPanel : public Widget {
 		ANIMATION_SPEED,
 		AUTO_LOCK,
 		GLASS_TINT,
+		TRAY_TINT,
 		COUNT,
 	};
 
@@ -118,6 +121,7 @@ class SettingsPanel : public Widget {
 		Rect  caret_trail;
 		Rect  glass;
 		Rect  glass_tint;
+		Rect  tray_tint;
 		Rect  accent;
 		Rect  corner_roundness;
 		Rect  background;
@@ -128,6 +132,7 @@ class SettingsPanel : public Widget {
 		Rect  animations;
 		Rect  hide_from_capture;
 		Rect  block_overlay_injection;
+		Rect  start_with_system;
 		Rect  close_to_tray;
 		Rect  renderer;
 		Rect  riot_client;
@@ -330,6 +335,7 @@ class SettingsPanel : public Widget {
 	float m_pattern_ring[K_BACKGROUND_COUNT]{};
 	bool  m_pattern_open          = false;
 	float m_pattern_open_amount   = 0.0f;
+	float m_startup_choice_shown  = 0.0f;
 	float m_close_choice_shown    = 0.0f;
 	float m_renderer_choice_shown = 0.0f;
 	float m_caret_style_shown     = 0.0f;
@@ -341,6 +347,7 @@ class SettingsPanel : public Widget {
 	float m_animation_speed_shown     = 0.0f;
 	float m_corner_roundness_shown    = 0.0f;
 	float m_glass_tint_shown          = 0.0f;
+	float m_tray_tint_shown           = 0.0f;
 	float m_percent_shown[K_PERCENT_SLIDER_COUNT]{};
 	float m_percent_reveal[K_PERCENT_SLIDER_COUNT]{};
 	float m_animation_speed_reveal = 0.0f;
