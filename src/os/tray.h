@@ -41,7 +41,7 @@ struct TrayAccount {
 	i32  row;
 };
 
-// The menu follows the app's theme. A background that isn't fully opaque lets the system's frosted glass show through it.
+// The menu and the login toast follow the app's theme.
 struct TrayColors {
 	Color background;
 	Color border;
@@ -53,7 +53,6 @@ struct TrayColors {
 	Color accent_ink;
 	Color success;
 	Color error;
-	bool  dark;
 
 	auto operator==(const TrayColors&) const -> bool = default;
 };

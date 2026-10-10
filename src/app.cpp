@@ -633,11 +633,9 @@ auto App::pump_input() -> void
 	m_window.pump_messages();
 	m_window.set_close_to_tray(m_settings.close_to_tray && m_tray.is_icon_visible());
 	// The tray menu sits on the desktop rather than over the app, so it takes the deeper surface colour with a hint of the accent to look like part
-	// of Pulsar, and is as opaque as the account popup.
-	const bool tray_glass = m_settings.glass && m_settings.glass_blur > 0.0f;
-	const u8   tray_tint  = tray_glass ? controls::glass_tint_alpha(controls::GlassSurface::SHEET) : 255;
+	// of Pulsar.
 	m_tray.set_colors(os::TrayColors{
-		.background    = with_alpha(mix(g_theme.surface, m_settings.accent, K_TRAY_ACCENT_TINT), tray_tint),
+		.background    = mix(g_theme.surface, m_settings.accent, K_TRAY_ACCENT_TINT),
 		.border        = g_theme.border,
 		.separator     = g_theme.separator,
 		.text          = g_theme.text,
@@ -647,7 +645,6 @@ auto App::pump_input() -> void
 		.accent_ink    = controls::ink_on(m_settings.accent),
 		.success       = g_theme.success,
 		.error         = g_theme.error,
-		.dark          = luminance(g_theme.popup) < 0.5f,
 	});
 
 	handle_tray_event();

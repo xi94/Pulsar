@@ -21,7 +21,6 @@ constexpr const wchar_t* K_SETUP_WINDOW_CLASS_NAME        = L"PulsarDesktopAppSe
 constexpr const wchar_t* K_QUIT_INSTANCE_MESSAGE_NAME     = L"PulsarDesktopAppQuitForSetup";
 constexpr const wchar_t* K_TRAY_WINDOW_CLASS_NAME         = L"PulsarDesktopAppTray";
 constexpr const wchar_t* K_TRAY_MENU_CLASS_NAME           = L"PulsarDesktopAppTrayMenu";
-constexpr const wchar_t* K_LOGIN_TOAST_CLASS_NAME         = L"PulsarDesktopAppLoginToast";
 constexpr const wchar_t* K_SINGLE_INSTANCE_MUTEX_NAME     = L"Local\\Pulsar.DesktopApp.SingleInstance";
 constexpr const wchar_t* K_ACTIVATE_INSTANCE_MESSAGE_NAME = L"PulsarDesktopAppActivateExistingInstance";
 constexpr const wchar_t* K_APP_USER_MODEL_ID              = L"Pulsar.DesktopApp.AccountManager";
