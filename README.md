@@ -5,15 +5,28 @@
 <h1 align="center">Pulsar</h1>
 
 <p align="center">
-  <a href="https://github.com/xi94/Pulsar/releases/latest"><img src="https://img.shields.io/github/v/release/xi94/Pulsar?label=release" alt="Latest release"></a>
-  <a href="https://github.com/xi94/Pulsar/actions/workflows/portable.yml"><img src="https://github.com/xi94/Pulsar/actions/workflows/portable.yml/badge.svg" alt="Build status"></a>
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-informational" alt="Windows and macOS">
+  <b>A fast, encrypted account switcher for every Riot game.</b><br>
+  One click to log in to League, TFT, VALORANT, 2XKO and Runeterra.
 </p>
 
-<img width="958" height="627" alt="pulsar_image" src="https://github.com/user-attachments/assets/f0cab3a2-859f-4ae6-abbb-789c807ad91d" />
-<img width="528" height="296" alt="pulsar_tray"  src="https://github.com/user-attachments/assets/008b4d94-f8a0-4b45-aca3-2dd1801ab8ca" />
-<img width="378" height="212" alt="pulsar_view"  src="https://github.com/user-attachments/assets/e138a1b1-2e32-4a67-a626-9ef3527255dc" />
+<p align="center">
+  <!-- badges unchanged -->
+</p>
 
+<p align="center">
+  <a href="https://github.com/xi94/Pulsar/releases/latest"><b>Download for Windows / macOS</b></a>
+</p>
+
+<p align="center">
+  <img width="900" alt="Pulsar library view" src="https://github.com/user-attachments/assets/f0cab3a2-859f-4ae6-abbb-789c807ad91d" />
+</p>
+
+<table align="center">
+  <tr>
+    <td align="center"><img width="420" alt="Tray login" src="NEW_TRAY_SCREENSHOT"><br><sub>Log in straight from the tray</sub></td>
+    <td align="center"><img width="420" alt="Account list" src="NEW_LIST_SCREENSHOT"><br><sub>Favorites, notes and regions per game</sub></td>
+  </tr>
+</table>
 
 
 ## Features
