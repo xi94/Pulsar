@@ -31,7 +31,7 @@
     </td>
     <td align="center">
       <img width="420" alt="Tray login" src="https://github.com/user-attachments/assets/008b4d94-f8a0-4b45-aca3-2dd1801ab8ca" /><br>
-      <sub>Log in from the Tray</sub>
+      <sub>Log in from the system tray</sub>
     </td>
   </tr>
 </table>
