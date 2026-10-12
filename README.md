@@ -26,11 +26,11 @@
 <table align="center">
   <tr>
     <td align="center">
-      <img width="420" alt="Account list" src="https://github.com/user-attachments/assets/e138a1b1-2e32-4a67-a626-9ef3527255dc" /><br>
+      <img width="380" alt="Account list" src="https://github.com/user-attachments/assets/e138a1b1-2e32-4a67-a626-9ef3527255dc" /><br>
       <sub>Log in to all games</sub>
     </td>
     <td align="center">
-      <img width="420" alt="Tray login" src="https://github.com/user-attachments/assets/008b4d94-f8a0-4b45-aca3-2dd1801ab8ca" /><br>
+      <img width="380" alt="Tray login" src="https://github.com/user-attachments/assets/008b4d94-f8a0-4b45-aca3-2dd1801ab8ca" /><br>
       <sub>Log in from the system tray</sub>
     </td>
   </tr>
