@@ -62,6 +62,7 @@ Grab the latest from [**Releases**](https://github.com/xi94/Pulsar/releases/late
  
 <details>
 <summary><b>Windows</b> — Visual Studio 2022+ with <i>Desktop development with C++</i></summary>
+  
 ```bash
 cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release --target Pulsar
@@ -70,6 +71,7 @@ cmake --build build --config Release --target Pulsar
 </details>
 <details>
 <summary><b>macOS</b> — Xcode command line tools and CMake</summary>
+  
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
@@ -88,7 +90,3 @@ ctest --test-dir build --output-on-failure   # add -C Release on Windows
 Platform code is in `src/os/`, `src/render/` and `src/login/`. Everything else is shared.
  
 </details>
-<br>
----
- 
-<sub>Pulsar isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games and all associated properties are trademarks or registered trademarks of Riot Games, Inc.</sub>
