@@ -10,7 +10,11 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-informational" alt="Windows and macOS">
 </p>
 
-<img width="958" height="627" alt="image" src="https://github.com/user-attachments/assets/f0cab3a2-859f-4ae6-abbb-789c807ad91d" />
+<img width="958" height="627" alt="pulsar_image" src="https://github.com/user-attachments/assets/f0cab3a2-859f-4ae6-abbb-789c807ad91d" />
+<img width="528" height="296" alt="pulsar_tray"  src="https://github.com/user-attachments/assets/008b4d94-f8a0-4b45-aca3-2dd1801ab8ca" />
+<img width="378" height="212" alt="pulsar_view"  src="https://github.com/user-attachments/assets/e138a1b1-2e32-4a67-a626-9ef3527255dc" />
+
+
 
 ## Features
 
