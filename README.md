@@ -36,6 +36,7 @@
   </tr>
 </table>
 <br>
+
 ## Features
  
 - **One-click login** — signs in to the Riot Client for you
