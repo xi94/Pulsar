@@ -2,6 +2,7 @@
 
 #include <string_view>
 
+#include "core/enum_array.h"
 #include "core/types.h"
 
 struct Account;
@@ -34,6 +35,7 @@ enum class GlassSurface : u8 {
 	PANEL,
 	SHEET,
 	BACKDROP,
+	COUNT,
 };
 
 [[nodiscard]] auto confirm_red() -> Color;
@@ -74,10 +76,6 @@ auto draw_popup_shadow(DrawList* t_draw_list, Rect t_popup, float t_radius, floa
 // Frosted glass: a blurred copy of what is behind, tinted with the popup colour. With glass off, or no blur support, it is plain popup
 // colour.
 auto set_glass(bool t_supported, bool t_enabled, float t_tint, float t_blur) -> void;
-// For glass drawn outside the window: how opaque a tint of t_tint is, and how far a surface blurs, in logical pixels. Glass that is off is opaque
-// and doesn't blur.
-[[nodiscard]] auto glass_tint_alpha(float t_tint) -> u8;
-[[nodiscard]] auto glass_blur(GlassSurface t_surface) -> float;
 [[nodiscard]] auto glass_highlight(float t_amount = 1.0f) -> Color;
 // Panels over the whole window blur it as well as dimming it, so they need less of the usual scrim.
 auto draw_popup_backdrop(DrawList* t_draw_list, Rect t_rect, float t_amount) -> void;

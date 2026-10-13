@@ -5,19 +5,20 @@
 #include <cmath>
 #include <cwchar>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <Windows.h>
 #include <d2d1.h>
-#include <dwmapi.h>
 #include <dwrite.h>
 #include <shellapi.h>
 #include <shellscalingapi.h>
 #include <wrl/client.h>
 
 #include "core/app_identity.h"
+#include "core/enum_array.h"
 #include "core/debug_log.h"
 #include "os/win32/win32.h"
 #include "stb/stb_image.h"
@@ -44,18 +45,14 @@ constexpr UINT     K_TOAST_TICK_MS     = 15;
 
 constexpr float K_LOCKED_ICON_OPACITY = 0.55f;
 
-constexpr float K_REFERENCE_DPI    = 96.0f;
-constexpr float K_SURFACE_RADIUS   = 9.0f;
-constexpr float K_SHADOW_MARGIN    = 16.0f;
-constexpr float K_SHADOW_DROP      = 3.0f;
-constexpr float K_SHADOW_ALPHA     = 0.28f;
-constexpr u32   K_SHADOW_LAYERS    = 12;
-constexpr float K_GLASS_SAMPLE     = 4.0f;
-constexpr int   K_GLASS_MAX_SHRINK = 8;
-constexpr int   K_GLASS_PASSES     = 3;
-constexpr float K_GLASS_HIGHLIGHT  = 0.04f;
-constexpr float K_HOVER_EASE_RATE  = 20.0f;
-constexpr float K_SETTLED          = 0.005f;
+constexpr float K_REFERENCE_DPI   = 96.0f;
+constexpr float K_SURFACE_RADIUS  = 9.0f;
+constexpr float K_SHADOW_MARGIN   = 16.0f;
+constexpr float K_SHADOW_DROP     = 3.0f;
+constexpr float K_SHADOW_ALPHA    = 0.28f;
+constexpr u32   K_SHADOW_LAYERS   = 12;
+constexpr float K_HOVER_EASE_RATE = 20.0f;
+constexpr float K_SETTLED         = 0.005f;
 
 constexpr float K_PANEL_PADDING    = 5.0f;
 constexpr float K_ROW_HEIGHT       = 28.0f;
@@ -141,12 +138,14 @@ constexpr float K_TOAST_BAR_EASE_RATE   = 9.0f;
 constexpr float K_TOAST_SUCCESS_SECONDS = 2.0f;
 constexpr float K_TOAST_ERROR_SECONDS   = 5.0f;
 constexpr float K_TOAST_FADE_SHARE      = 0.45f;
-constexpr float K_TOAST_CARD_MAX_HEIGHT =
-	K_TOAST_PADDING * 2.0f + K_TOAST_HEADER_HEIGHT + K_TOAST_MESSAGE_GAP + K_TOAST_MESSAGE_MAX + K_TOAST_BUTTON_GAP + K_TOAST_BUTTON_HEIGHT;
 
-constexpr i32 K_TOAST_RETRY = 0;
-constexpr i32 K_TOAST_OPEN  = 1;
-constexpr i32 K_TOAST_BODY  = 2;
+// What the pointer is over on the login toast: one of the failed card's two buttons, or the pill itself, which opens Pulsar.
+enum class ToastHit : u8 {
+	RETRY,
+	OPEN,
+	BODY,
+	COUNT,
+};
 
 constexpr const wchar_t* K_FONT_FAMILIES[]{L"Segoe UI Variable Text", L"Segoe UI"};
 constexpr const wchar_t* K_LOGIN_LABEL    = L"Login";
@@ -178,19 +177,19 @@ enum class Glyph : u8 {
 };
 
 struct Row {
-	RowKind           kind = RowKind::NOTE;
-	std::wstring      label;
-	std::wstring      detail;
-	Glyph             glyph        = Glyph::NONE;
-	i32               item         = -1;
-	i32               icon         = -1;
-	os::TrayEventType action       = os::TrayEventType::NONE;
-	bool              destructive  = false;
-	float             label_x      = 0.0f;
-	float             detail_width = 0.0f;
-	float             top          = 0.0f;
-	float             height       = 0.0f;
-	float             hover        = 0.0f;
+	RowKind            kind = RowKind::NOTE;
+	std::wstring       label;
+	std::wstring       detail;
+	Glyph              glyph = Glyph::NONE;
+	std::optional<u32> item;
+	std::optional<u32> icon;
+	os::TrayEventType  action       = os::TrayEventType::NONE;
+	bool               destructive  = false;
+	float              label_x      = 0.0f;
+	float              detail_width = 0.0f;
+	float              top          = 0.0f;
+	float              height       = 0.0f;
+	float              hover        = 0.0f;
 };
 
 struct TextFormats {
@@ -218,32 +217,17 @@ struct Canvas {
 // One panel of the menu: the games with the app's actions under them, or the accounts of the game being pointed at. frame is where it sits in
 // the menu's window, in DIPs, and its rows are laid out from its top left corner.
 struct Panel {
-	std::vector<Row> rows;
-	D2D1_RECT_F      frame{};
-	float            width     = 0.0f;
-	float            height    = 0.0f;
-	i32              hot       = -1;
-	bool             login_hot = false;
+	std::vector<Row>   rows;
+	D2D1_RECT_F        frame{};
+	float              width  = 0.0f;
+	float              height = 0.0f;
+	std::optional<u32> hot;
+	bool               login_hot = false;
 };
 
 struct MenuImages {
 	ComPtr<ID2D1Bitmap> logo;
 	ComPtr<ID2D1Bitmap> game_icons[os::K_TRAY_MAX_GAMES];
-};
-
-// A blurred copy of what the screen showed behind a window before it opened, kept smaller than the area it covers.
-struct Backdrop {
-	std::vector<u8> pixels;
-	int             width  = 0;
-	int             height = 0;
-	int             shrink = 1;
-	RECT            area{};
-};
-
-// Frosted glass for one window: the backdrop as a brush, and where the backdrop lies in the window in DIPs.
-struct Glass {
-	ID2D1BitmapBrush* brush = nullptr;
-	D2D1::Matrix3x2F  place = D2D1::Matrix3x2F::Identity();
 };
 
 // The update pill at the end of the menu's header, as drawn.
@@ -259,8 +243,6 @@ struct LoginToast {
 	HWND                                  window = nullptr;
 	Canvas                                canvas;
 	ComPtr<ID2D1Bitmap>                   logo;
-	Backdrop                              backdrop;
-	ComPtr<ID2D1BitmapBrush>              glass;
 	os::TrayLogin                         login{};
 	std::wstring                          status;
 	std::wstring                          account;
@@ -270,7 +252,7 @@ struct LoginToast {
 	bool                                  leaving        = false;
 	bool                                  hovered        = false;
 	bool                                  tracking_leave = false;
-	i32                                   hot            = -1;
+	std::optional<ToastHit>               hot;
 	float                                 appear         = 0.0f;
 	float                                 card           = 0.0f;
 	float                                 done           = 0.0f;
@@ -280,7 +262,7 @@ struct LoginToast {
 	float                                 card_height    = 0.0f;
 	float                                 retry_width    = 0.0f;
 	float                                 open_width     = 0.0f;
-	float                                 button_hover[2]{};
+	EnumArray<ToastHit, float>            hover{};
 	std::chrono::steady_clock::time_point last_tick;
 };
 
@@ -645,168 +627,6 @@ auto release_canvas(Canvas* t_canvas) -> void
 	*t_canvas = Canvas{};
 }
 
-auto blur_line(const u8* t_from, u8* t_to, int t_count, int t_stride, int t_radius) -> void
-{
-	const int span = t_radius * 2 + 1;
-
-	for (int channel = 0; channel < 3; channel += 1) {
-		const auto at = [&](int t_index) -> int {
-			return t_from[static_cast<usize>(std::clamp(t_index, 0, t_count - 1)) * static_cast<usize>(t_stride) + static_cast<usize>(channel)];
-		};
-
-		int sum = 0;
-
-		for (int i = -t_radius; i <= t_radius; i += 1) {
-			sum += at(i);
-		}
-
-		for (int i = 0; i < t_count; i += 1) {
-			t_to[static_cast<usize>(i) * static_cast<usize>(t_stride) + static_cast<usize>(channel)] = static_cast<u8>((sum + span / 2) / span);
-			sum += at(i + t_radius + 1) - at(i - t_radius);
-		}
-	}
-}
-
-// Three box blurs in a row come close to a Gaussian with a sigma of t_spread pixels.
-auto blur(Backdrop* t_backdrop, float t_spread) -> void
-{
-	const float ideal  = std::sqrt(12.0f * t_spread * t_spread / static_cast<float>(K_GLASS_PASSES) + 1.0f);
-	const int   radius = static_cast<int>(std::lround((ideal - 1.0f) * 0.5f));
-	if (radius <= 0) return;
-
-	const auto      width  = static_cast<usize>(t_backdrop->width);
-	u8*             pixels = t_backdrop->pixels.data();
-	std::vector<u8> across(t_backdrop->pixels.size());
-
-	for (int pass = 0; pass < K_GLASS_PASSES; pass += 1) {
-		for (usize y = 0; y < static_cast<usize>(t_backdrop->height); y += 1) {
-			blur_line(pixels + y * width * 4, across.data() + y * width * 4, t_backdrop->width, 4, radius);
-		}
-
-		for (usize x = 0; x < width; x += 1) {
-			blur_line(across.data() + x * 4, pixels + x * 4, t_backdrop->height, t_backdrop->width * 4, radius);
-		}
-	}
-}
-
-// Shrinks a copy of t_area of the screen and blurs it by t_spread pixels. Shrinking first keeps a wide blur cheap and loses only detail the blur
-// would take anyway.
-[[nodiscard]] auto frosted(const u8* t_source, const RECT& t_area, float t_spread) -> Backdrop
-{
-	const int width  = t_area.right - t_area.left;
-	const int height = t_area.bottom - t_area.top;
-	const int shrink = std::clamp(static_cast<int>(t_spread / K_GLASS_SAMPLE), 1, K_GLASS_MAX_SHRINK);
-
-	Backdrop backdrop{
-		.width  = (width + shrink - 1) / shrink,
-		.height = (height + shrink - 1) / shrink,
-		.shrink = shrink,
-		.area   = t_area,
-	};
-
-	backdrop.pixels.resize(static_cast<usize>(backdrop.width) * static_cast<usize>(backdrop.height) * 4);
-
-	for (int y = 0; y < backdrop.height; y += 1) {
-		for (int x = 0; x < backdrop.width; x += 1) {
-			u32 sum[3]{};
-			u32 samples = 0;
-
-			for (int sy = y * shrink; sy < std::min((y + 1) * shrink, height); sy += 1) {
-				for (int sx = x * shrink; sx < std::min((x + 1) * shrink, width); sx += 1) {
-					const u8* texel = t_source + (static_cast<usize>(sy) * static_cast<usize>(width) + static_cast<usize>(sx)) * 4;
-
-					sum[0] += texel[0];
-					sum[1] += texel[1];
-					sum[2] += texel[2];
-					samples += 1;
-				}
-			}
-
-			u8* out = backdrop.pixels.data() + (static_cast<usize>(y) * static_cast<usize>(backdrop.width) + static_cast<usize>(x)) * 4;
-			out[0]  = static_cast<u8>((sum[0] + samples / 2) / samples);
-			out[1]  = static_cast<u8>((sum[1] + samples / 2) / samples);
-			out[2]  = static_cast<u8>((sum[2] + samples / 2) / samples);
-			out[3]  = 255;
-		}
-	}
-
-	blur(&backdrop, t_spread / static_cast<float>(shrink));
-
-	return backdrop;
-}
-
-[[nodiscard]] auto capture_backdrop(const RECT& t_area, float t_spread) -> Backdrop
-{
-	const int width  = t_area.right - t_area.left;
-	const int height = t_area.bottom - t_area.top;
-	if (width <= 0 || height <= 0) return {};
-
-	BITMAPINFO format{};
-	format.bmiHeader = BITMAPINFOHEADER{
-		.biSize        = sizeof(BITMAPINFOHEADER),
-		.biWidth       = width,
-		.biHeight      = -height,
-		.biPlanes      = 1,
-		.biBitCount    = 32,
-		.biCompression = BI_RGB,
-	};
-
-	const HDC     screen = GetDC(nullptr);
-	const HDC     copy   = CreateCompatibleDC(screen);
-	void*         bits   = nullptr;
-	const HBITMAP shot   = copy != nullptr ? CreateDIBSection(screen, &format, DIB_RGB_COLORS, &bits, nullptr, 0) : nullptr;
-	Backdrop      backdrop;
-
-	if (shot != nullptr && bits != nullptr) {
-		const HGDIOBJ replaced = SelectObject(copy, shot);
-		const bool    copied   = BitBlt(copy, 0, 0, width, height, screen, t_area.left, t_area.top, SRCCOPY) != FALSE;
-		GdiFlush();
-		SelectObject(copy, replaced);
-
-		if (copied) {
-			backdrop = frosted(static_cast<const u8*>(bits), t_area, t_spread);
-		}
-	}
-
-	if (shot != nullptr) {
-		DeleteObject(shot);
-	}
-
-	if (copy != nullptr) {
-		DeleteDC(copy);
-	}
-
-	ReleaseDC(nullptr, screen);
-
-	return backdrop;
-}
-
-[[nodiscard]] auto glass_brush(ID2D1RenderTarget* t_target, const Backdrop& t_backdrop) -> ComPtr<ID2D1BitmapBrush>
-{
-	if (t_backdrop.pixels.empty()) return nullptr;
-
-	const D2D1_BITMAP_PROPERTIES properties = D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
-	const D2D1_SIZE_U            size       = D2D1::SizeU(static_cast<UINT32>(t_backdrop.width), static_cast<UINT32>(t_backdrop.height));
-	ComPtr<ID2D1Bitmap>          bitmap;
-	ComPtr<ID2D1BitmapBrush>     brush;
-
-	if (FAILED(t_target->CreateBitmap(size, t_backdrop.pixels.data(), size.width * 4, properties, &bitmap))) return nullptr;
-
-	t_target->CreateBitmapBrush(bitmap.Get(),
-	                            D2D1::BitmapBrushProperties(D2D1_EXTEND_MODE_CLAMP, D2D1_EXTEND_MODE_CLAMP, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR), &brush);
-
-	return brush;
-}
-
-// Where the backdrop lies in a window whose top left corner is at t_origin on the screen, in the window's DIPs.
-[[nodiscard]] auto glass_place(const Backdrop& t_backdrop, POINT t_origin, float t_scale) -> D2D1::Matrix3x2F
-{
-	const float size = static_cast<float>(t_backdrop.shrink) / t_scale;
-
-	return D2D1::Matrix3x2F::Scale(size, size) * D2D1::Matrix3x2F::Translation(static_cast<float>(t_backdrop.area.left - t_origin.x) / t_scale,
-	                                                                           static_cast<float>(t_backdrop.area.top - t_origin.y) / t_scale);
-}
-
 [[nodiscard]] auto menu_font_family(IDWriteFactory* t_writer) -> const wchar_t*
 {
 	ComPtr<IDWriteFontCollection> fonts;
@@ -1073,44 +893,21 @@ auto draw_soft_shadow(ID2D1RenderTarget* t_target, ID2D1SolidColorBrush* t_brush
 	}
 }
 
-// Frosted glass shows the blurred screen through a surface. The copy stays where it was on the screen however the surface moves or grows over
-// it, the way a pane of glass would.
-auto fill_glass(ID2D1RenderTarget* t_target, const Glass& t_glass, const D2D1_ROUNDED_RECT& t_shape, const D2D1::Matrix3x2F& t_base) -> void
+// The surface's body in the theme's colour, with a hairline edge.
+auto paint_body(ID2D1RenderTarget*    t_target,
+                ID2D1SolidColorBrush* t_brush,
+                const os::TrayColors& t_colors,
+                const D2D1_RECT_F&    t_shape,
+                Color                 t_edge,
+                float                 t_scale) -> void
 {
-	D2D1::Matrix3x2F unbase = t_base;
-	if (t_glass.brush == nullptr || !unbase.Invert()) return;
-
-	t_glass.brush->SetTransform(t_glass.place * unbase);
-	t_target->FillRoundedRectangle(t_shape, t_glass.brush);
-}
-
-// The surface's body: glass with the theme's tint over it, or the theme's colour alone, and a hairline edge.
-auto paint_body(ID2D1RenderTarget*      t_target,
-                ID2D1SolidColorBrush*   t_brush,
-                const os::TrayColors&   t_colors,
-                const Glass&            t_glass,
-                const D2D1_RECT_F&      t_shape,
-                Color                   t_edge,
-                float                   t_scale,
-                const D2D1::Matrix3x2F& t_base) -> void
-{
-	const float             half  = 0.5f / t_scale;
-	const bool              glass = t_glass.brush != nullptr;
+	const float             half = 0.5f / t_scale;
 	const D2D1_ROUNDED_RECT body{t_shape, K_SURFACE_RADIUS, K_SURFACE_RADIUS};
 	const D2D1_ROUNDED_RECT edge{D2D1::RectF(t_shape.left + half, t_shape.top + half, t_shape.right - half, t_shape.bottom - half), K_SURFACE_RADIUS,
 	                             K_SURFACE_RADIUS};
 
-	fill_glass(t_target, t_glass, body, t_base);
-
-	t_brush->SetColor(to_d2d(with_alpha(t_colors.background, glass ? t_colors.background.a : 255)));
+	t_brush->SetColor(to_d2d(t_colors.background));
 	t_target->FillRoundedRectangle(body, t_brush);
-
-	if (glass) {
-		const float top = t_shape.top + 1.0f / t_scale;
-		t_brush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, K_GLASS_HIGHLIGHT));
-		t_target->FillRectangle(D2D1::RectF(t_shape.left + K_SURFACE_RADIUS, top, t_shape.right - K_SURFACE_RADIUS, top + 1.0f / t_scale), t_brush);
-	}
-
 	t_brush->SetColor(to_d2d(t_edge));
 	t_target->DrawRoundedRectangle(edge, t_brush, 1.0f / t_scale);
 }
@@ -1182,7 +979,6 @@ auto paint_panel(ID2D1RenderTarget*      t_target,
                  ID2D1SolidColorBrush*   t_brush,
                  const Panel&            t_panel,
                  const MenuImages&       t_images,
-                 const Glass&            t_glass,
                  const UpdateBadge*      t_badge,
                  const D2D1::Matrix3x2F& t_base) -> void
 {
@@ -1198,7 +994,7 @@ auto paint_panel(ID2D1RenderTarget*      t_target,
 
 	t_target->SetTransform(t_base);
 	draw_soft_shadow(t_target, t_brush, t_panel.frame);
-	paint_body(t_target, t_brush, colors, t_glass, t_panel.frame, colors.border, scale, t_base);
+	paint_body(t_target, t_brush, colors, t_panel.frame, colors.border, scale);
 
 	t_target->SetTransform(D2D1::Matrix3x2F::Translation(t_panel.frame.left, t_panel.frame.top) * t_base);
 
@@ -1236,8 +1032,8 @@ auto paint_panel(ID2D1RenderTarget*      t_target,
 				const float chevron = right - K_CHEVRON_SIZE;
 				const float count   = chevron - K_COUNT_GAP - row.detail_width;
 
-				if (row.icon >= 0 && static_cast<u32>(row.icon) < os::K_TRAY_MAX_GAMES && t_images.game_icons[row.icon]) {
-					draw_bitmap(t_target, t_images.game_icons[row.icon].Get(), left, middle, scale);
+				if (row.icon && *row.icon < os::K_TRAY_MAX_GAMES && t_images.game_icons[*row.icon]) {
+					draw_bitmap(t_target, t_images.game_icons[*row.icon].Get(), left, middle, scale);
 				} else {
 					const D2D1_RECT_F blank = centered_box(left, middle, K_ICON_SIZE, scale);
 					t_target->FillRoundedRectangle(D2D1_ROUNDED_RECT{blank, K_ICON_RADIUS, K_ICON_RADIUS}, paint(colors.text_disabled, 0.4f));
@@ -1274,7 +1070,7 @@ auto paint_panel(ID2D1RenderTarget*      t_target,
 				if (row.hover > 0.0f) {
 					const float             slide = (1.0f - row.hover) * K_LOGIN_SLIDE;
 					const D2D1_ROUNDED_RECT pill{D2D1::RectF(login.left + slide, login.top, login.right + slide, login.bottom), K_LOGIN_RADIUS, K_LOGIN_RADIUS};
-					const bool              lit = t_panel.login_hot && static_cast<i32>(index) == t_panel.hot;
+					const bool              lit = t_panel.login_hot && index == t_panel.hot;
 
 					t_target->FillRoundedRectangle(pill, paint(colors.accent, row.hover));
 
@@ -1327,7 +1123,6 @@ auto paint_menu(ID2D1RenderTarget* t_target,
                 const Panel&       t_games,
                 const Panel*       t_accounts,
                 const MenuImages&  t_images,
-                const Glass&       t_glass,
                 const UpdateBadge& t_badge,
                 float              t_reveal,
                 D2D1_POINT_2F      t_grow_from,
@@ -1338,7 +1133,7 @@ auto paint_menu(ID2D1RenderTarget* t_target,
 
 	t_target->SetTransform(D2D1::Matrix3x2F::Identity());
 	t_target->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
-	paint_panel(t_target, t_painter, brush.Get(), t_games, t_images, t_glass, &t_badge, D2D1::Matrix3x2F::Identity());
+	paint_panel(t_target, t_painter, brush.Get(), t_games, t_images, &t_badge, D2D1::Matrix3x2F::Identity());
 
 	if (t_accounts != nullptr && t_reveal > 0.0f) {
 		const float            size    = lerp(K_GROW_FROM_SCALE, 1.0f, sprung(t_reveal));
@@ -1351,7 +1146,7 @@ auto paint_menu(ID2D1RenderTarget* t_target,
 			                    t_layer);
 		}
 
-		paint_panel(t_target, t_painter, brush.Get(), *t_accounts, t_images, t_glass, nullptr, grow);
+		paint_panel(t_target, t_painter, brush.Get(), *t_accounts, t_images, nullptr, grow);
 
 		if (fading) {
 			t_target->PopLayer();
@@ -1361,7 +1156,7 @@ auto paint_menu(ID2D1RenderTarget* t_target,
 	}
 }
 
-auto paint_toast(ID2D1RenderTarget* t_target, const Painter& t_painter, const LoginToast& t_toast, const Glass& t_glass) -> void
+auto paint_toast(ID2D1RenderTarget* t_target, const Painter& t_painter, const LoginToast& t_toast) -> void
 {
 	const os::TrayColors& colors     = t_painter.colors;
 	const TextFormats&    formats    = *t_painter.formats;
@@ -1382,7 +1177,7 @@ auto paint_toast(ID2D1RenderTarget* t_target, const Painter& t_painter, const Lo
 
 	t_target->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
 	draw_soft_shadow(t_target, brush.Get(), shape);
-	paint_body(t_target, brush.Get(), colors, t_glass, shape, mix(colors.border, colors.error, grow * K_TOAST_ERROR_EDGE), scale, D2D1::Matrix3x2F::Identity());
+	paint_body(t_target, brush.Get(), colors, shape, mix(colors.border, colors.error, grow * K_TOAST_ERROR_EDGE), scale);
 
 	const float left      = shape.left + K_TOAST_PADDING;
 	const float right     = shape.right - K_TOAST_PADDING;
@@ -1448,10 +1243,10 @@ auto paint_toast(ID2D1RenderTarget* t_target, const Painter& t_painter, const Lo
 		const D2D1_ROUNDED_RECT open{card.open, K_TOAST_BUTTON_RADIUS, K_TOAST_BUTTON_RADIUS};
 
 		t_target->FillRoundedRectangle(retry, paint(colors.accent, card_alpha));
-		t_target->FillRoundedRectangle(retry, paint(Color{255, 255, 255, 255}, K_LOGIN_LIFT * t_toast.button_hover[0] * card_alpha));
+		t_target->FillRoundedRectangle(retry, paint(Color{255, 255, 255, 255}, K_LOGIN_LIFT * t_toast.hover[ToastHit::RETRY] * card_alpha));
 		draw_label(t_target, formats.button.Get(), K_RETRY_LABEL, card.retry.left, card.retry.right, card.retry, paint(colors.accent_ink, card_alpha));
 
-		t_target->FillRoundedRectangle(open, paint(colors.text, (K_TOAST_GHOST_ALPHA + K_TOAST_GHOST_HOVER * t_toast.button_hover[1]) * card_alpha));
+		t_target->FillRoundedRectangle(open, paint(colors.text, (K_TOAST_GHOST_ALPHA + K_TOAST_GHOST_HOVER * t_toast.hover[ToastHit::OPEN]) * card_alpha));
 		draw_label(t_target, formats.button.Get(), std::wstring{L"Open "} + os::win32::K_APP_NAME_WIDE, card.open.left, card.open.right, card.open,
 		           paint(colors.text, card_alpha));
 	}
@@ -1503,31 +1298,29 @@ struct Tray::Native {
 	float                    updating_width = 0.0f;
 	bool                     popup_ready    = false;
 
-	HWND                     menu_window = nullptr;
-	Canvas                   menu_canvas;
-	ComPtr<ID2D1Layer>       menu_layer;
-	Backdrop                 menu_backdrop;
-	ComPtr<ID2D1BitmapBrush> menu_glass;
-	MenuImages               images;
-	Panel                    games;
-	Panel                    accounts;
-	bool                     open             = false;
-	bool                     activated        = false;
-	bool                     tracking_leave   = false;
-	bool                     accounts_left    = false;
-	bool                     accounts_focused = false;
-	float                    scale            = 1.0f;
-	float                    appear           = 0.0f;
-	float                    reveal           = 0.0f;
-	RECT                     work{};
-	RECT                     games_screen{};
-	POINT                    menu_origin{};
-	SIZE                     menu_size{};
-	i32                      open_row  = -1;
-	i32                      shown_row = -1;
-	D2D1_POINT_2F            last_pointer{};
-	bool                     animating = false;
-	Clock::time_point        last_tick;
+	HWND               menu_window = nullptr;
+	Canvas             menu_canvas;
+	ComPtr<ID2D1Layer> menu_layer;
+	MenuImages         images;
+	Panel              games;
+	Panel              accounts;
+	bool               open             = false;
+	bool               activated        = false;
+	bool               tracking_leave   = false;
+	bool               accounts_left    = false;
+	bool               accounts_focused = false;
+	float              scale            = 1.0f;
+	float              appear           = 0.0f;
+	float              reveal           = 0.0f;
+	RECT               work{};
+	RECT               games_screen{};
+	POINT              menu_origin{};
+	SIZE               menu_size{};
+	std::optional<u32> open_row;
+	std::optional<u32> shown_row;
+	D2D1_POINT_2F      last_pointer{};
+	bool               animating = false;
+	Clock::time_point  last_tick;
 
 	TrayUpdate  update = TrayUpdate::NONE;
 	UpdateBadge badge;
@@ -1555,18 +1348,18 @@ struct Tray::Native {
 	auto close_menu() -> void;
 	auto choose(const Row& t_row) -> void;
 	auto build_games(Panel* t_panel) -> void;
-	auto build_accounts(Panel* t_panel, i32 t_game) -> void;
+	auto build_accounts(Panel* t_panel, u32 t_game) -> void;
 	auto lay_out(Panel* t_panel, float t_min_width, bool t_icon_column) -> void;
 	[[nodiscard]] auto pixel_size(const Panel& t_panel) const -> SIZE;
-	[[nodiscard]] auto accounts_screen_rect(i32 t_row, SIZE t_size) const -> RECT;
+	[[nodiscard]] auto accounts_screen_rect(u32 t_row, SIZE t_size) const -> RECT;
 	[[nodiscard]] auto frame_of(const RECT& t_screen) const -> D2D1_RECT_F;
-	auto open_accounts(i32 t_row) -> void;
+	auto open_accounts(u32 t_row) -> void;
 	auto close_accounts() -> void;
 	auto enter_accounts() -> void;
 	auto back_to_games() -> void;
-	auto point_at_game(i32 t_row) -> void;
+	auto point_at_game(std::optional<u32> t_row) -> void;
 	[[nodiscard]] auto aims_at_accounts(D2D1_POINT_2F t_point) const -> bool;
-	[[nodiscard]] auto row_at(const Panel& t_panel, float t_y) const -> i32;
+	[[nodiscard]] auto row_at(const Panel& t_panel, float t_y) const -> std::optional<u32>;
 	[[nodiscard]] auto panel_at(D2D1_POINT_2F t_point) -> Panel*;
 	[[nodiscard]] auto menu_point(LPARAM t_lparam) const -> D2D1_POINT_2F;
 	[[nodiscard]] auto grow_from() const -> D2D1_POINT_2F;
@@ -1590,8 +1383,7 @@ struct Tray::Native {
 	auto show_login(const TrayLogin& t_login) -> void;
 	auto hide_login() -> void;
 	[[nodiscard]] auto toast_size() const -> SIZE;
-	[[nodiscard]] auto toast_reach() const -> RECT;
-	[[nodiscard]] auto toast_hit(LPARAM t_lparam) const -> i32;
+	[[nodiscard]] auto toast_hit(LPARAM t_lparam) const -> std::optional<ToastHit>;
 	auto render_toast() -> void;
 	auto step_toast() -> void;
 };
@@ -1616,10 +1408,8 @@ Tray::~Tray()
 	}
 
 	native->menu_layer.Reset();
-	native->menu_glass.Reset();
 	native->images = MenuImages{};
 	native->toast.logo.Reset();
-	native->toast.glass.Reset();
 	release_canvas(&native->menu_canvas);
 	release_canvas(&native->toast.canvas);
 
@@ -1664,11 +1454,6 @@ auto Tray::create(std::string_view t_tooltip) -> bool
 
 	native->add_icon();
 
-	return true;
-}
-
-auto Tray::supports_glass() -> bool
-{
 	return true;
 }
 
@@ -1874,7 +1659,7 @@ auto Tray::Native::build_games(Panel* t_panel) -> void
 			.kind   = RowKind::GAME,
 			.label  = win32::to_wide(game.title),
 			.detail = game.account_count > 0 ? std::to_wstring(game.account_count) : std::wstring{},
-			.item   = static_cast<i32>(i),
+			.item   = i,
 			.icon   = game.game,
 		});
 	}
@@ -1894,10 +1679,10 @@ auto Tray::Native::build_games(Panel* t_panel) -> void
 	rows->push_back(Row{.kind = RowKind::ACTION, .label = L"Quit", .glyph = Glyph::POWER, .action = TrayEventType::EXIT, .destructive = true});
 }
 
-auto Tray::Native::build_accounts(Panel* t_panel, i32 t_game) -> void
+auto Tray::Native::build_accounts(Panel* t_panel, u32 t_game) -> void
 {
 	t_panel->rows.clear();
-	t_panel->hot       = -1;
+	t_panel->hot.reset();
 	t_panel->login_hot = false;
 
 	const TrayGame& game = menu.games[t_game];
@@ -1910,7 +1695,7 @@ auto Tray::Native::build_accounts(Panel* t_panel, i32 t_game) -> void
 			.kind   = RowKind::ACCOUNT,
 			.label  = win32::to_wide(account.label),
 			.detail = win32::to_wide(account.region),
-			.item   = static_cast<i32>(index),
+			.item   = index,
 		});
 	}
 
@@ -1957,7 +1742,7 @@ auto Tray::Native::pixel_size(const Panel& t_panel) const -> SIZE
 
 // A game's accounts sit just clear of the games, with their first row level with the game. The shadows fill the gap between the panels, which
 // keeps the pointer on the menu's window as it crosses.
-auto Tray::Native::accounts_screen_rect(i32 t_row, SIZE t_size) const -> RECT
+auto Tray::Native::accounts_screen_rect(u32 t_row, SIZE t_size) const -> RECT
 {
 	const auto gap    = static_cast<LONG>(std::lround(K_ACCOUNTS_GAP * scale));
 	const LONG x      = accounts_left ? games_screen.left - gap - t_size.cx : games_screen.right + gap;
@@ -1978,7 +1763,6 @@ auto Tray::Native::show_menu() -> void
 {
 	if (!ensure_popup()) return;
 
-	const bool was_open = open;
 	close_menu();
 
 	POINT cursor;
@@ -2011,54 +1795,46 @@ auto Tray::Native::show_menu() -> void
 	LONG  widest = 0;
 	SIZE  sizes[K_TRAY_MAX_GAMES]{};
 
-	for (usize row = 0; row < games.rows.size(); row += 1) {
-		const Row& game = games.rows[row];
-		if (game.kind != RowKind::GAME || game.item < 0 || static_cast<u32>(game.item) >= K_TRAY_MAX_GAMES) continue;
+	for (const Row& game : games.rows) {
+		if (game.kind != RowKind::GAME || !game.item || *game.item >= K_TRAY_MAX_GAMES) continue;
 
-		build_accounts(&sizing, game.item);
+		build_accounts(&sizing, *game.item);
 		lay_out(&sizing, K_ACCOUNTS_WIDTH, false);
-		sizes[game.item] = pixel_size(sizing);
-		widest           = std::max(widest, sizes[game.item].cx);
+		sizes[*game.item] = pixel_size(sizing);
+		widest            = std::max(widest, sizes[*game.item].cx);
 	}
 
 	accounts_left = games_screen.right + static_cast<LONG>(std::lround(K_ACCOUNTS_GAP * scale)) + widest > work.right;
 
 	RECT bounds = games_screen;
 
-	for (usize row = 0; row < games.rows.size(); row += 1) {
+	for (u32 row = 0; row < games.rows.size(); row += 1) {
 		const Row& game = games.rows[row];
-		if (game.kind != RowKind::GAME || game.item < 0 || static_cast<u32>(game.item) >= K_TRAY_MAX_GAMES) continue;
+		if (game.kind != RowKind::GAME || !game.item || *game.item >= K_TRAY_MAX_GAMES) continue;
 
-		const RECT place = accounts_screen_rect(static_cast<i32>(row), sizes[game.item]);
+		const RECT place = accounts_screen_rect(row, sizes[*game.item]);
 		UnionRect(&bounds, &bounds, &place);
 	}
 
 	const auto margin = static_cast<LONG>(std::ceil(K_SHADOW_MARGIN * scale));
 	InflateRect(&bounds, margin, margin);
 
-	// A menu hidden a moment ago stays on the screen until the next composition, and a copy of the screen made before then would show it.
-	if (was_open && colors.background.a < 255) {
-		DwmFlush();
-	}
+	update     = menu.update;
+	badge      = UpdateBadge{.state = update};
+	update_hot = false;
 
-	menu_glass.Reset();
-	menu_backdrop = colors.background.a < 255 ? capture_backdrop(bounds, colors.blur * scale) : Backdrop{};
-	update        = menu.update;
-	badge         = UpdateBadge{.state = update};
-	update_hot    = false;
-
-	menu_origin      = POINT{bounds.left, bounds.top};
-	menu_size        = SIZE{bounds.right - bounds.left, bounds.bottom - bounds.top};
-	games.frame      = frame_of(games_screen);
-	games.hot        = -1;
+	menu_origin = POINT{bounds.left, bounds.top};
+	menu_size   = SIZE{bounds.right - bounds.left, bounds.bottom - bounds.top};
+	games.frame = frame_of(games_screen);
+	games.hot.reset();
 	open             = true;
 	activated        = false;
 	tracking_leave   = false;
 	accounts_focused = false;
-	open_row         = -1;
-	shown_row        = -1;
-	appear           = 0.0f;
-	reveal           = 0.0f;
+	open_row.reset();
+	shown_row.reset();
+	appear = 0.0f;
+	reveal = 0.0f;
 
 	render_menu();
 	ShowWindow(menu_window, SW_SHOW);
@@ -2071,13 +1847,13 @@ auto Tray::Native::close_menu() -> void
 {
 	if (!open) return;
 
-	open             = false;
-	animating        = false;
-	open_row         = -1;
-	shown_row        = -1;
+	open      = false;
+	animating = false;
+	open_row.reset();
+	shown_row.reset();
 	accounts_focused = false;
-	games.hot        = -1;
-	accounts.hot     = -1;
+	games.hot.reset();
+	accounts.hot.reset();
 
 	KillTimer(menu_window, K_ANIMATION_TIMER);
 	KillTimer(menu_window, K_AIM_TIMER);
@@ -2090,9 +1866,9 @@ auto Tray::Native::choose(const Row& t_row) -> void
 	TrayEvent event{.type = t_row.action};
 
 	if (t_row.kind == RowKind::ACCOUNT) {
-		if (locked || t_row.item < 0 || static_cast<u32>(t_row.item) >= menu.account_count) return;
+		if (locked || !t_row.item || *t_row.item >= menu.account_count) return;
 
-		const TrayAccount& account = menu.accounts[t_row.item];
+		const TrayAccount& account = menu.accounts[*t_row.item];
 		event                      = TrayEvent{.type = TrayEventType::QUICK_LOGIN, .game = account.game, .row = account.row};
 	}
 
@@ -2101,14 +1877,14 @@ auto Tray::Native::choose(const Row& t_row) -> void
 }
 
 // A game's accounts grow out of its row from nothing, the same whether they open for the first time or take over from another game's.
-auto Tray::Native::open_accounts(i32 t_row) -> void
+auto Tray::Native::open_accounts(u32 t_row) -> void
 {
 	open_row         = t_row;
 	shown_row        = t_row;
 	accounts_focused = false;
 	reveal           = 0.0f;
 
-	build_accounts(&accounts, games.rows[t_row].item);
+	build_accounts(&accounts, *games.rows[t_row].item);
 	lay_out(&accounts, K_ACCOUNTS_WIDTH, false);
 	accounts.frame = frame_of(accounts_screen_rect(t_row, pixel_size(accounts)));
 
@@ -2118,50 +1894,50 @@ auto Tray::Native::open_accounts(i32 t_row) -> void
 // The accounts shrink back into their game's row, and stay drawn until they're gone.
 auto Tray::Native::close_accounts() -> void
 {
-	if (open_row < 0) return;
+	if (!open_row) return;
 
-	open_row           = -1;
-	accounts_focused   = false;
-	accounts.hot       = -1;
+	open_row.reset();
+	accounts_focused = false;
+	accounts.hot.reset();
 	accounts.login_hot = false;
 	start_animation();
 }
 
 auto Tray::Native::enter_accounts() -> void
 {
-	if (games.hot < 0 || games.rows[games.hot].kind != RowKind::GAME) return;
+	if (!games.hot || games.rows[*games.hot].kind != RowKind::GAME) return;
 
 	if (open_row != games.hot) {
-		open_accounts(games.hot);
+		open_accounts(*games.hot);
 	}
 
 	accounts_focused = true;
-	accounts.hot     = -1;
+	accounts.hot.reset();
 	step_hot(&accounts, 1);
 }
 
 auto Tray::Native::back_to_games() -> void
 {
-	const i32 row = open_row;
+	const std::optional<u32> row = open_row;
 
 	close_accounts();
 	games.hot = row;
 	start_animation();
 }
 
-auto Tray::Native::point_at_game(i32 t_row) -> void
+auto Tray::Native::point_at_game(std::optional<u32> t_row) -> void
 {
 	accounts_focused = false;
 
-	if (t_row >= 0 && games.rows[t_row].kind == RowKind::GAME) {
+	if (t_row && games.rows[*t_row].kind == RowKind::GAME) {
 		if (t_row != open_row) {
-			open_accounts(t_row);
+			open_accounts(*t_row);
 		}
 
 		games.hot = t_row;
 	} else {
 		close_accounts();
-		games.hot = t_row >= 0 && is_selectable(games.rows[t_row]) ? t_row : -1;
+		games.hot = t_row && is_selectable(games.rows[*t_row]) ? t_row : std::nullopt;
 	}
 
 	start_animation();
@@ -2170,7 +1946,7 @@ auto Tray::Native::point_at_game(i32 t_row) -> void
 // While the pointer heads from a game toward its accounts it may cut across other games, which shouldn't steal the open list from under it.
 auto Tray::Native::aims_at_accounts(D2D1_POINT_2F t_point) const -> bool
 {
-	if (open_row < 0) return false;
+	if (!open_row) return false;
 
 	const float edge = accounts_left ? accounts.frame.right : accounts.frame.left;
 
@@ -2178,20 +1954,20 @@ auto Tray::Native::aims_at_accounts(D2D1_POINT_2F t_point) const -> bool
 	                       D2D1::Point2F(edge, accounts.frame.bottom + K_AIM_SLOP));
 }
 
-auto Tray::Native::row_at(const Panel& t_panel, float t_y) const -> i32
+auto Tray::Native::row_at(const Panel& t_panel, float t_y) const -> std::optional<u32>
 {
-	for (usize i = 0; i < t_panel.rows.size(); i += 1) {
+	for (u32 i = 0; i < t_panel.rows.size(); i += 1) {
 		const Row& row = t_panel.rows[i];
-		if (t_y >= row.top && t_y < row.top + row.height) return static_cast<i32>(i);
+		if (t_y >= row.top && t_y < row.top + row.height) return i;
 	}
 
-	return -1;
+	return std::nullopt;
 }
 
 // The accounts only count once they've mostly grown in.
 auto Tray::Native::panel_at(D2D1_POINT_2F t_point) -> Panel*
 {
-	if (open_row >= 0 && reveal > K_GROW_FADE_SHARE && contains(accounts.frame, t_point.x, t_point.y)) return &accounts;
+	if (open_row && reveal > K_GROW_FADE_SHARE && contains(accounts.frame, t_point.x, t_point.y)) return &accounts;
 	if (contains(games.frame, t_point.x, t_point.y)) return &games;
 
 	return nullptr;
@@ -2205,9 +1981,9 @@ auto Tray::Native::menu_point(LPARAM t_lparam) const -> D2D1_POINT_2F
 // Accounts opening to the left grow out of the game's icon, which is on that side. Accounts opening to the right grow out of its chevron.
 auto Tray::Native::grow_from() const -> D2D1_POINT_2F
 {
-	if (shown_row < 0 || static_cast<usize>(shown_row) >= games.rows.size()) return D2D1::Point2F();
+	if (!shown_row || *shown_row >= games.rows.size()) return D2D1::Point2F();
 
-	const Row&  row     = games.rows[shown_row];
+	const Row&  row     = games.rows[*shown_row];
 	const float middle  = games.frame.top + row.top + row.height * 0.5f;
 	const float icon_x  = games.frame.left + K_PANEL_PADDING + K_ROW_INSET + K_ICON_SIZE * 0.5f;
 	const float arrow_x = games.frame.right - K_PANEL_PADDING - K_ROW_INSET - K_CHEVRON_SIZE * 0.5f;
@@ -2226,28 +2002,21 @@ auto Tray::Native::render_menu() -> void
 	}
 
 	for (const Row& row : games.rows) {
-		if (row.icon < 0 || static_cast<u32>(row.icon) >= K_TRAY_MAX_GAMES || images.game_icons[row.icon]) continue;
+		if (!row.icon || *row.icon >= K_TRAY_MAX_GAMES || images.game_icons[*row.icon]) continue;
 
-		images.game_icons[row.icon] = make_bitmap(target, game_icon_sources[row.icon], K_ICON_SIZE, K_ICON_RADIUS, scale);
+		images.game_icons[*row.icon] = make_bitmap(target, game_icon_sources[*row.icon], K_ICON_SIZE, K_ICON_RADIUS, scale);
 	}
 
 	if (!menu_layer) {
 		target->CreateLayer(&menu_layer);
 	}
 
-	if (!menu_glass) {
-		menu_glass = glass_brush(target, menu_backdrop);
-	}
-
-	const Glass glass{.brush = menu_glass.Get(), .place = glass_place(menu_backdrop, menu_origin, scale)};
-
 	target->BeginDraw();
-	paint_menu(target, painter(scale), games, shown_row >= 0 ? &accounts : nullptr, images, glass, badge, reveal, grow_from(), menu_layer.Get());
+	paint_menu(target, painter(scale), games, shown_row ? &accounts : nullptr, images, badge, reveal, grow_from(), menu_layer.Get());
 
 	if (target->EndDraw() == D2DERR_RECREATE_TARGET) {
 		menu_canvas.target.Reset();
 		menu_layer.Reset();
-		menu_glass.Reset();
 		images = MenuImages{};
 		return;
 	}
@@ -2274,17 +2043,17 @@ auto Tray::Native::on_pointer(LPARAM t_lparam) -> void
 	if (panel == &accounts) {
 		KillTimer(menu_window, K_AIM_TIMER);
 
-		const float x         = point.x - accounts.frame.left;
-		const float y         = point.y - accounts.frame.top;
-		const i32   row       = row_at(accounts, y);
-		const bool  login_hot = row >= 0 && over_login(accounts.rows[row], x, y);
+		const float              x         = point.x - accounts.frame.left;
+		const float              y         = point.y - accounts.frame.top;
+		const std::optional<u32> row       = row_at(accounts, y);
+		const bool               login_hot = row && over_login(accounts.rows[*row], x, y);
 
 		if (login_hot != accounts.login_hot) {
 			SetCursor(LoadCursorW(nullptr, login_hot ? IDC_HAND : IDC_ARROW));
 		}
 
 		accounts_focused   = false;
-		accounts.hot       = row >= 0 && is_selectable(accounts.rows[row]) ? row : -1;
+		accounts.hot       = row && is_selectable(accounts.rows[*row]) ? row : std::nullopt;
 		accounts.login_hot = login_hot;
 		games.hot          = open_row;
 		last_pointer       = point;
@@ -2298,13 +2067,13 @@ auto Tray::Native::on_pointer(LPARAM t_lparam) -> void
 	}
 
 	if (!accounts_focused) {
-		accounts.hot = -1;
+		accounts.hot.reset();
 	}
 
 	if (panel == &games) {
-		const i32  row    = row_at(games, point.y - games.frame.top);
-		const bool aiming = row != open_row && aims_at_accounts(point);
-		last_pointer      = point;
+		const std::optional<u32> row    = row_at(games, point.y - games.frame.top);
+		const bool               aiming = row != open_row && aims_at_accounts(point);
+		last_pointer                    = point;
 
 		if (aiming) {
 			SetTimer(menu_window, K_AIM_TIMER, K_AIM_DELAY_MS, nullptr);
@@ -2330,7 +2099,7 @@ auto Tray::Native::on_leave() -> void
 	games.hot          = open_row;
 
 	if (!accounts_focused) {
-		accounts.hot = -1;
+		accounts.hot.reset();
 	}
 
 	start_animation();
@@ -2342,12 +2111,12 @@ auto Tray::Native::on_click(LPARAM t_lparam) -> void
 	Panel*              panel = panel_at(point);
 	if (panel == nullptr) return;
 
-	const float x   = point.x - panel->frame.left;
-	const float y   = point.y - panel->frame.top;
-	const i32   row = row_at(*panel, y);
-	if (row < 0) return;
+	const float              x   = point.x - panel->frame.left;
+	const float              y   = point.y - panel->frame.top;
+	const std::optional<u32> row = row_at(*panel, y);
+	if (!row) return;
 
-	const Row& clicked = panel->rows[row];
+	const Row& clicked = panel->rows[*row];
 
 	if (panel == &games && clicked.kind == RowKind::BRAND && over_update(x, y)) {
 		press_update();
@@ -2444,7 +2213,7 @@ auto Tray::Native::on_key(WPARAM t_key) -> void
 		case VK_DOWN: {
 			step_hot(panel, t_key == VK_DOWN ? 1 : -1);
 
-			if (!accounts_focused && open_row >= 0 && games.hot != open_row) {
+			if (!accounts_focused && open_row && games.hot != open_row) {
 				close_accounts();
 			}
 
@@ -2453,9 +2222,9 @@ auto Tray::Native::on_key(WPARAM t_key) -> void
 
 		case VK_RETURN:
 		case VK_SPACE: {
-			if (panel->hot < 0) break;
+			if (!panel->hot) break;
 
-			const Row& row = panel->rows[panel->hot];
+			const Row& row = panel->rows[*panel->hot];
 
 			if (row.kind == RowKind::GAME) {
 				enter_accounts();
@@ -2474,13 +2243,15 @@ auto Tray::Native::on_key(WPARAM t_key) -> void
 
 auto Tray::Native::step_hot(Panel* t_panel, i32 t_step) -> void
 {
-	const auto count = static_cast<i32>(t_panel->rows.size());
+	const auto count = static_cast<u32>(t_panel->rows.size());
 	if (count == 0) return;
 
-	i32 row = t_panel->hot < 0 ? (t_step > 0 ? -1 : count) : t_panel->hot;
+	// One step forward or back, wrapping round. With nothing lit, the first step lands on the first or the last row.
+	const u32 step = t_step > 0 ? 1 : count - 1;
+	u32       row  = t_panel->hot ? *t_panel->hot : (t_step > 0 ? count - 1 : 0);
 
-	for (i32 tries = 0; tries < count; tries += 1) {
-		row = (row + t_step + count) % count;
+	for (u32 tries = 0; tries < count; tries += 1) {
+		row = (row + step) % count;
 
 		if (is_selectable(t_panel->rows[row])) {
 			t_panel->hot = row;
@@ -2512,6 +2283,8 @@ auto Tray::Native::watch() -> void
 	}
 }
 
+// Windows only sends timer messages while no input is waiting, so a pointer moving over the menu would hold the timer back and freeze the
+// animations. Every change steps them by the time that has passed, whether the timer or the pointer asks.
 auto Tray::Native::start_animation() -> void
 {
 	if (!open) return;
@@ -2522,7 +2295,7 @@ auto Tray::Native::start_animation() -> void
 		SetTimer(menu_window, K_ANIMATION_TIMER, K_ANIMATION_TICK_MS, nullptr);
 	}
 
-	render_menu();
+	animate();
 }
 
 auto Tray::Native::animate() -> void
@@ -2530,7 +2303,7 @@ auto Tray::Native::animate() -> void
 	const Clock::time_point now     = Clock::now();
 	const float             seconds = std::min(std::chrono::duration<float>(now - last_tick).count(), 0.05f);
 	const float             blend   = 1.0f - std::exp(-K_HOVER_EASE_RATE * seconds);
-	const bool              growing = open_row >= 0;
+	const bool              growing = open_row.has_value();
 	bool                    moving  = false;
 
 	last_tick = now;
@@ -2540,13 +2313,13 @@ auto Tray::Native::animate() -> void
 	moving    = step_badge(seconds, blend) || moving;
 
 	if (!growing && reveal <= 0.0f) {
-		shown_row = -1;
+		shown_row.reset();
 	}
 
-	const auto ease = [&](Panel* t_panel, i32 t_lit_row) {
-		for (usize i = 0; i < t_panel->rows.size(); i += 1) {
+	const auto ease = [&](Panel* t_panel, std::optional<u32> t_lit_row) {
+		for (u32 i = 0; i < t_panel->rows.size(); i += 1) {
 			Row&        row    = t_panel->rows[i];
-			const bool  lit    = (static_cast<i32>(i) == t_panel->hot || static_cast<i32>(i) == t_lit_row) && is_selectable(row);
+			const bool  lit    = (i == t_panel->hot || i == t_lit_row) && is_selectable(row);
 			const float target = lit ? 1.0f : 0.0f;
 
 			row.hover += (target - row.hover) * blend;
@@ -2560,7 +2333,7 @@ auto Tray::Native::animate() -> void
 	};
 
 	ease(&games, open_row);
-	ease(&accounts, -1);
+	ease(&accounts, std::nullopt);
 	render_menu();
 
 	if (!moving) {
@@ -2764,26 +2537,17 @@ auto Tray::Native::show_login(const TrayLogin& t_login) -> void
 			toast.logo.Reset();
 		}
 
-		toast.scale           = new_scale;
-		toast.work            = info.rcWork;
-		toast.appear          = 0.0f;
-		toast.card            = t_login.state == TrayLoginState::FAILED ? 1.0f : 0.0f;
-		toast.done            = t_login.state == TrayLoginState::SUCCEEDED ? 1.0f : 0.0f;
-		toast.bar             = t_login.progress;
-		toast.hovered         = false;
-		toast.hot             = -1;
-		toast.button_hover[0] = 0.0f;
-		toast.button_hover[1] = 0.0f;
-		toast.active          = true;
-		toast.last_tick       = Clock::now();
-		toast.backdrop        = Backdrop{};
-		toast.glass.Reset();
-
-		// The tray menu may have closed this frame to start this login, and the screen shows it until the next composition.
-		if (colors.background.a < 255) {
-			DwmFlush();
-			toast.backdrop = capture_backdrop(toast_reach(), colors.blur * toast.scale);
-		}
+		toast.scale     = new_scale;
+		toast.work      = info.rcWork;
+		toast.appear    = 0.0f;
+		toast.card      = t_login.state == TrayLoginState::FAILED ? 1.0f : 0.0f;
+		toast.done      = t_login.state == TrayLoginState::SUCCEEDED ? 1.0f : 0.0f;
+		toast.bar       = t_login.progress;
+		toast.hovered   = false;
+		toast.hot       = std::nullopt;
+		toast.hover     = {};
+		toast.active    = true;
+		toast.last_tick = Clock::now();
 	}
 
 	if (t_login.state == TrayLoginState::FAILED) {
@@ -2824,35 +2588,22 @@ auto Tray::Native::toast_size() const -> SIZE
 	return SIZE{static_cast<LONG>(std::ceil(width * toast.scale)), static_cast<LONG>(std::ceil(height * toast.scale))};
 }
 
-// All of the screen the toast can cover, from the pill sliding in to the tallest card.
-auto Tray::Native::toast_reach() const -> RECT
-{
-	const auto inset  = static_cast<LONG>(std::lround((K_SHADOW_MARGIN - K_TOAST_MARGIN) * toast.scale));
-	const auto slide  = static_cast<LONG>(std::lround(K_TOAST_SLIDE * toast.scale));
-	const auto width  = static_cast<LONG>(std::ceil((K_TOAST_CARD_WIDTH + K_SHADOW_MARGIN * 2.0f) * toast.scale));
-	const auto height = static_cast<LONG>(std::ceil((K_TOAST_CARD_MAX_HEIGHT + K_SHADOW_MARGIN * 2.0f) * toast.scale));
-	const LONG right  = toast.work.right + inset;
-	const LONG bottom = toast.work.bottom + inset;
-
-	return RECT{right - width, bottom - height, right, bottom + slide};
-}
-
-auto Tray::Native::toast_hit(LPARAM t_lparam) const -> i32
+auto Tray::Native::toast_hit(LPARAM t_lparam) const -> std::optional<ToastHit>
 {
 	const float       x     = static_cast<float>(static_cast<short>(LOWORD(t_lparam))) / toast.scale;
 	const float       y     = static_cast<float>(static_cast<short>(HIWORD(t_lparam))) / toast.scale;
 	const float       width = static_cast<float>(toast.canvas.size.cx) / toast.scale;
 	const D2D1_RECT_F shape = toast_shape(toast, width, static_cast<float>(toast.canvas.size.cy) / toast.scale);
 
-	if (!contains(shape, x, y)) return -1;
-	if (toast.login.state != TrayLoginState::FAILED) return K_TOAST_BODY;
-	if (toast.card < 1.0f) return -1;
+	if (!contains(shape, x, y)) return std::nullopt;
+	if (toast.login.state != TrayLoginState::FAILED) return ToastHit::BODY;
+	if (toast.card < 1.0f) return std::nullopt;
 
 	const ToastCard card = toast_card(toast, shape);
-	if (contains(card.retry, x, y)) return K_TOAST_RETRY;
-	if (contains(card.open, x, y)) return K_TOAST_OPEN;
+	if (contains(card.retry, x, y)) return ToastHit::RETRY;
+	if (contains(card.open, x, y)) return ToastHit::OPEN;
 
-	return -1;
+	return std::nullopt;
 }
 
 auto Tray::Native::render_toast() -> void
@@ -2866,23 +2617,17 @@ auto Tray::Native::render_toast() -> void
 		toast.logo = make_bitmap(target, logo_source, K_TOAST_LOGO_SIZE, 0.0f, toast.scale);
 	}
 
-	if (!toast.glass) {
-		toast.glass = glass_brush(target, toast.backdrop);
-	}
-
 	const float shown = eased_out(toast.appear);
 	const auto  inset = static_cast<LONG>(std::lround((K_SHADOW_MARGIN - K_TOAST_MARGIN) * toast.scale));
 	const auto  slide = static_cast<LONG>(std::lround((1.0f - shown) * K_TOAST_SLIDE * toast.scale));
 	const POINT origin{toast.work.right + inset - size.cx, toast.work.bottom + inset - size.cy + slide};
-	const Glass glass{.brush = toast.glass.Get(), .place = glass_place(toast.backdrop, origin, toast.scale)};
 
 	target->BeginDraw();
-	paint_toast(target, painter(toast.scale), toast, glass);
+	paint_toast(target, painter(toast.scale), toast);
 
 	if (target->EndDraw() == D2DERR_RECREATE_TARGET) {
 		toast.canvas.target.Reset();
 		toast.logo.Reset();
-		toast.glass.Reset();
 		return;
 	}
 
@@ -2914,8 +2659,8 @@ auto Tray::Native::step_toast() -> void
 	toast.done   = approached(toast.done, state == TrayLoginState::SUCCEEDED ? 1.0f : 0.0f, seconds / K_TOAST_DONE_SECONDS);
 	toast.bar += ((state == TrayLoginState::SUCCEEDED ? 1.0f : toast.login.progress) - toast.bar) * blend;
 
-	for (i32 button = 0; button < 2; button += 1) {
-		toast.button_hover[button] += ((toast.hot == button ? 1.0f : 0.0f) - toast.button_hover[button]) * hover;
+	for (const ToastHit hit : each<ToastHit>()) {
+		toast.hover[hit] += ((toast.hot == hit ? 1.0f : 0.0f) - toast.hover[hit]) * hover;
 	}
 
 	if (toast.leaving && toast.appear <= 0.0f) {
@@ -2947,29 +2692,29 @@ auto Tray::Native::handle_toast_message(UINT t_message, WPARAM t_wparam, LPARAM 
 
 			toast.hot     = toast_hit(t_lparam);
 			toast.hovered = contains(toast_shape(toast, width, static_cast<float>(toast.canvas.size.cy) / toast.scale), x, y);
-			SetCursor(LoadCursorW(nullptr, toast.hot >= 0 ? IDC_HAND : IDC_ARROW));
+			SetCursor(LoadCursorW(nullptr, toast.hot ? IDC_HAND : IDC_ARROW));
 			return 0;
 		}
 
 		case WM_MOUSELEAVE: {
 			toast.tracking_leave = false;
 			toast.hovered        = false;
-			toast.hot            = -1;
+			toast.hot            = std::nullopt;
 			return 0;
 		}
 
 		case WM_SETCURSOR: {
-			SetCursor(LoadCursorW(nullptr, toast.hot >= 0 ? IDC_HAND : IDC_ARROW));
+			SetCursor(LoadCursorW(nullptr, toast.hot ? IDC_HAND : IDC_ARROW));
 			return TRUE;
 		}
 
 		case WM_LBUTTONUP: {
-			const i32 hit = toast_hit(t_lparam);
+			const std::optional<ToastHit> hit = toast_hit(t_lparam);
 
-			if (hit == K_TOAST_RETRY) {
+			if (hit == ToastHit::RETRY) {
 				pending_event = TrayEvent{.type = TrayEventType::RETRY_LOGIN};
 				toast.linger  = K_TOAST_ERROR_SECONDS;
-			} else if (hit == K_TOAST_OPEN || hit == K_TOAST_BODY) {
+			} else if (hit == ToastHit::OPEN || hit == ToastHit::BODY) {
 				pending_event = TrayEvent{.type = TrayEventType::SHOW_WINDOW};
 				toast.leaving = true;
 			}

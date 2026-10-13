@@ -103,29 +103,29 @@ auto ContextMenu::item_rect(u32 t_index) const -> Rect
 	return Rect{m_position.x + K_MENU_PADDING, top, m_width - K_MENU_PADDING * 2.0f, height};
 }
 
-auto ContextMenu::item_at(Vec2 t_point) const -> i32
+auto ContextMenu::item_at(Vec2 t_point) const -> std::optional<u32>
 {
 	for (u32 i = 0; i < m_item_count; i += 1) {
-		if (m_items[i].enabled && item_rect(i).contains(t_point)) return static_cast<i32>(i);
+		if (m_items[i].enabled && item_rect(i).contains(t_point)) return i;
 	}
 
-	return -1;
+	return std::nullopt;
 }
 
 auto ContextMenu::on_pointer_up(Vec2 t_point) -> bool
 {
 	if (!m_open) return false;
 
-	const i32 chosen = item_at(t_point);
+	const std::optional<u32> chosen = item_at(t_point);
 
-	if (chosen >= 0 && m_items[chosen].destructive && m_armed != static_cast<u32>(chosen)) {
-		m_armed         = static_cast<u32>(chosen);
+	if (chosen && m_items[*chosen].destructive && m_armed != chosen) {
+		m_armed         = chosen;
 		m_armed_seconds = K_CONFIRM_SECONDS;
 		return true;
 	}
 
-	if (chosen >= 0) {
-		m_commands->push(m_items[chosen].command);
+	if (chosen) {
+		m_commands->push(m_items[*chosen].command);
 	}
 
 	close();
@@ -153,7 +153,7 @@ auto ContextMenu::on_key_down(os::Key t_key) -> bool
 
 auto ContextMenu::cursor() const -> CursorKind
 {
-	return m_open && item_at(m_mouse) >= 0 ? CursorKind::HAND : CursorKind::ARROW;
+	return m_open && item_at(m_mouse) ? CursorKind::HAND : CursorKind::ARROW;
 }
 
 auto ContextMenu::draw(DrawList* t_draw_list) -> void

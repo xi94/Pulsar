@@ -96,8 +96,7 @@ constexpr float K_PICKER_POLL_SECONDS  = 0.1f;
 constexpr float K_DONE_HOLD_SECONDS    = 0.25f;
 constexpr float K_PROGRESS_DONE        = 0.995f;
 
-constexpr std::string_view K_APP_TITLE = "Pulsar";
-constexpr std::string_view K_OPTION_LABELS[]{"Desktop shortcut", "Start menu shortcut", "Start with Windows"};
+constexpr std::string_view K_APP_TITLE         = "Pulsar";
 constexpr std::string_view K_DELETE_DATA_LABEL = "Also delete my accounts and settings";
 
 [[nodiscard]] auto ease_out(float t_amount) -> float
@@ -105,43 +104,6 @@ constexpr std::string_view K_DELETE_DATA_LABEL = "Also delete my accounts and se
 	const float inverse = 1.0f - t_amount;
 
 	return 1.0f - inverse * inverse * inverse;
-}
-
-[[nodiscard]] auto option_of(const os::installation::Options& t_options, u32 t_option) -> bool
-{
-	switch (t_option) {
-		case 0: {
-			return t_options.desktop_shortcut;
-		}
-
-		case 1: {
-			return t_options.start_menu_shortcut;
-		}
-
-		default: {
-			return t_options.start_with_windows;
-		}
-	}
-}
-
-auto toggle_option(os::installation::Options* t_options, u32 t_option) -> void
-{
-	switch (t_option) {
-		case 0: {
-			t_options->desktop_shortcut = !t_options->desktop_shortcut;
-			break;
-		}
-
-		case 1: {
-			t_options->start_menu_shortcut = !t_options->start_menu_shortcut;
-			break;
-		}
-
-		default: {
-			t_options->start_with_windows = !t_options->start_with_windows;
-			break;
-		}
-	}
 }
 
 [[nodiscard]] auto is_absolute(std::string_view t_path) -> bool
@@ -161,6 +123,21 @@ auto toggle_option(os::installation::Options* t_options, u32 t_option) -> void
 
 	return folder;
 }
+}
+
+const EnumArray<SetupScreen::InstallOption, SetupScreen::OptionSpec> SetupScreen::K_OPTIONS{{
+	{"Desktop shortcut", &os::installation::Options::desktop_shortcut, Hit::DESKTOP_SHORTCUT},
+	{"Start menu shortcut", &os::installation::Options::start_menu_shortcut, Hit::START_MENU_SHORTCUT},
+	{"Start with Windows", &os::installation::Options::start_with_windows, Hit::START_WITH_WINDOWS},
+}};
+
+auto SetupScreen::option_hit(Hit t_hit) -> std::optional<SetupScreen::InstallOption>
+{
+	for (const InstallOption option : each<InstallOption>()) {
+		if (K_OPTIONS[option].hit == t_hit) return option;
+	}
+
+	return std::nullopt;
 }
 
 SetupScreen::SetupScreen(SetupMode       t_mode,
@@ -187,8 +164,8 @@ SetupScreen::SetupScreen(SetupMode       t_mode,
 		m_page    = t_mode == SetupMode::UNINSTALL ? Page::CONFIRM_UNINSTALL : Page::MANAGE;
 	}
 
-	for (u32 i = 0; i < K_OPTION_COUNT; i += 1) {
-		m_check[i] = option_of(m_options, i) ? 1.0f : 0.0f;
+	for (const InstallOption option : each<InstallOption>()) {
+		m_check[option] = m_options.*K_OPTIONS[option].value ? 1.0f : 0.0f;
 	}
 }
 
@@ -298,8 +275,7 @@ auto SetupScreen::go_back() -> void
 
 auto SetupScreen::activate(Hit t_hit) -> void
 {
-	const auto option    = [t_hit] { return static_cast<u32>(t_hit) - static_cast<u32>(Hit::OPTION_0); };
-	const bool is_option = t_hit >= Hit::OPTION_0 && t_hit <= Hit::OPTION_2;
+	const std::optional<InstallOption> option = option_hit(t_hit);
 
 	switch (m_page) {
 		using enum Page;
@@ -329,8 +305,8 @@ auto SetupScreen::activate(Hit t_hit) -> void
 				m_picker.open(
 					m_window,
 					os::PathRequest{.title = "Choose where to install Pulsar", .ok_label = "Select folder", .start_path = std::string{m_location.value()}});
-			} else if (is_option) {
-				toggle_option(&m_options, option());
+			} else if (option) {
+				m_options.*K_OPTIONS[*option].value = !(m_options.*K_OPTIONS[*option].value);
 			}
 
 			break;
@@ -348,8 +324,8 @@ auto SetupScreen::activate(Hit t_hit) -> void
 				} else {
 					finish(SetupOutcome::CLOSED);
 				}
-			} else if (is_option) {
-				toggle_option(&m_options, option());
+			} else if (option) {
+				m_options.*K_OPTIONS[*option].value = !(m_options.*K_OPTIONS[*option].value);
 			}
 
 			break;
@@ -419,13 +395,14 @@ auto SetupScreen::update(float t_delta_seconds) -> void
 	const bool live    = m_transition >= 1.0f && !m_picker.is_open() && !is_busy();
 	const Hit  hovered = live ? hit_at(m_mouse) : Hit::NONE;
 
-	for (u32 i = 0; i < K_HIT_COUNT; i += 1) {
-		const float target = static_cast<u32>(hovered) == i && hovered != Hit::NONE ? 1.0f : 0.0f;
-		m_hover[i]         = animation::ease_toward(m_hover[i], target, K_HOVER_EASE_RATE, t_delta_seconds);
+	for (const Hit hit : each<Hit>()) {
+		const float target = hit == hovered && hovered != Hit::NONE ? 1.0f : 0.0f;
+		m_hover[hit]       = animation::ease_toward(m_hover[hit], target, K_HOVER_EASE_RATE, t_delta_seconds);
 	}
 
-	for (u32 i = 0; i < K_OPTION_COUNT; i += 1) {
-		m_check[i] = animation::ease_toward(m_check[i], option_of(m_options, i) ? 1.0f : 0.0f, K_CHECK_EASE_RATE, t_delta_seconds);
+	for (const InstallOption option : each<InstallOption>()) {
+		const float target = m_options.*K_OPTIONS[option].value ? 1.0f : 0.0f;
+		m_check[option]    = animation::ease_toward(m_check[option], target, K_CHECK_EASE_RATE, t_delta_seconds);
 	}
 
 	m_delete_check = animation::ease_toward(m_delete_check, m_delete_data ? 1.0f : 0.0f, K_CHECK_EASE_RATE, t_delta_seconds);
@@ -589,12 +566,12 @@ auto SetupScreen::field_text_rect() const -> Rect
 	return Rect{left, field.y, std::max(0.0f, browse_rect().x - K_BROWSE_INSET - left), field.h};
 }
 
-auto SetupScreen::option_rect(Page t_page, u32 t_option) const -> Rect
+auto SetupScreen::option_rect(Page t_page, InstallOption t_option) const -> Rect
 {
 	const float top   = t_page == Page::LOCATION ? field_rect().bottom() + K_OPTIONS_GAP : installed_box_rect().bottom() + K_OPTIONS_GAP;
-	const float width = K_CHECK_SIZE + K_CHECK_LABEL_GAP + text_width(m_fonts->body, K_OPTION_LABELS[t_option]) + K_OPTION_REACH;
+	const float width = K_CHECK_SIZE + K_CHECK_LABEL_GAP + text_width(m_fonts->body, K_OPTIONS[t_option].label) + K_OPTION_REACH;
 
-	return Rect{content_rect().x, top + static_cast<float>(t_option) * K_OPTION_HEIGHT, width, K_OPTION_HEIGHT};
+	return Rect{content_rect().x, top + static_cast<float>(enum_index(t_option)) * K_OPTION_HEIGHT, width, K_OPTION_HEIGHT};
 }
 
 auto SetupScreen::delete_data_rect() const -> Rect
@@ -654,10 +631,8 @@ auto SetupScreen::hit_at(Vec2 t_point) const -> SetupScreen::Hit
 	}
 
 	if (is_option_page(m_page)) {
-		for (u32 i = 0; i < K_OPTION_COUNT; i += 1) {
-			if (option_rect(m_page, i).contains(t_point)) {
-				return static_cast<Hit>(static_cast<u32>(Hit::OPTION_0) + i);
-			}
+		for (const InstallOption option : each<InstallOption>()) {
+			if (option_rect(m_page, option).contains(t_point)) return K_OPTIONS[option].hit;
 		}
 	}
 
@@ -805,7 +780,7 @@ auto SetupScreen::draw_installed_location(DrawList* t_draw_list, const PageDraw&
 	const Vec2   offset{t_draw.offset.x, t_draw.offset.y + shown.rise};
 	const Rect   box       = installed_box_rect().moved(offset);
 	const Rect   button    = open_folder_rect().moved(offset);
-	const float  hover     = m_hover[static_cast<u32>(Hit::OPEN_FOLDER)];
+	const float  hover     = m_hover[Hit::OPEN_FOLDER];
 	const float  caption_y = box.y - K_CAPTION_GAP - secondary.line_height();
 	const float  text_x    = box.x + K_FIELD_PADDING;
 
@@ -825,7 +800,7 @@ auto SetupScreen::draw_choice(DrawList* t_draw_list, u32 t_choice, const PageDra
 	const Font&  secondary = m_fonts->secondary;
 	const Color  accent    = m_settings->accent;
 	const bool   install   = t_choice == 0;
-	const float  hover     = m_hover[static_cast<u32>(install ? Hit::INSTALL : Hit::PORTABLE)];
+	const float  hover     = m_hover[install ? Hit::INSTALL : Hit::PORTABLE];
 	const Reveal shown     = reveal(t_draw.seconds, 1 + t_choice);
 	const u8     alpha     = to_alpha(t_draw.alpha * shown.alpha);
 	const Rect   row       = choice_rect(t_choice).moved(Vec2{t_draw.offset.x, t_draw.offset.y + shown.rise});
@@ -880,8 +855,8 @@ auto SetupScreen::draw_location(DrawList* t_draw_list, const PageDraw& t_draw) -
 	const Rect   field        = field_rect().moved(offset);
 	const Rect   browse       = browse_rect().moved(offset);
 	const bool   focused      = m_location.is_focused();
-	const float  field_hover  = m_hover[static_cast<u32>(Hit::FIELD)];
-	const float  browse_hover = m_hover[static_cast<u32>(Hit::BROWSE)];
+	const float  field_hover  = m_hover[Hit::FIELD];
+	const float  browse_hover = m_hover[Hit::BROWSE];
 
 	Color border = mix(g_theme.separator, g_theme.border, field_hover);
 	if (!m_field_error.empty()) {
@@ -927,12 +902,12 @@ auto SetupScreen::draw_check_row(DrawList* t_draw_list, Rect t_row, std::string_
 
 auto SetupScreen::draw_options(DrawList* t_draw_list, Page t_page, const PageDraw& t_draw, u32 t_first_order) const -> void
 {
-	for (u32 i = 0; i < K_OPTION_COUNT; i += 1) {
-		const Reveal shown = reveal(t_draw.seconds, t_first_order + i);
-		const Rect   row   = option_rect(t_page, i).moved(Vec2{t_draw.offset.x, t_draw.offset.y + shown.rise});
+	for (const InstallOption option : each<InstallOption>()) {
+		const OptionSpec& spec  = K_OPTIONS[option];
+		const Reveal      shown = reveal(t_draw.seconds, t_first_order + enum_index(option));
+		const Rect        row   = option_rect(t_page, option).moved(Vec2{t_draw.offset.x, t_draw.offset.y + shown.rise});
 
-		draw_check_row(t_draw_list, row, K_OPTION_LABELS[i], m_check[i], m_hover[static_cast<u32>(Hit::OPTION_0) + i], t_draw.alpha * shown.alpha,
-		               m_settings->accent);
+		draw_check_row(t_draw_list, row, spec.label, m_check[option], m_hover[spec.hit], t_draw.alpha * shown.alpha, m_settings->accent);
 	}
 }
 
@@ -964,7 +939,7 @@ auto SetupScreen::draw_confirm(DrawList* t_draw_list, const PageDraw& t_draw) co
 
 	const Reveal shown = reveal(t_draw.seconds, 3);
 	draw_check_row(t_draw_list, delete_data_rect().moved(Vec2{t_draw.offset.x, t_draw.offset.y + shown.rise}), K_DELETE_DATA_LABEL, m_delete_check,
-	               m_hover[static_cast<u32>(Hit::DELETE_DATA)], t_draw.alpha * shown.alpha, g_theme.error);
+	               m_hover[Hit::DELETE_DATA], t_draw.alpha * shown.alpha, g_theme.error);
 }
 
 auto SetupScreen::draw_status(DrawList* t_draw_list, Page t_page, const PageDraw& t_draw) const -> void
@@ -1069,7 +1044,7 @@ auto SetupScreen::draw_footer(DrawList* t_draw_list, Page t_page, const PageDraw
 	const std::string_view secondary = secondary_label(t_page);
 	if (!secondary.empty()) {
 		const auto style          = t_page == Page::MANAGE ? controls::ButtonStyle::DANGER : controls::ButtonStyle::GHOST;
-		const bool hovered_button = live && m_hover[static_cast<u32>(Hit::SECONDARY)] > 0.5f;
+		const bool hovered_button = live && m_hover[Hit::SECONDARY] > 0.5f;
 
 		controls::draw_button(t_draw_list, body, footer_button(false, secondary).moved(offset), secondary, style, accent, !m_saving, hovered_button, alpha);
 	}
@@ -1077,7 +1052,7 @@ auto SetupScreen::draw_footer(DrawList* t_draw_list, Page t_page, const PageDraw
 	const std::string_view primary = primary_label(t_page);
 	if (!primary.empty()) {
 		const auto style          = t_page == Page::CONFIRM_UNINSTALL ? controls::ButtonStyle::DANGER_CONFIRM : controls::ButtonStyle::ACCENT;
-		const bool hovered_button = live && m_hover[static_cast<u32>(Hit::PRIMARY)] > 0.5f;
+		const bool hovered_button = live && m_hover[Hit::PRIMARY] > 0.5f;
 
 		controls::draw_button(t_draw_list, body, footer_button(true, primary).moved(offset), primary, style, accent, !m_saving, hovered_button, alpha);
 	}

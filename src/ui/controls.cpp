@@ -67,12 +67,13 @@ struct GlassLook {
 	float tint;
 };
 
-constexpr GlassLook K_GLASS_LOOKS[]{
-	{.spread = 4.0f, .tint = 0.64f}, {.spread = 6.0f, .tint = 0.64f}, {.spread = 9.0f, .tint = 0.64f},
-	{.spread = 9.0f, .tint = 0.90f}, {.spread = 14.0f, .tint = 0.0f},
-};
-
-static_assert(std::size(K_GLASS_LOOKS) == static_cast<usize>(controls::GlassSurface::BACKDROP) + 1);
+constexpr EnumArray<controls::GlassSurface, GlassLook> K_GLASS_LOOKS{{
+	{.spread = 4.0f, .tint = 0.64f},
+	{.spread = 6.0f, .tint = 0.64f},
+	{.spread = 9.0f, .tint = 0.64f},
+	{.spread = 9.0f, .tint = 0.90f},
+	{.spread = 14.0f, .tint = 0.0f},
+}};
 
 bool  g_glass_available  = false;
 bool  g_glass_blurs      = false;
@@ -149,7 +150,7 @@ auto draw_outline_countdown(DrawList* t_draw_list, Rect t_shape, float t_shape_r
 
 [[nodiscard]] auto glass_look(controls::GlassSurface t_surface) -> GlassLook
 {
-	return K_GLASS_LOOKS[static_cast<u32>(t_surface)];
+	return K_GLASS_LOOKS[t_surface];
 }
 
 // The Blur setting scales every surface's blur from its 50% value, so 100% doubles it.
@@ -480,16 +481,6 @@ auto controls::set_glass(bool t_supported, bool t_enabled, float t_tint, float t
 	g_glass_blurs      = g_glass_available && t_blur > 0.001f;
 	g_glass_tint       = t_tint;
 	g_glass_blur_scale = t_blur / K_GLASS_BLUR_REFERENCE;
-}
-
-auto controls::glass_tint_alpha(float t_tint) -> u8
-{
-	return g_glass_available ? to_alpha(std::clamp(t_tint, 0.0f, 1.0f)) : 255;
-}
-
-auto controls::glass_blur(GlassSurface t_surface) -> float
-{
-	return g_glass_blurs ? glass_spread(t_surface) : 0.0f;
 }
 
 // Rows on glass are lit with a thin wash of the text colour, so the glass still shows through them.

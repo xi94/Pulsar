@@ -5,6 +5,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core/enum_array.h"
 #include "core/library.h"
 #include "ui/commands.h"
 #include "ui/list_popup.h"
@@ -30,7 +31,7 @@ class LibraryView {
 	            LoginSession*   t_session,
 	            CommandQueue*   t_commands);
 
-	auto show_game(i32 t_game) -> void;
+	auto show_game(std::optional<u32> t_game) -> void;
 	auto restart() -> void;
 
 	auto set_bounds(Rect t_bounds) -> void
@@ -71,11 +72,6 @@ class LibraryView {
 	[[nodiscard]] auto cursor() const -> CursorKind;
 
   private:
-	static constexpr u32 K_FIELD_COUNT = 3;
-	static constexpr u32 K_USERNAME    = 0;
-	static constexpr u32 K_PASSWORD    = 1;
-	static constexpr u32 K_NOTE        = 2;
-
 	enum class Target : u8 {
 		NONE,
 		ROW,
@@ -96,8 +92,9 @@ class LibraryView {
 	};
 
 	struct Hit {
-		Target target = Target::NONE;
-		u32    index  = 0;
+		Target    target = Target::NONE;
+		u32       index  = 0;
+		EditField field  = EditField::USERNAME;
 
 		auto operator==(const Hit&) const -> bool = default;
 	};
@@ -127,16 +124,18 @@ class LibraryView {
 	};
 
 	struct FormLayout {
-		Rect  title;
-		Rect  labels[K_FIELD_COUNT + 2];
-		Rect  fields[K_FIELD_COUNT];
-		Rect  reveal;
-		Rect  region;
-		Rect  games[K_MAX_GAMES];
-		bool  has_games;
-		Rect  cancel;
-		Rect  save;
-		float height;
+		Rect                       title;
+		EnumArray<EditField, Rect> labels;
+		EnumArray<EditField, Rect> fields;
+		Rect                       region_label;
+		Rect                       show_in_label;
+		Rect                       reveal;
+		Rect                       region;
+		Rect                       games[K_MAX_GAMES];
+		bool                       has_games;
+		Rect                       cancel;
+		Rect                       save;
+		float                      height;
 	};
 
 	struct DeletedAccount {
@@ -165,7 +164,7 @@ class LibraryView {
 	[[nodiscard]] auto dragged_rect(const Layout& t_layout, u32 t_row) const -> Rect;
 	[[nodiscard]] auto star_rect(const Layout& t_layout, Rect t_row) const -> Rect;
 	[[nodiscard]] auto login_rect(const Layout& t_layout, Rect t_row, std::string_view t_label) const -> Rect;
-	[[nodiscard]] auto field_text_rect(const FormLayout& t_form, u32 t_field) const -> Rect;
+	[[nodiscard]] auto field_text_rect(const FormLayout& t_form, EditField t_field) const -> Rect;
 	[[nodiscard]] auto content_height(const Layout& t_layout, const VisibleAccounts& t_accounts) const -> float;
 	[[nodiscard]] auto scroll_geometry(const Layout& t_layout, const VisibleAccounts& t_accounts) const -> ScrollGeometry;
 	[[nodiscard]] auto empty_zone(const Layout& t_layout) const -> Rect;
@@ -177,7 +176,7 @@ class LibraryView {
 	[[nodiscard]] auto row_entrance(u32 t_row) const -> float;
 	[[nodiscard]] auto drag_range(const VisibleAccounts& t_accounts, u32 t_row) const -> RowRange;
 	[[nodiscard]] auto lifted_top(const Layout& t_layout) const -> float;
-	[[nodiscard]] auto focused_field() const -> std::optional<u32>;
+	[[nodiscard]] auto focused_field() const -> std::optional<EditField>;
 	[[nodiscard]] auto can_select() const -> bool;
 	[[nodiscard]] auto marquee_area(const Layout& t_layout) const -> Rect;
 
@@ -190,7 +189,7 @@ class LibraryView {
 	auto delete_accounts(std::span<const AccountRef> t_accounts) -> void;
 	auto reveal_form(const Layout& t_layout, const VisibleAccounts& t_accounts) -> void;
 	auto forget_deleted() -> void;
-	auto focus_field(std::optional<u32> t_field) -> void;
+	auto focus_field(std::optional<EditField> t_field) -> void;
 	auto focus_filter(bool t_focused) -> void;
 	auto toggle_shown_game(u32 t_game) -> void;
 	auto open_region_list() -> void;
@@ -222,16 +221,16 @@ class LibraryView {
 	LoginSession*   m_session;
 	CommandQueue*   m_commands;
 
-	Rect       m_bounds{};
-	Vec2       m_mouse{-1.0f, -1.0f};
-	i32        m_game   = -1;
-	float      m_appear = 0.0f;
-	Scrollable m_scroll;
-	Hit        m_pressed;
-	Hit        m_hovered;
-	float      m_add_hover  = 0.0f;
-	float      m_zone_hover = 0.0f;
-	float      m_row_hover[K_MAX_VISIBLE_ACCOUNTS]{};
+	Rect               m_bounds{};
+	Vec2               m_mouse{-1.0f, -1.0f};
+	std::optional<u32> m_game;
+	float              m_appear = 0.0f;
+	Scrollable         m_scroll;
+	Hit                m_pressed;
+	Hit                m_hovered;
+	float              m_add_hover  = 0.0f;
+	float              m_zone_hover = 0.0f;
+	float              m_row_hover[K_MAX_VISIBLE_ACCOUNTS]{};
 
 	TextInput m_filter;
 	char      m_applied_filter[K_TEXT_INPUT_CAPACITY]{};
@@ -245,15 +244,15 @@ class LibraryView {
 	std::optional<AccountRef> m_flash_account;
 	float                     m_flash = 0.0f;
 
-	bool                      m_form_open = false;
-	std::optional<AccountRef> m_form_account;
-	float                     m_form_amount = 0.0f;
-	float                     m_form_height = 0.0f;
-	TextInput                 m_fields[K_FIELD_COUNT];
-	char                      m_region[8]{};
-	u16                       m_visible_mask  = 0;
-	bool                      m_show_required = false;
-	bool                      m_reveal_form   = false;
+	bool                            m_form_open = false;
+	std::optional<AccountRef>       m_form_account;
+	float                           m_form_amount = 0.0f;
+	float                           m_form_height = 0.0f;
+	EnumArray<EditField, TextInput> m_fields{};
+	char                            m_region[8]{};
+	u16                             m_visible_mask  = 0;
+	bool                            m_show_required = false;
+	bool                            m_reveal_form   = false;
 
 	std::vector<DeletedAccount> m_deleted;
 	ListPopup                   m_region_list;

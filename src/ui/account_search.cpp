@@ -221,7 +221,7 @@ auto AccountSearch::activate(u32 t_row) -> void
 		}
 
 		case LOGIN: {
-			m_commands->push(Command{.type = CommandType::LOGIN_ACCOUNT, .index = static_cast<i32>(action.game), .account = account});
+			m_commands->push(Command{.type = CommandType::LOGIN_ACCOUNT, .game = action.game, .account = account});
 			break;
 		}
 	}

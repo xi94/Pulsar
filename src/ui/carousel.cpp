@@ -420,7 +420,7 @@ Carousel::Carousel(Library*        t_library,
 	}
 }
 
-auto Carousel::restore(i32 t_zoom_stop, i32 t_selected_game) -> void
+auto Carousel::restore(i32 t_zoom_stop, u32 t_selected_game) -> void
 {
 	m_zoom_stop       = std::clamp(t_zoom_stop, 0, K_ZOOM_STOP_COUNT - 1);
 	m_zoom_percent    = stop_percent(m_zoom_stop);
@@ -430,7 +430,7 @@ auto Carousel::restore(i32 t_zoom_stop, i32 t_selected_game) -> void
 	m_spread          = m_zoom_stop == K_SPREAD_STOP ? 1.0f : 0.0f;
 	m_mode_transition = 0.0f;
 
-	const i32 game  = std::clamp(t_selected_game, 0, std::max(0, static_cast<i32>(m_library->game_count) - 1));
+	const u32 game  = m_library->game_count > 0 ? std::min(t_selected_game, m_library->game_count - 1) : 0;
 	m_scroll        = clamp_scroll(m_library->game_count > 0 ? static_cast<float>(m_slot_of[game]) : 0.0f);
 	m_target_scroll = m_scroll;
 	m_focused_game  = selected_game();
@@ -461,7 +461,7 @@ auto Carousel::set_order(std::span<const u8> t_order) -> void
 	}
 }
 
-auto Carousel::selected_game() const -> i32
+auto Carousel::selected_game() const -> u32
 {
 	if (m_library->game_count == 0) return 0;
 
@@ -667,31 +667,31 @@ auto Carousel::slot_rect(ViewMode t_mode, u32 t_slot) const -> Rect
 
 auto Carousel::shown_card(ViewMode t_mode, u32 t_game) const -> Rect
 {
-	if (m_reorder.active && static_cast<i32>(t_game) == m_reorder.game && t_mode == m_mode) return dragged_rect();
+	if (m_reorder.active && t_game == m_reorder.game && t_mode == m_mode) return dragged_rect();
 
 	return slot_rect(t_mode, m_slot_of[t_game]).moved(m_card_offset[t_game]);
 }
 
 auto Carousel::dragged_rect() const -> Rect
 {
-	const Rect slot = slot_rect(m_mode, m_slot_of[m_reorder.game]);
+	const Rect slot = slot_rect(m_mode, m_slot_of[*m_reorder.game]);
 
 	return Rect{m_mouse.x - m_reorder.grab.x * slot.w, m_mouse.y - m_reorder.grab.y * slot.h, slot.w, slot.h};
 }
 
 auto Carousel::lift_scale(u32 t_game) const -> float
 {
-	return static_cast<i32>(t_game) == m_reorder.game ? 1.0f + K_LIFT_GROWTH * m_lift : 1.0f;
+	return t_game == m_reorder.game ? 1.0f + K_LIFT_GROWTH * m_lift : 1.0f;
 }
 
 auto Carousel::is_raised(ViewMode t_mode, u32 t_game) const -> bool
 {
-	return t_mode == m_mode && static_cast<i32>(t_game) == m_reorder.game;
+	return t_mode == m_mode && t_game == m_reorder.game;
 }
 
 auto Carousel::card_state(ViewMode t_mode, u32 t_game, Rect t_card) const -> Carousel::CardState
 {
-	if (m_reorder.active && static_cast<i32>(t_game) == m_reorder.game) return CardState{true, false};
+	if (m_reorder.active && t_game == m_reorder.game) return CardState{true, false};
 
 	const bool hovered = !m_reorder.active && t_card.contains(m_mouse);
 	if (t_mode != ViewMode::CAROUSEL) return CardState{hovered || is_focus_shown(t_game), false};
@@ -803,19 +803,19 @@ auto Carousel::wrap_scroll_geometry() const -> ScrollGeometry
 	return ScrollGeometry{track, wrap_content_height(), area.h};
 }
 
-auto Carousel::game_at(Vec2 t_point) const -> i32
+auto Carousel::game_at(Vec2 t_point) const -> std::optional<u32>
 {
-	if (m_mode != ViewMode::CAROUSEL && (t_point.y < m_bounds.y || t_point.y >= m_bounds.bottom())) return -1;
+	if (m_mode != ViewMode::CAROUSEL && (t_point.y < m_bounds.y || t_point.y >= m_bounds.bottom())) return std::nullopt;
 
-	i32   closest          = -1;
-	float closest_distance = 0.0f;
+	std::optional<u32> closest;
+	float              closest_distance = 0.0f;
 
 	for (u32 game = 0; game < m_library->game_count; game += 1) {
 		if (!shown_card(m_mode, game).contains(t_point)) continue;
 
 		const float distance = std::fabs(static_cast<float>(m_slot_of[game]) - m_scroll);
-		if (closest < 0 || distance < closest_distance) {
-			closest          = static_cast<i32>(game);
+		if (!closest || distance < closest_distance) {
+			closest          = game;
 			closest_distance = distance;
 		}
 	}
@@ -920,14 +920,14 @@ auto Carousel::set_zoom_stop(i32 t_stop) -> void
 	m_switcher_hold_seconds = K_SWITCHER_HOLD_SECONDS;
 }
 
-auto Carousel::focused_game() const -> i32
+auto Carousel::focused_game() const -> u32
 {
 	return m_mode == ViewMode::CAROUSEL || m_mode == ViewMode::LIBRARY ? selected_game() : m_focused_game;
 }
 
 auto Carousel::is_focus_shown(u32 t_game) const -> bool
 {
-	return m_keyboard_focus_shown && m_mode != ViewMode::CAROUSEL && static_cast<i32>(t_game) == focused_game();
+	return m_keyboard_focus_shown && m_mode != ViewMode::CAROUSEL && t_game == focused_game();
 }
 
 auto Carousel::move_focus(i32 t_delta) -> void
@@ -961,13 +961,13 @@ auto Carousel::show_game(u32 t_game) -> void
 	m_target_scroll = static_cast<float>(m_slot_of[t_game]);
 }
 
-auto Carousel::open_game(i32 t_game) -> void
+auto Carousel::open_game(u32 t_game) -> void
 {
-	m_commands->push(Command{.type = CommandType::OPEN_GAME, .index = t_game});
+	m_commands->push(Command{.type = CommandType::OPEN_GAME, .game = t_game});
 }
 
 // In the library a click picks the game whose accounts fill the pane.
-auto Carousel::choose_game(i32 t_game) -> void
+auto Carousel::choose_game(u32 t_game) -> void
 {
 	m_target_scroll = static_cast<float>(m_slot_of[t_game]);
 	m_focused_game  = t_game;
@@ -975,7 +975,7 @@ auto Carousel::choose_game(i32 t_game) -> void
 
 auto Carousel::drop_lost_press() -> void
 {
-	m_long_press.game = -1;
+	m_long_press.game.reset();
 	m_library_view.drop_press();
 
 	if (m_reorder.active) {
@@ -988,10 +988,10 @@ auto Carousel::drop_lost_press() -> void
 	}
 }
 
-auto Carousel::start_press(i32 t_game, Vec2 t_point) -> void
+auto Carousel::start_press(std::optional<u32> t_game, Vec2 t_point) -> void
 {
 	m_long_press = LongPress{t_game, t_point, 0.0f};
-	if (t_game < 0) return;
+	if (!t_game) return;
 
 	m_reorder.game   = t_game;
 	m_reorder.lifted = false;
@@ -1003,11 +1003,11 @@ auto Carousel::begin_reorder(u32 t_game, Vec2 t_point) -> void
 
 	m_card_drag.end();
 	m_wrap_scroll.on_pointer_up();
-	m_long_press.game = -1;
+	m_long_press.game.reset();
 
 	m_reorder.active = true;
 	m_reorder.lifted = true;
-	m_reorder.game   = static_cast<i32>(t_game);
+	m_reorder.game   = t_game;
 	m_reorder.grab   = Vec2{std::clamp((t_point.x - card.x) / card.w, 0.0f, 1.0f), std::clamp((t_point.y - card.y) / card.h, 0.0f, 1.0f)};
 	std::copy(std::begin(m_order), std::end(m_order), std::begin(m_reorder.start_order));
 
@@ -1019,8 +1019,8 @@ auto Carousel::end_reorder(bool t_cancel) -> void
 {
 	if (!m_reorder.active) return;
 
-	const auto game     = static_cast<u32>(m_reorder.game);
-	const i32  selected = selected_game();
+	const u32 game     = *m_reorder.game;
+	const u32 selected = selected_game();
 
 	Vec2 centers[K_MAX_GAMES];
 	capture_centers(centers);
@@ -1047,7 +1047,7 @@ auto Carousel::end_reorder(bool t_cancel) -> void
 
 auto Carousel::move_to_slot(u32 t_game, u32 t_slot) -> void
 {
-	const i32 selected = selected_game();
+	const u32 selected = selected_game();
 
 	Vec2 centers[K_MAX_GAMES];
 	capture_centers(centers);
@@ -1088,7 +1088,7 @@ auto Carousel::restore_centers(const Vec2 (&t_centers)[K_MAX_GAMES]) -> void
 
 auto Carousel::retarget_reorder() -> void
 {
-	const auto game   = static_cast<u32>(m_reorder.game);
+	const u32  game   = *m_reorder.game;
 	const Vec2 center = dragged_rect().center();
 
 	u32   best          = m_slot_of[game];
@@ -1113,23 +1113,23 @@ auto Carousel::retarget_reorder() -> void
 
 auto Carousel::update_reorder(float t_delta_seconds) -> void
 {
-	if (m_long_press.game >= 0 || m_reorder.active) {
+	if (m_long_press.game || m_reorder.active) {
 		animation::request_frame();
 	}
 
-	if (m_long_press.game >= 0) {
+	if (m_long_press.game) {
 		m_long_press.seconds += t_delta_seconds;
 
 		const float charge = std::clamp((m_long_press.seconds - K_PRESS_DELAY_SECONDS) / (K_LONG_PRESS_SECONDS - K_PRESS_DELAY_SECONDS), 0.0f, 1.0f);
 		m_lift             = K_PRESS_LIFT * charge * charge;
 
 		if (m_long_press.seconds >= K_LONG_PRESS_SECONDS) {
-			begin_reorder(static_cast<u32>(m_long_press.game), m_mouse);
+			begin_reorder(*m_long_press.game, m_mouse);
 		}
 	}
 
 	const bool active   = m_reorder.active;
-	const bool pressing = m_long_press.game >= 0;
+	const bool pressing = m_long_press.game.has_value();
 	const bool overview = active && m_mode == ViewMode::CAROUSEL;
 
 	m_overview = animation::ease_toward(m_overview, overview ? 1.0f : 0.0f, K_OVERVIEW_EASE_RATE, t_delta_seconds,
@@ -1168,8 +1168,8 @@ auto Carousel::update_reorder(float t_delta_seconds) -> void
 		settled = settled && offset->x == 0.0f && offset->y == 0.0f;
 	}
 
-	if (!active && !pressing && m_reorder.game >= 0 && settled && m_lift == 0.0f) {
-		m_reorder.game   = -1;
+	if (!active && !pressing && m_reorder.game && settled && m_lift == 0.0f) {
+		m_reorder.game.reset();
 		m_reorder.lifted = false;
 	}
 }
@@ -1188,7 +1188,7 @@ auto Carousel::smooth_grid_reflow() -> void
 
 	if (columns != 0 && m_grid_columns != 0 && columns != m_grid_columns) {
 		for (u32 game = 0; game < m_library->game_count; game += 1) {
-			if (m_reorder.active && static_cast<i32>(game) == m_reorder.game) continue;
+			if (m_reorder.active && game == m_reorder.game) continue;
 
 			const Vec2 slot     = slot_rect(m_mode, m_slot_of[game]).center();
 			m_card_offset[game] = Vec2{m_last_centers[game].x - slot.x, m_last_centers[game].y - slot.y};
@@ -1271,10 +1271,10 @@ auto Carousel::on_pointer_down(Vec2 t_point) -> bool
 
 	m_library_view.blur();
 
-	const i32 pressed = m_mode_transition <= 0.001f ? game_at(t_point) : -1;
+	const std::optional<u32> pressed = m_mode_transition <= 0.001f ? game_at(t_point) : std::nullopt;
 
-	if (pressed >= 0 && os::modifiers().shortcut) {
-		begin_reorder(static_cast<u32>(pressed), t_point);
+	if (pressed && os::modifiers().shortcut) {
+		begin_reorder(*pressed, t_point);
 		return true;
 	}
 
@@ -1282,7 +1282,7 @@ auto Carousel::on_pointer_down(Vec2 t_point) -> bool
 		if (m_wrap_scroll.on_pointer_down(t_point, wrap_scroll_geometry())) return true;
 
 		start_press(pressed, t_point);
-		return pressed >= 0;
+		return pressed.has_value();
 	}
 
 	start_press(pressed, t_point);
@@ -1303,12 +1303,12 @@ auto Carousel::on_pointer_move(Vec2 t_point) -> bool
 	if (m_reorder.active) return true;
 	if (m_library_view.on_pointer_move(t_point)) return true;
 
-	if (m_long_press.game >= 0) {
+	if (m_long_press.game) {
 		const float dx = t_point.x - m_long_press.origin.x;
 		const float dy = t_point.y - m_long_press.origin.y;
 
 		if (dx * dx + dy * dy > K_LONG_PRESS_SLOP * K_LONG_PRESS_SLOP) {
-			m_long_press.game = -1;
+			m_long_press.game.reset();
 		}
 	}
 
@@ -1329,7 +1329,7 @@ auto Carousel::on_pointer_move(Vec2 t_point) -> bool
 auto Carousel::on_pointer_up(Vec2 t_point) -> bool
 {
 	m_keyboard_focus_shown = false;
-	m_long_press.game      = -1;
+	m_long_press.game.reset();
 
 	if (switcher_pointer_up()) return true;
 	if (std::exchange(m_release_ignored, false)) return true;
@@ -1347,11 +1347,11 @@ auto Carousel::on_pointer_up(Vec2 t_point) -> bool
 			return true;
 		}
 
-		if (const i32 game = game_at(t_point); game >= 0) {
+		if (const std::optional<u32> game = game_at(t_point)) {
 			if (m_mode == ViewMode::LIBRARY) {
-				choose_game(game);
+				choose_game(*game);
 			} else {
-				open_game(game);
+				open_game(*game);
 			}
 		}
 
@@ -1359,9 +1359,9 @@ auto Carousel::on_pointer_up(Vec2 t_point) -> bool
 	}
 
 	if (m_zoom_stop == K_SPREAD_STOP) {
-		if (const i32 game = game_at(t_point); game >= 0) {
-			m_target_scroll = static_cast<float>(m_slot_of[game]);
-			open_game(game);
+		if (const std::optional<u32> game = game_at(t_point)) {
+			m_target_scroll = static_cast<float>(m_slot_of[*game]);
+			open_game(*game);
 		}
 
 		return true;
@@ -1377,14 +1377,14 @@ auto Carousel::on_pointer_up(Vec2 t_point) -> bool
 		return true;
 	}
 
-	const i32 game = game_at(t_point);
-	if (game < 0) return true;
+	const std::optional<u32> game = game_at(t_point);
+	if (!game) return true;
 
-	if (game == selected_game()) {
-		open_game(game);
+	if (*game == selected_game()) {
+		open_game(*game);
 	}
 
-	m_target_scroll = static_cast<float>(m_slot_of[game]);
+	m_target_scroll = static_cast<float>(m_slot_of[*game]);
 
 	return true;
 }
@@ -1519,7 +1519,7 @@ auto Carousel::cursor() const -> CursorKind
 
 	if (m_mode == ViewMode::LIBRARY && library_pane().contains(m_mouse)) return m_library_view.cursor();
 
-	if (const i32 game = game_at(m_mouse); game >= 0) {
+	if (game_at(m_mouse)) {
 		return os::modifiers().shortcut ? CursorKind::MOVE : CursorKind::HAND;
 	}
 
@@ -1530,7 +1530,7 @@ auto Carousel::cursor() const -> CursorKind
 
 auto Carousel::update(float t_delta_seconds) -> void
 {
-	if (!os::is_primary_button_down() || m_detached_game >= 0) {
+	if (!os::is_primary_button_down() || m_detached_game) {
 		drop_lost_press();
 	}
 
@@ -1544,10 +1544,10 @@ auto Carousel::update(float t_delta_seconds) -> void
 	m_wrap_scroll.update(t_delta_seconds);
 	smooth_grid_reflow();
 
-	const i32 hovered_card = m_mode != ViewMode::LIBRARY && !m_reorder.active ? game_at(m_mouse) : -1;
+	const std::optional<u32> hovered_card = m_mode != ViewMode::LIBRARY && !m_reorder.active ? game_at(m_mouse) : std::nullopt;
 
 	for (u32 game = 0; game < m_library->game_count; game += 1) {
-		const bool raised  = static_cast<i32>(game) == hovered_card || is_focus_shown(game);
+		const bool raised  = game == hovered_card || is_focus_shown(game);
 		m_card_hover[game] = animation::ease_toward(m_card_hover[game], raised ? 1.0f : 0.0f, K_HOVER_EASE_RATE, t_delta_seconds);
 	}
 
@@ -1594,7 +1594,7 @@ auto Carousel::draw_card(DrawList* t_draw_list, Rect t_rect, const Game& t_game,
 auto Carousel::draw_carousel_mode(DrawList* t_draw_list) const -> void
 {
 	for (u32 game = 0; game < m_library->game_count; game += 1) {
-		if (static_cast<i32>(game) == m_detached_game || is_raised(ViewMode::CAROUSEL, game)) continue;
+		if (game == m_detached_game || is_raised(ViewMode::CAROUSEL, game)) continue;
 
 		const Rect card = shown_card(ViewMode::CAROUSEL, game);
 		if (card.right() < m_bounds.x || card.x > m_bounds.right()) continue;
@@ -1675,7 +1675,7 @@ auto Carousel::draw_grid_mode(DrawList* t_draw_list) const -> void
 	t_draw_list->push_clip(m_bounds);
 
 	for (u32 game = 0; game < m_library->game_count; game += 1) {
-		if (static_cast<i32>(game) == m_detached_game || is_raised(ViewMode::GRID, game)) continue;
+		if (game == m_detached_game || is_raised(ViewMode::GRID, game)) continue;
 
 		const Rect card = shown_card(ViewMode::GRID, game);
 		if (!card.overlaps_vertically(m_bounds)) continue;
@@ -1697,7 +1697,7 @@ auto Carousel::draw_sidebar_row_frame(DrawList* t_draw_list, Rect t_row, u32 t_g
 {
 	const Font& body      = m_fonts->body;
 	const Font& secondary = m_fonts->secondary;
-	const bool  selected  = static_cast<i32>(t_game) == selected_game();
+	const bool  selected  = t_game == selected_game();
 
 	if (t_highlighted && !selected) {
 		t_draw_list->add_rounded_rect(t_row, rounded(K_SIDEBAR_ROW_RADIUS), faded(mix(g_theme.surface, g_theme.row_hover, K_SIDEBAR_HOVER_FILL), t_alpha));
@@ -1721,7 +1721,7 @@ auto Carousel::draw_sidebar_row(DrawList* t_draw_list, Rect t_row, u32 t_game, b
 {
 	draw_sidebar_row_frame(t_draw_list, t_row, t_game, t_highlighted, t_alpha);
 
-	if (static_cast<i32>(t_game) == m_detached_game) return;
+	if (t_game == m_detached_game) return;
 
 	const Rect icon = sidebar_icon(t_row);
 	draw_framed_art(t_draw_list, icon, m_library->games[t_game], CardLook{}, art_radius(ViewMode::LIBRARY, icon), 1.0f, t_alpha);
@@ -1764,7 +1764,7 @@ auto Carousel::draw_icon_tile(DrawList* t_draw_list, Rect t_tile, u32 t_game, bo
 {
 	draw_icon_tile_frame(t_draw_list, t_tile, t_game, t_highlighted, t_alpha);
 
-	if (static_cast<i32>(t_game) == m_detached_game) return;
+	if (t_game == m_detached_game) return;
 
 	const Rect art = grown(icon_tile_art(t_tile), t_game);
 	draw_framed_art(t_draw_list, art, m_library->games[t_game], CardLook{}, art_radius(ViewMode::ICONS, art), 1.0f, t_alpha);
@@ -1828,9 +1828,9 @@ auto Carousel::draw_library_mode(DrawList* t_draw_list) const -> void
 
 auto Carousel::draw_raised(DrawList* t_draw_list, ViewMode t_mode) const -> void
 {
-	if (m_reorder.game < 0 || t_mode != m_mode) return;
+	if (!m_reorder.game || t_mode != m_mode) return;
 
-	const auto  game   = static_cast<u32>(m_reorder.game);
+	const u32   game   = *m_reorder.game;
 	const bool  framed = uses_frame(t_mode);
 	const float radius = t_mode == ViewMode::LIBRARY ? K_SIDEBAR_ROW_RADIUS : t_mode == ViewMode::ICONS ? K_ICON_TILE_RADIUS : K_CARD_CORNER_RADIUS;
 
@@ -1956,7 +1956,7 @@ auto Carousel::draw_mode_morph(DrawList* t_draw_list) const -> void
 	}
 
 	for (u32 game = 0; game < m_library->game_count; game += 1) {
-		if (static_cast<i32>(game) == m_detached_game) continue;
+		if (game == m_detached_game) continue;
 
 		const Rect     from = m_morph_from_art[game];
 		const Rect     to   = art_rect(m_mode, game);

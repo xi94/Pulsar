@@ -28,7 +28,7 @@ constexpr KeyPosition K_LETTER_POSITIONS[]{
 	if (characters.length != 1) return os::Key::NONE;
 
 	const unichar character = [characters characterAtIndex:0];
-	if (character >= 'a' && character <= 'z') return static_cast<os::Key>(static_cast<u32>(os::Key::A) + (character - 'a'));
+	if (character >= 'a' && character <= 'z') return os::letter_key(static_cast<char>(character));
 	if (character == ',') return os::Key::COMMA;
 
 	return os::Key::NONE;

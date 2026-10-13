@@ -40,7 +40,7 @@ namespace os::win32 {
 auto key_from_virtual_key(WPARAM t_virtual_key) -> Key
 {
 	if (t_virtual_key >= 'A' && t_virtual_key <= 'Z') {
-		return static_cast<Key>(static_cast<u32>(Key::A) + static_cast<u32>(t_virtual_key - 'A'));
+		return letter_key(static_cast<char>('a' + (t_virtual_key - 'A')));
 	}
 
 	switch (t_virtual_key) {

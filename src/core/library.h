@@ -13,6 +13,14 @@ constexpr u32 K_MAX_GAMES             = 16;
 constexpr u32 K_MAX_ACCOUNTS_PER_GAME = 32;
 constexpr u32 K_MAX_VISIBLE_ACCOUNTS  = K_MAX_GAMES * K_MAX_ACCOUNTS_PER_GAME;
 
+// The text an account form edits.
+enum class EditField : u8 {
+	NOTE,
+	USERNAME,
+	PASSWORD,
+	COUNT,
+};
+
 struct Account {
 	char username[64]{};
 	char note[32]{};

@@ -29,12 +29,6 @@ constexpr u32  K_INITIAL_VERTEX_CAPACITY = 1024;
 constexpr u32  K_INITIAL_INDEX_CAPACITY  = 1536;
 constexpr UINT K_MSAA_SAMPLE_COUNT       = 4;
 
-constexpr const char* K_PIXEL_SHADER_ENTRY_POINTS[]{
-	"ps_solid", "ps_textured", "ps_banner_glow", "ps_color_picker", "ps_shadow", "ps_outline_countdown", "ps_backdrop", "ps_backdrop_plain", "ps_backdrop_blur",
-};
-
-static_assert(std::size(K_PIXEL_SHADER_ENTRY_POINTS) == K_SHADER_KIND_COUNT);
-
 [[nodiscard]] auto compile_shader(const char* t_entry_point, const char* t_target, ComPtr<ID3DBlob>* t_out_blob) -> bool
 {
 	UINT flags = 0;
@@ -112,12 +106,12 @@ struct D3D11Backend final : RenderBackend {
 	ComPtr<ID3D11Texture2D>        back_buffer;
 	ComPtr<ID3D11RenderTargetView> render_target_view;
 
-	ComPtr<ID3D11VertexShader> vertex_shader;
-	ComPtr<ID3D11PixelShader>  pixel_shaders[K_SHADER_KIND_COUNT];
-	ComPtr<ID3D11InputLayout>  input_layout;
-	ComPtr<ID3D11VertexShader> fullscreen_shader;
-	ComPtr<ID3D11PixelShader>  downsample_shader;
-	ComPtr<ID3D11PixelShader>  blur_shader;
+	ComPtr<ID3D11VertexShader>                       vertex_shader;
+	EnumArray<ShaderKind, ComPtr<ID3D11PixelShader>> pixel_shaders{};
+	ComPtr<ID3D11InputLayout>                        input_layout;
+	ComPtr<ID3D11VertexShader>                       fullscreen_shader;
+	ComPtr<ID3D11PixelShader>                        downsample_shader;
+	ComPtr<ID3D11PixelShader>                        blur_shader;
 
 	ComPtr<ID3D11Buffer> viewport_constants;
 	ComPtr<ID3D11Buffer> banner_glow_constants;
@@ -469,13 +463,13 @@ auto D3D11Backend::create_shaders() -> bool
 		bool             compiled = false;
 	};
 
-	CompileJob vertex_job{"vs_main", "vs_5_0"};
-	CompileJob fullscreen_job{"vs_fullscreen", "vs_5_0"};
-	CompileJob downsample_job{"ps_downsample", "ps_5_0"};
-	CompileJob blur_job{"ps_blur", "ps_5_0"};
-	CompileJob pixel_jobs[K_SHADER_KIND_COUNT];
-	for (u32 i = 0; i < K_SHADER_KIND_COUNT; i += 1) {
-		pixel_jobs[i] = CompileJob{K_PIXEL_SHADER_ENTRY_POINTS[i], "ps_5_0"};
+	CompileJob                        vertex_job{"vs_main", "vs_5_0"};
+	CompileJob                        fullscreen_job{"vs_fullscreen", "vs_5_0"};
+	CompileJob                        downsample_job{"ps_downsample", "ps_5_0"};
+	CompileJob                        blur_job{"ps_blur", "ps_5_0"};
+	EnumArray<ShaderKind, CompileJob> pixel_jobs{};
+	for (const ShaderKind kind : each<ShaderKind>()) {
+		pixel_jobs[kind] = CompileJob{K_PIXEL_SHADER_NAMES[kind], "ps_5_0"};
 	}
 
 	std::vector<std::thread> compilers;
@@ -514,10 +508,10 @@ auto D3D11Backend::create_shaders() -> bool
 		return false;
 	}
 
-	for (u32 i = 0; i < K_SHADER_KIND_COUNT; i += 1) {
-		ID3DBlob* blob = pixel_jobs[i].blob.Get();
+	for (const ShaderKind kind : each<ShaderKind>()) {
+		ID3DBlob* blob = pixel_jobs[kind].blob.Get();
 
-		if (FAILED(device->CreatePixelShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &pixel_shaders[i]))) {
+		if (FAILED(device->CreatePixelShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &pixel_shaders[kind]))) {
 			return false;
 		}
 	}
@@ -695,7 +689,7 @@ auto D3D11Backend::draw_command(const RenderFrame& t_frame, const DrawCommand& t
 		context->UpdateSubresource(extra_constants, 0, nullptr, &effect, 0, 0);
 	}
 
-	context->PSSetShader(pixel_shaders[static_cast<u32>(t_command.shader)].Get(), nullptr, 0);
+	context->PSSetShader(pixel_shaders[t_command.shader].Get(), nullptr, 0);
 	context->PSSetShaderResources(0, 1, &image);
 
 	if (extra_constants != nullptr) {
@@ -712,7 +706,7 @@ auto create_native_render_backend() -> std::unique_ptr<RenderBackend>
 	return std::make_unique<D3D11Backend>();
 }
 
-auto native_render_backend_name() -> std::string_view
+auto native_render_backend_name() noexcept -> std::string_view
 {
 	return "Direct3D 11";
 }

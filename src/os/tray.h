@@ -19,10 +19,11 @@ enum class TrayEventType : u8 {
 	SHOW_UPDATES,
 };
 
+// A quick login names its account by its game and its row among that game's accounts. Other events carry no account.
 struct TrayEvent {
 	TrayEventType type = TrayEventType::NONE;
-	i32           game = -1;
-	i32           row  = -1;
+	u32           game = 0;
+	u32           row  = 0;
 };
 
 constexpr u32 K_TRAY_MAX_GAMES    = 16;
@@ -30,7 +31,7 @@ constexpr u32 K_TRAY_MAX_ACCOUNTS = 256;
 
 struct TrayGame {
 	char title[64];
-	i32  game;
+	u32  game;
 	u32  first_account;
 	u32  account_count;
 };
@@ -38,12 +39,11 @@ struct TrayGame {
 struct TrayAccount {
 	char label[64];
 	char region[8];
-	i32  game;
-	i32  row;
+	u32  game;
+	u32  row;
 };
 
-// The menu and the login toast follow the app's theme. A background that isn't fully opaque is frosted glass over a copy of the screen
-// behind, blurred by blur DIPs.
+// The menu and the login toast follow the app's theme.
 struct TrayColors {
 	Color background;
 	Color border;
@@ -55,7 +55,6 @@ struct TrayColors {
 	Color accent_ink;
 	Color success;
 	Color error;
-	float blur;
 
 	auto operator==(const TrayColors&) const -> bool = default;
 };
@@ -100,8 +99,6 @@ class Tray {
 
 	Tray(const Tray&)                    = delete;
 	auto operator=(const Tray&) -> Tray& = delete;
-
-	[[nodiscard]] static auto supports_glass() -> bool;
 
 	auto create(std::string_view t_tooltip) -> bool;
 

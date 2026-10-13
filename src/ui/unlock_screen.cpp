@@ -51,6 +51,21 @@ constexpr float K_ARRIVE_SCALE      = 0.94f;
 constexpr float K_LEAVE_SCALE       = 1.06f;
 constexpr float K_TRANSITION_STEP   = 1.0f / 30.0f;
 constexpr float K_SPINNER_TURNS     = 1.2f;
+
+constexpr float K_FORGOT_GAP    = 14.0f;
+constexpr float K_FORGOT_PAD    = 4.0f;
+constexpr float K_BUTTON_GAP    = 10.0f;
+constexpr float K_VIEW_RATE     = 22.0f;
+constexpr float K_VIEW_SWAP     = 0.02f;
+constexpr float K_ARMED_SECONDS = 4.0f;
+constexpr float K_FUSE_HEIGHT   = 2.0f;
+constexpr float K_FUSE_INSET    = 10.0f;
+constexpr float K_FUSE_BOTTOM   = 6.0f;
+
+constexpr std::string_view K_FORGOT_LABEL  = "Forgot your password?";
+constexpr std::string_view K_CANCEL_LABEL  = "Cancel";
+constexpr std::string_view K_ERASE_LABEL   = "Delete everything";
+constexpr std::string_view K_CONFIRM_LABEL = "Confirm";
 }
 
 UnlockScreen::UnlockScreen(Settings*         t_settings,
@@ -66,8 +81,8 @@ UnlockScreen::UnlockScreen(Settings*         t_settings,
 	, m_window(t_window)
 	, m_commands(t_commands)
 {
-	m_fields[K_PASSWORD].set_placeholder("Master password");
-	m_fields[K_CONFIRMATION].set_placeholder("Type it again");
+	m_fields[PasswordField::PASSWORD].set_placeholder("Master password");
+	m_fields[PasswordField::CONFIRMATION].set_placeholder("Type it again");
 }
 
 auto UnlockScreen::reset_fields() -> void
@@ -77,7 +92,7 @@ auto UnlockScreen::reset_fields() -> void
 		field.set_masked(true);
 	}
 
-	focus_field(K_PASSWORD);
+	focus_field(PasswordField::PASSWORD);
 }
 
 auto UnlockScreen::show_unlock(bool t_animated) -> void
@@ -96,7 +111,11 @@ auto UnlockScreen::show(bool t_animated) -> void
 {
 	clear_errors();
 	reset_fields();
-	m_active = true;
+	m_active        = true;
+	m_reset         = false;
+	m_reset_wanted  = false;
+	m_view          = 1.0f;
+	m_armed_seconds = 0.0f;
 
 	if (!t_animated) {
 		m_backdrop = 1.0f;
@@ -137,9 +156,10 @@ auto UnlockScreen::layout() const -> Layout
 {
 	const Font& title     = m_fonts->title;
 	const Font& secondary = m_fonts->secondary;
-	const auto  fields    = static_cast<float>(field_count());
+	const auto  fields    = static_cast<float>(shown_fields().size());
+	const float forgot    = offers_reset() ? K_FORGOT_GAP + secondary.line_height() : 0.0f;
 	const float height    = K_ICON_SIZE + K_ICON_GAP + title.line_height() + K_TITLE_GAP + secondary.line_height() * static_cast<float>(subtitle_lines()) +
-	                        K_FIELDS_GAP + fields * K_FIELD_HEIGHT + (fields - 1.0f) * K_FIELD_SPACING + K_NOTICE_GAP + secondary.line_height();
+	                        K_FIELDS_GAP + fields * K_FIELD_HEIGHT + (fields - 1.0f) * K_FIELD_SPACING + K_NOTICE_GAP + secondary.line_height() + forgot;
 
 	const Rect  area   = content_rect(m_window->size());
 	const float center = area.center().x;
@@ -156,14 +176,69 @@ auto UnlockScreen::layout() const -> Layout
 	result.subtitle_baseline = y + secondary.ascent;
 	y += secondary.line_height() * static_cast<float>(subtitle_lines()) + K_FIELDS_GAP;
 
-	for (u32 i = 0; i < field_count(); i += 1) {
-		result.fields[i] = Rect{left, snapped_to_pixel(y), K_FORM_WIDTH, K_FIELD_HEIGHT};
+	for (const PasswordField field : shown_fields()) {
+		result.fields[field] = Rect{left, snapped_to_pixel(y), K_FORM_WIDTH, K_FIELD_HEIGHT};
 		y += K_FIELD_HEIGHT + K_FIELD_SPACING;
 	}
 
 	result.notice_top = snapped_to_pixel(y - K_FIELD_SPACING + K_NOTICE_GAP);
+	result.forgot_top = snapped_to_pixel(result.notice_top + secondary.line_height() + K_FORGOT_GAP);
 
 	return result;
+}
+
+auto UnlockScreen::forgot_rect(const Layout& t_layout) const -> Rect
+{
+	const Font& font  = m_fonts->secondary;
+	const float width = text_width(font, K_FORGOT_LABEL);
+	const float left  = snapped_to_pixel(content_rect(m_window->size()).center().x - width * 0.5f);
+
+	return Rect{left, t_layout.forgot_top, width, font.line_height()}.inset(-K_FORGOT_PAD);
+}
+
+auto UnlockScreen::cancel_rect(const Layout& t_layout) const -> Rect
+{
+	const Rect row = t_layout.fields[PasswordField::PASSWORD];
+
+	return Rect{row.x, row.y, (row.w - K_BUTTON_GAP) * 0.5f, row.h};
+}
+
+auto UnlockScreen::erase_rect(const Layout& t_layout) const -> Rect
+{
+	const Rect cancel = cancel_rect(t_layout);
+
+	return Rect{cancel.right() + K_BUTTON_GAP, cancel.y, cancel.w, cancel.h};
+}
+
+auto UnlockScreen::open_reset() -> void
+{
+	clear_errors();
+	m_reset_wanted  = true;
+	m_armed_seconds = 0.0f;
+
+	for (TextInput& field : m_fields) {
+		field.set_value("");
+		field.set_focused(false);
+	}
+}
+
+auto UnlockScreen::close_reset() -> void
+{
+	m_reset_wanted  = false;
+	m_armed_seconds = 0.0f;
+	focus_field(PasswordField::PASSWORD);
+}
+
+// Deleting everything takes a second click while the button still asks for it, so one stray click can't empty the vault.
+auto UnlockScreen::press_erase() -> void
+{
+	if (m_armed_seconds <= 0.0f) {
+		m_armed_seconds = K_ARMED_SECONDS;
+		return;
+	}
+
+	m_armed_seconds = 0.0f;
+	m_commands->push(Command{.type = CommandType::RESET_EVERYTHING});
 }
 
 // A wrong password nudges the fields side to side, fading out.
@@ -178,20 +253,20 @@ auto UnlockScreen::shake_offset() const -> float
 
 auto UnlockScreen::submit_rect(const Layout& t_layout) const -> Rect
 {
-	const Rect field = t_layout.fields[field_count() - 1];
+	const Rect field = t_layout.fields[shown_fields().back()];
 
 	return Rect{field.right() - K_SUBMIT_INSET - K_SUBMIT_SIZE, field.y + (field.h - K_SUBMIT_SIZE) * 0.5f, K_SUBMIT_SIZE, K_SUBMIT_SIZE};
 }
 
-auto UnlockScreen::reveal_rect(const Layout& t_layout, u32 t_field) const -> Rect
+auto UnlockScreen::reveal_rect(const Layout& t_layout, PasswordField t_field) const -> Rect
 {
 	const Rect  field = t_layout.fields[t_field];
-	const float right = t_field == field_count() - 1 ? submit_rect(t_layout).x - K_REVEAL_GAP : field.right() - K_REVEAL_GAP;
+	const float right = t_field == shown_fields().back() ? submit_rect(t_layout).x - K_REVEAL_GAP : field.right() - K_REVEAL_GAP;
 
 	return Rect{right - K_REVEAL_SIZE, field.y + (field.h - K_REVEAL_SIZE) * 0.5f, K_REVEAL_SIZE, K_REVEAL_SIZE};
 }
 
-auto UnlockScreen::field_text_rect(const Layout& t_layout, u32 t_field) const -> Rect
+auto UnlockScreen::field_text_rect(const Layout& t_layout, PasswordField t_field) const -> Rect
 {
 	Rect field = t_layout.fields[t_field];
 	field.w    = reveal_rect(t_layout, t_field).x - field.x;
@@ -201,28 +276,28 @@ auto UnlockScreen::field_text_rect(const Layout& t_layout, u32 t_field) const ->
 
 auto UnlockScreen::is_reveal_hit(const Layout& t_layout, Vec2 t_point) const -> bool
 {
-	for (u32 i = 0; i < field_count(); i += 1) {
-		if (reveal_rect(t_layout, i).contains(t_point)) return true;
+	for (const PasswordField field : shown_fields()) {
+		if (reveal_rect(t_layout, field).contains(t_point)) return true;
 	}
 
 	return false;
 }
 
-auto UnlockScreen::field_at(const Layout& t_layout, Vec2 t_point) const -> i32
+auto UnlockScreen::field_at(const Layout& t_layout, Vec2 t_point) const -> std::optional<UnlockScreen::PasswordField>
 {
-	if (is_reveal_hit(t_layout, t_point) || submit_rect(t_layout).contains(t_point)) return -1;
+	if (is_reveal_hit(t_layout, t_point) || submit_rect(t_layout).contains(t_point)) return std::nullopt;
 
-	for (u32 i = 0; i < field_count(); i += 1) {
-		if (t_layout.fields[i].contains(t_point)) return static_cast<i32>(i);
+	for (const PasswordField field : shown_fields()) {
+		if (t_layout.fields[field].contains(t_point)) return field;
 	}
 
-	return -1;
+	return std::nullopt;
 }
 
-auto UnlockScreen::focus_field(u32 t_field) -> void
+auto UnlockScreen::focus_field(PasswordField t_field) -> void
 {
-	for (u32 i = 0; i < 2; i += 1) {
-		m_fields[i].set_focused(i == t_field);
+	for (const PasswordField field : each<PasswordField>()) {
+		m_fields[field].set_focused(field == t_field);
 	}
 }
 
@@ -237,7 +312,7 @@ auto UnlockScreen::submit() -> void
 
 auto UnlockScreen::attempt_unlock() -> void
 {
-	const std::string_view password = m_fields[K_PASSWORD].value();
+	const std::string_view password = m_fields[PasswordField::PASSWORD].value();
 	if (password.empty()) return;
 
 	start_derivation(password, false);
@@ -245,15 +320,15 @@ auto UnlockScreen::attempt_unlock() -> void
 
 auto UnlockScreen::attempt_setup() -> void
 {
-	const std::string_view chosen = m_fields[K_PASSWORD].value();
+	const std::string_view chosen = m_fields[PasswordField::PASSWORD].value();
 	if (chosen.empty()) return;
 
-	if (chosen != m_fields[K_CONFIRMATION].value()) {
+	if (chosen != m_fields[PasswordField::CONFIRMATION].value()) {
 		m_passwords_differ = true;
 		m_setup_failed     = false;
 		m_shake_seconds    = K_SHAKE_SECONDS;
-		m_fields[K_CONFIRMATION].set_value("");
-		focus_field(K_CONFIRMATION);
+		m_fields[PasswordField::CONFIRMATION].set_value("");
+		focus_field(PasswordField::CONFIRMATION);
 		return;
 	}
 
@@ -282,7 +357,7 @@ auto UnlockScreen::finish_derivation(std::unique_ptr<DerivedKey> t_derived) -> v
 		m_wrong_password = !m_setup;
 		m_setup_failed   = m_setup;
 		m_shake_seconds  = m_setup ? 0.0f : K_SHAKE_SECONDS;
-		focus_field(K_PASSWORD);
+		focus_field(PasswordField::PASSWORD);
 		return;
 	}
 
@@ -297,9 +372,32 @@ auto UnlockScreen::finish_derivation(std::unique_ptr<DerivedKey> t_derived) -> v
 	}
 }
 
+// Switching between unlocking and resetting fades the form out, swaps it, and fades the other one in.
+auto UnlockScreen::animate_view(float t_delta_seconds) -> void
+{
+	if (m_reset != m_reset_wanted) {
+		m_view = animation::ease_toward(m_view, 0.0f, K_VIEW_RATE, t_delta_seconds);
+
+		if (m_view <= K_VIEW_SWAP) {
+			m_reset = m_reset_wanted;
+		}
+	} else {
+		m_view = animation::ease_toward(m_view, 1.0f, K_VIEW_RATE, t_delta_seconds);
+	}
+
+	if (m_armed_seconds > 0.0f) {
+		m_armed_seconds = std::max(0.0f, m_armed_seconds - t_delta_seconds);
+	}
+
+	if (m_view < 1.0f || m_armed_seconds > 0.0f) {
+		animation::request_frame();
+	}
+}
+
 auto UnlockScreen::update(float t_delta_seconds) -> void
 {
 	animate_presence(std::min(t_delta_seconds, K_TRANSITION_STEP));
+	animate_view(t_delta_seconds);
 
 	if (is_deriving()) {
 		m_spin = std::fmod(m_spin + t_delta_seconds * K_SPINNER_TURNS * 2.0f * std::numbers::pi_v<float>, 2.0f * std::numbers::pi_v<float>);
@@ -312,8 +410,8 @@ auto UnlockScreen::update(float t_delta_seconds) -> void
 
 	if (!m_active) return;
 
-	for (u32 i = 0; i < field_count(); i += 1) {
-		m_fields[i].update(t_delta_seconds);
+	for (const PasswordField field : shown_fields()) {
+		m_fields[field].update(t_delta_seconds);
 	}
 
 	if (m_shake_seconds > 0.0f) {
@@ -325,12 +423,12 @@ auto UnlockScreen::update(float t_delta_seconds) -> void
 auto UnlockScreen::on_char(u32 t_character) -> bool
 {
 	if (!m_active) return false;
-	if (is_deriving()) return true;
+	if (is_deriving() || m_reset_wanted) return true;
 
 	clear_errors();
 
-	for (u32 i = 0; i < field_count(); i += 1) {
-		m_fields[i].on_char(t_character);
+	for (const PasswordField field : shown_fields()) {
+		m_fields[field].on_char(t_character);
 	}
 
 	return true;
@@ -341,13 +439,21 @@ auto UnlockScreen::on_key_down(os::Key t_key) -> bool
 	if (!m_active) return false;
 	if (is_deriving()) return true;
 
+	if (m_reset_wanted) {
+		if (t_key == os::Key::ESCAPE) {
+			close_reset();
+		}
+
+		return true;
+	}
+
 	if (t_key == os::Key::ENTER) {
 		submit();
 	} else if (m_setup && t_key == os::Key::TAB) {
-		focus_field(m_fields[K_PASSWORD].is_focused() ? K_CONFIRMATION : K_PASSWORD);
+		focus_field(m_fields[PasswordField::PASSWORD].is_focused() ? PasswordField::CONFIRMATION : PasswordField::PASSWORD);
 	} else {
-		for (u32 i = 0; i < field_count(); i += 1) {
-			m_fields[i].on_key_down(t_key);
+		for (const PasswordField field : shown_fields()) {
+			m_fields[field].on_key_down(t_key);
 		}
 	}
 
@@ -357,15 +463,12 @@ auto UnlockScreen::on_key_down(os::Key t_key) -> bool
 auto UnlockScreen::on_pointer_down(Vec2 t_point) -> bool
 {
 	if (!m_active) return false;
-	if (is_deriving()) return true;
+	if (is_deriving() || m_reset_wanted) return true;
 
 	const Layout current = layout();
-	const i32    pressed = field_at(current, t_point);
-	if (pressed >= 0) {
-		const auto field = static_cast<u32>(pressed);
-
-		focus_field(field);
-		m_fields[field].on_pointer_down(m_fonts->body, field_text_rect(current, field), t_point.x);
+	if (const std::optional<PasswordField> pressed = field_at(current, t_point)) {
+		focus_field(*pressed);
+		m_fields[*pressed].on_pointer_down(m_fonts->body, field_text_rect(current, *pressed), t_point.x);
 	}
 
 	return true;
@@ -377,9 +480,9 @@ auto UnlockScreen::on_pointer_move(Vec2 t_point) -> bool
 
 	const Layout current = layout();
 
-	for (u32 i = 0; i < field_count(); i += 1) {
-		if (m_fields[i].is_selecting()) {
-			m_fields[i].on_pointer_move(m_fonts->body, field_text_rect(current, i), t_point.x);
+	for (const PasswordField field : shown_fields()) {
+		if (m_fields[field].is_selecting()) {
+			m_fields[field].on_pointer_move(m_fonts->body, field_text_rect(current, field), t_point.x);
 		}
 	}
 
@@ -401,8 +504,20 @@ auto UnlockScreen::on_pointer_up(Vec2 t_point) -> bool
 
 	const Layout current = layout();
 
-	if (is_reveal_hit(current, t_point)) {
-		const bool reveal = m_fields[K_PASSWORD].is_masked();
+	if (m_reset_wanted) {
+		if (m_reset && cancel_rect(current).contains(t_point)) {
+			close_reset();
+		} else if (m_reset && erase_rect(current).contains(t_point)) {
+			press_erase();
+		}
+
+		return true;
+	}
+
+	if (offers_reset() && forgot_rect(current).contains(t_point)) {
+		open_reset();
+	} else if (is_reveal_hit(current, t_point)) {
+		const bool reveal = m_fields[PasswordField::PASSWORD].is_masked();
 
 		for (TextInput& field : m_fields) {
 			field.set_masked(!reveal);
@@ -417,16 +532,13 @@ auto UnlockScreen::on_pointer_up(Vec2 t_point) -> bool
 auto UnlockScreen::on_right_click(Vec2 t_point) -> bool
 {
 	if (!m_active) return false;
-	if (is_deriving()) return true;
+	if (is_deriving() || m_reset_wanted) return true;
 
 	const Layout current = layout();
-	const i32    clicked = field_at(current, t_point);
-	if (clicked >= 0) {
-		const auto field = static_cast<u32>(clicked);
-
-		focus_field(field);
-		m_fields[field].on_right_click(m_fonts->body, field_text_rect(current, field), t_point.x);
-		m_commands->push(Command{.type = CommandType::SHOW_TEXT_MENU, .position = t_point, .text_input = &m_fields[field]});
+	if (const std::optional<PasswordField> clicked = field_at(current, t_point)) {
+		focus_field(*clicked);
+		m_fields[*clicked].on_right_click(m_fonts->body, field_text_rect(current, *clicked), t_point.x);
+		m_commands->push(Command{.type = CommandType::SHOW_TEXT_MENU, .position = t_point, .text_input = &m_fields[*clicked]});
 	}
 
 	return true;
@@ -441,9 +553,15 @@ auto UnlockScreen::cursor() const -> CursorKind
 	}
 
 	const Layout current = layout();
+
+	if (m_reset) {
+		return cancel_rect(current).contains(m_mouse) || erase_rect(current).contains(m_mouse) ? CursorKind::HAND : CursorKind::ARROW;
+	}
+
+	if (offers_reset() && forgot_rect(current).contains(m_mouse)) return CursorKind::HAND;
 	if (is_reveal_hit(current, m_mouse) || submit_rect(current).contains(m_mouse)) return CursorKind::HAND;
 
-	return field_at(current, m_mouse) >= 0 ? CursorKind::I_BEAM : CursorKind::ARROW;
+	return field_at(current, m_mouse) ? CursorKind::I_BEAM : CursorKind::ARROW;
 }
 
 auto UnlockScreen::error_message() const -> std::string_view
@@ -455,11 +573,11 @@ auto UnlockScreen::error_message() const -> std::string_view
 	return {};
 }
 
-auto UnlockScreen::draw_field(DrawList* t_draw_list, const Layout& t_layout, u32 t_field, u8 t_alpha) -> void
+auto UnlockScreen::draw_field(DrawList* t_draw_list, const Layout& t_layout, PasswordField t_field, u8 t_alpha) -> void
 {
 	TextInput*  field  = &m_fields[t_field];
 	const Rect  reveal = reveal_rect(t_layout, t_field);
-	const bool  failed = !error_message().empty() && (m_wrong_password || t_field == K_CONFIRMATION);
+	const bool  failed = !error_message().empty() && (m_wrong_password || t_field == PasswordField::CONFIRMATION);
 	const Color border = failed ? g_theme.error : field->is_focused() ? m_settings->accent : g_theme.control;
 
 	controls::draw_field(t_draw_list, t_layout.fields[t_field], K_FIELD_RADIUS, border, g_theme.field, t_alpha);
@@ -487,7 +605,7 @@ auto UnlockScreen::draw_notice(DrawList* t_draw_list, const Layout& t_layout, u8
 {
 	const Font&            font   = m_fonts->secondary;
 	const std::string_view error  = error_message();
-	const bool             typing = m_fields[K_PASSWORD].is_focused() || m_fields[K_CONFIRMATION].is_focused();
+	const bool             typing = m_fields[PasswordField::PASSWORD].is_focused() || m_fields[PasswordField::CONFIRMATION].is_focused();
 
 	controls::NoticeKind kind  = controls::NoticeKind::ALERT;
 	std::string_view     text  = error;
@@ -505,6 +623,36 @@ auto UnlockScreen::draw_notice(DrawList* t_draw_list, const Layout& t_layout, u8
 	controls::draw_notice(t_draw_list, font, Vec2{left, t_layout.notice_top}, kind, text, faded(color, t_alpha));
 }
 
+auto UnlockScreen::draw_forgot(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void
+{
+	const Font& font  = m_fonts->secondary;
+	const Rect  area  = forgot_rect(t_layout);
+	const Color color = area.contains(m_mouse) && !is_deriving() ? g_theme.text_dim : g_theme.text_faint;
+
+	draw_text(t_draw_list, font, Vec2{area.x + K_FORGOT_PAD, t_layout.forgot_top + font.ascent}, K_FORGOT_LABEL, faded(color, t_alpha));
+}
+
+// Once armed, a fuse along the bottom of Delete everything burns down while the second click still counts.
+auto UnlockScreen::draw_reset_buttons(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void
+{
+	const Font& font   = m_fonts->body;
+	const Rect  cancel = cancel_rect(t_layout);
+	const Rect  erase  = erase_rect(t_layout);
+	const bool  armed  = m_armed_seconds > 0.0f;
+	const auto  style  = armed ? controls::ButtonStyle::DANGER_CONFIRM : controls::ButtonStyle::DANGER;
+
+	controls::draw_button(t_draw_list, font, cancel, K_CANCEL_LABEL, controls::ButtonStyle::NEUTRAL, m_settings->accent, true, cancel.contains(m_mouse),
+	                      t_alpha);
+	controls::draw_button(t_draw_list, font, erase, armed ? K_CONFIRM_LABEL : K_ERASE_LABEL, style, m_settings->accent, true, erase.contains(m_mouse), t_alpha);
+
+	if (armed) {
+		const float left = m_armed_seconds / K_ARMED_SECONDS;
+		const Rect  fuse{erase.x + K_FUSE_INSET, erase.bottom() - K_FUSE_BOTTOM, (erase.w - K_FUSE_INSET * 2.0f) * left, K_FUSE_HEIGHT};
+
+		t_draw_list->add_rounded_rect(fuse, rounded(K_FUSE_HEIGHT * 0.5f), faded(controls::ink_on(g_theme.error), t_alpha));
+	}
+}
+
 auto UnlockScreen::draw(DrawList* t_draw_list) -> void
 {
 	if (m_backdrop <= 0.0f) return;
@@ -520,16 +668,26 @@ auto UnlockScreen::draw(DrawList* t_draw_list) -> void
 
 	if (m_content <= 0.0f) return;
 
-	const u8    alpha = to_alpha(m_content);
-	const float scale = m_active ? K_ARRIVE_SCALE + (1.0f - K_ARRIVE_SCALE) * m_content : K_LEAVE_SCALE + (1.0f - K_LEAVE_SCALE) * m_content;
+	const u8    alpha      = to_alpha(m_content);
+	const u8    view_alpha = to_alpha(m_content * m_view);
+	const float scale      = m_active ? K_ARRIVE_SCALE + (1.0f - K_ARRIVE_SCALE) * m_content : K_LEAVE_SCALE + (1.0f - K_LEAVE_SCALE) * m_content;
 	t_draw_list->push_scale(Vec2{center, (current.icon.y + current.notice_top) * 0.5f}, scale);
 
 	const auto draw_centered = [&](const Font& t_font, float t_baseline, std::string_view t_text, Color t_color) {
-		draw_text(t_draw_list, t_font, Vec2{snapped_to_pixel(center - text_width(t_font, t_text) * 0.5f), t_baseline}, t_text, faded(t_color, alpha));
+		draw_text(t_draw_list, t_font, Vec2{snapped_to_pixel(center - text_width(t_font, t_text) * 0.5f), t_baseline}, t_text, faded(t_color, view_alpha));
 	};
 
 	if (m_app_icon != nullptr) {
 		t_draw_list->add_image(current.icon, m_app_icon, faded(Color{255, 255, 255, 255}, alpha));
+	}
+
+	if (m_reset) {
+		draw_centered(title, current.title_baseline, "Reset Pulsar", g_theme.text);
+		draw_centered(secondary, current.subtitle_baseline, "A forgotten master password can't be recovered.", g_theme.text_dim);
+		draw_centered(secondary, current.subtitle_baseline + secondary.line_height(), "Resetting deletes all saved accounts and settings.", g_theme.text_dim);
+		draw_reset_buttons(t_draw_list, current, view_alpha);
+		t_draw_list->pop_scale();
+		return;
 	}
 
 	if (m_setup) {
@@ -541,12 +699,16 @@ auto UnlockScreen::draw(DrawList* t_draw_list) -> void
 		draw_centered(secondary, current.subtitle_baseline, "Enter your master password to open your vault.", g_theme.text_dim);
 	}
 
-	for (u32 i = 0; i < field_count(); i += 1) {
-		draw_field(t_draw_list, current, i, alpha);
+	for (const PasswordField field : shown_fields()) {
+		draw_field(t_draw_list, current, field, view_alpha);
 	}
 
-	draw_submit_button(t_draw_list, current, alpha);
-	draw_notice(t_draw_list, current, alpha);
+	draw_submit_button(t_draw_list, current, view_alpha);
+	draw_notice(t_draw_list, current, view_alpha);
+
+	if (offers_reset()) {
+		draw_forgot(t_draw_list, current, view_alpha);
+	}
 
 	t_draw_list->pop_scale();
 }

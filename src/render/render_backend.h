@@ -4,6 +4,7 @@
 #include <span>
 #include <string_view>
 
+#include "core/enum_array.h"
 #include "core/types.h"
 #include "gfx/draw_list.h"
 #include "render/renderer.h"
@@ -11,6 +12,19 @@
 namespace os {
 class Window;
 }
+
+// Every backend's shader source names each kind's pixel shader the same way.
+constexpr EnumArray<ShaderKind, const char*> K_PIXEL_SHADER_NAMES{{
+	"ps_solid",
+	"ps_textured",
+	"ps_banner_glow",
+	"ps_color_picker",
+	"ps_shadow",
+	"ps_outline_countdown",
+	"ps_backdrop",
+	"ps_backdrop_plain",
+	"ps_backdrop_blur",
+}};
 
 struct ViewportConstants {
 	float width;
@@ -75,7 +89,7 @@ struct RenderFrame {
 	float           logical_width;
 	float           logical_height;
 	float           effect_time_seconds;
-	u32             backdrop_style;
+	BackgroundStyle backdrop_style;
 	float           backdrop_intensity;
 	float           backdrop_light;
 	float           backdrop_grain;
@@ -137,4 +151,4 @@ class RenderBackend {
 
 [[nodiscard]] auto create_native_render_backend() -> std::unique_ptr<RenderBackend>;
 [[nodiscard]] auto create_opengl_render_backend() -> std::unique_ptr<RenderBackend>;
-[[nodiscard]] auto native_render_backend_name() -> std::string_view;
+[[nodiscard]] auto native_render_backend_name() noexcept -> std::string_view;

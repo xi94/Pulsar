@@ -491,6 +491,34 @@ auto App::commit_new_vault_key() -> void
 	m_replaced_vault_key.reset();
 }
 
+// The way back in for someone who forgot their master password. Every account and setting is deleted and Pulsar starts over at creating a
+// master password, keeping only the window's size and whether it starts with the system.
+auto App::reset_everything() -> void
+{
+	if (!m_locked) return;
+
+	if (!storage::delete_all_data()) {
+		debug_log::write("app", "reset could not delete every saved file");
+	}
+
+	m_library.wipe_accounts();
+	m_wipe_due.reset();
+	m_save_due.reset();
+	m_replaced_vault_key.reset();
+	m_master_key.lock();
+
+	Settings fresh{};
+	fresh.window_width      = m_settings.window_width;
+	fresh.window_height     = m_settings.window_height;
+	fresh.start_with_system = m_settings.start_with_system;
+	m_settings              = fresh;
+
+	apply_settings(storage::LoadResult::NO_FILE);
+	reload_fonts();
+	save_settings();
+	m_unlock_screen.show_setup(true);
+}
+
 auto App::copy_password(std::string_view t_password) -> void
 {
 	os::set_clipboard_secret(t_password);
@@ -544,11 +572,11 @@ auto App::take_picked_riot_client() -> void
 	copy_to(client, m_settings.riot_client_path);
 	request_save();
 
-	if (request->index >= 0 && account_for(request->account) != nullptr) {
+	if (request->game && account_for(request->account) != nullptr) {
 		if (m_carousel.is_library() && !m_account_modal.is_blocking()) {
-			m_login_session.request(static_cast<u32>(request->index), request->account);
+			m_login_session.request(*request->game, request->account);
 		} else {
-			m_account_modal.quick_login(static_cast<u32>(request->index), request->account);
+			m_account_modal.quick_login(*request->game, request->account);
 		}
 	} else {
 		m_toasts.notify(Notification{.message = "Riot Client location saved."});
@@ -643,7 +671,7 @@ auto App::fill_tray_menu(os::TrayMenu* t_menu) -> void
 		t_menu->game_count += 1;
 
 		copy_to(m_library.games[game].title, entry->title);
-		entry->game          = static_cast<i32>(game);
+		entry->game          = game;
 		entry->first_account = t_menu->account_count;
 		entry->account_count = 0;
 
@@ -653,8 +681,8 @@ auto App::fill_tray_menu(os::TrayMenu* t_menu) -> void
 			os::TrayAccount* item = &t_menu->accounts[t_menu->account_count];
 			copy_to(short_name(*account), item->label);
 			copy_to(std::string_view{account->region}, item->region);
-			item->game = static_cast<i32>(game);
-			item->row  = static_cast<i32>(row);
+			item->game = game;
+			item->row  = row;
 
 			t_menu->account_count += 1;
 			entry->account_count += 1;
@@ -669,9 +697,9 @@ auto App::pump_input() -> void
 	m_window.pump_messages();
 	m_window.set_close_to_tray(m_settings.close_to_tray && m_tray.is_icon_visible());
 	// The tray menu sits on the desktop rather than over the app, so it takes the deeper surface colour with a hint of the accent to look like part
-	// of Pulsar. It blurs like the app's menus, with a tint of its own.
+	// of Pulsar.
 	m_tray.set_colors(os::TrayColors{
-		.background    = with_alpha(mix(g_theme.surface, m_settings.accent, K_TRAY_ACCENT_TINT), controls::glass_tint_alpha(m_settings.tray_tint)),
+		.background    = mix(g_theme.surface, m_settings.accent, K_TRAY_ACCENT_TINT),
 		.border        = g_theme.border,
 		.separator     = g_theme.separator,
 		.text          = g_theme.text,
@@ -681,7 +709,7 @@ auto App::pump_input() -> void
 		.accent_ink    = controls::ink_on(m_settings.accent),
 		.success       = g_theme.success,
 		.error         = g_theme.error,
-		.blur          = controls::glass_blur(controls::GlassSurface::MENU),
+
 	});
 
 	handle_tray_event();
@@ -732,12 +760,11 @@ auto App::handle_tray_event() -> void
 		}
 
 		case QUICK_LOGIN: {
-			if (m_locked || event.game < 0 || event.row < 0) break;
+			if (m_locked) break;
 
-			const auto game = static_cast<u32>(event.game);
-			if (const auto account = m_library.visible_account(game, static_cast<u32>(event.row))) {
-				m_account_modal.quick_login(game, *account);
-				lift_game_card(game);
+			if (const auto account = m_library.visible_account(event.game, event.row)) {
+				m_account_modal.quick_login(event.game, *account);
+				lift_game_card(event.game);
 			}
 
 			break;
@@ -878,8 +905,10 @@ auto App::process(const Command& t_command) -> void
 		}
 
 		case OPEN_GAME: {
-			m_account_modal.open(t_command.index);
-			m_account_modal.set_art_source(m_carousel.art_source(static_cast<u32>(t_command.index)));
+			if (!t_command.game) break;
+
+			m_account_modal.open(*t_command.game);
+			m_account_modal.set_art_source(m_carousel.art_source(*t_command.game));
 			break;
 		}
 
@@ -910,6 +939,11 @@ auto App::process(const Command& t_command) -> void
 			break;
 		}
 
+		case RESET_EVERYTHING: {
+			reset_everything();
+			break;
+		}
+
 		case SHOW_ACCOUNT_MENU: {
 			open_account_menu(t_command);
 			break;
@@ -921,7 +955,7 @@ auto App::process(const Command& t_command) -> void
 		}
 
 		case COPY_USERNAME: {
-			if (const Account* account = m_account_modal.account_at_row(t_command.index)) {
+			if (const Account* account = m_account_modal.account_at_row(t_command.row)) {
 				os::set_clipboard_text(account->username);
 			}
 
@@ -929,7 +963,7 @@ auto App::process(const Command& t_command) -> void
 		}
 
 		case COPY_PASSWORD: {
-			if (const Account* account = m_account_modal.account_at_row(t_command.index)) {
+			if (const Account* account = m_account_modal.account_at_row(t_command.row)) {
 				copy_password(account->password);
 			}
 
@@ -947,12 +981,12 @@ auto App::process(const Command& t_command) -> void
 		}
 
 		case EDIT_ROW: {
-			m_account_modal.edit_row(t_command.index);
+			m_account_modal.edit_row(t_command.row);
 			break;
 		}
 
 		case DELETE_ROW: {
-			m_account_modal.delete_row(t_command.index);
+			m_account_modal.delete_row(t_command.row);
 			break;
 		}
 
@@ -982,10 +1016,10 @@ auto App::process(const Command& t_command) -> void
 		}
 
 		case LOGIN_ACCOUNT: {
-			if (account_for(t_command.account) != nullptr && t_command.index >= 0) {
+			if (account_for(t_command.account) != nullptr && t_command.game) {
 				m_settings_panel.close();
-				m_account_modal.quick_login(static_cast<u32>(t_command.index), t_command.account);
-				lift_game_card(static_cast<u32>(t_command.index));
+				m_account_modal.quick_login(*t_command.game, t_command.account);
+				lift_game_card(*t_command.game);
 			}
 
 			break;
@@ -1048,19 +1082,19 @@ auto App::open_account_menu(const Command& t_command) -> void
 		return;
 	}
 
-	if (t_command.index < 0) {
+	if (!t_command.row) {
 		open_library_account_menu(t_command);
 		return;
 	}
 
-	if (m_account_modal.account_at_row(t_command.index) == nullptr) return;
+	if (m_account_modal.account_at_row(t_command.row) == nullptr) return;
 
-	const i32             row = t_command.index;
-	const ContextMenuItem items[]{
-		{.label = "Edit", .command = Command{.type = CommandType::EDIT_ROW, .index = row}, .icon = Asset::ICON_EDIT_BOX},
-		{.label = "Delete", .command = Command{.type = CommandType::DELETE_ROW, .index = row}, .icon = Asset::ICON_TRASH, .destructive = true},
-		{.label = "Copy username", .command = Command{.type = CommandType::COPY_USERNAME, .index = row}, .icon = Asset::ICON_COPY, .separated = true},
-		{.label = "Copy password", .command = Command{.type = CommandType::COPY_PASSWORD, .index = row}, .icon = Asset::ICON_KEY},
+	const std::optional<u32> row = t_command.row;
+	const ContextMenuItem    items[]{
+		{.label = "Edit", .command = Command{.type = CommandType::EDIT_ROW, .row = row}, .icon = Asset::ICON_EDIT_BOX},
+		{.label = "Delete", .command = Command{.type = CommandType::DELETE_ROW, .row = row}, .icon = Asset::ICON_TRASH, .destructive = true},
+		{.label = "Copy username", .command = Command{.type = CommandType::COPY_USERNAME, .row = row}, .icon = Asset::ICON_COPY, .separated = true},
+		{.label = "Copy password", .command = Command{.type = CommandType::COPY_PASSWORD, .row = row}, .icon = Asset::ICON_KEY},
 	};
 
 	m_context_menu.open(t_command.position, items, m_window.size());
@@ -1088,7 +1122,7 @@ auto App::open_library_account_menu(const Command& t_command) -> void
 // Several picked accounts share a menu with only Delete in it, which deletes all of them.
 auto App::open_picked_menu(const Command& t_command) -> void
 {
-	const CommandType remove = t_command.index < 0 ? CommandType::DELETE_PICKED_IN_PLACE : CommandType::DELETE_PICKED_ROWS;
+	const CommandType remove = !t_command.row ? CommandType::DELETE_PICKED_IN_PLACE : CommandType::DELETE_PICKED_ROWS;
 	std::snprintf(m_picked_label, sizeof(m_picked_label), "Delete %u accounts", t_command.picked);
 
 	const ContextMenuItem items[]{
@@ -1255,9 +1289,9 @@ auto App::frame() -> void
 
 	m_truncation_hint.update(delta_seconds, m_pointer_down);
 
-	const i32 detached_game = m_account_modal.detached_game();
-	if (detached_game >= 0) {
-		m_account_modal.set_art_source(m_carousel.art_source(static_cast<u32>(detached_game)));
+	const std::optional<u32> detached_game = m_account_modal.detached_game();
+	if (detached_game) {
+		m_account_modal.set_art_source(m_carousel.art_source(*detached_game));
 	}
 
 	m_carousel.set_detached_game(detached_game);
@@ -1373,7 +1407,7 @@ auto App::render() -> void
 		animation::request_frame();
 	}
 
-	m_renderer.set_backdrop(static_cast<u32>(m_settings.background_style), m_settings.background_intensity,
+	m_renderer.set_backdrop(m_settings.background_style, m_settings.background_intensity,
 	                        m_settings.background_light ? m_settings.background_light_intensity : 0.0f,
 	                        m_settings.background_grain ? m_settings.background_grain_intensity : 0.0f);
 	m_renderer.render(&m_draw_list, g_theme.window);

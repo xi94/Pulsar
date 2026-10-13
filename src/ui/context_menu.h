@@ -49,7 +49,7 @@ class ContextMenu : public Widget {
 
 	[[nodiscard]] auto menu_rect() const -> Rect;
 	[[nodiscard]] auto item_rect(u32 t_index) const -> Rect;
-	[[nodiscard]] auto item_at(Vec2 t_point) const -> i32;
+	[[nodiscard]] auto item_at(Vec2 t_point) const -> std::optional<u32>;
 
 	const Fonts*  m_fonts;
 	const Assets* m_assets;

@@ -20,6 +20,7 @@ enum class CommandType : u8 {
 	REQUEST_NEW_MASTER_PASSWORD,
 	VAULT_UNLOCKED,
 	VAULT_CREATED,
+	RESET_EVERYTHING,
 	SHOW_ACCOUNT_MENU,
 	SHOW_TEXT_MENU,
 	COPY_USERNAME,
@@ -54,11 +55,13 @@ struct ArtSource {
 
 struct Command {
 	CommandType type;
-	i32         index = -1;
-	Vec2        position{};
-	TextInput*  text_input = nullptr;
-	TextEdit    text_edit  = TextEdit::COPY;
-	AccountRef  account{};
+	// The game a command is about, and the account popup row it came from, when it has them.
+	std::optional<u32> game;
+	std::optional<u32> row;
+	Vec2               position{};
+	TextInput*         text_input = nullptr;
+	TextEdit           text_edit  = TextEdit::COPY;
+	AccountRef         account{};
 	// For an account menu: how many rows are picked, when the clicked row is one of them.
 	u32 picked = 0;
 };

@@ -4,7 +4,6 @@
 #include <atomic>
 #include <cstring>
 #include <print>
-#include <ranges>
 
 #include "embeds/banners/2XKO.hpp"
 #include "embeds/banners/LeagueOfLegends.hpp"
@@ -91,7 +90,7 @@ auto shrink_by_half(const u8* t_source, u32 t_source_width, u32 t_source_height,
 	}
 }
 
-constexpr EncodedAsset K_ENCODED_ASSETS[]{
+constexpr EnumArray<Asset, EncodedAsset> K_ENCODED_ASSETS{{
 	{Asset::ICON_ARROW_BACK, icon::arrow_back_icon, "ArrowBack"},
 	{Asset::ICON_CLOSE, icon::close_icon, "Close"},
 	{Asset::ICON_MINIMIZE, icon::minimize_icon, "Minimize"},
@@ -134,11 +133,17 @@ constexpr EncodedAsset K_ENCODED_ASSETS[]{
 	{Asset::BANNER_TWO_XKO, banner::two_xko, "2XKO"},
 	{Asset::BANNER_RUNETERRA, banner::runeterra, "Runeterra"},
 	{Asset::BANNER_TEAMFIGHT_TACTICS, banner::teamfight_tactics, "TeamfightTactics"},
-};
+}};
 
-static_assert(std::size(K_ENCODED_ASSETS) == K_ASSET_COUNT);
-static_assert(std::ranges::all_of(std::views::iota(usize{0}, K_ASSET_COUNT),
-                                  [](usize t_index) { return K_ENCODED_ASSETS[t_index].asset == static_cast<Asset>(t_index); }));
+static_assert(
+	[] {
+		for (const Asset asset : each<Asset>()) {
+			if (K_ENCODED_ASSETS[asset].asset != asset) return false;
+		}
+
+		return true;
+	}(),
+	"K_ENCODED_ASSETS lists the assets in the order Asset declares them");
 }
 
 Assets::~Assets()
@@ -150,7 +155,7 @@ Assets::~Assets()
 
 auto Assets::encoded_bytes(Asset t_asset) -> std::span<const u8>
 {
-	return K_ENCODED_ASSETS[static_cast<usize>(t_asset)].bytes;
+	return K_ENCODED_ASSETS[t_asset].bytes;
 }
 
 auto Assets::create_texture(Renderer* t_renderer, const u8* t_rgba_pixels, u32 t_width, u32 t_height) -> std::unique_ptr<Texture>
@@ -205,12 +210,12 @@ auto Assets::with_mipmaps(const u8* t_rgba_pixels, u32 t_width, u32 t_height) ->
 auto Assets::begin_decode() -> void
 {
 	m_decoder = std::thread([this]() {
-		m_decoded.resize(K_ASSET_COUNT);
-		std::atomic<usize> next_asset{0};
+		std::atomic<u32> next_asset{0};
 
 		const auto decode_remaining = [this, &next_asset]() {
-			for (usize index = next_asset.fetch_add(1); index < K_ASSET_COUNT; index = next_asset.fetch_add(1)) {
-				const EncodedAsset& source = K_ENCODED_ASSETS[index];
+			for (u32 index = next_asset.fetch_add(1); index < K_ENUM_COUNT<Asset>; index = next_asset.fetch_add(1)) {
+				const Asset         asset  = enum_at<Asset>(index);
+				const EncodedAsset& source = K_ENCODED_ASSETS[asset];
 
 				int width    = 0;
 				int height   = 0;
@@ -222,12 +227,12 @@ auto Assets::begin_decode() -> void
 					continue;
 				}
 
-				m_decoded[index] = with_mipmaps(pixels, static_cast<u32>(width), static_cast<u32>(height));
+				m_decoded[asset] = with_mipmaps(pixels, static_cast<u32>(width), static_cast<u32>(height));
 				stbi_image_free(pixels);
 			}
 		};
 
-		const usize              worker_count = std::clamp<usize>(std::thread::hardware_concurrency(), 1, K_ASSET_COUNT);
+		const usize              worker_count = std::clamp<usize>(std::thread::hardware_concurrency(), 1, K_ENUM_COUNT<Asset>);
 		std::vector<std::thread> workers;
 		workers.reserve(worker_count);
 
@@ -249,14 +254,14 @@ auto Assets::finish_upload(Renderer* t_renderer) -> bool
 
 	bool all_uploaded = true;
 
-	for (usize i = 0; i < K_ASSET_COUNT; i += 1) {
-		const DecodedImage& image = m_decoded[i];
+	for (const Asset asset : each<Asset>()) {
+		const DecodedImage& image = m_decoded[asset];
 
 		if (!image.levels.empty()) {
-			m_textures[i] = upload(t_renderer, image);
+			m_textures[asset] = upload(t_renderer, image);
 		}
 
-		all_uploaded = all_uploaded && m_textures[i] != nullptr && m_textures[i]->is_valid();
+		all_uploaded = all_uploaded && m_textures[asset] != nullptr && m_textures[asset]->is_valid();
 	}
 
 	m_decoded = {};
@@ -271,13 +276,14 @@ auto Assets::restore(Renderer* t_renderer) -> void
 	begin_decode();
 	m_decoder.join();
 
-	for (usize i = 0; i < K_ASSET_COUNT; i += 1) {
-		if (m_decoded[i].levels.empty()) continue;
+	for (const Asset asset : each<Asset>()) {
+		const DecodedImage& image = m_decoded[asset];
+		if (image.levels.empty()) continue;
 
-		if (m_textures[i] != nullptr) {
-			m_textures[i]->restore(levels_of(m_decoded[i]));
+		if (m_textures[asset] != nullptr) {
+			m_textures[asset]->restore(levels_of(image));
 		} else {
-			m_textures[i] = upload(t_renderer, m_decoded[i]);
+			m_textures[asset] = upload(t_renderer, image);
 		}
 	}
 

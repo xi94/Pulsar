@@ -3,6 +3,7 @@
 #include <optional>
 #include <string_view>
 
+#include "core/enum_array.h"
 #include "core/types.h"
 #include "os/input.h"
 #include "ui/draggable.h"
@@ -57,9 +58,21 @@ class ColorPicker {
 	auto draw(DrawList* t_draw_list, Vec2 t_mouse) -> void;
 
   private:
-	static constexpr u32 K_FIELD_COUNT   = 4;
-	static constexpr u32 K_HEX_FIELD     = 0;
-	static constexpr u32 K_CHANNEL_COUNT = 3;
+	// The hex code, then red, green and blue.
+	enum class ColorField : u8 {
+		HEX,
+		RED,
+		GREEN,
+		BLUE,
+		COUNT,
+	};
+
+	static constexpr ColorField K_CHANNEL_FIELDS[]{ColorField::RED, ColorField::GREEN, ColorField::BLUE};
+
+	static constexpr EnumArray<ColorField, std::string_view> K_FIELD_LABELS{{"#", "R", "G", "B"}};
+
+	// The byte of the colour each channel field edits.
+	static constexpr EnumArray<ColorField, u8 Color::*> K_CHANNELS{{nullptr, &Color::r, &Color::g, &Color::b}};
 
 	enum class Press : u8 {
 		NONE,
@@ -70,26 +83,26 @@ class ColorPicker {
 	};
 
 	struct Layout {
-		Rect popup;
-		Rect square;
-		Rect hue;
-		Rect alpha;
-		Rect swatch;
-		Rect fields[K_FIELD_COUNT];
-		Rect copy;
-		Rect paste;
+		Rect                        popup;
+		Rect                        square;
+		Rect                        hue;
+		Rect                        alpha;
+		Rect                        swatch;
+		EnumArray<ColorField, Rect> fields;
+		Rect                        copy;
+		Rect                        paste;
 	};
 
 	[[nodiscard]] auto layout() const -> Layout;
-	[[nodiscard]] auto field_text_rect(const Layout& t_layout, u32 t_field) const -> Rect;
-	[[nodiscard]] auto field_at(const Layout& t_layout, Vec2 t_point) const -> i32;
-	[[nodiscard]] auto focused_field() const -> i32;
+	[[nodiscard]] auto field_text_rect(const Layout& t_layout, ColorField t_field) const -> Rect;
+	[[nodiscard]] auto field_at(const Layout& t_layout, Vec2 t_point) const -> std::optional<ColorField>;
+	[[nodiscard]] auto focused_field() const -> std::optional<ColorField>;
 
 	auto set_color(Color t_color) -> void;
 	auto apply_hsv() -> void;
-	auto sync_fields(i32 t_skipped_field) -> void;
-	auto read_field(u32 t_field) -> void;
-	auto focus_field(i32 t_field) -> void;
+	auto sync_fields(std::optional<ColorField> t_skipped_field = std::nullopt) -> void;
+	auto read_field(ColorField t_field) -> void;
+	auto focus_field(std::optional<ColorField> t_field) -> void;
 	auto copy_hex() -> void;
 	auto paste_color() -> void;
 	auto end_drags() -> void;
@@ -113,8 +126,8 @@ class ColorPicker {
 	Draggable m_hue_drag;
 	Draggable m_alpha_drag;
 
-	TextInput m_fields[K_FIELD_COUNT];
-	char      m_synced_text[K_FIELD_COUNT][K_TEXT_INPUT_CAPACITY]{};
+	EnumArray<ColorField, TextInput>                   m_fields{};
+	EnumArray<ColorField, char[K_TEXT_INPUT_CAPACITY]> m_synced_text{};
 
 	Press m_press                = Press::NONE;
 	float m_copied_seconds       = 0.0f;

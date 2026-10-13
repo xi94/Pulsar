@@ -334,10 +334,21 @@ constexpr Theme K_ROSE_PINE{
 	.default_accent = {235, 188, 186, 255},
 };
 
-constexpr Theme K_PRESETS[]{
-	K_DARK, K_LIGHT, K_FOREST, K_OCEAN, K_PINK, K_BLOSSOM, K_GRUVBOX, K_CATPPUCCIN_MOCHA, K_CATPPUCCIN_LATTE, K_NORD, K_DRACULA, K_TOKYO_NIGHT, K_ROSE_PINE,
-};
-static_assert(std::size(K_PRESETS) == K_THEME_COUNT);
+constexpr EnumArray<ThemeKind, Theme> K_PRESETS{{
+	K_DARK,
+	K_LIGHT,
+	K_FOREST,
+	K_OCEAN,
+	K_PINK,
+	K_BLOSSOM,
+	K_GRUVBOX,
+	K_CATPPUCCIN_MOCHA,
+	K_CATPPUCCIN_LATTE,
+	K_NORD,
+	K_DRACULA,
+	K_TOKYO_NIGHT,
+	K_ROSE_PINE,
+}};
 
 constexpr usize K_COLORS_PER_THEME = sizeof(Theme) / sizeof(Color);
 using ThemeColors                  = std::array<Color, K_COLORS_PER_THEME>;
@@ -379,7 +390,7 @@ Theme g_theme = K_DARK;
 
 [[nodiscard]] auto theme_preset(ThemeKind t_kind) -> const Theme&
 {
-	return K_PRESETS[static_cast<u32>(t_kind)];
+	return K_PRESETS[t_kind];
 }
 
 [[nodiscard]] auto hovered(Color t_base) -> Color

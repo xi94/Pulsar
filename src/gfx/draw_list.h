@@ -28,8 +28,6 @@ enum class ShaderKind : u8 {
 	COUNT,
 };
 
-constexpr u32 K_SHADER_KIND_COUNT = static_cast<u32>(ShaderKind::COUNT);
-
 struct RoundedBoxParams {
 	float quad_width;
 	float quad_height;
@@ -147,7 +145,7 @@ class DrawList {
 	auto add_convex_polygon(std::span<const Vec2> t_points, std::span<const Color> t_colors) -> void;
 	auto add_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right) -> void;
 	auto add_plain_backdrop(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right) -> void;
-	auto add_pattern_swatch(Rect t_rect, CornerRadii t_radii, Color t_color, u32 t_style) -> void;
+	auto add_pattern_swatch(Rect t_rect, CornerRadii t_radii, Color t_color, BackgroundStyle t_style) -> void;
 	auto add_line(Vec2 t_from, Vec2 t_to, float t_thickness, Color t_color) -> void;
 
 	auto add_rounded_rect(Rect t_rect, CornerRadii t_radii, Color t_color) -> void;

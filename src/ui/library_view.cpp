@@ -122,15 +122,18 @@ constexpr Color K_COLOR_IMAGE{255, 255, 255, 255};
 constexpr float K_CHEVRON_MARGIN = 12.0f;
 constexpr Vec2  K_CHEVRON_SIZE{9.0f, 5.0f};
 
-constexpr std::string_view K_LOGIN_LABEL      = "Login";
-constexpr std::string_view K_CANCEL_LABEL     = "Cancel";
-constexpr std::string_view K_RETRY_LABEL      = "Try again";
-constexpr std::string_view K_PERMISSION_LABEL = "Open settings";
-constexpr std::string_view K_ADD_LABEL        = "Add account";
-constexpr std::string_view K_OPTIONAL_SUFFIX  = " (optional)";
-constexpr std::string_view K_ZONE_TITLE       = "Add your first account";
-constexpr std::string_view K_ZONE_HINT        = "Save a Riot login once, then sign in with one click.";
-constexpr std::string_view K_FIELD_LABELS[]{"Username", "Password", "Note"};
+constexpr std::string_view                       K_LOGIN_LABEL      = "Login";
+constexpr std::string_view                       K_CANCEL_LABEL     = "Cancel";
+constexpr std::string_view                       K_RETRY_LABEL      = "Try again";
+constexpr std::string_view                       K_PERMISSION_LABEL = "Open settings";
+constexpr std::string_view                       K_ADD_LABEL        = "Add account";
+constexpr std::string_view                       K_OPTIONAL_SUFFIX  = " (optional)";
+constexpr std::string_view                       K_ZONE_TITLE       = "Add your first account";
+constexpr std::string_view                       K_ZONE_HINT        = "Save a Riot login once, then sign in with one click.";
+constexpr EnumArray<EditField, std::string_view> K_FIELD_LABELS{{"Note", "Username", "Password"}};
+
+// The form reads username, password, then note, and Tab follows it.
+constexpr EditField K_FIELD_ORDER[]{EditField::USERNAME, EditField::PASSWORD, EditField::NOTE};
 
 [[nodiscard]] auto eased_out(float t_amount) -> float
 {
@@ -201,18 +204,18 @@ LibraryView::LibraryView(Library*        t_library,
 	, m_commands(t_commands)
 	, m_region_list(t_fonts, t_assets, t_settings, ListPopupOptions{.empty_message = "No regions"})
 {
-	constexpr u32 LENGTHS[K_FIELD_COUNT]{sizeof(Account::username) - 1, sizeof(Account::password) - 1, sizeof(Account::note) - 1};
+	constexpr EnumArray<EditField, u32> LENGTHS{{sizeof(Account::note) - 1, sizeof(Account::username) - 1, sizeof(Account::password) - 1}};
 
-	for (u32 i = 0; i < K_FIELD_COUNT; i += 1) {
-		m_fields[i].set_max_length(LENGTHS[i]);
+	for (const EditField edit : each<EditField>()) {
+		m_fields[edit].set_max_length(LENGTHS[edit]);
 	}
 
-	m_fields[K_NOTE].set_placeholder("Main, smurf, ranked...");
+	m_fields[EditField::NOTE].set_placeholder("Main, smurf, ranked...");
 	m_filter.set_max_length(K_FILTER_MAX_LENGTH);
 	m_filter.set_placeholder("Filter accounts");
 }
 
-auto LibraryView::show_game(i32 t_game) -> void
+auto LibraryView::show_game(std::optional<u32> t_game) -> void
 {
 	if (t_game == m_game) return;
 
@@ -235,17 +238,17 @@ auto LibraryView::show_game(i32 t_game) -> void
 
 auto LibraryView::restart() -> void
 {
-	show_game(-1);
+	show_game(std::nullopt);
 }
 
 auto LibraryView::has_game() const -> bool
 {
-	return m_game >= 0 && static_cast<u32>(m_game) < m_library->game_count;
+	return m_game && *m_game < m_library->game_count;
 }
 
 auto LibraryView::shown_accounts() const -> VisibleAccounts
 {
-	VisibleAccounts accounts = has_game() ? m_library->visible_accounts(static_cast<u32>(m_game)) : VisibleAccounts{};
+	VisibleAccounts accounts = has_game() ? m_library->visible_accounts(*m_game) : VisibleAccounts{};
 
 	const std::string_view query = m_filter.value();
 	if (query.empty()) return accounts;
@@ -406,38 +409,35 @@ auto LibraryView::form_layout(Rect t_card) const -> LibraryView::FormLayout
 	const float input_h     = std::max(K_INPUT_MIN_HEIGHT, body.line_height() + 12.0f);
 	const float block       = label_h + K_FORM_LABEL_GAP + input_h;
 
-	const auto place = [&](u32 t_slot, float t_x, float t_y) {
-		form.labels[t_slot] = Rect{t_x, t_y, column, label_h};
-
-		if (t_slot < K_FIELD_COUNT) {
-			form.fields[t_slot] = Rect{t_x, t_y + label_h + K_FORM_LABEL_GAP, column, input_h};
-		}
+	const auto place = [&](EditField t_field, float t_x, float t_y) {
+		form.labels[t_field] = Rect{t_x, t_y, column, label_h};
+		form.fields[t_field] = Rect{t_x, t_y + label_h + K_FORM_LABEL_GAP, column, input_h};
 	};
 
 	float y = form.title.bottom() + K_FORM_TITLE_GAP;
 
-	place(K_USERNAME, inner.x, y);
+	place(EditField::USERNAME, inner.x, y);
 	if (!two_columns) {
 		y += block + K_FORM_ROW_GAP;
 	}
 
-	place(K_PASSWORD, second_x, y);
+	place(EditField::PASSWORD, second_x, y);
 	y += block + K_FORM_ROW_GAP;
 
-	place(K_NOTE, inner.x, y);
+	place(EditField::NOTE, inner.x, y);
 	if (!two_columns) {
 		y += block + K_FORM_ROW_GAP;
 	}
 
-	place(K_FIELD_COUNT, second_x, y);
-	form.region = Rect{second_x, y + label_h + K_FORM_LABEL_GAP, column, input_h};
+	form.region_label = Rect{second_x, y, column, label_h};
+	form.region       = Rect{second_x, y + label_h + K_FORM_LABEL_GAP, column, input_h};
 
 	const float chip_h = input_h - K_CHIP_SHRINK;
-	y                  = std::max(form.fields[K_NOTE].bottom(), form.region.bottom()) + K_FORM_ROW_GAP;
+	y                  = std::max(form.fields[EditField::NOTE].bottom(), form.region.bottom()) + K_FORM_ROW_GAP;
 
 	form.has_games = m_library->game_count > 1;
 	if (form.has_games) {
-		form.labels[K_FIELD_COUNT + 1] = Rect{inner.x, y, inner.w, label_h};
+		form.show_in_label = Rect{inner.x, y, inner.w, label_h};
 
 		float game_x = inner.x;
 		float game_y = y + label_h + K_FORM_LABEL_GAP;
@@ -463,7 +463,7 @@ auto LibraryView::form_layout(Rect t_card) const -> LibraryView::FormLayout
 	form.save                = Rect{inner.right() - save_width, y, save_width, K_BUTTON_HEIGHT};
 	form.cancel              = Rect{form.save.x - K_BUTTON_GAP - cancel_width, y, cancel_width, K_BUTTON_HEIGHT};
 
-	const Rect password = form.fields[K_PASSWORD];
+	const Rect password = form.fields[EditField::PASSWORD];
 	form.reveal =
 		Rect{password.right() - K_REVEAL_SIZE - K_REVEAL_MARGIN, snapped_to_pixel(password.center().y - K_REVEAL_SIZE * 0.5f), K_REVEAL_SIZE, K_REVEAL_SIZE};
 	form.height = form.save.bottom() + K_FORM_PADDING - t_card.y;
@@ -471,11 +471,11 @@ auto LibraryView::form_layout(Rect t_card) const -> LibraryView::FormLayout
 	return form;
 }
 
-auto LibraryView::field_text_rect(const FormLayout& t_form, u32 t_field) const -> Rect
+auto LibraryView::field_text_rect(const FormLayout& t_form, EditField t_field) const -> Rect
 {
 	Rect text = t_form.fields[t_field].inset(K_INPUT_PADDING_X, 0.0f);
 
-	if (t_field == K_PASSWORD) {
+	if (t_field == EditField::PASSWORD) {
 		text.w = std::max(0.0f, text.w - K_REVEAL_SIZE);
 	}
 
@@ -543,7 +543,7 @@ auto LibraryView::empty_zone(const Layout& t_layout) const -> Rect
 
 auto LibraryView::shows_login(AccountRef t_account) const -> bool
 {
-	if (!has_game() || !m_session->shows(static_cast<u32>(m_game), t_account)) return false;
+	if (!has_game() || !m_session->shows(*m_game, t_account)) return false;
 	if (!m_session->is_finished() || m_session->asks_for_permission()) return true;
 
 	const float linger = m_session->stage() == LoginStage::SUCCESS ? K_SUCCESS_LINGER_SECONDS : K_FAILURE_LINGER_SECONDS;
@@ -620,8 +620,8 @@ auto LibraryView::form_hit(Rect t_card, Vec2 t_point) const -> LibraryView::Hit
 
 	if (form.reveal.contains(t_point)) return Hit{Target::REVEAL};
 
-	for (u32 i = 0; i < K_FIELD_COUNT; i += 1) {
-		if (form.fields[i].contains(t_point)) return Hit{Target::FIELD, i};
+	for (const EditField edit : each<EditField>()) {
+		if (form.fields[edit].contains(t_point)) return Hit{.target = Target::FIELD, .field = edit};
 	}
 
 	if (form.region.contains(t_point)) return Hit{Target::REGION};
@@ -668,10 +668,10 @@ auto LibraryView::lifted_top(const Layout& t_layout) const -> float
 	return m_drag.clamp_top(pointer - m_drag.grab_offset, pitch(t_layout));
 }
 
-auto LibraryView::focused_field() const -> std::optional<u32>
+auto LibraryView::focused_field() const -> std::optional<EditField>
 {
-	for (u32 i = 0; i < K_FIELD_COUNT; i += 1) {
-		if (m_fields[i].is_focused()) return i;
+	for (const EditField edit : each<EditField>()) {
+		if (m_fields[edit].is_focused()) return edit;
 	}
 
 	return std::nullopt;
@@ -736,7 +736,7 @@ auto LibraryView::activate(Hit t_hit) -> void
 		}
 
 		case REVEAL: {
-			m_fields[K_PASSWORD].set_masked(!m_fields[K_PASSWORD].is_masked());
+			m_fields[EditField::PASSWORD].set_masked(!m_fields[EditField::PASSWORD].is_masked());
 			break;
 		}
 
@@ -779,7 +779,7 @@ auto LibraryView::request_login(AccountRef t_account) -> void
 	if (!has_game()) return;
 
 	blur();
-	m_session->request(static_cast<u32>(m_game), t_account);
+	m_session->request(*m_game, t_account);
 }
 
 auto LibraryView::toggle_favorite(AccountRef t_account) -> void
@@ -816,7 +816,7 @@ auto LibraryView::open_form(std::optional<AccountRef> t_account) -> void
 	if (!has_game()) return;
 
 	if (m_form_open && m_form_account == t_account) {
-		focus_field(K_USERNAME);
+		focus_field(EditField::USERNAME);
 		return;
 	}
 
@@ -836,9 +836,9 @@ auto LibraryView::open_form(std::optional<AccountRef> t_account) -> void
 
 	if (t_account) {
 		const Account* account = m_library->account(*t_account);
-		m_fields[K_USERNAME].set_value(account->username);
-		m_fields[K_PASSWORD].set_value(account->password);
-		m_fields[K_NOTE].set_value(account->note);
+		m_fields[EditField::USERNAME].set_value(account->username);
+		m_fields[EditField::PASSWORD].set_value(account->password);
+		m_fields[EditField::NOTE].set_value(account->note);
 		copy_to(std::string_view{account->region}, m_region);
 		m_visible_mask = account->visible_games(t_account->game);
 	} else {
@@ -847,12 +847,12 @@ auto LibraryView::open_form(std::optional<AccountRef> t_account) -> void
 		}
 
 		m_region[0]    = '\0';
-		m_visible_mask = static_cast<u16>(1u << static_cast<u32>(m_game));
+		m_visible_mask = static_cast<u16>(1u << *m_game);
 	}
 
-	m_fields[K_PASSWORD].set_masked(true);
+	m_fields[EditField::PASSWORD].set_masked(true);
 	focus_filter(false);
-	focus_field(K_USERNAME);
+	focus_field(EditField::USERNAME);
 
 	m_form_height = form_layout(Rect{0.0f, 0.0f, layout().rows.w, 0.0f}).height;
 }
@@ -884,13 +884,13 @@ auto LibraryView::save_form() -> void
 {
 	if (!has_game() || !m_form_open) return;
 
-	const std::string_view username = m_fields[K_USERNAME].value();
-	const std::string_view password = m_fields[K_PASSWORD].value();
-	const std::string_view note     = m_fields[K_NOTE].value();
+	const std::string_view username = m_fields[EditField::USERNAME].value();
+	const std::string_view password = m_fields[EditField::PASSWORD].value();
+	const std::string_view note     = m_fields[EditField::NOTE].value();
 
 	if (username.empty() || password.empty()) {
 		m_show_required = true;
-		focus_field(username.empty() ? K_USERNAME : K_PASSWORD);
+		focus_field(username.empty() ? EditField::USERNAME : EditField::PASSWORD);
 		return;
 	}
 
@@ -910,7 +910,7 @@ auto LibraryView::save_form() -> void
 	account.assign(username, note, password);
 	copy_to(std::string_view{m_region}, account.region);
 
-	const std::optional<AccountRef> added = m_library->add_account(static_cast<u32>(m_game), account);
+	const std::optional<AccountRef> added = m_library->add_account(*m_game, account);
 	sodium_memzero(&account, sizeof(account));
 
 	if (!added) {
@@ -1079,10 +1079,10 @@ auto LibraryView::forget_secrets() -> void
 	m_pressed = Hit{};
 }
 
-auto LibraryView::focus_field(std::optional<u32> t_field) -> void
+auto LibraryView::focus_field(std::optional<EditField> t_field) -> void
 {
-	for (u32 i = 0; i < K_FIELD_COUNT; i += 1) {
-		m_fields[i].set_focused(t_field == i);
+	for (const EditField edit : each<EditField>()) {
+		m_fields[edit].set_focused(t_field == edit);
 	}
 }
 
@@ -1197,7 +1197,7 @@ auto LibraryView::drop_row() -> void
 		}
 	}
 
-	m_library->move_visible_accounts(static_cast<u32>(m_game), std::span{moved, count}, drag.insert);
+	m_library->move_visible_accounts(*m_game, std::span{moved, count}, drag.insert);
 	animate_reorder(accounts);
 
 	m_raised.reset();
@@ -1454,8 +1454,8 @@ auto LibraryView::on_pointer_down(Vec2 t_point) -> void
 		case FIELD: {
 			const FormLayout form = form_layout(form_card(layout, accounts));
 
-			focus_field(hit.index);
-			m_fields[hit.index].on_pointer_down(m_fonts->body, field_text_rect(form, hit.index), t_point.x);
+			focus_field(hit.field);
+			m_fields[hit.field].on_pointer_down(m_fonts->body, field_text_rect(form, hit.field), t_point.x);
 			break;
 		}
 
@@ -1504,9 +1504,9 @@ auto LibraryView::on_pointer_move(Vec2 t_point) -> bool
 	if (form_shown()) {
 		const FormLayout form = form_layout(form_card(layout, accounts));
 
-		for (u32 i = 0; i < K_FIELD_COUNT; i += 1) {
-			if (m_fields[i].is_selecting()) {
-				m_fields[i].on_pointer_move(m_fonts->body, field_text_rect(form, i), t_point.x);
+		for (const EditField edit : each<EditField>()) {
+			if (m_fields[edit].is_selecting()) {
+				m_fields[edit].on_pointer_move(m_fonts->body, field_text_rect(form, edit), t_point.x);
 				handled = true;
 			}
 		}
@@ -1600,9 +1600,9 @@ auto LibraryView::on_right_click(Vec2 t_point) -> void
 	if (hit.target == Target::FIELD) {
 		const FormLayout form = form_layout(form_card(layout, accounts));
 
-		focus_field(hit.index);
-		m_fields[hit.index].on_right_click(m_fonts->body, field_text_rect(form, hit.index), t_point.x);
-		m_commands->push(Command{.type = CommandType::SHOW_TEXT_MENU, .position = t_point, .text_input = &m_fields[hit.index]});
+		focus_field(hit.field);
+		m_fields[hit.field].on_right_click(m_fonts->body, field_text_rect(form, hit.field), t_point.x);
+		m_commands->push(Command{.type = CommandType::SHOW_TEXT_MENU, .position = t_point, .text_input = &m_fields[hit.field]});
 		return;
 	}
 
@@ -1611,8 +1611,7 @@ auto LibraryView::on_right_click(Vec2 t_point) -> void
 			m_selection.clear();
 		}
 
-		const Command menu{
-			.type = CommandType::SHOW_ACCOUNT_MENU, .index = -1, .position = t_point, .account = accounts.refs[hit.index], .picked = m_selection.count()};
+		const Command menu{.type = CommandType::SHOW_ACCOUNT_MENU, .position = t_point, .account = accounts.refs[hit.index], .picked = m_selection.count()};
 		m_commands->push(menu);
 	}
 }
@@ -1653,13 +1652,15 @@ auto LibraryView::on_key_down(os::Key t_key) -> bool
 		return true;
 	}
 
-	if (const std::optional<u32> field = focused_field()) {
+	if (const std::optional<EditField> field = focused_field()) {
 		switch (t_key) {
 			using enum os::Key;
 
 			case TAB: {
-				const u32 step = os::modifiers().shift ? K_FIELD_COUNT - 1 : 1;
-				focus_field((*field + step) % K_FIELD_COUNT);
+				constexpr usize COUNT    = std::size(K_FIELD_ORDER);
+				const usize     step     = os::modifiers().shift ? COUNT - 1 : 1;
+				const usize     position = static_cast<usize>(std::ranges::find(K_FIELD_ORDER, *field) - std::begin(K_FIELD_ORDER));
+				focus_field(K_FIELD_ORDER[(position + step) % COUNT]);
 				return true;
 			}
 
@@ -1708,7 +1709,7 @@ auto LibraryView::on_key_down(os::Key t_key) -> bool
 			}
 
 			case TAB: {
-				focus_field(K_USERNAME);
+				focus_field(EditField::USERNAME);
 				return true;
 			}
 
@@ -1739,7 +1740,7 @@ auto LibraryView::on_char(u32 t_character) -> bool
 		return true;
 	}
 
-	if (const std::optional<u32> field = focused_field()) {
+	if (const std::optional<EditField> field = focused_field()) {
 		m_fields[*field].on_char(t_character);
 		return true;
 	}
@@ -1808,7 +1809,7 @@ auto LibraryView::draw_header(DrawList* t_draw_list, const Layout& t_layout, u8 
 {
 	const Font& title     = m_fonts->title;
 	const Font& secondary = m_fonts->secondary;
-	const Game& game      = m_library->games[static_cast<u32>(m_game)];
+	const Game& game      = m_library->games[*m_game];
 	const Color accent    = m_settings->accent;
 
 	draw_text_truncated(t_draw_list, title, Vec2{t_layout.header.x, t_layout.title_baseline}, game.title,
@@ -2029,12 +2030,12 @@ auto LibraryView::draw_form(DrawList* t_draw_list, const Layout& t_layout, const
 
 	const Color active_label = mix(g_theme.text_dim, accent, K_ACTIVE_LABEL_TINT);
 
-	for (u32 i = 0; i < K_FIELD_COUNT; i += 1) {
-		TextInput* input    = &m_fields[i];
-		const Rect box      = form.fields[i];
-		const Rect label    = form.labels[i];
+	for (const EditField edit : K_FIELD_ORDER) {
+		TextInput* input    = &m_fields[edit];
+		const Rect box      = form.fields[edit];
+		const Rect label    = form.labels[edit];
 		const bool focused  = input->is_focused();
-		const bool required = i != K_NOTE;
+		const bool required = edit != EditField::NOTE;
 		const bool missing  = m_show_required && required && input->value().empty();
 		const bool hovered  = live && !focused && box.contains(m_mouse);
 
@@ -2051,10 +2052,10 @@ auto LibraryView::draw_form(DrawList* t_draw_list, const Layout& t_layout, const
 		}
 
 		const float label_baseline = label.y + secondary.ascent;
-		draw_text(t_draw_list, secondary, Vec2{label.x, label_baseline}, K_FIELD_LABELS[i], faded(label_color, content));
+		draw_text(t_draw_list, secondary, Vec2{label.x, label_baseline}, K_FIELD_LABELS[edit], faded(label_color, content));
 
 		if (!required) {
-			draw_text(t_draw_list, secondary, Vec2{label.x + text_width(secondary, K_FIELD_LABELS[i]), label_baseline}, K_OPTIONAL_SUFFIX,
+			draw_text(t_draw_list, secondary, Vec2{label.x + text_width(secondary, K_FIELD_LABELS[edit]), label_baseline}, K_OPTIONAL_SUFFIX,
 			          faded(g_theme.text_faint, content));
 		}
 
@@ -2065,18 +2066,18 @@ auto LibraryView::draw_form(DrawList* t_draw_list, const Layout& t_layout, const
 
 		if (missing) {
 			notice(controls::NoticeKind::ALERT, "Required", g_theme.error);
-		} else if (i == K_PASSWORD && focused && os::is_caps_lock_on()) {
+		} else if (edit == EditField::PASSWORD && focused && os::is_caps_lock_on()) {
 			notice(controls::NoticeKind::CAPS_LOCK, "Caps Lock is on", controls::caution_color());
 		}
 
 		draw_input_box(t_draw_list, box, border, focused && !missing, accent, content);
-		input->draw(t_draw_list, body, field_text_rect(form, i), faded(g_theme.text, content), faded(accent, content));
+		input->draw(t_draw_list, body, field_text_rect(form, edit), faded(g_theme.text, content), faded(accent, content));
 	}
 
-	controls::draw_eye(t_draw_list, m_assets, form.reveal, !m_fields[K_PASSWORD].is_masked(),
+	controls::draw_eye(t_draw_list, m_assets, form.reveal, !m_fields[EditField::PASSWORD].is_masked(),
 	                   faded(live && form.reveal.contains(m_mouse) ? g_theme.text : g_theme.text_dim, content));
 
-	const Rect region_label = form.labels[K_FIELD_COUNT];
+	const Rect region_label = form.region_label;
 	draw_text(t_draw_list, secondary, Vec2{region_label.x, region_label.y + secondary.ascent}, "Region", faded(g_theme.text_dim, content));
 	draw_text(t_draw_list, secondary, Vec2{region_label.x + text_width(secondary, "Region"), region_label.y + secondary.ascent}, K_OPTIONAL_SUFFIX,
 	          faded(g_theme.text_faint, content));
@@ -2101,7 +2102,7 @@ auto LibraryView::draw_form(DrawList* t_draw_list, const Layout& t_layout, const
 	controls::draw_chevron(t_draw_list, chevron, region_open, faded(region_open || region_hovered ? g_theme.text : g_theme.text_dim, content));
 
 	if (form.has_games) {
-		const Rect shown_label = form.labels[K_FIELD_COUNT + 1];
+		const Rect shown_label = form.show_in_label;
 		draw_text(t_draw_list, secondary, Vec2{shown_label.x, shown_label.y + secondary.ascent}, "Show in", faded(g_theme.text_dim, content));
 
 		for (u32 game = 0; game < m_library->game_count; game += 1) {

@@ -215,7 +215,7 @@ auto LoginSession::record_result() -> void
 	}
 
 	if (m_login.is_client_missing()) {
-		m_commands->push(Command{.type = CommandType::LOCATE_RIOT_CLIENT, .index = static_cast<i32>(m_login_game), .account = *m_login_account});
+		m_commands->push(Command{.type = CommandType::LOCATE_RIOT_CLIENT, .game = m_login_game, .account = *m_login_account});
 	}
 
 	m_login_account.reset();

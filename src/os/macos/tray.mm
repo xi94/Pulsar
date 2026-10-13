@@ -82,7 +82,7 @@ struct Tray::Native {
 	auto rebuild_menu() -> void;
 	auto choose(NSInteger t_tag) -> void;
 	auto update_button() const -> void;
-	[[nodiscard]] auto game_icon(i32 t_game) -> NSImage*;
+	[[nodiscard]] auto game_icon(u32 t_game) -> NSImage*;
 	auto add_item(NSMenu* t_menu, NSString* t_title, NSInteger t_tag) const -> NSMenuItem*;
 };
 
@@ -152,11 +152,6 @@ auto Tray::hide_login() -> void {}
 
 // The menu bar's own menu shows no update status.
 auto Tray::set_update(TrayUpdate) -> void {}
-
-auto Tray::supports_glass() -> bool
-{
-	return false;
-}
 
 auto Tray::set_colors(const TrayColors& t_colors) -> void
 {
@@ -244,9 +239,9 @@ auto Tray::Native::update_button() const -> void
 	item.button.toolTip         = macos::to_ns_string(locked ? tooltip + " (locked)" : tooltip);
 }
 
-auto Tray::Native::game_icon(i32 t_game) -> NSImage*
+auto Tray::Native::game_icon(u32 t_game) -> NSImage*
 {
-	if (t_game < 0 || static_cast<u32>(t_game) >= K_TRAY_MAX_GAMES) return nil;
+	if (t_game >= K_TRAY_MAX_GAMES) return nil;
 
 	const std::span<const u8> source = game_icon_sources[t_game];
 	if (game_icons[t_game] == nil && !source.empty()) {

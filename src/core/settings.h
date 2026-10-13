@@ -3,6 +3,7 @@
 #include <string_view>
 
 #include "core/crypto.h"
+#include "core/enum_array.h"
 #include "core/types.h"
 
 constexpr u32 K_MAX_GAME_ORDER = 16;
@@ -23,6 +24,7 @@ enum class ThemeKind : u8 {
 	DRACULA,
 	TOKYO_NIGHT,
 	ROSE_PINE,
+	COUNT,
 };
 
 struct OptionLabel {
@@ -30,7 +32,7 @@ struct OptionLabel {
 	std::string_view name;
 };
 
-constexpr OptionLabel K_THEME_LABELS[]{
+constexpr EnumArray<ThemeKind, OptionLabel> K_THEME_LABELS{{
 	{"dark", "Dark"},
 	{"light", "Light"},
 	{"forest", "Forest"},
@@ -44,32 +46,22 @@ constexpr OptionLabel K_THEME_LABELS[]{
 	{"dracula", "Dracula"},
 	{"tokyo_night", "Tokyo Night"},
 	{"rose_pine", "Rose Pine"},
-};
+}};
 
-constexpr u32 K_THEME_COUNT = static_cast<u32>(std::size(K_THEME_LABELS));
+constexpr EnumArray<BackgroundStyle, OptionLabel> K_BACKGROUND_LABELS{{
+	{"none", "None"},
+	{"dots", "Dots"},
+	{"grid", "Grid"},
+	{"lines", "Lines"},
+	{"polka", "Polka"},
+	{"topography", "Topography"},
+	{"starfield", "Starfield"},
+	{"scanlines", "Scanlines"},
+	{"crosshatch", "Crosshatch"},
+}};
 
-enum class BackgroundStyle : u8 {
-	NONE,
-	DOTS,
-	GRID,
-	LINES,
-	POLKA,
-	TOPOGRAPHY,
-	STARFIELD,
-	SCANLINES,
-	CROSSHATCH,
-};
-
-constexpr OptionLabel K_BACKGROUND_LABELS[]{
-	{"none", "None"},           {"dots", "Dots"},           {"grid", "Grid"},
-	{"lines", "Lines"},         {"polka", "Polka"},         {"topography", "Topography"},
-	{"starfield", "Starfield"}, {"scanlines", "Scanlines"}, {"crosshatch", "Crosshatch"},
-};
-
-constexpr u32 K_BACKGROUND_COUNT = static_cast<u32>(std::size(K_BACKGROUND_LABELS));
-
-constexpr std::string_view K_GRAPHICS_API_IDS[]{"native", "opengl"};
-constexpr std::string_view K_CARET_STYLE_IDS[]{"bar", "block", "underline"};
+constexpr EnumArray<GraphicsApi, std::string_view> K_GRAPHICS_API_IDS{{"native", "opengl"}};
+constexpr EnumArray<CaretStyle, std::string_view>  K_CARET_STYLE_IDS{{"bar", "block", "underline"}};
 
 constexpr float K_ANIMATION_SPEED_MIN     = 0.25f;
 constexpr float K_ANIMATION_SPEED_MAX     = 3.0f;
@@ -78,7 +70,6 @@ constexpr float K_CORNER_ROUNDNESS_MAX    = 1.5f;
 constexpr float K_GLASS_TINT_MIN          = 0.3f;
 constexpr float K_GLASS_TINT_MAX          = 1.0f;
 constexpr float K_GLASS_TINT_DEFAULT      = 0.64f;
-constexpr float K_TRAY_TINT_DEFAULT       = 0.78f;
 constexpr float K_GLASS_BLUR_DEFAULT      = 0.3f;
 constexpr float K_FONT_SIZE_MIN           = 10.0f;
 constexpr float K_FONT_SIZE_MAX           = 24.0f;
@@ -105,7 +96,6 @@ struct Settings {
 	bool            glass                      = true;
 	float           glass_blur                 = K_GLASS_BLUR_DEFAULT;
 	float           glass_tint                 = K_GLASS_TINT_DEFAULT;
-	float           tray_tint                  = K_TRAY_TINT_DEFAULT;
 
 	float font_size           = 13.0f;
 	float secondary_font_size = 12.0f;
@@ -125,7 +115,7 @@ struct Settings {
 	char        riot_client_path[K_PATH_CAPACITY]{};
 
 	i32  zoom_stop     = 0;
-	i32  selected_game = 0;
+	u32  selected_game = 0;
 	char game_order[K_MAX_GAME_ORDER][K_MAX_GAME_TITLE]{};
 	u32  game_order_count = 0;
 

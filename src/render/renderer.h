@@ -59,7 +59,7 @@ class Texture {
 	u32       m_height;
 };
 
-[[nodiscard]] auto graphics_api_name(GraphicsApi t_api) -> std::string_view;
+[[nodiscard]] auto graphics_api_name(GraphicsApi t_api) noexcept -> std::string_view;
 
 class Renderer {
   public:
@@ -90,7 +90,7 @@ class Renderer {
 		m_effect_time_seconds = t_seconds;
 	}
 
-	auto set_backdrop(u32 t_style, float t_intensity, float t_light, float t_grain) -> void
+	auto set_backdrop(BackgroundStyle t_style, float t_intensity, float t_light, float t_grain) -> void
 	{
 		m_backdrop_style     = t_style;
 		m_backdrop_intensity = t_intensity;
@@ -121,13 +121,13 @@ class Renderer {
 	u32 m_free_texture_count = 0;
 	u32 m_texture_high_water = 0;
 
-	u32   m_physical_width      = 0;
-	u32   m_physical_height     = 0;
-	float m_logical_width       = 0.0f;
-	float m_logical_height      = 0.0f;
-	float m_effect_time_seconds = 0.0f;
-	u32   m_backdrop_style      = 0;
-	float m_backdrop_intensity  = 0.0f;
-	float m_backdrop_light      = 0.0f;
-	float m_backdrop_grain      = 0.0f;
+	u32             m_physical_width      = 0;
+	u32             m_physical_height     = 0;
+	float           m_logical_width       = 0.0f;
+	float           m_logical_height      = 0.0f;
+	float           m_effect_time_seconds = 0.0f;
+	BackgroundStyle m_backdrop_style      = BackgroundStyle::NONE;
+	float           m_backdrop_intensity  = 0.0f;
+	float           m_backdrop_light      = 0.0f;
+	float           m_backdrop_grain      = 0.0f;
 };

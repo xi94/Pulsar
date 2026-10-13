@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include "core/debug_log.h"
+#include "core/enum_array.h"
 #include "os/window.h"
 #include "render/render_backend.h"
 
@@ -51,7 +52,7 @@ auto Texture::restore(std::span<const TextureLevel> t_levels) -> void
 	}
 }
 
-auto graphics_api_name(GraphicsApi t_api) -> std::string_view
+auto graphics_api_name(GraphicsApi t_api) noexcept -> std::string_view
 {
 	return t_api == GraphicsApi::OPENGL ? "OpenGL" : native_render_backend_name();
 }
@@ -117,7 +118,7 @@ auto backdrop_constants(const RenderFrame& t_frame) -> BackdropConstants
 		.target_width  = static_cast<float>(t_frame.physical_width),
 		.target_height = static_cast<float>(t_frame.physical_height),
 		.intensity     = t_frame.backdrop_intensity,
-		.style         = static_cast<float>(t_frame.backdrop_style),
+		.style         = static_cast<float>(enum_index(t_frame.backdrop_style)),
 		.pixel_scale   = pixel_scale(t_frame),
 		.light         = t_frame.backdrop_light,
 		.grain         = t_frame.backdrop_grain,

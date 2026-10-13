@@ -5,6 +5,7 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   -bugprone-narrowing-conversions,
   -bugprone-exception-escape,
+  -bugprone-throwing-static-initialization,
   -bugprone-incorrect-roundings,
   -bugprone-integer-division,
   -bugprone-invalid-enum-default-initialization,

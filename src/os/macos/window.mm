@@ -90,9 +90,9 @@ class ViewEvents {
 [[nodiscard]] auto key_equivalent(os::Key t_key) -> NSString*
 {
 	if (t_key == os::Key::COMMA) return @",";
-	if (t_key < os::Key::A || t_key > os::Key::Z) return @"";
+	if (!os::is_letter_key(t_key)) return @"";
 
-	const unichar letter = static_cast<unichar>('a' + (static_cast<int>(t_key) - static_cast<int>(os::Key::A)));
+	const unichar letter = static_cast<unichar>(os::key_letter(t_key));
 
 	return [NSString stringWithCharacters:&letter length:1];
 }

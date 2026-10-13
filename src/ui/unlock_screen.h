@@ -2,9 +2,12 @@
 
 #include <future>
 #include <memory>
+#include <optional>
+#include <span>
 #include <string_view>
 
 #include "core/crypto.h"
+#include "core/enum_array.h"
 #include "ui/commands.h"
 #include "ui/text_input.h"
 #include "ui/widget.h"
@@ -58,8 +61,14 @@ class UnlockScreen : public Widget {
 	[[nodiscard]] auto cursor() const -> CursorKind override;
 
   private:
-	static constexpr u32 K_PASSWORD     = 0;
-	static constexpr u32 K_CONFIRMATION = 1;
+	enum class PasswordField : u8 {
+		PASSWORD,
+		CONFIRMATION,
+		COUNT,
+	};
+
+	static constexpr PasswordField K_UNLOCK_FIELDS[]{PasswordField::PASSWORD};
+	static constexpr PasswordField K_SETUP_FIELDS[]{PasswordField::PASSWORD, PasswordField::CONFIRMATION};
 
 	struct DerivedKey {
 		MasterKey       key;
@@ -68,16 +77,18 @@ class UnlockScreen : public Widget {
 	};
 
 	struct Layout {
-		Rect  icon;
-		float title_baseline;
-		float subtitle_baseline;
-		Rect  fields[2];
-		float notice_top;
+		Rect                           icon;
+		float                          title_baseline;
+		float                          subtitle_baseline;
+		EnumArray<PasswordField, Rect> fields;
+		float                          notice_top;
+		float                          forgot_top;
 	};
 
-	[[nodiscard]] auto field_count() const -> u32
+	// Unlocking asks for the password once, and setting one up asks for it twice.
+	[[nodiscard]] auto shown_fields() const -> std::span<const PasswordField>
 	{
-		return m_setup ? 2 : 1;
+		return m_setup ? std::span<const PasswordField>{K_SETUP_FIELDS} : std::span<const PasswordField>{K_UNLOCK_FIELDS};
 	}
 
 	[[nodiscard]] auto is_deriving() const -> bool
@@ -87,20 +98,32 @@ class UnlockScreen : public Widget {
 
 	[[nodiscard]] auto subtitle_lines() const -> u32
 	{
-		return m_setup ? 2 : 1;
+		return m_setup || m_reset ? 2 : 1;
+	}
+
+	[[nodiscard]] auto offers_reset() const -> bool
+	{
+		return !m_setup && !m_reset;
 	}
 
 	[[nodiscard]] auto layout() const -> Layout;
 	[[nodiscard]] auto shake_offset() const -> float;
-	[[nodiscard]] auto field_text_rect(const Layout& t_layout, u32 t_field) const -> Rect;
-	[[nodiscard]] auto reveal_rect(const Layout& t_layout, u32 t_field) const -> Rect;
+	[[nodiscard]] auto field_text_rect(const Layout& t_layout, PasswordField t_field) const -> Rect;
+	[[nodiscard]] auto reveal_rect(const Layout& t_layout, PasswordField t_field) const -> Rect;
 	[[nodiscard]] auto submit_rect(const Layout& t_layout) const -> Rect;
-	[[nodiscard]] auto field_at(const Layout& t_layout, Vec2 t_point) const -> i32;
+	[[nodiscard]] auto field_at(const Layout& t_layout, Vec2 t_point) const -> std::optional<PasswordField>;
 	[[nodiscard]] auto is_reveal_hit(const Layout& t_layout, Vec2 t_point) const -> bool;
 	[[nodiscard]] auto error_message() const -> std::string_view;
+	[[nodiscard]] auto forgot_rect(const Layout& t_layout) const -> Rect;
+	[[nodiscard]] auto cancel_rect(const Layout& t_layout) const -> Rect;
+	[[nodiscard]] auto erase_rect(const Layout& t_layout) const -> Rect;
+
+	auto open_reset() -> void;
+	auto close_reset() -> void;
+	auto press_erase() -> void;
 
 	auto reset_fields() -> void;
-	auto focus_field(u32 t_field) -> void;
+	auto focus_field(PasswordField t_field) -> void;
 	auto submit() -> void;
 	auto attempt_unlock() -> void;
 	auto attempt_setup() -> void;
@@ -110,10 +133,13 @@ class UnlockScreen : public Widget {
 
 	auto show(bool t_animated) -> void;
 	auto animate_presence(float t_delta_seconds) -> void;
+	auto animate_view(float t_delta_seconds) -> void;
 
-	auto draw_field(DrawList* t_draw_list, const Layout& t_layout, u32 t_field, u8 t_alpha) -> void;
+	auto draw_field(DrawList* t_draw_list, const Layout& t_layout, PasswordField t_field, u8 t_alpha) -> void;
 	auto draw_submit_button(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void;
 	auto draw_notice(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void;
+	auto draw_forgot(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void;
+	auto draw_reset_buttons(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void;
 
 	Settings*         m_settings;
 	MasterKey*        m_master_key;
@@ -128,6 +154,10 @@ class UnlockScreen : public Widget {
 	bool  m_wrong_password   = false;
 	bool  m_passwords_differ = false;
 	bool  m_setup_failed     = false;
+	bool  m_reset            = false;
+	bool  m_reset_wanted     = false;
+	float m_view             = 1.0f;
+	float m_armed_seconds    = 0.0f;
 	float m_shake_seconds    = 0.0f;
 	float m_backdrop         = 0.0f;
 	float m_content          = 0.0f;
@@ -135,5 +165,5 @@ class UnlockScreen : public Widget {
 
 	std::future<std::unique_ptr<DerivedKey>> m_derivation;
 
-	TextInput m_fields[2];
+	EnumArray<PasswordField, TextInput> m_fields{};
 };

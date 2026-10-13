@@ -59,7 +59,6 @@ constexpr FloatSetting K_FLOAT_SETTINGS[]{
 	{"caret_trail_strength", &Settings::caret_trail_strength, 0.0f, 1.0f},
 	{"glass_blur", &Settings::glass_blur, 0.0f, 1.0f},
 	{"glass_tint", &Settings::glass_tint, K_GLASS_TINT_MIN, K_GLASS_TINT_MAX},
-	{"tray_tint", &Settings::tray_tint, K_GLASS_TINT_MIN, K_GLASS_TINT_MAX},
 };
 
 bool g_settings_writable = true;
@@ -223,6 +222,29 @@ auto read_bool_and_float_settings(const json& t_json, Settings* t_settings) -> v
 	}
 }
 
+[[nodiscard]] auto id_of(std::string_view t_id) -> std::string_view
+{
+	return t_id;
+}
+
+[[nodiscard]] auto id_of(const OptionLabel& t_label) -> std::string_view
+{
+	return t_label.id;
+}
+
+// The choice whose id the setting holds, or t_fallback when it holds none of them.
+template <typename Choice, typename Label>
+[[nodiscard]] auto read_choice(const json& t_json, const char* t_key, const EnumArray<Choice, Label>& t_ids, Choice t_fallback) -> Choice
+{
+	const std::string id = t_json.value(t_key, std::string{});
+
+	for (const Choice choice : each<Choice>()) {
+		if (id == id_of(t_ids[choice])) return choice;
+	}
+
+	return t_fallback;
+}
+
 auto read_appearance(const json& t_json, Settings* t_settings) -> void
 {
 	const auto accent = t_json.find("accent_color");
@@ -232,31 +254,8 @@ auto read_appearance(const json& t_json, Settings* t_settings) -> void
 
 	copy_to(t_json.value("font_name", std::string{t_settings->font_name}), t_settings->font_name);
 
-	const std::string theme = t_json.value("theme", std::string{});
-	for (u32 i = 0; i < K_THEME_COUNT; i += 1) {
-		if (theme == K_THEME_LABELS[i].id) {
-			t_settings->theme = static_cast<ThemeKind>(i);
-		}
-	}
-
-	const std::string background = t_json.value("background", std::string{});
-	for (u32 i = 0; i < K_BACKGROUND_COUNT; i += 1) {
-		if (background == K_BACKGROUND_LABELS[i].id) {
-			t_settings->background_style = static_cast<BackgroundStyle>(i);
-		}
-	}
-}
-
-template <typename Choice>
-[[nodiscard]] auto read_choice(const json& t_json, const char* t_key, std::span<const std::string_view> t_ids, Choice t_fallback) -> Choice
-{
-	const std::string id = t_json.value(t_key, std::string{});
-
-	for (u32 i = 0; i < t_ids.size(); i += 1) {
-		if (id == t_ids[i]) return static_cast<Choice>(i);
-	}
-
-	return t_fallback;
+	t_settings->theme            = read_choice(t_json, "theme", K_THEME_LABELS, t_settings->theme);
+	t_settings->background_style = read_choice(t_json, "background", K_BACKGROUND_LABELS, t_settings->background_style);
 }
 
 auto read_game_order(const json& t_json, Settings* t_settings) -> void
@@ -518,12 +517,12 @@ auto storage::save_settings(const Settings* t_settings) -> bool
 		{"format_version", K_FORMAT_VERSION},
 		{"window_width", t_settings->window_width},
 		{"window_height", t_settings->window_height},
-		{"background", K_BACKGROUND_LABELS[static_cast<u32>(t_settings->background_style)].id},
+		{"background", K_BACKGROUND_LABELS[t_settings->background_style].id},
 		{"accent_color", json::array({accent.r, accent.g, accent.b, accent.a})},
 		{"font_name", t_settings->font_name},
-		{"theme", K_THEME_LABELS[static_cast<u32>(t_settings->theme)].id},
-		{"renderer", K_GRAPHICS_API_IDS[static_cast<u32>(t_settings->renderer)]},
-		{"caret_style", K_CARET_STYLE_IDS[static_cast<u32>(t_settings->caret_style)]},
+		{"theme", K_THEME_LABELS[t_settings->theme].id},
+		{"renderer", K_GRAPHICS_API_IDS[t_settings->renderer]},
+		{"caret_style", K_CARET_STYLE_IDS[t_settings->caret_style]},
 		{"auto_lock_minutes", t_settings->auto_lock_minutes},
 		{"riot_client_path", t_settings->riot_client_path},
 		{"last_run_version", t_settings->last_run_version},
@@ -601,6 +600,26 @@ auto storage::save_accounts(const Library* t_library, const MasterKey* t_master_
 	remember_saved_accounts(plaintext_bytes, t_master_key);
 
 	return true;
+}
+
+auto storage::delete_all_data() -> bool
+{
+	bool deleted = true;
+
+	for (const char* name : {K_ACCOUNTS_FILE_NAME, K_SETTINGS_FILE_NAME}) {
+		const std::string path = storage_path(name);
+		if (path.empty()) continue;
+
+		std::error_code error;
+		std::filesystem::remove(to_path(path), error);
+		deleted = deleted && !error;
+	}
+
+	sodium_memzero(g_saved_accounts_digest, sizeof(g_saved_accounts_digest));
+	g_settings_writable = true;
+	g_accounts_writable = true;
+
+	return deleted;
 }
 
 auto storage::can_save_settings() -> bool

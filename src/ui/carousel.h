@@ -43,7 +43,7 @@ class Carousel : public Widget {
 		return m_zoom_stop;
 	}
 
-	[[nodiscard]] auto selected_game() const -> i32;
+	[[nodiscard]] auto selected_game() const -> u32;
 
 	[[nodiscard]] auto is_library() const -> bool
 	{
@@ -55,7 +55,7 @@ class Carousel : public Widget {
 		return &m_library_view;
 	}
 
-	auto restore(i32 t_zoom_stop, i32 t_selected_game) -> void;
+	auto restore(i32 t_zoom_stop, u32 t_selected_game) -> void;
 	auto set_order(std::span<const u8> t_order) -> void;
 
 	[[nodiscard]] auto order() const -> std::span<const u8>
@@ -67,7 +67,7 @@ class Carousel : public Widget {
 
 	auto show_game(u32 t_game) -> void;
 
-	auto set_detached_game(i32 t_game) -> void
+	auto set_detached_game(std::optional<u32> t_game) -> void
 	{
 		m_detached_game = t_game;
 	}
@@ -88,11 +88,11 @@ class Carousel : public Widget {
 
   private:
 	struct Reorder {
-		i32  game   = -1;
-		bool active = false;
-		bool lifted = false;
-		Vec2 grab{};
-		u8   start_order[K_MAX_GAMES]{};
+		std::optional<u32> game;
+		bool               active = false;
+		bool               lifted = false;
+		Vec2               grab{};
+		u8                 start_order[K_MAX_GAMES]{};
 	};
 
 	struct CardState {
@@ -101,9 +101,9 @@ class Carousel : public Widget {
 	};
 
 	struct LongPress {
-		i32   game = -1;
-		Vec2  origin{};
-		float seconds = 0.0f;
+		std::optional<u32> game;
+		Vec2               origin{};
+		float              seconds = 0.0f;
 	};
 
 	[[nodiscard]] auto clamp_scroll(float t_offset) const -> float;
@@ -138,7 +138,7 @@ class Carousel : public Widget {
 	[[nodiscard]] auto lift_scale(u32 t_game) const -> float;
 	[[nodiscard]] auto is_raised(ViewMode t_mode, u32 t_game) const -> bool;
 	[[nodiscard]] auto card_state(ViewMode t_mode, u32 t_game, Rect t_card) const -> CardState;
-	[[nodiscard]] auto game_at(Vec2 t_point) const -> i32;
+	[[nodiscard]] auto game_at(Vec2 t_point) const -> std::optional<u32>;
 
 	[[nodiscard]] auto status_indicator_rect() const -> Rect;
 	[[nodiscard]] auto switcher_row_height() const -> float;
@@ -152,14 +152,14 @@ class Carousel : public Widget {
 	[[nodiscard]] auto is_mouse_over_switcher(Vec2 t_mouse) const -> bool;
 
 	auto set_zoom_stop(i32 t_stop) -> void;
-	[[nodiscard]] auto focused_game() const -> i32;
+	[[nodiscard]] auto focused_game() const -> u32;
 	[[nodiscard]] auto is_focus_shown(u32 t_game) const -> bool;
 	auto move_focus(i32 t_delta) -> void;
-	auto open_game(i32 t_game) -> void;
-	auto choose_game(i32 t_game) -> void;
+	auto open_game(u32 t_game) -> void;
+	auto choose_game(u32 t_game) -> void;
 
 	auto drop_lost_press() -> void;
-	auto start_press(i32 t_game, Vec2 t_point) -> void;
+	auto start_press(std::optional<u32> t_game, Vec2 t_point) -> void;
 	auto begin_reorder(u32 t_game, Vec2 t_point) -> void;
 	auto end_reorder(bool t_cancel) -> void;
 	auto move_to_slot(u32 t_game, u32 t_slot) -> void;
@@ -229,10 +229,10 @@ class Carousel : public Widget {
 	Draggable m_switcher_drag;
 	bool      m_switcher_owns_pointer = false;
 
-	float m_card_hover[K_MAX_GAMES]{};
-	i32   m_focused_game         = 0;
-	bool  m_keyboard_focus_shown = false;
-	i32   m_detached_game        = -1;
+	float              m_card_hover[K_MAX_GAMES]{};
+	u32                m_focused_game         = 0;
+	bool               m_keyboard_focus_shown = false;
+	std::optional<u32> m_detached_game;
 
 	u8        m_order[K_MAX_GAMES]{};
 	u8        m_slot_of[K_MAX_GAMES]{};

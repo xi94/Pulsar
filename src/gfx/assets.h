@@ -5,6 +5,7 @@
 #include <thread>
 #include <vector>
 
+#include "core/enum_array.h"
 #include "render/renderer.h"
 
 enum class Asset : u8 {
@@ -53,8 +54,6 @@ enum class Asset : u8 {
 	COUNT,
 };
 
-constexpr usize K_ASSET_COUNT = static_cast<usize>(Asset::COUNT);
-
 class Assets {
   public:
 	Assets() = default;
@@ -69,7 +68,7 @@ class Assets {
 
 	[[nodiscard]] auto get(Asset t_asset) const -> const Texture*
 	{
-		return m_textures[static_cast<usize>(t_asset)].get();
+		return m_textures[t_asset].get();
 	}
 
 	[[nodiscard]] static auto encoded_bytes(Asset t_asset) -> std::span<const u8>;
@@ -91,7 +90,7 @@ class Assets {
 	[[nodiscard]] static auto levels_of(const DecodedImage& t_image) -> std::vector<TextureLevel>;
 	[[nodiscard]] static auto upload(Renderer* t_renderer, const DecodedImage& t_image) -> std::unique_ptr<Texture>;
 
-	std::unique_ptr<Texture>  m_textures[K_ASSET_COUNT];
-	std::thread               m_decoder;
-	std::vector<DecodedImage> m_decoded;
+	EnumArray<Asset, std::unique_ptr<Texture>> m_textures{};
+	std::thread                                m_decoder;
+	EnumArray<Asset, DecodedImage>             m_decoded{};
 };

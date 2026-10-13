@@ -3,6 +3,7 @@
 #include <optional>
 #include <string_view>
 
+#include "core/enum_array.h"
 #include "os/installation.h"
 #include "os/path_picker.h"
 #include "ui/text_input.h"
@@ -76,9 +77,9 @@ class SetupScreen : public Widget {
 		PORTABLE,
 		FIELD,
 		BROWSE,
-		OPTION_0,
-		OPTION_1,
-		OPTION_2,
+		DESKTOP_SHORTCUT,
+		START_MENU_SHORTCUT,
+		START_WITH_WINDOWS,
 		DELETE_DATA,
 		OPEN_FOLDER,
 		SECONDARY,
@@ -86,8 +87,23 @@ class SetupScreen : public Widget {
 		COUNT,
 	};
 
-	static constexpr u32 K_OPTION_COUNT = 3;
-	static constexpr u32 K_HIT_COUNT    = static_cast<u32>(Hit::COUNT);
+	enum class InstallOption : u8 {
+		DESKTOP_SHORTCUT,
+		START_MENU_SHORTCUT,
+		START_WITH_WINDOWS,
+		COUNT,
+	};
+
+	// A checkbox on the install and manage pages: its label, the option it sets, and the hit it answers to.
+	struct OptionSpec {
+		std::string_view label;
+		bool os::installation::Options::* value;
+		Hit                               hit;
+	};
+
+	static const EnumArray<InstallOption, OptionSpec> K_OPTIONS;
+
+	[[nodiscard]] static auto option_hit(Hit t_hit) -> std::optional<InstallOption>;
 
 	struct Reveal {
 		float alpha;
@@ -121,7 +137,7 @@ class SetupScreen : public Widget {
 	[[nodiscard]] auto field_rect() const -> Rect;
 	[[nodiscard]] auto field_text_rect() const -> Rect;
 	[[nodiscard]] auto browse_rect() const -> Rect;
-	[[nodiscard]] auto option_rect(Page t_page, u32 t_option) const -> Rect;
+	[[nodiscard]] auto option_rect(Page t_page, InstallOption t_option) const -> Rect;
 	[[nodiscard]] auto delete_data_rect() const -> Rect;
 	[[nodiscard]] auto installed_box_rect() const -> Rect;
 	[[nodiscard]] auto open_folder_rect() const -> Rect;
@@ -169,8 +185,8 @@ class SetupScreen : public Widget {
 	bool                m_delete_data      = false;
 	float               m_delete_check     = 0.0f;
 
-	float                       m_hover[K_HIT_COUNT]{};
-	float                       m_check[K_OPTION_COUNT]{};
-	Hit                         m_pressed = Hit::NONE;
-	std::optional<SetupOutcome> m_outcome;
+	EnumArray<Hit, float>           m_hover{};
+	EnumArray<InstallOption, float> m_check{};
+	Hit                             m_pressed = Hit::NONE;
+	std::optional<SetupOutcome>     m_outcome;
 };

@@ -47,8 +47,6 @@ constexpr Color K_HUE_STOPS[]{
 	{255, 0, 0, 255}, {255, 255, 0, 255}, {0, 255, 0, 255}, {0, 255, 255, 255}, {0, 0, 255, 255}, {255, 0, 255, 255}, {255, 0, 0, 255},
 };
 
-constexpr std::string_view K_FIELD_LABELS[]{"#", "R", "G", "B"};
-
 struct Hsv {
 	float hue;
 	float saturation;
@@ -255,10 +253,10 @@ ColorPicker::ColorPicker(const Fonts* t_fonts, const Assets* t_assets)
 	: m_fonts(t_fonts)
 	, m_assets(t_assets)
 {
-	m_fields[K_HEX_FIELD].set_max_length(K_HEX_MAX_LENGTH);
+	m_fields[ColorField::HEX].set_max_length(K_HEX_MAX_LENGTH);
 
-	for (u32 i = 1; i < K_FIELD_COUNT; i += 1) {
-		m_fields[i].set_max_length(K_CHANNEL_MAX_LENGTH);
+	for (const ColorField field : K_CHANNEL_FIELDS) {
+		m_fields[field].set_max_length(K_CHANNEL_MAX_LENGTH);
 	}
 }
 
@@ -305,19 +303,23 @@ auto ColorPicker::layout() const -> ColorPicker::Layout
 	result.paste  = Rect{left + content_width - row, top, row, row};
 	result.copy   = Rect{result.paste.x - K_CONTROL_GAP - row, top, row, row};
 
-	const float hex_x          = result.swatch.right() + K_CONTROL_GAP;
-	result.fields[K_HEX_FIELD] = Rect{hex_x, top, result.copy.x - K_CONTROL_GAP - hex_x, row};
+	const float hex_x              = result.swatch.right() + K_CONTROL_GAP;
+	result.fields[ColorField::HEX] = Rect{hex_x, top, result.copy.x - K_CONTROL_GAP - hex_x, row};
 
 	top += row + K_ROW_GAP;
-	const float channel_width = (content_width - K_CONTROL_GAP * (K_CHANNEL_COUNT - 1)) / K_CHANNEL_COUNT;
-	for (u32 i = 0; i < K_CHANNEL_COUNT; i += 1) {
-		result.fields[1 + i] = Rect{left + i * (channel_width + K_CONTROL_GAP), top, channel_width, row};
+	constexpr auto CHANNEL_COUNT = static_cast<float>(std::size(K_CHANNEL_FIELDS));
+	const float    channel_width = (content_width - K_CONTROL_GAP * (CHANNEL_COUNT - 1.0f)) / CHANNEL_COUNT;
+	float          channel_x     = left;
+
+	for (const ColorField field : K_CHANNEL_FIELDS) {
+		result.fields[field] = Rect{channel_x, top, channel_width, row};
+		channel_x += channel_width + K_CONTROL_GAP;
 	}
 
 	return result;
 }
 
-auto ColorPicker::field_text_rect(const Layout& t_layout, u32 t_field) const -> Rect
+auto ColorPicker::field_text_rect(const Layout& t_layout, ColorField t_field) const -> Rect
 {
 	const Rect  field  = t_layout.fields[t_field];
 	const float text_x = field.x + K_LABEL_INSET + text_width(m_fonts->secondary, K_FIELD_LABELS[t_field]) - K_LABEL_TEXT_OVERLAP;
@@ -325,22 +327,22 @@ auto ColorPicker::field_text_rect(const Layout& t_layout, u32 t_field) const -> 
 	return Rect{text_x, field.y, field.right() - text_x, field.h};
 }
 
-auto ColorPicker::field_at(const Layout& t_layout, Vec2 t_point) const -> i32
+auto ColorPicker::field_at(const Layout& t_layout, Vec2 t_point) const -> std::optional<ColorPicker::ColorField>
 {
-	for (u32 i = 0; i < K_FIELD_COUNT; i += 1) {
-		if (t_layout.fields[i].contains(t_point)) return static_cast<i32>(i);
+	for (const ColorField field : each<ColorField>()) {
+		if (t_layout.fields[field].contains(t_point)) return field;
 	}
 
-	return -1;
+	return std::nullopt;
 }
 
-auto ColorPicker::focused_field() const -> i32
+auto ColorPicker::focused_field() const -> std::optional<ColorPicker::ColorField>
 {
-	for (u32 i = 0; i < K_FIELD_COUNT; i += 1) {
-		if (m_fields[i].is_focused()) return static_cast<i32>(i);
+	for (const ColorField field : each<ColorField>()) {
+		if (m_fields[field].is_focused()) return field;
 	}
 
-	return -1;
+	return std::nullopt;
 }
 
 auto ColorPicker::contains(Vec2 t_point) const -> bool
@@ -371,41 +373,40 @@ auto ColorPicker::apply_hsv() -> void
 {
 	m_color   = with_alpha(hsv_to_rgb(m_hue, m_saturation, m_value), m_color.a);
 	m_changed = true;
-	sync_fields(-1);
+	sync_fields();
 }
 
-auto ColorPicker::sync_fields(i32 t_skipped_field) -> void
+auto ColorPicker::sync_fields(std::optional<ColorField> t_skipped_field) -> void
 {
-	char     hex[12];
-	char     channel[4];
-	const u8 channels[K_CHANNEL_COUNT]{m_color.r, m_color.g, m_color.b};
+	char hex[12];
+	char channel[4];
 
-	for (u32 i = 0; i < K_FIELD_COUNT; i += 1) {
-		if (static_cast<i32>(i) == t_skipped_field) continue;
+	for (const ColorField field : each<ColorField>()) {
+		if (field == t_skipped_field) continue;
 
 		std::string_view text;
-		if (i == K_HEX_FIELD) {
+		if (field == ColorField::HEX) {
 			text = format_hex(m_color, hex);
 		} else {
-			const int written = std::snprintf(channel, sizeof(channel), "%u", channels[i - 1]);
+			const int written = std::snprintf(channel, sizeof(channel), "%u", m_color.*K_CHANNELS[field]);
 			text              = std::string_view{channel, static_cast<usize>(std::max(written, 0))};
 		}
 
-		m_fields[i].set_value(text);
-		copy_to(text, m_synced_text[i]);
+		m_fields[field].set_value(text);
+		copy_to(text, m_synced_text[field]);
 	}
 }
 
-auto ColorPicker::read_field(u32 t_field) -> void
+auto ColorPicker::read_field(ColorField t_field) -> void
 {
 	const std::string_view text = m_fields[t_field].value();
 	copy_to(text, m_synced_text[t_field]);
 
-	if (t_field == K_HEX_FIELD) {
+	if (t_field == ColorField::HEX) {
 		const std::optional<Color> parsed = parse_color(text, m_color.a);
 		if (parsed && !is_short_hex(text)) {
 			set_color(*parsed);
-			sync_fields(static_cast<i32>(K_HEX_FIELD));
+			sync_fields(ColorField::HEX);
 		}
 
 		return;
@@ -421,20 +422,19 @@ auto ColorPicker::read_field(u32 t_field) -> void
 		value = value * 10 + static_cast<u32>(digit - '0');
 	}
 
-	Color next = m_color;
-	u8*   channels[K_CHANNEL_COUNT]{&next.r, &next.g, &next.b};
-	*channels[t_field - 1] = static_cast<u8>(std::min(value, 255u));
+	Color next                = m_color;
+	next.*K_CHANNELS[t_field] = static_cast<u8>(std::min(value, 255u));
 
 	set_color(next);
-	sync_fields(static_cast<i32>(t_field));
+	sync_fields(t_field);
 }
 
-auto ColorPicker::focus_field(i32 t_field) -> void
+auto ColorPicker::focus_field(std::optional<ColorField> t_field) -> void
 {
-	const i32 previous = focused_field();
+	const std::optional<ColorField> previous = focused_field();
 
-	if (previous == static_cast<i32>(K_HEX_FIELD) && previous != t_field) {
-		const std::string_view     text   = m_fields[K_HEX_FIELD].value();
+	if (previous == ColorField::HEX && previous != t_field) {
+		const std::string_view     text   = m_fields[ColorField::HEX].value();
 		const std::optional<Color> parsed = parse_color(text, m_color.a);
 
 		if (parsed && is_short_hex(text)) {
@@ -442,11 +442,11 @@ auto ColorPicker::focus_field(i32 t_field) -> void
 		}
 	}
 
-	for (u32 i = 0; i < K_FIELD_COUNT; i += 1) {
-		m_fields[i].set_focused(static_cast<i32>(i) == t_field);
+	for (const ColorField field : each<ColorField>()) {
+		m_fields[field].set_focused(field == t_field);
 	}
 
-	if (previous >= 0 && previous != t_field) {
+	if (previous && previous != t_field) {
 		sync_fields(t_field);
 	}
 }
@@ -474,8 +474,8 @@ auto ColorPicker::paste_color() -> void
 	}
 
 	set_color(*parsed);
-	focus_field(-1);
-	sync_fields(-1);
+	focus_field(std::nullopt);
+	sync_fields();
 }
 
 auto ColorPicker::end_drags() -> void
@@ -503,13 +503,13 @@ auto ColorPicker::open(Color t_initial, Rect t_anchor, Rect t_bounds) -> void
 	m_paste_failed_seconds = 0.0f;
 
 	end_drags();
-	focus_field(-1);
-	sync_fields(-1);
+	focus_field(std::nullopt);
+	sync_fields();
 }
 
 auto ColorPicker::close() -> void
 {
-	focus_field(-1);
+	focus_field(std::nullopt);
 	m_open  = false;
 	m_press = Press::NONE;
 	end_drags();
@@ -526,11 +526,11 @@ auto ColorPicker::update(float t_delta_seconds) -> void
 
 	if (!m_open) return;
 
-	for (u32 i = 0; i < K_FIELD_COUNT; i += 1) {
-		m_fields[i].update(t_delta_seconds);
+	for (const ColorField field : each<ColorField>()) {
+		m_fields[field].update(t_delta_seconds);
 
-		if (m_fields[i].value() != std::string_view{m_synced_text[i]}) {
-			read_field(i);
+		if (m_fields[field].value() != std::string_view{m_synced_text[field]}) {
+			read_field(field);
 		}
 	}
 }
@@ -542,17 +542,16 @@ auto ColorPicker::on_pointer_down(Vec2 t_point) -> bool
 	const Layout current = layout();
 	if (!current.popup.contains(t_point)) return false;
 
-	m_press         = Press::NONE;
-	const i32 field = field_at(current, t_point);
+	m_press = Press::NONE;
 
-	if (field >= 0) {
+	if (const std::optional<ColorField> field = field_at(current, t_point)) {
 		focus_field(field);
-		m_fields[field].on_pointer_down(m_fonts->secondary, field_text_rect(current, static_cast<u32>(field)), t_point.x);
+		m_fields[*field].on_pointer_down(m_fonts->secondary, field_text_rect(current, *field), t_point.x);
 		m_press = Press::FIELD;
 		return true;
 	}
 
-	focus_field(-1);
+	focus_field(std::nullopt);
 
 	if (current.square.contains(t_point)) {
 		m_saturation_value_drag.begin(t_point);
@@ -579,9 +578,9 @@ auto ColorPicker::on_pointer_move(Vec2 t_point) -> void
 
 	const Layout current = layout();
 
-	for (u32 i = 0; i < K_FIELD_COUNT; i += 1) {
-		if (m_fields[i].is_selecting()) {
-			m_fields[i].on_pointer_move(m_fonts->secondary, field_text_rect(current, i), t_point.x);
+	for (const ColorField field : each<ColorField>()) {
+		if (m_fields[field].is_selecting()) {
+			m_fields[field].on_pointer_move(m_fonts->secondary, field_text_rect(current, field), t_point.x);
 		}
 	}
 
@@ -602,7 +601,7 @@ auto ColorPicker::on_pointer_move(Vec2 t_point) -> void
 		m_alpha_drag.update(t_point);
 		m_color.a = static_cast<u8>((1.0f - fraction_along(t_point.y, current.alpha.y, current.alpha.h)) * 255.0f);
 		m_changed = true;
-		sync_fields(-1);
+		sync_fields();
 	}
 }
 
@@ -627,7 +626,7 @@ auto ColorPicker::on_pointer_up(Vec2 t_point) -> bool
 		case REVERT: {
 			if (current.swatch.contains(t_point) && t_point.x < current.swatch.center().x) {
 				set_color(m_initial);
-				sync_fields(-1);
+				sync_fields();
 			}
 			break;
 		}
@@ -659,24 +658,24 @@ auto ColorPicker::on_right_click(Vec2 t_point) -> TextInput*
 {
 	if (!m_open) return nullptr;
 
-	const Layout current = layout();
-	const i32    field   = field_at(current, t_point);
-	if (field < 0) return nullptr;
+	const Layout                    current = layout();
+	const std::optional<ColorField> field   = field_at(current, t_point);
+	if (!field) return nullptr;
 
 	focus_field(field);
-	m_fields[field].on_right_click(m_fonts->secondary, field_text_rect(current, static_cast<u32>(field)), t_point.x);
+	m_fields[*field].on_right_click(m_fonts->secondary, field_text_rect(current, *field), t_point.x);
 
-	return &m_fields[field];
+	return &m_fields[*field];
 }
 
 auto ColorPicker::on_key_down(os::Key t_key) -> bool
 {
 	if (!m_open) return false;
 
-	const i32  focused = focused_field();
-	const bool control = os::modifiers().shortcut;
+	const std::optional<ColorField> focused = focused_field();
+	const bool                      control = os::modifiers().shortcut;
 
-	if (focused < 0) {
+	if (!focused) {
 		if (t_key == os::Key::ESCAPE) {
 			close();
 			return true;
@@ -700,14 +699,12 @@ auto ColorPicker::on_key_down(os::Key t_key) -> bool
 
 		case ENTER:
 		case ESCAPE: {
-			focus_field(-1);
+			focus_field(std::nullopt);
 			return true;
 		}
 
 		case TAB: {
-			const auto count = static_cast<i32>(K_FIELD_COUNT);
-			const i32  step  = os::modifiers().shift ? count - 1 : 1;
-			const i32  next  = (focused + step) % count;
+			const ColorField next = stepped(*focused, os::modifiers().shift ? -1 : 1);
 
 			focus_field(next);
 			m_fields[next].apply(TextEdit::SELECT_ALL);
@@ -715,7 +712,7 @@ auto ColorPicker::on_key_down(os::Key t_key) -> bool
 		}
 
 		default: {
-			m_fields[focused].on_key_down(t_key);
+			m_fields[*focused].on_key_down(t_key);
 			return true;
 		}
 	}
@@ -723,15 +720,15 @@ auto ColorPicker::on_key_down(os::Key t_key) -> bool
 
 auto ColorPicker::on_char(u32 t_character) -> bool
 {
-	const i32 focused = focused_field();
-	if (!m_open || focused < 0) return false;
+	const std::optional<ColorField> focused = focused_field();
+	if (!m_open || !focused) return false;
 
 	const bool digit     = t_character >= '0' && t_character <= '9';
 	const bool hex_digit = digit || (t_character >= 'a' && t_character <= 'f') || (t_character >= 'A' && t_character <= 'F');
-	const bool accepted  = focused == static_cast<i32>(K_HEX_FIELD) ? hex_digit || t_character == '#' : digit;
+	const bool accepted  = focused == ColorField::HEX ? hex_digit || t_character == '#' : digit;
 
 	if (accepted) {
-		m_fields[focused].on_char(t_character);
+		m_fields[*focused].on_char(t_character);
 	}
 
 	return true;
@@ -763,7 +760,7 @@ auto ColorPicker::cursor(Vec2 t_mouse) const -> CursorKind
 	}
 
 	const Layout current = layout();
-	if (field_at(current, t_mouse) >= 0) return CursorKind::I_BEAM;
+	if (field_at(current, t_mouse)) return CursorKind::I_BEAM;
 
 	const bool over_control = current.square.contains(t_mouse) || current.hue.contains(t_mouse) || current.alpha.contains(t_mouse) ||
 	                          current.copy.contains(t_mouse) || current.paste.contains(t_mouse) ||
@@ -816,14 +813,14 @@ auto ColorPicker::draw(DrawList* t_draw_list, Vec2 t_mouse) -> void
 	t_draw_list->add_rounded_rect(Rect{swatch.x, swatch.y, half, swatch.h}, rounded(swatch_radius, 0.0f, 0.0f, swatch_radius), with_alpha(m_initial, 255));
 	t_draw_list->add_rounded_rect(Rect{swatch.x + half, swatch.y, half, swatch.h}, rounded(0.0f, swatch_radius, swatch_radius, 0.0f), picked);
 
-	for (u32 i = 0; i < K_FIELD_COUNT; i += 1) {
-		const Rect field   = current.fields[i];
-		const bool focused = m_fields[i].is_focused();
+	for (const ColorField edit : each<ColorField>()) {
+		const Rect field   = current.fields[edit];
+		const bool focused = m_fields[edit].is_focused();
 
 		controls::draw_field(t_draw_list, field, K_CONTROL_RADIUS, focused ? g_theme.text_dim : g_theme.control, focused ? g_theme.row_hover : g_theme.field,
 		                     255);
-		draw_text(t_draw_list, font, Vec2{field.x + K_LABEL_INSET, font.centered_baseline(field)}, K_FIELD_LABELS[i], g_theme.text_faint);
-		m_fields[i].draw(t_draw_list, font, field_text_rect(current, i), g_theme.text, g_theme.text);
+		draw_text(t_draw_list, font, Vec2{field.x + K_LABEL_INSET, font.centered_baseline(field)}, K_FIELD_LABELS[edit], g_theme.text_faint);
+		m_fields[edit].draw(t_draw_list, font, field_text_rect(current, edit), g_theme.text, g_theme.text);
 	}
 
 	const Rect buttons[]{current.copy, current.paste};

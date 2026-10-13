@@ -20,29 +20,23 @@ constexpr MTLPixelFormat K_PIXEL_FORMAT           = MTLPixelFormatBGRA8Unorm;
 constexpr NSUInteger     K_VERTEX_BUFFER_INDEX    = 0;
 constexpr NSUInteger     K_CONSTANTS_BUFFER_INDEX = 1;
 
-constexpr const char* K_FRAGMENT_FUNCTIONS[]{
-	"ps_solid", "ps_textured", "ps_banner_glow", "ps_color_picker", "ps_shadow", "ps_outline_countdown", "ps_backdrop", "ps_backdrop_plain", "ps_backdrop_blur",
-};
-
-static_assert(std::size(K_FRAGMENT_FUNCTIONS) == K_SHADER_KIND_COUNT);
-
 struct FrameGeometry {
 	id<MTLBuffer> vertices;
 	id<MTLBuffer> indices;
 };
 
 struct MetalBackend final : RenderBackend {
-	const os::Window*          window           = nullptr;
-	NSView*                    view             = nil;
-	id<MTLDevice>              device           = nil;
-	id<MTLCommandQueue>        queue            = nil;
-	CAMetalLayer*              layer            = nil;
-	id<MTLSamplerState>        sampler          = nil;
-	id<MTLTexture>             msaa_target      = nil;
-	dispatch_semaphore_t       frames_available = nil;
-	id<MTLRenderPipelineState> pipelines[K_SHADER_KIND_COUNT]{};
-	FrameGeometry              frames[K_FRAMES_IN_FLIGHT]{};
-	u32                        frame_index = 0;
+	const os::Window*                                 window           = nullptr;
+	NSView*                                           view             = nil;
+	id<MTLDevice>                                     device           = nil;
+	id<MTLCommandQueue>                               queue            = nil;
+	CAMetalLayer*                                     layer            = nil;
+	id<MTLSamplerState>                               sampler          = nil;
+	id<MTLTexture>                                    msaa_target      = nil;
+	dispatch_semaphore_t                              frames_available = nil;
+	EnumArray<ShaderKind, id<MTLRenderPipelineState>> pipelines{};
+	FrameGeometry                                     frames[K_FRAMES_IN_FLIGHT]{};
+	u32                                               frame_index = 0;
 
 	id<MTLTexture> textures[Renderer::K_MAX_TEXTURES]{};
 
@@ -378,12 +372,12 @@ auto MetalBackend::create_pipelines() -> bool
 	color.sourceAlphaBlendFactor                      = MTLBlendFactorOne;
 	color.destinationAlphaBlendFactor                 = MTLBlendFactorOneMinusSourceAlpha;
 
-	for (u32 i = 0; i < K_SHADER_KIND_COUNT; i += 1) {
-		descriptor.fragmentFunction = [library newFunctionWithName:@(K_FRAGMENT_FUNCTIONS[i])];
-		pipelines[i]                = [device newRenderPipelineStateWithDescriptor:descriptor error:&error];
+	for (const ShaderKind kind : each<ShaderKind>()) {
+		descriptor.fragmentFunction = [library newFunctionWithName:@(K_PIXEL_SHADER_NAMES[kind])];
+		pipelines[kind]             = [device newRenderPipelineStateWithDescriptor:descriptor error:&error];
 
-		if (pipelines[i] == nil) {
-			debug_log::write(K_LOG_CATEGORY, "Metal pipeline %s failed: %s", K_FRAGMENT_FUNCTIONS[i], error.localizedDescription.UTF8String);
+		if (pipelines[kind] == nil) {
+			debug_log::write(K_LOG_CATEGORY, "Metal pipeline %s failed: %s", K_PIXEL_SHADER_NAMES[kind], error.localizedDescription.UTF8String);
 			return false;
 		}
 	}
@@ -489,7 +483,7 @@ auto MetalBackend::draw_command(id<MTLRenderCommandEncoder> t_encoder, const Ren
 								  .height = static_cast<NSUInteger>(clip.bottom - clip.top),
 							  }];
 
-	[t_encoder setRenderPipelineState:pipelines[static_cast<u32>(t_command.shader)]];
+	[t_encoder setRenderPipelineState:pipelines[t_command.shader]];
 	[t_encoder setFragmentTexture:image atIndex:0];
 	[t_encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
 						  indexCount:t_command.index_count
@@ -504,7 +498,7 @@ auto create_native_render_backend() -> std::unique_ptr<RenderBackend>
 	return std::make_unique<MetalBackend>();
 }
 
-auto native_render_backend_name() -> std::string_view
+auto native_render_backend_name() noexcept -> std::string_view
 {
 	return "Metal";
 }

@@ -5,6 +5,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core/enum_array.h"
 #include "core/library.h"
 #include "ui/commands.h"
 #include "ui/list_popup.h"
@@ -23,13 +24,6 @@ class Window;
 }
 struct Settings;
 
-enum class EditField : u8 {
-	NOTE,
-	USERNAME,
-	PASSWORD,
-	COUNT,
-};
-
 class AccountModal : public Widget {
   public:
 	AccountModal(Library*          t_library,
@@ -41,24 +35,24 @@ class AccountModal : public Widget {
 	             LoginSession*     t_session,
 	             CommandQueue*     t_commands);
 
-	auto open(i32 t_game) -> void;
+	auto open(u32 t_game) -> void;
 
 	auto set_art_source(ArtSource t_source) -> void
 	{
 		m_art_source = t_source;
 	}
 
-	[[nodiscard]] auto detached_game() const -> i32;
+	[[nodiscard]] auto detached_game() const -> std::optional<u32>;
 	auto close() -> void;
 	auto quick_login(u32 t_game, AccountRef t_account) -> void;
 	auto edit_account(AccountRef t_account) -> void;
 	auto undo_delete() -> void;
-	auto edit_row(i32 t_row) -> void;
-	auto delete_row(i32 t_row) -> void;
+	auto edit_row(std::optional<u32> t_row) -> void;
+	auto delete_row(std::optional<u32> t_row) -> void;
 	auto delete_picked() -> void;
 	auto forget_secrets() -> void;
 
-	[[nodiscard]] auto account_at_row(i32 t_row) const -> const Account*;
+	[[nodiscard]] auto account_at_row(std::optional<u32> t_row) const -> const Account*;
 
 	auto update(float t_delta_seconds) -> void override;
 	auto draw(DrawList* t_draw_list) -> void override;
@@ -79,8 +73,6 @@ class AccountModal : public Widget {
 	[[nodiscard]] auto cursor() const -> CursorKind override;
 
   private:
-	static constexpr u32 K_FIELD_COUNT = static_cast<u32>(EditField::COUNT);
-
 	enum class Mode : u8 {
 		ACCOUNT_LIST,
 		LOGIN_PROGRESS,
@@ -103,17 +95,17 @@ class AccountModal : public Widget {
 		ScrollGeometry  scroll;
 	};
 
-	static constexpr u32 K_FORM_ROW_COUNT = K_FIELD_COUNT + 2;
-	static constexpr u32 K_REGION_ROW     = K_FIELD_COUNT;
-	static constexpr u32 K_SHOW_IN_ROW    = K_FIELD_COUNT + 1;
-
 	struct FormLayout {
-		Rect  region;
-		Rect  labels[K_FORM_ROW_COUNT];
-		Rect  inputs[K_FORM_ROW_COUNT];
-		Rect  tiles;
-		u32   tile_columns;
-		float content_height;
+		Rect                       region;
+		EnumArray<EditField, Rect> field_labels;
+		EnumArray<EditField, Rect> field_inputs;
+		Rect                       region_label;
+		Rect                       region_input;
+		Rect                       show_in_label;
+		Rect                       show_in_input;
+		Rect                       tiles;
+		u32                        tile_columns;
+		float                      content_height;
 	};
 
 	struct DeletedAccount {
@@ -138,13 +130,13 @@ class AccountModal : public Widget {
 	[[nodiscard]] auto layout() const -> Layout;
 
 	[[nodiscard]] auto displayed_accounts() const -> VisibleAccounts;
-	[[nodiscard]] auto row_account(i32 t_row) const -> std::optional<AccountRef>;
+	[[nodiscard]] auto row_account(std::optional<u32> t_row) const -> std::optional<AccountRef>;
 	[[nodiscard]] auto account_rows(const Layout& t_layout) const -> AccountRows;
 
 	[[nodiscard]] auto content_to_screen(const AccountRows& t_rows, float t_content_y) const -> float;
 	[[nodiscard]] auto row_rect_at(const Layout& t_layout, const AccountRows& t_rows, float t_content_top) const -> Rect;
 	[[nodiscard]] auto row_rect(const Layout& t_layout, const AccountRows& t_rows, u32 t_row) const -> Rect;
-	[[nodiscard]] auto row_at(const Layout& t_layout, const AccountRows& t_rows, Vec2 t_point) const -> i32;
+	[[nodiscard]] auto row_at(const Layout& t_layout, const AccountRows& t_rows, Vec2 t_point) const -> std::optional<u32>;
 	[[nodiscard]] auto login_button_rect(Rect t_row) const -> Rect;
 	[[nodiscard]] auto favorite_button_rect(Rect t_row) const -> Rect;
 	[[nodiscard]] auto is_row_button_hit(Rect t_row, Vec2 t_point) const -> bool;
@@ -156,8 +148,8 @@ class AccountModal : public Widget {
 	[[nodiscard]] auto form_region(Rect t_main) const -> Rect;
 	[[nodiscard]] auto form_scroll(Rect t_main) const -> ScrollGeometry;
 	[[nodiscard]] auto form_layout(Rect t_main) const -> FormLayout;
-	[[nodiscard]] auto field_input_rect(Rect t_main, u32 t_field) const -> Rect;
-	[[nodiscard]] auto field_text_rect(Rect t_main, u32 t_field) const -> Rect;
+	[[nodiscard]] auto field_input_rect(Rect t_main, EditField t_field) const -> Rect;
+	[[nodiscard]] auto field_text_rect(Rect t_main, EditField t_field) const -> Rect;
 	[[nodiscard]] auto reveal_button_rect(Rect t_main) const -> Rect;
 	[[nodiscard]] auto show_in_rect(Rect t_main) const -> Rect;
 	[[nodiscard]] auto is_show_in_hit(Rect t_main, Vec2 t_point) const -> bool;
@@ -176,19 +168,19 @@ class AccountModal : public Widget {
 
 	[[nodiscard]] auto field(EditField t_field) -> TextInput*
 	{
-		return &m_fields[static_cast<u32>(t_field)];
+		return &m_fields[t_field];
 	}
 
 	[[nodiscard]] auto field(EditField t_field) const -> const TextInput*
 	{
-		return &m_fields[static_cast<u32>(t_field)];
+		return &m_fields[t_field];
 	}
 
-	[[nodiscard]] auto focused_field() const -> i32;
-	auto focus_field(i32 t_field) -> void;
-	[[nodiscard]] auto field_at(Rect t_main, Vec2 t_point) const -> i32;
+	[[nodiscard]] auto focused_field() const -> std::optional<EditField>;
+	auto focus_field(std::optional<EditField> t_field) -> void;
+	[[nodiscard]] auto field_at(Rect t_main, Vec2 t_point) const -> std::optional<EditField>;
 	[[nodiscard]] auto is_reveal_hit(Rect t_main, Vec2 t_point) const -> bool;
-	auto reveal_field(i32 t_field) -> void;
+	auto reveal_field(std::optional<EditField> t_field) -> void;
 
 	auto start_adding() -> void;
 	auto start_editing(AccountRef t_account) -> void;
@@ -266,8 +258,8 @@ class AccountModal : public Widget {
 	std::optional<ArtSource> m_art_source;
 	float                    m_morph_progress  = 0.0f;
 	bool                     m_press_swallowed = false;
-	i32                      m_game            = -1;
-	Mode                     m_mode            = Mode::ACCOUNT_LIST;
+	std::optional<u32>       m_game;
+	Mode                     m_mode = Mode::ACCOUNT_LIST;
 	Scrollable               m_rows_scroll;
 	Scrollable               m_form_scroll;
 	Tooltip                  m_tooltip;
@@ -285,12 +277,12 @@ class AccountModal : public Widget {
 
 	std::vector<DeletedAccount> m_deleted;
 
-	TextInput                 m_fields[K_FIELD_COUNT];
-	std::optional<AccountRef> m_edited;
-	bool                      m_show_required  = false;
-	u16                       m_visible_mask   = 0;
-	bool                      m_show_in_open   = false;
-	float                     m_show_in_amount = 0.0f;
-	char                      m_region[8]{};
-	ListPopup                 m_region_list;
+	EnumArray<EditField, TextInput> m_fields{};
+	std::optional<AccountRef>       m_edited;
+	bool                            m_show_required  = false;
+	u16                             m_visible_mask   = 0;
+	bool                            m_show_in_open   = false;
+	float                           m_show_in_amount = 0.0f;
+	char                            m_region[8]{};
+	ListPopup                       m_region_list;
 };

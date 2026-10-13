@@ -6,6 +6,7 @@
 #include <cmath>
 #include <numbers>
 
+#include "core/enum_array.h"
 #include "core/profiler.h"
 
 namespace {
@@ -514,12 +515,12 @@ auto DrawList::add_plain_backdrop(Rect t_rect, Color t_top_left, Color t_top_rig
 	push_backdrop(ShaderKind::BACKDROP_PLAIN, t_rect, t_top_left, t_top_right, t_bottom_left, t_bottom_right);
 }
 
-auto DrawList::add_pattern_swatch(Rect t_rect, CornerRadii t_radii, Color t_color, u32 t_style) -> void
+auto DrawList::add_pattern_swatch(Rect t_rect, CornerRadii t_radii, Color t_color, BackgroundStyle t_style) -> void
 {
 	constexpr float SWATCH_CODE = 8192.0f;
 
 	const Vec2  center = scaled(t_rect.center());
-	const float u      = static_cast<float>(t_style + 1) * SWATCH_CODE + std::round(center.x * g_pixel_scale);
+	const float u      = static_cast<float>(enum_index(t_style) + 1) * SWATCH_CODE + std::round(center.x * g_pixel_scale);
 	const float v      = std::round(center.y * g_pixel_scale);
 
 	note_cover(t_rect, t_color);

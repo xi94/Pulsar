@@ -23,12 +23,6 @@ constexpr GLuint  K_POSITION_ATTRIBUTE = 0;
 constexpr GLuint  K_UV_ATTRIBUTE       = 1;
 constexpr GLuint  K_COLOR_ATTRIBUTE    = 2;
 
-constexpr const char* K_FRAGMENT_ENTRY_POINTS[]{
-	"ps_solid", "ps_textured", "ps_banner_glow", "ps_color_picker", "ps_shadow", "ps_outline_countdown", "ps_backdrop", "ps_backdrop_plain", "ps_backdrop_blur",
-};
-
-static_assert(std::size(K_FRAGMENT_ENTRY_POINTS) == K_SHADER_KIND_COUNT);
-
 constexpr const char* K_EFFECT_BLOCK_NAMES[]{"BannerGlowConstants", "ShadowConstants", "OutlineCountdownConstants", "BackdropConstants", "BlurConstants"};
 
 [[nodiscard]] auto load_functions(Gl* t_gl, const GlContext& t_context) -> bool
@@ -61,18 +55,18 @@ struct OpenGlBackend final : RenderBackend {
 	Gl        gl;
 	bool      functions_loaded = false;
 
-	GLuint  programs[K_SHADER_KIND_COUNT]{};
-	GLuint  vertex_array     = 0;
-	GLuint  vertex_buffer    = 0;
-	GLuint  index_buffer     = 0;
-	GLuint  viewport_buffer  = 0;
-	GLuint  effect_buffer    = 0;
-	GLuint  sampler          = 0;
-	GLuint  msaa_framebuffer = 0;
-	GLuint  msaa_color       = 0;
-	GLsizei msaa_samples     = 0;
-	GLsizei width            = 0;
-	GLsizei height           = 0;
+	EnumArray<ShaderKind, GLuint> programs{};
+	GLuint                        vertex_array     = 0;
+	GLuint                        vertex_buffer    = 0;
+	GLuint                        index_buffer     = 0;
+	GLuint                        viewport_buffer  = 0;
+	GLuint                        effect_buffer    = 0;
+	GLuint                        sampler          = 0;
+	GLuint                        msaa_framebuffer = 0;
+	GLuint                        msaa_color       = 0;
+	GLsizei                       msaa_samples     = 0;
+	GLsizei                       width            = 0;
+	GLsizei                       height           = 0;
 
 	GLuint textures[Renderer::K_MAX_TEXTURES]{};
 
@@ -349,13 +343,15 @@ auto OpenGlBackend::create_programs() -> bool
 
 	bool linked_all = true;
 
-	for (u32 i = 0; i < K_SHADER_KIND_COUNT && linked_all; i += 1) {
-		const std::string entry_point = std::string{"#define PS_MAIN "} + K_FRAGMENT_ENTRY_POINTS[i] + "\n";
+	for (const ShaderKind kind : each<ShaderKind>()) {
+		if (!linked_all) break;
+
+		const std::string entry_point = std::string{"#define PS_MAIN "} + K_PIXEL_SHADER_NAMES[kind] + "\n";
 		const char* const fragment_sources[]{K_GLSL_VERSION, entry_point.c_str(), K_FRAGMENT_SHADER_SOURCE};
 		const GLuint      fragment_shader = compile_shader(GL_FRAGMENT_SHADER, fragment_sources);
 
-		programs[i] = fragment_shader != 0 ? link_program(vertex_shader, fragment_shader) : 0;
-		linked_all  = programs[i] != 0;
+		programs[kind] = fragment_shader != 0 ? link_program(vertex_shader, fragment_shader) : 0;
+		linked_all     = programs[kind] != 0;
 
 		gl.delete_shader(fragment_shader);
 	}
@@ -576,7 +572,7 @@ auto OpenGlBackend::draw_command(const RenderFrame& t_frame, const DrawCommand& 
 	const ScissorRect clip = scissor_for(t_frame, t_command);
 	gl.scissor(clip.left, height - clip.bottom, clip.right - clip.left, clip.bottom - clip.top);
 
-	gl.use_program(programs[static_cast<u32>(t_command.shader)]);
+	gl.use_program(programs[t_command.shader]);
 	gl.bind_texture(GL_TEXTURE_2D, image);
 	gl.draw_elements(GL_TRIANGLES, static_cast<GLsizei>(t_command.index_count), GL_UNSIGNED_INT, buffer_offset(t_command.index_offset * sizeof(u32)));
 }

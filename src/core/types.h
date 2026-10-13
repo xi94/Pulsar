@@ -185,10 +185,26 @@ enum class CursorKind : u8 {
 enum class GraphicsApi : u8 {
 	NATIVE,
 	OPENGL,
+	COUNT,
 };
 
 enum class CaretStyle : u8 {
 	BAR,
 	BLOCK,
 	UNDERLINE,
+	COUNT,
+};
+
+// The pattern drawn behind the games. The shaders number the patterns in this order.
+enum class BackgroundStyle : u8 {
+	NONE,
+	DOTS,
+	GRID,
+	LINES,
+	POLKA,
+	TOPOGRAPHY,
+	STARFIELD,
+	SCANLINES,
+	CROSSHATCH,
+	COUNT,
 };
