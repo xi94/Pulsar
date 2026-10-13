@@ -48,6 +48,8 @@ struct TrayColors {
 	Color background;
 	Color border;
 	Color separator;
+	Color scroll_thumb;
+	Color shadow;
 	Color text;
 	Color text_dim;
 	Color text_disabled;

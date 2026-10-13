@@ -702,6 +702,8 @@ auto App::pump_input() -> void
 		.background    = mix(g_theme.surface, m_settings.accent, K_TRAY_ACCENT_TINT),
 		.border        = g_theme.border,
 		.separator     = g_theme.separator,
+		.scroll_thumb  = g_theme.scroll_thumb,
+		.shadow        = g_theme.shadow,
 		.text          = g_theme.text,
 		.text_dim      = g_theme.text_dim,
 		.text_disabled = g_theme.text_faint,

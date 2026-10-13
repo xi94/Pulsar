@@ -103,6 +103,24 @@ constexpr float K_UPDATE_FROM_SCALE = 0.85f;
 constexpr float K_UPDATE_IN_SECONDS = 0.16f;
 constexpr float K_SPIN_SECONDS      = 0.9f;
 
+constexpr u32   K_MAX_SHOWN_ROWS        = 10;
+constexpr float K_SCROLL_GUTTER         = 6.0f;
+constexpr float K_SCROLLBAR_INSET       = 2.0f;
+constexpr float K_SCROLLBAR_THIN        = 2.0f;
+constexpr float K_SCROLLBAR_WIDE        = 6.0f;
+constexpr float K_MIN_THUMB_HEIGHT      = 24.0f;
+constexpr float K_THUMB_HOVER_STRENGTH  = 0.3f;
+constexpr float K_PIXELS_PER_NOTCH      = 48.0f;
+constexpr float K_SCROLL_EASE_RATE      = 16.0f;
+constexpr float K_SCROLL_SETTLED        = 0.25f;
+constexpr float K_SCROLLBAR_GROW_RATE   = 18.0f;
+constexpr float K_SCROLLBAR_SHRINK_RATE = 9.0f;
+constexpr float K_SCROLL_AWAKE_SECONDS  = 0.9f;
+constexpr float K_RELEASE_LINGER        = 0.35f;
+constexpr float K_EDGE_SHADOW_HEIGHT    = 14.0f;
+constexpr float K_EDGE_SHADOW_ALPHA     = 0.35f;
+constexpr float K_EDGE_SHADOW_TRAVEL    = 24.0f;
+
 constexpr float K_TOAST_MARGIN          = 12.0f;
 constexpr float K_TOAST_PADDING         = 11.0f;
 constexpr float K_TOAST_PILL_WIDTH      = 224.0f;
@@ -214,16 +232,97 @@ struct Canvas {
 	ComPtr<ID2D1DCRenderTarget> target;
 };
 
+// How far a panel's rows have scrolled, and its scrollbar, which works like the app's own: thin at rest, and wide while the pointer is on it,
+// while it is dragged and for a moment after the wheel turns. thickness goes from 0 for thin to 1 for wide. grab is where on the thumb the
+// pointer holds it while dragging.
+struct Scroll {
+	float                offset    = 0.0f;
+	float                target    = 0.0f;
+	float                thickness = 0.0f;
+	float                awake     = 0.0f;
+	std::optional<float> grab;
+	bool                 over_bar   = false;
+	bool                 over_thumb = false;
+	bool                 was_held   = false;
+};
+
 // One panel of the menu: the games with the app's actions under them, or the accounts of the game being pointed at. frame is where it sits in
 // the menu's window, in DIPs, and its rows are laid out from its top left corner.
 struct Panel {
 	std::vector<Row>   rows;
 	D2D1_RECT_F        frame{};
-	float              width  = 0.0f;
-	float              height = 0.0f;
+	float              width          = 0.0f;
+	float              height         = 0.0f;
+	float              content_height = 0.0f;
+	float              gutter         = 0.0f;
+	Scroll             scroll;
 	std::optional<u32> hot;
 	bool               login_hot = false;
 };
+
+auto cap_rows(Panel* t_panel) -> void
+{
+	const float most = K_PANEL_PADDING * 2.0f + K_ROW_HEIGHT * static_cast<float>(K_MAX_SHOWN_ROWS);
+	t_panel->scroll  = Scroll{};
+	t_panel->gutter  = 0.0f;
+
+	if (t_panel->content_height <= most) return;
+
+	t_panel->height = most;
+	t_panel->gutter = K_SCROLL_GUTTER;
+	t_panel->width  = std::ceil(t_panel->width + K_SCROLL_GUTTER);
+}
+
+[[nodiscard]] auto max_scroll(const Panel& t_panel) -> float
+{
+	return t_panel.content_height - t_panel.height;
+}
+
+[[nodiscard]] auto track_rect(const Panel& t_panel) -> D2D1_RECT_F
+{
+	const float right = t_panel.frame.right - t_panel.frame.left - K_SCROLLBAR_INSET;
+
+	return D2D1::RectF(right - K_SCROLLBAR_WIDE, K_PANEL_PADDING, right, t_panel.height - K_PANEL_PADDING);
+}
+
+[[nodiscard]] auto thumb_rect(const Panel& t_panel) -> D2D1_RECT_F
+{
+	const D2D1_RECT_F track  = track_rect(t_panel);
+	const float       length = track.bottom - track.top;
+	const float       size   = std::max(length * t_panel.height / t_panel.content_height, K_MIN_THUMB_HEIGHT);
+	const float       top    = track.top + (length - size) * t_panel.scroll.offset / max_scroll(t_panel);
+
+	return D2D1::RectF(track.left, top, track.right, top + size);
+}
+
+// Eases the rows toward where they're headed and the scrollbar toward thin or wide, and says whether either is still moving.
+auto step_scroll(Scroll* t_scroll, float t_seconds) -> bool
+{
+	t_scroll->offset += (t_scroll->target - t_scroll->offset) * (1.0f - std::exp(-K_SCROLL_EASE_RATE * t_seconds));
+
+	if (std::abs(t_scroll->target - t_scroll->offset) < K_SCROLL_SETTLED) {
+		t_scroll->offset = t_scroll->target;
+	}
+
+	const bool held = t_scroll->over_bar || t_scroll->grab;
+	if (t_scroll->was_held && !held) {
+		t_scroll->awake = std::max(t_scroll->awake, K_RELEASE_LINGER);
+	}
+
+	t_scroll->was_held = held;
+	t_scroll->awake    = std::max(0.0f, t_scroll->awake - t_seconds);
+
+	const bool  active = held || t_scroll->awake > 0.0f;
+	const float wide   = active ? 1.0f : 0.0f;
+	const float rate   = active ? K_SCROLLBAR_GROW_RATE : K_SCROLLBAR_SHRINK_RATE;
+	t_scroll->thickness += (wide - t_scroll->thickness) * (1.0f - std::exp(-rate * t_seconds));
+
+	if (std::abs(wide - t_scroll->thickness) < K_SETTLED) {
+		t_scroll->thickness = wide;
+	}
+
+	return t_scroll->offset != t_scroll->target || t_scroll->thickness != wide || t_scroll->awake > 0.0f;
+}
 
 struct MenuImages {
 	ComPtr<ID2D1Bitmap> logo;
@@ -912,6 +1011,60 @@ auto paint_body(ID2D1RenderTarget*    t_target,
 	t_target->DrawRoundedRectangle(edge, t_brush, 1.0f / t_scale);
 }
 
+// While rows are hidden above or below, a shadow falls inward from that edge, darkening over the first K_EDGE_SHADOW_TRAVEL of hidden rows. It
+// fills the inside of the body's outline so it follows the rounded corners.
+auto paint_edge_shadows(ID2D1RenderTarget* t_target, const Painter& t_painter, const Panel& t_panel) -> void
+{
+	const float             inset = 1.0f / t_painter.scale;
+	const float             width = t_panel.frame.right - t_panel.frame.left;
+	const float             round = K_SURFACE_RADIUS - inset * 0.5f;
+	const D2D1_ROUNDED_RECT inside{D2D1::RectF(inset, inset, width - inset, t_panel.height - inset), round, round};
+
+	const auto shade = [&](float t_hidden, float t_edge, float t_fade_to) {
+		const float strength = std::min(t_hidden / K_EDGE_SHADOW_TRAVEL, 1.0f);
+		if (strength <= 0.0f) return;
+
+		const D2D1_GRADIENT_STOP stops[] = {
+			{0.0f, to_d2d(t_painter.colors.shadow, K_EDGE_SHADOW_ALPHA * strength)},
+			{1.0f, to_d2d(t_painter.colors.shadow, 0.0f)},
+		};
+		const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES line = D2D1::LinearGradientBrushProperties(D2D1::Point2F(0.0f, t_edge), D2D1::Point2F(0.0f, t_fade_to));
+		ComPtr<ID2D1GradientStopCollection>         collection;
+		ComPtr<ID2D1LinearGradientBrush>            brush;
+
+		if (FAILED(t_target->CreateGradientStopCollection(stops, 2, &collection))) return;
+		if (FAILED(t_target->CreateLinearGradientBrush(line, collection.Get(), &brush))) return;
+
+		t_target->FillRoundedRectangle(inside, brush.Get());
+	};
+
+	shade(t_panel.scroll.offset, inset, inset + K_EDGE_SHADOW_HEIGHT);
+	shade(max_scroll(t_panel) - t_panel.scroll.offset, t_panel.height - inset, t_panel.height - inset - K_EDGE_SHADOW_HEIGHT);
+}
+
+// The thumb on its track, widening from its middle as the bar wakes up, with the track itself showing only while it is wide.
+auto paint_scrollbar(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1SolidColorBrush* t_brush, const Panel& t_panel) -> void
+{
+	const os::TrayColors& colors = t_painter.colors;
+	const Scroll&         scroll = t_panel.scroll;
+	const float           width  = K_SCROLLBAR_THIN + (K_SCROLLBAR_WIDE - K_SCROLLBAR_THIN) * scroll.thickness;
+	const float           inset  = (K_SCROLLBAR_WIDE - width) * 0.5f;
+	const float           round  = width * 0.5f;
+	const D2D1_RECT_F     track  = track_rect(t_panel);
+	const D2D1_RECT_F     thumb  = thumb_rect(t_panel);
+
+	Color lit = mix(colors.scroll_thumb, colors.text, K_THUMB_HOVER_STRENGTH);
+	lit.a     = colors.scroll_thumb.a;
+
+	if (scroll.thickness > 0.001f) {
+		t_brush->SetColor(to_d2d(colors.separator, scroll.thickness));
+		t_target->FillRoundedRectangle(D2D1_ROUNDED_RECT{D2D1::RectF(track.left + inset, track.top, track.right - inset, track.bottom), round, round}, t_brush);
+	}
+
+	t_brush->SetColor(to_d2d(scroll.grab || scroll.over_thumb ? lit : colors.scroll_thumb));
+	t_target->FillRoundedRectangle(D2D1_ROUNDED_RECT{D2D1::RectF(thumb.left + inset, thumb.top, thumb.right - inset, thumb.bottom), round, round}, t_brush);
+}
+
 // The update pill shows only once there is an update to get, or while one installs.
 auto paint_update(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1SolidColorBrush* t_brush, const UpdateBadge& t_badge, const D2D1_RECT_F& t_box)
 	-> void
@@ -996,11 +1149,18 @@ auto paint_panel(ID2D1RenderTarget*      t_target,
 	draw_soft_shadow(t_target, t_brush, t_panel.frame);
 	paint_body(t_target, t_brush, colors, t_panel.frame, colors.border, scale);
 
-	t_target->SetTransform(D2D1::Matrix3x2F::Translation(t_panel.frame.left, t_panel.frame.top) * t_base);
+	const bool scrolls = t_panel.gutter > 0.0f;
+	if (scrolls) {
+		t_target->PushAxisAlignedClip(
+			D2D1::RectF(t_panel.frame.left, t_panel.frame.top + K_PANEL_PADDING, t_panel.frame.right, t_panel.frame.bottom - K_PANEL_PADDING),
+			D2D1_ANTIALIAS_MODE_ALIASED);
+	}
+
+	t_target->SetTransform(D2D1::Matrix3x2F::Translation(t_panel.frame.left, t_panel.frame.top - t_panel.scroll.offset) * t_base);
 
 	for (usize index = 0; index < t_panel.rows.size(); index += 1) {
 		const Row&        row = t_panel.rows[index];
-		const D2D1_RECT_F box{K_PANEL_PADDING, row.top, width - K_PANEL_PADDING, row.top + row.height};
+		const D2D1_RECT_F box{K_PANEL_PADDING, row.top, width - K_PANEL_PADDING - t_panel.gutter, row.top + row.height};
 		const float       left   = box.left + K_ROW_INSET;
 		const float       right  = box.right - K_ROW_INSET;
 		const float       middle = (box.top + box.bottom) * 0.5f;
@@ -1046,7 +1206,7 @@ auto paint_panel(ID2D1RenderTarget*      t_target,
 			}
 
 			case ACCOUNT: {
-				const D2D1_RECT_F login      = login_rect(row, width, t_painter.login_width, scale);
+				const D2D1_RECT_F login      = login_rect(row, width - t_panel.gutter, t_painter.login_width, scale);
 				const float       chip_right = login.left - K_CHIP_GAP;
 				const float       chip_left  = chip_right - row.detail_width;
 				const bool        followed   = index + 1 < t_panel.rows.size() && t_panel.rows[index + 1].kind == RowKind::ACCOUNT;
@@ -1112,6 +1272,14 @@ auto paint_panel(ID2D1RenderTarget*      t_target,
 				break;
 			}
 		}
+	}
+
+	if (scrolls) {
+		t_target->SetTransform(t_base);
+		t_target->PopAxisAlignedClip();
+		t_target->SetTransform(D2D1::Matrix3x2F::Translation(t_panel.frame.left, t_panel.frame.top) * t_base);
+		paint_edge_shadows(t_target, t_painter, t_panel);
+		paint_scrollbar(t_target, t_painter, t_brush, t_panel);
 	}
 
 	t_target->SetTransform(t_base);
@@ -1272,6 +1440,8 @@ struct Tray::Native {
 		.background    = {37, 34, 43, 255},
 		.border        = {64, 64, 70, 255},
 		.separator     = {50, 50, 56, 255},
+		.scroll_thumb  = {120, 120, 128, 190},
+		.shadow        = {0, 0, 0, 255},
 		.text          = {232, 232, 236, 255},
 		.text_dim      = {150, 150, 158, 255},
 		.text_disabled = {108, 108, 116, 255},
@@ -1362,13 +1532,19 @@ struct Tray::Native {
 	[[nodiscard]] auto row_at(const Panel& t_panel, float t_y) const -> std::optional<u32>;
 	[[nodiscard]] auto panel_at(D2D1_POINT_2F t_point) -> Panel*;
 	[[nodiscard]] auto menu_point(LPARAM t_lparam) const -> D2D1_POINT_2F;
+	[[nodiscard]] auto cursor_point() const -> D2D1_POINT_2F;
 	[[nodiscard]] auto grow_from() const -> D2D1_POINT_2F;
 
 	auto render_menu() -> void;
 	auto on_pointer(LPARAM t_lparam) -> void;
+	auto point_at_account(D2D1_POINT_2F t_point) -> void;
 	auto on_leave() -> void;
+	auto on_press(LPARAM t_lparam) -> void;
 	auto on_click(LPARAM t_lparam) -> void;
 	[[nodiscard]] auto over_login(const Row& t_row, float t_x, float t_y) const -> bool;
+	[[nodiscard]] auto over_scrollbar(D2D1_POINT_2F t_point) const -> bool;
+	auto scroll_accounts(float t_delta) -> void;
+	auto drag_thumb(float t_y) -> void;
 	[[nodiscard]] auto update_box() const -> D2D1_RECT_F;
 	[[nodiscard]] auto over_update(float t_x, float t_y) const -> bool;
 	auto press_update() -> void;
@@ -1731,8 +1907,9 @@ auto Tray::Native::lay_out(Panel* t_panel, float t_min_width, bool t_icon_column
 		widest = std::max(widest, need);
 	}
 
-	t_panel->height = y + K_PANEL_PADDING;
-	t_panel->width  = std::ceil(std::clamp(widest, t_min_width, K_MAX_WIDTH));
+	t_panel->content_height = y + K_PANEL_PADDING;
+	t_panel->height         = t_panel->content_height;
+	t_panel->width          = std::ceil(std::clamp(widest, t_min_width, K_MAX_WIDTH));
 }
 
 auto Tray::Native::pixel_size(const Panel& t_panel) const -> SIZE
@@ -1800,6 +1977,7 @@ auto Tray::Native::show_menu() -> void
 
 		build_accounts(&sizing, *game.item);
 		lay_out(&sizing, K_ACCOUNTS_WIDTH, false);
+		cap_rows(&sizing);
 		sizes[*game.item] = pixel_size(sizing);
 		widest            = std::max(widest, sizes[*game.item].cx);
 	}
@@ -1886,6 +2064,7 @@ auto Tray::Native::open_accounts(u32 t_row) -> void
 
 	build_accounts(&accounts, *games.rows[t_row].item);
 	lay_out(&accounts, K_ACCOUNTS_WIDTH, false);
+	cap_rows(&accounts);
 	accounts.frame = frame_of(accounts_screen_rect(t_row, pixel_size(accounts)));
 
 	start_animation();
@@ -1978,6 +2157,15 @@ auto Tray::Native::menu_point(LPARAM t_lparam) const -> D2D1_POINT_2F
 	return D2D1::Point2F(static_cast<float>(static_cast<short>(LOWORD(t_lparam))) / scale, static_cast<float>(static_cast<short>(HIWORD(t_lparam))) / scale);
 }
 
+auto Tray::Native::cursor_point() const -> D2D1_POINT_2F
+{
+	POINT cursor;
+	GetCursorPos(&cursor);
+	ScreenToClient(menu_window, &cursor);
+
+	return D2D1::Point2F(static_cast<float>(cursor.x) / scale, static_cast<float>(cursor.y) / scale);
+}
+
 // Accounts opening to the left grow out of the game's icon, which is on that side. Accounts opening to the right grow out of its chevron.
 auto Tray::Native::grow_from() const -> D2D1_POINT_2F
 {
@@ -2032,8 +2220,13 @@ auto Tray::Native::on_pointer(LPARAM t_lparam) -> void
 	}
 
 	const D2D1_POINT_2F point = menu_point(t_lparam);
-	const Panel*        panel = panel_at(point);
-	const bool          over  = panel == &games && over_update(point.x - games.frame.left, point.y - games.frame.top);
+	if (accounts.scroll.grab) {
+		drag_thumb(point.y - accounts.frame.top);
+		return;
+	}
+
+	const Panel* panel = panel_at(point);
+	const bool   over  = panel == &games && over_update(point.x - games.frame.left, point.y - games.frame.top);
 
 	if (over != update_hot) {
 		update_hot = over;
@@ -2042,21 +2235,11 @@ auto Tray::Native::on_pointer(LPARAM t_lparam) -> void
 
 	if (panel == &accounts) {
 		KillTimer(menu_window, K_AIM_TIMER);
+		point_at_account(point);
 
-		const float              x         = point.x - accounts.frame.left;
-		const float              y         = point.y - accounts.frame.top;
-		const std::optional<u32> row       = row_at(accounts, y);
-		const bool               login_hot = row && over_login(accounts.rows[*row], x, y);
-
-		if (login_hot != accounts.login_hot) {
-			SetCursor(LoadCursorW(nullptr, login_hot ? IDC_HAND : IDC_ARROW));
-		}
-
-		accounts_focused   = false;
-		accounts.hot       = row && is_selectable(accounts.rows[*row]) ? row : std::nullopt;
-		accounts.login_hot = login_hot;
-		games.hot          = open_row;
-		last_pointer       = point;
+		accounts_focused = false;
+		games.hot        = open_row;
+		last_pointer     = point;
 		start_animation();
 		return;
 	}
@@ -2065,6 +2248,9 @@ auto Tray::Native::on_pointer(LPARAM t_lparam) -> void
 		accounts.login_hot = false;
 		SetCursor(LoadCursorW(nullptr, IDC_ARROW));
 	}
+
+	accounts.scroll.over_bar   = false;
+	accounts.scroll.over_thumb = false;
 
 	if (!accounts_focused) {
 		accounts.hot.reset();
@@ -2091,18 +2277,54 @@ auto Tray::Native::on_pointer(LPARAM t_lparam) -> void
 	start_animation();
 }
 
+auto Tray::Native::point_at_account(D2D1_POINT_2F t_point) -> void
+{
+	const bool               bar       = over_scrollbar(t_point);
+	const float              x         = t_point.x - accounts.frame.left;
+	const float              y         = t_point.y - accounts.frame.top;
+	const std::optional<u32> row       = bar ? std::nullopt : row_at(accounts, y + accounts.scroll.offset);
+	const bool               login_hot = row && over_login(accounts.rows[*row], x, y + accounts.scroll.offset);
+	const D2D1_RECT_F        thumb     = bar ? thumb_rect(accounts) : D2D1_RECT_F{};
+
+	if (login_hot != accounts.login_hot) {
+		SetCursor(LoadCursorW(nullptr, login_hot ? IDC_HAND : IDC_ARROW));
+	}
+
+	accounts.hot               = row && is_selectable(accounts.rows[*row]) ? row : std::nullopt;
+	accounts.login_hot         = login_hot;
+	accounts.scroll.over_bar   = bar;
+	accounts.scroll.over_thumb = bar && y >= thumb.top && y < thumb.bottom;
+}
+
 auto Tray::Native::on_leave() -> void
 {
-	tracking_leave     = false;
-	accounts.login_hot = false;
-	update_hot         = false;
-	games.hot          = open_row;
+	tracking_leave             = false;
+	accounts.login_hot         = false;
+	accounts.scroll.over_bar   = false;
+	accounts.scroll.over_thumb = false;
+	update_hot                 = false;
+	games.hot                  = open_row;
 
 	if (!accounts_focused) {
 		accounts.hot.reset();
 	}
 
 	start_animation();
+}
+
+// Pressing the scrollbar takes hold of its thumb, and pressing the track beside the thumb brings the thumb's middle there first.
+auto Tray::Native::on_press(LPARAM t_lparam) -> void
+{
+	const D2D1_POINT_2F point = menu_point(t_lparam);
+	if (panel_at(point) != &accounts || !over_scrollbar(point)) return;
+
+	const D2D1_RECT_F thumb = thumb_rect(accounts);
+	const float       y     = point.y - accounts.frame.top;
+	const bool        held  = y >= thumb.top && y < thumb.bottom;
+
+	accounts.scroll.grab = held ? y - thumb.top : (thumb.bottom - thumb.top) * 0.5f;
+	SetCapture(menu_window);
+	drag_thumb(y);
 }
 
 auto Tray::Native::on_click(LPARAM t_lparam) -> void
@@ -2112,7 +2334,7 @@ auto Tray::Native::on_click(LPARAM t_lparam) -> void
 	if (panel == nullptr) return;
 
 	const float              x   = point.x - panel->frame.left;
-	const float              y   = point.y - panel->frame.top;
+	const float              y   = point.y - panel->frame.top + panel->scroll.offset;
 	const std::optional<u32> row = row_at(*panel, y);
 	if (!row) return;
 
@@ -2132,7 +2354,32 @@ auto Tray::Native::over_login(const Row& t_row, float t_x, float t_y) const -> b
 {
 	if (t_row.kind != RowKind::ACCOUNT) return false;
 
-	return contains(login_rect(t_row, accounts.frame.right - accounts.frame.left, login_width, scale), t_x, t_y);
+	return contains(login_rect(t_row, accounts.frame.right - accounts.frame.left - accounts.gutter, login_width, scale), t_x, t_y);
+}
+
+auto Tray::Native::over_scrollbar(D2D1_POINT_2F t_point) const -> bool
+{
+	return accounts.gutter > 0.0f && t_point.x >= accounts.frame.right - K_PANEL_PADDING - accounts.gutter;
+}
+
+auto Tray::Native::scroll_accounts(float t_delta) -> void
+{
+	if (accounts.gutter <= 0.0f || accounts.scroll.grab || panel_at(cursor_point()) != &accounts) return;
+
+	accounts.scroll.target = std::clamp(accounts.scroll.target + t_delta, 0.0f, max_scroll(accounts));
+	accounts.scroll.awake  = K_SCROLL_AWAKE_SECONDS;
+	start_animation();
+}
+
+auto Tray::Native::drag_thumb(float t_y) -> void
+{
+	const D2D1_RECT_F thumb  = thumb_rect(accounts);
+	const float       travel = accounts.height - K_PANEL_PADDING * 2.0f - (thumb.bottom - thumb.top);
+	const float       top    = t_y - *accounts.scroll.grab - K_PANEL_PADDING;
+
+	accounts.scroll.offset = std::clamp(top / travel * max_scroll(accounts), 0.0f, max_scroll(accounts));
+	accounts.scroll.target = accounts.scroll.offset;
+	start_animation();
 }
 
 auto Tray::Native::update_box() const -> D2D1_RECT_F
@@ -2259,13 +2506,23 @@ auto Tray::Native::step_hot(Panel* t_panel, i32 t_step) -> void
 		}
 	}
 
+	if (t_panel->hot && t_panel->gutter > 0.0f) {
+		const Row&  lit    = t_panel->rows[*t_panel->hot];
+		const float view   = t_panel->height - K_PANEL_PADDING * 2.0f;
+		float       target = t_panel->scroll.target;
+
+		target                 = std::min(target, lit.top - K_PANEL_PADDING);
+		target                 = std::max(target, lit.top + lit.height - K_PANEL_PADDING - view);
+		t_panel->scroll.target = std::clamp(target, 0.0f, max_scroll(*t_panel));
+	}
+
 	start_animation();
 }
 
 // The menu normally closes when it loses focus. If Windows didn't let it take focus when it opened, a click anywhere else closes it instead.
 auto Tray::Native::watch() -> void
 {
-	if (GetForegroundWindow() == menu_window) return;
+	if (GetForegroundWindow() == menu_window || accounts.scroll.grab) return;
 
 	if (activated) {
 		close_menu();
@@ -2314,6 +2571,14 @@ auto Tray::Native::animate() -> void
 
 	if (!growing && reveal <= 0.0f) {
 		shown_row.reset();
+	}
+
+	const float scrolled = accounts.scroll.offset;
+	moving               = step_scroll(&accounts.scroll, seconds) || moving;
+
+	// Rows sliding under a resting pointer light up as they pass it.
+	if (accounts.scroll.offset != scrolled && tracking_leave && !accounts_focused && panel_at(last_pointer) == &accounts) {
+		point_at_account(last_pointer);
 	}
 
 	const auto ease = [&](Panel* t_panel, std::optional<u32> t_lit_row) {
@@ -2448,8 +2713,29 @@ auto Tray::Native::handle_menu_message(UINT t_message, WPARAM t_wparam, LPARAM t
 			return 0;
 		}
 
+		case WM_LBUTTONDOWN: {
+			on_press(t_lparam);
+			return 0;
+		}
+
 		case WM_LBUTTONUP: {
-			on_click(t_lparam);
+			if (accounts.scroll.grab) {
+				ReleaseCapture();
+			} else {
+				on_click(t_lparam);
+			}
+
+			return 0;
+		}
+
+		case WM_CAPTURECHANGED: {
+			accounts.scroll.grab.reset();
+			start_animation();
+			return 0;
+		}
+
+		case WM_MOUSEWHEEL: {
+			scroll_accounts(-static_cast<float>(GET_WHEEL_DELTA_WPARAM(t_wparam)) / static_cast<float>(WHEEL_DELTA) * K_PIXELS_PER_NOTCH);
 			return 0;
 		}
 
@@ -2475,11 +2761,7 @@ auto Tray::Native::handle_menu_message(UINT t_message, WPARAM t_wparam, LPARAM t
 			} else if (t_wparam == K_AIM_TIMER) {
 				KillTimer(menu_window, K_AIM_TIMER);
 
-				POINT cursor;
-				GetCursorPos(&cursor);
-				ScreenToClient(menu_window, &cursor);
-
-				const D2D1_POINT_2F point = D2D1::Point2F(static_cast<float>(cursor.x) / scale, static_cast<float>(cursor.y) / scale);
+				const D2D1_POINT_2F point = cursor_point();
 				if (panel_at(point) == &games) {
 					point_at_game(row_at(games, point.y - games.frame.top));
 				}
