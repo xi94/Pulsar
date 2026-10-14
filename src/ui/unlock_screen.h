@@ -22,12 +22,7 @@ struct Settings;
 
 class UnlockScreen : public Widget {
   public:
-	UnlockScreen(Settings*         t_settings,
-	             MasterKey*        t_master_key,
-	             const Fonts*      t_fonts,
-	             const Assets*     t_assets,
-	             const os::Window* t_window,
-	             CommandQueue*     t_commands);
+	UnlockScreen(Settings* t_settings, MasterKey* t_master_key, const Fonts* t_fonts, const Assets* t_assets, const os::Window* t_window, CommandQueue* t_commands);
 
 	auto show_unlock(bool t_animated) -> void;
 	auto show_setup(bool t_animated) -> void;
@@ -36,11 +31,6 @@ class UnlockScreen : public Widget {
 	[[nodiscard]] auto covers_window() const -> bool
 	{
 		return m_backdrop >= 1.0f;
-	}
-
-	auto set_app_icon(const Texture* t_icon) -> void
-	{
-		m_app_icon = t_icon;
 	}
 
 	auto update(float t_delta_seconds) -> void override;
@@ -59,6 +49,8 @@ class UnlockScreen : public Widget {
 	}
 
 	[[nodiscard]] auto cursor() const -> CursorKind override;
+
+	const Texture* m_app_icon = nullptr;
 
   private:
 	enum class PasswordField : u8 {
@@ -85,7 +77,6 @@ class UnlockScreen : public Widget {
 		float                          forgot_top;
 	};
 
-	// Unlocking asks for the password once, and setting one up asks for it twice.
 	[[nodiscard]] auto shown_fields() const -> std::span<const PasswordField>
 	{
 		return m_setup ? std::span<const PasswordField>{K_SETUP_FIELDS} : std::span<const PasswordField>{K_UNLOCK_FIELDS};
@@ -147,7 +138,6 @@ class UnlockScreen : public Widget {
 	const Assets*     m_assets;
 	const os::Window* m_window;
 	CommandQueue*     m_commands;
-	const Texture*    m_app_icon = nullptr;
 
 	bool  m_active           = false;
 	bool  m_setup            = false;

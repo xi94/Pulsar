@@ -13,7 +13,6 @@ constexpr u32 K_MAX_GAMES             = 16;
 constexpr u32 K_MAX_ACCOUNTS_PER_GAME = 32;
 constexpr u32 K_MAX_VISIBLE_ACCOUNTS  = K_MAX_GAMES * K_MAX_ACCOUNTS_PER_GAME;
 
-// The text an account form edits.
 enum class EditField : u8 {
 	NOTE,
 	USERNAME,
@@ -33,6 +32,8 @@ struct Account {
 
 	auto assign(std::string_view t_username, std::string_view t_note, std::string_view t_password) -> void;
 	[[nodiscard]] auto visible_games(u32 t_owning_game) const -> u16;
+	[[nodiscard]] auto matches(std::string_view t_query) const -> bool;
+	[[nodiscard]] auto display_name() const -> std::string_view;
 };
 
 struct Game {
@@ -61,10 +62,11 @@ struct VisibleAccounts {
 	{
 		return {refs, count};
 	}
+
+	[[nodiscard]] auto row_of(AccountRef t_account) const -> std::optional<u32>;
 };
 
-// Orders accounts to be removed from the last place in each game to the first. Removing one then never moves those still to go, and
-// inserting them back in the opposite order puts each where it was.
+// Orders accounts to be removed from the last place in each game to the first. Removing one then never moves those still to go, and inserting them back in the opposite order puts each where it was.
 auto sort_for_removal(std::span<AccountRef> t_refs) -> void;
 auto shift_after_insert(std::optional<AccountRef>* t_ref, AccountRef t_inserted) -> void;
 auto shift_after_removal(std::optional<AccountRef>* t_ref, AccountRef t_removed) -> void;
@@ -84,6 +86,8 @@ struct Library {
 	auto wipe_accounts() -> void;
 
 	[[nodiscard]] auto visible_accounts(u32 t_game) const -> VisibleAccounts;
+	[[nodiscard]] auto visible_accounts(u32 t_game, std::string_view t_query) const -> VisibleAccounts;
+	[[nodiscard]] auto visible_account_count(u32 t_game) const -> u32;
 	[[nodiscard]] auto visible_account(u32 t_game, u32 t_row) const -> std::optional<AccountRef>;
 
 	[[nodiscard]] auto account(AccountRef t_ref) -> Account*
@@ -95,4 +99,7 @@ struct Library {
 	{
 		return &games[t_ref.game].accounts[t_ref.index];
 	}
+
+	[[nodiscard]] auto find_account(AccountRef t_ref) -> Account*;
+	[[nodiscard]] auto find_account(AccountRef t_ref) const -> const Account*;
 };

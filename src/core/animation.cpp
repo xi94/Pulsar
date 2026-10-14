@@ -27,13 +27,7 @@ auto animation::ease_toward(float t_value, float t_target, float t_rate, float t
 	return eased;
 }
 
-auto animation::spring_toward(float  t_value,
-                              float* t_velocity,
-                              float  t_target,
-                              float  t_stiffness,
-                              float  t_damping_ratio,
-                              float  t_delta_seconds,
-                              float  t_settle_distance) -> float
+auto animation::spring_toward(float t_value, float* t_velocity, float t_target, float t_stiffness, float t_damping_ratio, float t_delta_seconds, float t_settle_distance) -> float
 {
 	constexpr float MAX_STEP_SECONDS = 1.0f / 240.0f;
 

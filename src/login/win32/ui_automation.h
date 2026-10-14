@@ -16,18 +16,14 @@ class UiElement {
 		return m_element != nullptr;
 	}
 
-	[[nodiscard]] auto com() const -> const Microsoft::WRL::ComPtr<IUIAutomationElement>&
-	{
-		return m_element;
-	}
-
 	[[nodiscard]] auto set_value(const wchar_t* t_text) const -> bool;
 	auto invoke() const -> bool;
 	auto focus() const -> bool;
 	[[nodiscard]] auto has_keyboard_focus() const -> bool;
 
-  private:
 	Microsoft::WRL::ComPtr<IUIAutomationElement> m_element;
+
+  private:
 };
 
 class UiAutomation {
@@ -58,8 +54,7 @@ class UiAutomation {
 	[[nodiscard]] auto is_cancelled() const -> bool;
 	[[nodiscard]] auto can_search(const UiElement& t_root) const -> bool;
 
-	[[nodiscard]] auto find_first(const UiElement& t_root, const Microsoft::WRL::ComPtr<IUIAutomationCondition>& t_condition, const char* t_label) const
-		-> UiElement;
+	[[nodiscard]] auto find_first(const UiElement& t_root, const Microsoft::WRL::ComPtr<IUIAutomationCondition>& t_condition, const char* t_label) const -> UiElement;
 
 	const std::atomic<bool>*              m_cancel;
 	Microsoft::WRL::ComPtr<IUIAutomation> m_automation;

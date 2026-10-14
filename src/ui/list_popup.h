@@ -34,11 +34,6 @@ class ListPopup {
 	auto open(std::span<const std::string_view> t_items, std::optional<u32> t_selected) -> void;
 	auto close() -> void;
 
-	[[nodiscard]] auto is_open() const -> bool
-	{
-		return m_open;
-	}
-
 	[[nodiscard]] auto previewed_item() const -> std::optional<u32>;
 
 	auto update(float t_delta_seconds, Rect t_anchor, Rect t_bounds) -> void;
@@ -53,6 +48,8 @@ class ListPopup {
 
 	[[nodiscard]] auto cursor(Vec2 t_mouse) const -> CursorKind;
 	auto draw(DrawList* t_draw_list, Vec2 t_mouse) -> void;
+
+	bool m_open = false;
 
   private:
 	enum class Press : u8 {
@@ -129,7 +126,6 @@ class ListPopup {
 	Press              m_press = Press::NONE;
 	std::optional<u32> m_pressed_match;
 
-	bool  m_open        = false;
 	float m_open_amount = 0.0f;
 	float m_shown_rows  = 1.0f;
 	Rect  m_anchor{};

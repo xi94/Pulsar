@@ -53,11 +53,6 @@ class LoginAttempt {
 	auto cancel() -> void;
 	auto update() -> void;
 
-	[[nodiscard]] auto is_active() const -> bool
-	{
-		return m_active;
-	}
-
 	[[nodiscard]] auto stage() const -> LoginStage;
 	[[nodiscard]] auto terminal_message() const -> std::string_view;
 	[[nodiscard]] auto found_client_path() const -> std::string;
@@ -66,12 +61,13 @@ class LoginAttempt {
 
 	[[nodiscard]] static auto is_terminal(LoginStage t_stage) -> bool;
 
+	bool m_active = false;
+
   private:
 	auto abandon_worker() -> void;
 	auto join_worker(std::chrono::milliseconds t_timeout) -> void;
 
 	std::shared_ptr<LoginWork>            m_work;
 	std::thread                           m_worker;
-	bool                                  m_active = false;
 	std::chrono::steady_clock::time_point m_cancel_deadline;
 };

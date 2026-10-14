@@ -144,9 +144,7 @@ constexpr CornerRadii K_SQUARE_CORNERS{0.0f, 0.0f, 0.0f, 0.0f};
 
 [[nodiscard]] inline auto mix(Color t_from, Color t_to, float t_amount) -> Color
 {
-	const auto blend = [t_amount](u8 t_start, u8 t_end) {
-		return static_cast<u8>(static_cast<float>(t_start) + (static_cast<float>(t_end) - t_start) * t_amount);
-	};
+	const auto blend = [t_amount](u8 t_start, u8 t_end) { return static_cast<u8>(static_cast<float>(t_start) + (static_cast<float>(t_end) - t_start) * t_amount); };
 
 	return Color{blend(t_from.r, t_to.r), blend(t_from.g, t_to.g), blend(t_from.b, t_to.b), 255};
 }
@@ -160,7 +158,7 @@ constexpr CornerRadii K_SQUARE_CORNERS{0.0f, 0.0f, 0.0f, 0.0f};
 	return 0.2126f * r * r + 0.7152f * g * g + 0.0722f * b * b;
 }
 
-[[nodiscard]] inline auto foreground_on(Color t_background) -> Color
+[[nodiscard]] inline auto contrasting_text(Color t_background) -> Color
 {
 	constexpr Color DARK_TEXT{18, 18, 20, 255};
 	constexpr Color LIGHT_TEXT{245, 245, 248, 255};
@@ -169,9 +167,9 @@ constexpr CornerRadii K_SQUARE_CORNERS{0.0f, 0.0f, 0.0f, 0.0f};
 	return luminance(t_background) > DEFAULT_ACCENT_STAYS_LIGHT ? DARK_TEXT : LIGHT_TEXT;
 }
 
-[[nodiscard]] inline auto outline_on(Color t_fill) -> Color
+[[nodiscard]] inline auto contrasting_outline(Color t_fill) -> Color
 {
-	return mix(t_fill, foreground_on(t_fill), 0.6f);
+	return mix(t_fill, contrasting_text(t_fill), 0.6f);
 }
 
 enum class CursorKind : u8 {

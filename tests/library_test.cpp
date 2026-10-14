@@ -1,5 +1,7 @@
 #include <memory>
+#include <ranges>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -14,12 +16,12 @@ namespace {
 	auto library        = std::make_unique<Library>();
 	library->game_count = 1;
 
-	for (u32 i = 0; i < t_count; i += 1) {
+	for (const u32 i : std::views::iota(0u, t_count)) {
 		const char name[2]{static_cast<char>('a' + i), '\0'};
 
 		Account account{};
 		account.assign(name, "", "password");
-		static_cast<void>(library->add_account(0, account));
+		std::ignore = library->add_account(0, account);
 	}
 
 	return library;
@@ -91,11 +93,11 @@ TEST_CASE("where a row lands after a move matches the move itself")
 {
 	constexpr u32 COUNT = 6;
 
-	for (u32 mask = 1; mask < (1u << COUNT); mask += 1) {
+	for (const u32 mask : std::views::iota(1u, (1u << COUNT))) {
 		RowSet           moved;
 		std::vector<u32> rows;
 
-		for (u32 row = 0; row < COUNT; row += 1) {
+		for (const u32 row : std::views::iota(0u, COUNT)) {
 			if ((mask & (1u << row)) != 0) {
 				moved.set(row);
 				rows.push_back(row);
@@ -109,7 +111,7 @@ TEST_CASE("where a row lands after a move matches the move itself")
 			move_rows(library.get(), rows, insert);
 			const std::string after = order_of(*library);
 
-			for (u32 row = 0; row < COUNT; row += 1) {
+			for (const u32 row : std::views::iota(0u, COUNT)) {
 				REQUIRE(after[row_after_move(row, moved, insert)] == before[row]);
 			}
 		}
@@ -135,7 +137,7 @@ TEST_CASE("deleting several accounts and putting them back in reverse restores t
 		CHECK(library->insert_account(it->first, it->second).has_value());
 	}
 
-	for (u32 i = 0; i < 6; i += 1) {
+	for (const u32 i : std::views::iota(0u, 6u)) {
 		CHECK(library->games[0].accounts[i].username[0] == static_cast<char>('a' + i));
 	}
 }

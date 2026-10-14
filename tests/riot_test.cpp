@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <tuple>
 #include <vector>
 
 #include "core/file.h"
@@ -12,8 +13,7 @@
 #include "login/riot_client.h"
 #include "test.h"
 
-// Where the Riot Client installs, the file that records it and the text its login screen shows all belong to Riot. These tests pin down how
-// Pulsar reads each of them, so a mistake on our side, or a format Riot changed, shows up here instead of as a login that quietly stops working.
+// Where the Riot Client installs, the file that records it and the text its login screen shows all belong to Riot. These tests pin down how Pulsar reads each of them, so a mistake on our side, or a format Riot changed, shows up here instead of as a login that quietly stops working.
 
 namespace {
 #ifdef _WIN32
@@ -123,7 +123,7 @@ TEST_CASE("a remembered client path is used while the file is there")
 	RiotClient              client{&cancel};
 
 	REQUIRE(client.resolve_executable_path(from_path(install.client)));
-	CHECK(install.is_client(client.executable_path()));
+	CHECK(install.is_client(client.m_executable_path));
 }
 
 TEST_CASE("a remembered client path that's gone isn't used")
@@ -132,14 +132,13 @@ TEST_CASE("a remembered client path that's gone isn't used")
 	const std::atomic<bool> cancel{false};
 	RiotClient              client{&cancel};
 
-	static_cast<void>(client.resolve_executable_path(gone));
-	CHECK(client.executable_path() != gone);
+	std::ignore = client.resolve_executable_path(gone);
+	CHECK(client.m_executable_path != gone);
 }
 
 TEST_CASE("errors the Riot Client shows become the right message")
 {
 	CHECK(std::string_view{login_failure_message("Your login credentials don't match an account in our system.")} == "Wrong username or password.");
-	CHECK(std::string_view{login_failure_message("Sorry, we're having trouble signing you in right now. Please try again later.")}.starts_with(
-		"Riot's servers are busy"));
+	CHECK(std::string_view{login_failure_message("Sorry, we're having trouble signing you in right now. Please try again later.")}.starts_with("Riot's servers are busy"));
 	CHECK(std::string_view{login_failure_message("")}.starts_with("Sign-in failed"));
 }

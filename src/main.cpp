@@ -1,5 +1,7 @@
 #include <memory>
 #include <print>
+#include <ranges>
+#include <span>
 #include <string_view>
 
 #include "app.h"
@@ -35,13 +37,13 @@ struct LaunchFlags {
 
 [[nodiscard]] auto launch_flags(int t_argument_count, char** t_arguments) -> LaunchFlags
 {
-	LaunchFlags flags;
+	LaunchFlags                  flags;
+	const std::span<char* const> arguments{t_arguments, static_cast<usize>(t_argument_count)};
 
-	for (int i = 1; i < t_argument_count; i += 1) {
-		const std::string_view argument = t_arguments[i];
-		flags.setup                     = flags.setup || argument == "--setup";
-		flags.uninstall                 = flags.uninstall || argument == "--uninstall";
-		flags.startup                   = flags.startup || argument == "--startup";
+	for (const std::string_view argument : arguments | std::views::drop(1)) {
+		flags.setup     = flags.setup || argument == "--setup";
+		flags.uninstall = flags.uninstall || argument == "--uninstall";
+		flags.startup   = flags.startup || argument == "--startup";
 	}
 
 	return flags;

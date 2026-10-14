@@ -388,8 +388,7 @@ constexpr const char* K_SHADER_SOURCE = R"(
 		float2 blur_step;
 	};
 
-	// Reads the blurred level as a cubic B-spline in four bilinear taps. Plain bilinear stretched over many pixels shows the level's
-	// texels as blocks; the spline is smooth across them.
+	// Reads the blurred level as a cubic B-spline in four bilinear taps. Plain bilinear stretched over many pixels shows the level's texels as blocks; the spline is smooth across them.
 	float3 sample_blurred(float2 uv)
 	{
 		float2 coord = uv / blur_step - 0.5;

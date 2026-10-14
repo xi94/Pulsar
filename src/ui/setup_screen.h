@@ -9,6 +9,7 @@
 #include "ui/text_input.h"
 #include "ui/widget.h"
 
+enum class Asset : u8;
 class Assets;
 struct Fonts;
 class Texture;
@@ -31,23 +32,7 @@ enum class SetupOutcome : u8 {
 
 class SetupScreen : public Widget {
   public:
-	SetupScreen(SetupMode       t_mode,
-	            const Settings* t_settings,
-	            const Fonts*    t_fonts,
-	            const Fonts*    t_heading_fonts,
-	            const Fonts*    t_title_fonts,
-	            const Assets*   t_assets,
-	            os::Window*     t_window);
-
-	auto set_app_icon(const Texture* t_icon) -> void
-	{
-		m_app_icon = t_icon;
-	}
-
-	[[nodiscard]] auto outcome() const -> std::optional<SetupOutcome>
-	{
-		return m_outcome;
-	}
+	SetupScreen(SetupMode t_mode, const Settings* t_settings, const Fonts* t_fonts, const Fonts* t_heading_fonts, const Fonts* t_title_fonts, const Assets* t_assets, os::Window* t_window);
 
 	auto update(float t_delta_seconds) -> void override;
 	auto draw(DrawList* t_draw_list) -> void override;
@@ -59,6 +44,9 @@ class SetupScreen : public Widget {
 	auto on_char(u32 t_character) -> bool override;
 
 	[[nodiscard]] auto cursor() const -> CursorKind override;
+
+	std::optional<SetupOutcome> m_outcome;
+	const Texture*              m_app_icon = nullptr;
 
   private:
 	enum class Page : u8 {
@@ -94,7 +82,6 @@ class SetupScreen : public Widget {
 		COUNT,
 	};
 
-	// A checkbox on the install and manage pages: its label, the option it sets, and the hit it answers to.
 	struct OptionSpec {
 		std::string_view label;
 		bool os::installation::Options::* value;
@@ -147,13 +134,18 @@ class SetupScreen : public Widget {
 	[[nodiscard]] auto reveal(float t_seconds, u32 t_order) const -> Reveal;
 	auto draw_page(DrawList* t_draw_list, Page t_page, const PageDraw& t_draw) -> void;
 	auto draw_header(DrawList* t_draw_list, Page t_page, const PageDraw& t_draw) const -> void;
+	auto draw_page_title(DrawList* t_draw_list, float t_x, float t_top, std::string_view t_caption, std::string_view t_title, u8 t_alpha) const -> void;
+	auto draw_folder_button(DrawList* t_draw_list, Rect t_button, Asset t_icon, float t_hover, u8 t_alpha) const -> void;
 	auto draw_choice(DrawList* t_draw_list, u32 t_choice, const PageDraw& t_draw) const -> void;
 	auto draw_location(DrawList* t_draw_list, const PageDraw& t_draw) -> void;
 	auto draw_check_row(DrawList* t_draw_list, Rect t_row, std::string_view t_label, float t_checked, float t_hover, float t_alpha, Color t_fill) const -> void;
 	auto draw_options(DrawList* t_draw_list, Page t_page, const PageDraw& t_draw, u32 t_first_order) const -> void;
 	auto draw_confirm(DrawList* t_draw_list, const PageDraw& t_draw) const -> void;
 	auto draw_installed_location(DrawList* t_draw_list, const PageDraw& t_draw) const -> void;
+	[[nodiscard]] auto status_title(Page t_page) const -> std::string_view;
+	[[nodiscard]] auto status_detail(Page t_page) const -> std::string_view;
 	auto draw_status(DrawList* t_draw_list, Page t_page, const PageDraw& t_draw) const -> void;
+	auto draw_failure_badge(DrawList* t_draw_list, Rect t_icon, const PageDraw& t_draw) const -> void;
 	auto draw_footer(DrawList* t_draw_list, Page t_page, const PageDraw& t_draw) const -> void;
 	auto draw_app_icon(DrawList* t_draw_list, Rect t_rect, u8 t_alpha) const -> void;
 
@@ -164,7 +156,6 @@ class SetupScreen : public Widget {
 	const Fonts*    m_title_fonts;
 	const Assets*   m_assets;
 	os::Window*     m_window;
-	const Texture*  m_app_icon = nullptr;
 
 	std::optional<os::installation::Installed> m_installed;
 	os::installation::Options                  m_options;
@@ -188,5 +179,4 @@ class SetupScreen : public Widget {
 	EnumArray<Hit, float>           m_hover{};
 	EnumArray<InstallOption, float> m_check{};
 	Hit                             m_pressed = Hit::NONE;
-	std::optional<SetupOutcome>     m_outcome;
 };

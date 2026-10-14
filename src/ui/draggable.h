@@ -30,24 +30,15 @@ class Draggable {
 		m_moved   = false;
 	}
 
-	[[nodiscard]] auto is_pressed() const -> bool
-	{
-		return m_pressed;
-	}
-
-	[[nodiscard]] auto has_moved() const -> bool
-	{
-		return m_moved;
-	}
-
 	[[nodiscard]] auto delta_x() const -> float
 	{
 		return m_current.x - m_start.x;
 	}
 
-  private:
 	bool m_pressed = false;
 	bool m_moved   = false;
+
+  private:
 	Vec2 m_start{};
 	Vec2 m_current{};
 };

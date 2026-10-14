@@ -77,10 +77,11 @@ auto Tooltip::draw(DrawList* t_draw_list, const Fonts* t_fonts, Rect t_bounds, u
 
 	const float min_x = t_bounds.x + K_EDGE_MARGIN;
 	const float max_x = std::max(min_x, t_bounds.right() - K_EDGE_MARGIN - width);
-	const Rect  bubble{std::clamp(m_anchor.x + (m_anchor.w - width) * 0.5f, min_x, max_x), y, width, height};
-
-	const auto alpha = static_cast<u8>(t_alpha * m_visible_amount);
+	const float x     = std::clamp(m_anchor.center().x - width * 0.5f, min_x, max_x);
+	const Rect  bubble{x, y, width, height};
+	const Vec2  baseline{bubble.x + K_PADDING_X, font.centered_baseline(bubble)};
+	const auto  alpha = static_cast<u8>(t_alpha * m_visible_amount);
 
 	controls::draw_glass(t_draw_list, bubble, rounded(K_CORNER_RADIUS), controls::GlassSurface::SOFT, alpha);
-	draw_text(t_draw_list, font, Vec2{bubble.x + K_PADDING_X, font.centered_baseline(bubble)}, text, faded(g_theme.text, alpha));
+	draw_text(t_draw_list, font, baseline, text, faded(g_theme.text, alpha));
 }

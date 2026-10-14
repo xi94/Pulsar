@@ -12,12 +12,7 @@ class Updater;
 
 class TitleBar : public Widget {
   public:
-	TitleBar(os::Window*          t_window,
-	         const Updater*       t_updater,
-	         const UpdateOverlay* t_update_overlay,
-	         const Fonts*         t_fonts,
-	         const Assets*        t_assets,
-	         CommandQueue*        t_commands);
+	TitleBar(os::Window* t_window, const Updater* t_updater, const UpdateOverlay* t_update_overlay, const Fonts* t_fonts, const Assets* t_assets, CommandQueue* t_commands);
 
 	auto update(float t_delta_seconds) -> void override;
 	auto draw(DrawList* t_draw_list) -> void override;
@@ -29,10 +24,7 @@ class TitleBar : public Widget {
 
 	[[nodiscard]] auto layout() const -> TitleBarLayout;
 
-	auto set_search_visible(bool t_visible) -> void
-	{
-		m_search_visible = t_visible;
-	}
+	bool m_search_visible = false;
 
   private:
 	auto draw_hover(DrawList* t_draw_list, TitleBarButton t_button, TitleBarButton t_hovered) const -> void;
@@ -50,7 +42,6 @@ class TitleBar : public Widget {
 	CommandQueue*        m_commands;
 
 	bool  m_update_visible  = false;
-	bool  m_search_visible  = false;
 	float m_status_width    = 0.0f;
 	float m_update_reveal   = 0.0f;
 	float m_status_emphasis = 0.0f;

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <ranges>
 
 #include "core/animation.h"
 #include "gfx/assets.h"
@@ -105,7 +106,7 @@ auto ContextMenu::item_rect(u32 t_index) const -> Rect
 
 auto ContextMenu::item_at(Vec2 t_point) const -> std::optional<u32>
 {
-	for (u32 i = 0; i < m_item_count; i += 1) {
+	for (const u32 i : std::views::iota(0u, m_item_count)) {
 		if (m_items[i].enabled && item_rect(i).contains(t_point)) return i;
 	}
 
@@ -167,7 +168,7 @@ auto ContextMenu::draw(DrawList* t_draw_list) -> void
 	controls::draw_popup_shadow(t_draw_list, menu_rect(), K_MENU_RADIUS, 1.0f);
 	controls::draw_glass(t_draw_list, menu_rect(), rounded(K_MENU_RADIUS), controls::GlassSurface::MENU, 255);
 
-	for (u32 i = 0; i < m_item_count; i += 1) {
+	for (const u32 i : std::views::iota(0u, m_item_count)) {
 		const Rect             row  = item_rect(i);
 		const ContextMenuItem& item = m_items[i];
 
@@ -184,21 +185,29 @@ auto ContextMenu::draw(DrawList* t_draw_list) -> void
 
 		if (item.separated && i > 0) {
 			const float y = snapped_to_pixel(row.y - K_SEPARATOR_SPACE * 0.5f);
-			t_draw_list->add_rect(Rect{row.x + K_LABEL_INSET, y, row.w - K_LABEL_INSET * 2.0f, 1.0f}, g_theme.separator);
+			const Rect  line{row.x + K_LABEL_INSET, y, row.w - K_LABEL_INSET * 2.0f, 1.0f};
+			t_draw_list->add_rect(line, g_theme.separator);
 		}
 
 		if (hovered_row || armed) {
-			t_draw_list->add_rounded_rect(row, rounded(K_ITEM_RADIUS),
-			                              item.destructive ? with_alpha(danger, K_DANGER_HIGHLIGHT_ALPHA) : controls::glass_highlight());
+			const Color highlight = item.destructive ? with_alpha(danger, K_DANGER_HIGHLIGHT_ALPHA) : controls::glass_highlight();
+			t_draw_list->add_rounded_rect(row, rounded(K_ITEM_RADIUS), highlight);
 		}
 
 		if (item.icon != Asset::COUNT) {
 			const Rect icon{row.x + K_LABEL_INSET, snapped_to_pixel(row.center().y - K_ICON_SIZE * 0.5f), K_ICON_SIZE, K_ICON_SIZE};
-			t_draw_list->add_image(icon, m_assets->get(item.icon), item.destructive ? ink : (item.enabled ? g_theme.text_dim : g_theme.text_faint));
+
+			Color icon_color = item.enabled ? g_theme.text_dim : g_theme.text_faint;
+			if (item.destructive) {
+				icon_color = ink;
+			}
+
+			t_draw_list->add_image(icon, m_assets->texture(item.icon), icon_color);
 		}
 
 		const std::string_view label = armed ? K_CONFIRM_LABEL : item.label;
-		draw_text(t_draw_list, font, Vec2{row.x + label_x, baseline}, label, ink);
+		const Vec2             label_baseline{row.x + label_x, baseline};
+		draw_text(t_draw_list, font, label_baseline, label, ink);
 
 		if (armed) {
 			const float left = std::clamp(m_armed_seconds / K_CONFIRM_SECONDS, 0.0f, 1.0f);
@@ -207,8 +216,9 @@ auto ContextMenu::draw(DrawList* t_draw_list) -> void
 		}
 
 		if (!item.shortcut.empty()) {
-			controls::draw_shortcut(t_draw_list, m_fonts->secondary, Vec2{row.right() - K_LABEL_INSET, row.center().y}, item.shortcut, backdrop,
-			                        item.enabled ? 255 : 128);
+			const Vec2 keys_right_center{row.right() - K_LABEL_INSET, row.center().y};
+			const u8   keys_alpha = item.enabled ? 255 : 128;
+			controls::draw_shortcut(t_draw_list, m_fonts->secondary, keys_right_center, item.shortcut, backdrop, keys_alpha);
 		}
 	}
 }

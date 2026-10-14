@@ -3,10 +3,11 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <cstdio>
 #include <numbers>
 #include <optional>
+#include <ranges>
 #include <span>
+#include <tuple>
 #include <type_traits>
 
 #include "core/animation.h"
@@ -314,25 +315,29 @@ template <auto MEMBER>
 	return Rect{t_center.x - t_radius, t_center.y - t_radius, t_radius * 2.0f, t_radius * 2.0f};
 }
 
-auto draw_row_label(DrawList* t_draw_list, const Fonts* t_fonts, Rect t_row, const char* t_title, const char* t_description, float t_right_edge, u8 t_alpha)
-	-> void
+auto draw_row_label(DrawList* t_draw_list, const Fonts* t_fonts, Rect t_row, const char* t_title, const char* t_description, float t_right_edge, u8 t_alpha) -> void
 {
 	const Font& body = t_fonts->body;
 	const float x    = t_row.x + K_ROW_INSET_X;
+	const float room = t_right_edge - x;
 
 	if (*t_description == '\0') {
-		draw_text_truncated(t_draw_list, body, Vec2{x, body.centered_baseline(t_row)}, t_title, t_right_edge - x, faded(g_theme.text, t_alpha));
+		const Vec2 centered_baseline{x, body.centered_baseline(t_row)};
+		draw_text_truncated(t_draw_list, body, centered_baseline, t_title, room, faded(g_theme.text, t_alpha));
 		return;
 	}
 
-	draw_text_truncated(t_draw_list, body, Vec2{x, title_baseline(t_row, t_fonts)}, t_title, t_right_edge - x, faded(g_theme.text, t_alpha));
-	draw_text_truncated(t_draw_list, t_fonts->secondary, Vec2{x, description_baseline(t_row, t_fonts)}, t_description, t_right_edge - x,
-	                    faded(g_theme.text_dim, t_alpha));
+	const Vec2 title_at{x, title_baseline(t_row, t_fonts)};
+	const Vec2 description_at{x, description_baseline(t_row, t_fonts)};
+
+	draw_text_truncated(t_draw_list, body, title_at, t_title, room, faded(g_theme.text, t_alpha));
+	draw_text_truncated(t_draw_list, t_fonts->secondary, description_at, t_description, room, faded(g_theme.text_dim, t_alpha));
 }
 
 auto draw_knob(DrawList* t_draw_list, Rect t_knob, Color t_fill, u8 t_alpha) -> void
 {
-	t_draw_list->add_bordered_rect(t_knob, rounded(t_knob.w * 0.5f), faded(t_fill, t_alpha), faded(outline_on(t_fill), t_alpha), K_KNOB_RING);
+	const Color ring = faded(contrasting_outline(t_fill), t_alpha);
+	t_draw_list->add_bordered_rect(t_knob, rounded(t_knob.w * 0.5f), faded(t_fill, t_alpha), ring, K_KNOB_RING);
 }
 
 auto draw_toggle(DrawList* t_draw_list, Rect t_toggle, float t_on, Color t_accent, u8 t_alpha) -> void
@@ -342,7 +347,7 @@ auto draw_toggle(DrawList* t_draw_list, Rect t_toggle, float t_on, Color t_accen
 
 	const float knob_size = t_toggle.h - 6.0f;
 	const Rect  knob{t_toggle.x + 3.0f + (t_toggle.w - t_toggle.h) * t_on, t_toggle.y + 3.0f, knob_size, knob_size};
-	draw_knob(t_draw_list, knob, foreground_on(track), t_alpha);
+	draw_knob(t_draw_list, knob, contrasting_text(track), t_alpha);
 }
 
 auto draw_inset_control(DrawList* t_draw_list, Rect t_rect, Color t_border, u8 t_alpha) -> void
@@ -367,29 +372,39 @@ auto draw_slider(DrawList* t_draw_list, const Font& t_font, Rect t_slider, const
 	const Rect  filled{bar.x, bar.y, bar.w * std::clamp(t_look.fraction, 0.0f, 1.0f), bar.h};
 	const Vec2  thumb{filled.right(), bar.center().y};
 
-	const float baseline      = t_font.centered_baseline(Rect{t_slider.x, t_slider.y, t_slider.w, t_slider.h - K_SLIDER_TEXT_CLEARANCE});
+	const Rect  text_band{t_slider.x, t_slider.y, t_slider.w, t_slider.h - K_SLIDER_TEXT_CLEARANCE};
+	const float baseline      = t_font.centered_baseline(text_band);
 	const float readout_width = text_width(t_font, t_look.readout);
 	const float riding_x      = std::clamp(thumb.x - readout_width * 0.5f, t_slider.x, std::max(t_slider.x, t_slider.right() - readout_width));
 	const float caption_right = t_slider.x + text_width(t_font, t_look.caption) + K_SLIDER_CAPTION_GAP;
 	const float crowding      = std::clamp((caption_right - riding_x) / K_SLIDER_CAPTION_GAP, 0.0f, 1.0f);
 	const auto  hover_alpha   = static_cast<u8>(t_alpha * hover);
 
-	draw_text(t_draw_list, t_font, Vec2{t_slider.x, baseline}, t_look.caption, faded(g_theme.text_faint, static_cast<u8>(t_alpha * (1.0f - hover * crowding))));
-	draw_text(t_draw_list, t_font, Vec2{t_slider.right() - readout_width, baseline}, t_look.readout,
-	          faded(g_theme.text, static_cast<u8>(t_alpha * (1.0f - hover))));
+	const Vec2  caption_baseline{t_slider.x, baseline};
+	const Vec2  resting_readout{t_slider.right() - readout_width, baseline};
+	const Vec2  riding_readout{snapped_to_pixel(riding_x), baseline};
+	const Color caption_color = faded(g_theme.text_faint, static_cast<u8>(t_alpha * (1.0f - hover * crowding)));
+	const Color readout_color = faded(g_theme.text, static_cast<u8>(t_alpha * (1.0f - hover)));
+	const Color bar_color     = faded(mix(g_theme.popup, g_theme.track, 0.55f + 0.45f * hover), t_alpha);
 
-	t_draw_list->add_rounded_rect(bar, rounded(thickness * 0.5f), faded(mix(g_theme.popup, g_theme.track, 0.55f + 0.45f * hover), t_alpha));
+	draw_text(t_draw_list, t_font, caption_baseline, t_look.caption, caption_color);
+	draw_text(t_draw_list, t_font, resting_readout, t_look.readout, readout_color);
+
+	t_draw_list->add_rounded_rect(bar, rounded(thickness * 0.5f), bar_color);
 	if (filled.w > 0.0f) {
 		t_draw_list->add_rounded_rect(filled, rounded(thickness * 0.5f), faded(t_look.accent, t_alpha));
 	}
 
 	if (hover_alpha == 0) return;
 
-	for (u32 i = 1; i < t_look.steps; i += 1) {
-		const float x    = bar.x + bar.w * static_cast<float>(i) / static_cast<float>(t_look.steps);
-		const Color tick = x <= filled.right() ? with_alpha(foreground_on(t_look.accent), 150) : g_theme.text_faint;
+	if (t_look.steps > 1) {
+		for (const u32 i : std::views::iota(1u, t_look.steps)) {
+			const float x    = bar.x + bar.w * static_cast<float>(i) / static_cast<float>(t_look.steps);
+			const Color tick = x <= filled.right() ? with_alpha(contrasting_text(t_look.accent), 150) : g_theme.text_faint;
+			const Rect  dot  = circle_at(Vec2{x, thumb.y}, K_SLIDER_TICK_SIZE * 0.5f);
 
-		t_draw_list->add_rounded_rect(circle_at(Vec2{x, thumb.y}, K_SLIDER_TICK_SIZE * 0.5f), rounded(K_SLIDER_TICK_SIZE * 0.5f), faded(tick, hover_alpha));
+			t_draw_list->add_rounded_rect(dot, rounded(K_SLIDER_TICK_SIZE * 0.5f), faded(tick, hover_alpha));
+		}
 	}
 
 	const float radius       = K_SLIDER_THUMB_RADIUS * (0.5f + 0.5f * hover);
@@ -397,21 +412,30 @@ auto draw_slider(DrawList* t_draw_list, const Font& t_font, Rect t_slider, const
 
 	t_draw_list->add_rounded_rect(circle_at(thumb, radius), rounded(radius), faded(t_look.accent, hover_alpha));
 	t_draw_list->add_rounded_rect(circle_at(thumb, inner_radius), rounded(inner_radius), faded(Color{255, 255, 255, 255}, hover_alpha));
-	draw_text(t_draw_list, t_font, Vec2{snapped_to_pixel(riding_x), baseline}, t_look.readout, faded(g_theme.text, hover_alpha));
+	draw_text(t_draw_list, t_font, riding_readout, t_look.readout, faded(g_theme.text, hover_alpha));
 }
 
-auto draw_select(DrawList* t_draw_list, const Font& t_font, Rect t_rect, std::string_view t_label, bool t_open, bool t_hovered, Color t_accent, u8 t_alpha)
-	-> void
+auto draw_select(DrawList* t_draw_list, const Font& t_font, Rect t_rect, std::string_view t_label, bool t_open, bool t_hovered, Color t_accent, u8 t_alpha) -> void
 {
 	constexpr float PADDING = 10.0f;
 	constexpr Vec2  CHEVRON_SIZE{9.0f, 5.0f};
 
-	const Rect chevron{t_rect.right() - PADDING - CHEVRON_SIZE.x, t_rect.center().y - CHEVRON_SIZE.y * 0.5f, CHEVRON_SIZE.x, CHEVRON_SIZE.y};
+	const Rect  chevron{t_rect.right() - PADDING - CHEVRON_SIZE.x, t_rect.center().y - CHEVRON_SIZE.y * 0.5f, CHEVRON_SIZE.x, CHEVRON_SIZE.y};
+	const Vec2  label_baseline{t_rect.x + PADDING, t_font.centered_baseline(t_rect)};
+	const float label_room = chevron.x - PADDING - label_baseline.x;
 
-	draw_inset_control(t_draw_list, t_rect, t_open ? t_accent : (t_hovered ? g_theme.border : g_theme.separator), t_alpha);
-	draw_text_truncated(t_draw_list, t_font, Vec2{t_rect.x + PADDING, t_font.centered_baseline(t_rect)}, t_label, chevron.x - PADDING - (t_rect.x + PADDING),
-	                    faded(g_theme.text, t_alpha));
-	controls::draw_chevron(t_draw_list, chevron, t_open, faded(t_open || t_hovered ? g_theme.text_dim : g_theme.text_faint, t_alpha));
+	Color border = g_theme.separator;
+	if (t_open) {
+		border = t_accent;
+	} else if (t_hovered) {
+		border = g_theme.border;
+	}
+
+	const Color chevron_color = t_open || t_hovered ? g_theme.text_dim : g_theme.text_faint;
+
+	draw_inset_control(t_draw_list, t_rect, border, t_alpha);
+	draw_text_truncated(t_draw_list, t_font, label_baseline, t_label, label_room, faded(g_theme.text, t_alpha));
+	controls::draw_chevron(t_draw_list, chevron, t_open, faded(chevron_color, t_alpha));
 }
 
 auto draw_stepper(DrawList* t_draw_list, const Font& t_font, Rect t_stepper, float t_value, u8 t_alpha) -> void
@@ -423,15 +447,22 @@ auto draw_stepper(DrawList* t_draw_list, const Font& t_font, Rect t_stepper, flo
 	const Vec2  plus  = stepper_plus(t_stepper).center();
 	const Color glyph = faded(g_theme.text_dim, t_alpha);
 
+	const Vec2 minus_left{minus.x - GLYPH_HALF, minus.y};
+	const Vec2 minus_right{minus.x + GLYPH_HALF, minus.y};
+	const Vec2 plus_left{plus.x - GLYPH_HALF, plus.y};
+	const Vec2 plus_right{plus.x + GLYPH_HALF, plus.y};
+	const Vec2 plus_top{plus.x, plus.y - GLYPH_HALF};
+	const Vec2 plus_bottom{plus.x, plus.y + GLYPH_HALF};
+
 	draw_inset_control(t_draw_list, t_stepper, g_theme.separator, t_alpha);
-	t_draw_list->add_line({minus.x - GLYPH_HALF, minus.y}, {minus.x + GLYPH_HALF, minus.y}, GLYPH_THICKNESS, glyph);
-	t_draw_list->add_line({plus.x - GLYPH_HALF, plus.y}, {plus.x + GLYPH_HALF, plus.y}, GLYPH_THICKNESS, glyph);
-	t_draw_list->add_line({plus.x, plus.y - GLYPH_HALF}, {plus.x, plus.y + GLYPH_HALF}, GLYPH_THICKNESS, glyph);
+	t_draw_list->add_line(minus_left, minus_right, GLYPH_THICKNESS, glyph);
+	t_draw_list->add_line(plus_left, plus_right, GLYPH_THICKNESS, glyph);
+	t_draw_list->add_line(plus_top, plus_bottom, GLYPH_THICKNESS, glyph);
 
-	char      buffer[8];
-	const int written = std::snprintf(buffer, sizeof(buffer), "%d", static_cast<int>(std::lround(t_value)));
+	char                   buffer[8];
+	const std::string_view value = format_into(buffer, "{}", std::lround(t_value));
 
-	draw_text_centered(t_draw_list, t_font, t_stepper, std::string_view{buffer, static_cast<usize>(std::max(written, 0))}, faded(g_theme.text, t_alpha));
+	draw_text_centered(t_draw_list, t_font, t_stepper, value, faded(g_theme.text, t_alpha));
 }
 
 auto draw_reset_button(DrawList* t_draw_list, const Texture* t_icon, Rect t_button, float t_visible, float t_spin, bool t_hovered, u8 t_alpha) -> void
@@ -444,8 +475,11 @@ auto draw_reset_button(DrawList* t_draw_list, const Texture* t_icon, Rect t_butt
 		t_draw_list->add_rounded_rect(t_button, rounded(7.0f), faded(g_theme.control_hover, alpha));
 	}
 
-	t_draw_list->add_rotated_image(t_button.centered(K_RESET_ICON_SIZE, K_RESET_ICON_SIZE), -t_spin * 2.0f * std::numbers::pi_v<float>, t_icon,
-	                               faded(t_hovered ? g_theme.text : g_theme.text_dim, alpha));
+	const Rect  icon  = t_button.centered(K_RESET_ICON_SIZE, K_RESET_ICON_SIZE);
+	const float angle = -t_spin * 2.0f * std::numbers::pi_v<float>;
+	const Color tint  = t_hovered ? g_theme.text : g_theme.text_dim;
+
+	t_draw_list->add_rotated_image(icon, angle, t_icon, faded(tint, alpha));
 }
 
 [[nodiscard]] auto auto_lock_stop(u32 t_minutes) -> u32
@@ -457,14 +491,9 @@ auto draw_reset_button(DrawList* t_draw_list, const Texture* t_icon, Rect t_butt
 		return t_minutes > stop ? t_minutes - stop : stop - t_minutes;
 	};
 
-	u32 nearest = 0;
-	for (u32 i = 1; i + 1 < K_AUTO_LOCK_STOP_COUNT; i += 1) {
-		if (distance(i) < distance(nearest)) {
-			nearest = i;
-		}
-	}
+	const auto timed_stops = std::views::iota(0u, K_AUTO_LOCK_STOP_COUNT - 1);
 
-	return nearest;
+	return std::ranges::min(timed_stops, {}, distance);
 }
 
 [[nodiscard]] auto auto_lock_label(u32 t_minutes, char (&t_buffer)[16]) -> std::string_view
@@ -472,9 +501,7 @@ auto draw_reset_button(DrawList* t_draw_list, const Texture* t_icon, Rect t_butt
 	if (t_minutes == 0) return "Never";
 	if (t_minutes == 60) return "1 hour";
 
-	const int written = std::snprintf(t_buffer, sizeof(t_buffer), "%u min", t_minutes);
-
-	return std::string_view{t_buffer, static_cast<usize>(std::max(written, 0))};
+	return format_into(t_buffer, "{} min", t_minutes);
 }
 
 [[nodiscard]] auto matches_every_word(std::string_view t_query, std::span<const std::string_view> t_fields) -> bool
@@ -488,15 +515,13 @@ auto draw_reset_button(DrawList* t_draw_list, const Texture* t_icon, Rect t_butt
 
 		if (word.empty()) continue;
 
-		const bool found =
-			std::ranges::any_of(t_fields, [word](std::string_view t_field) { return find_ignoring_case(t_field, word) != std::string_view::npos; });
+		const bool found = std::ranges::any_of(t_fields, [word](std::string_view t_field) { return find_ignoring_case(t_field, word) != std::string_view::npos; });
 		if (!found) return false;
 	}
 
 	return true;
 }
 
-// Colour dots stay round at any Corner roundness, and inside popups that fix their own.
 auto draw_theme_preview(DrawList* t_draw_list, Rect t_preview, ThemeKind t_kind, Color t_backdrop, u8 t_alpha) -> void
 {
 	const RoundnessScope circles{K_CIRCLE_ROUNDNESS};
@@ -536,28 +561,22 @@ const SettingsPanel::RowSpec SettingsPanel::K_ROW_SPECS[]{
 	 "strength intensity opacity subtle"},
 	{&Rows::background_light, SettingsGroup::BACKGROUND, "Soft light", "", "background backdrop glow gradient top light depth strength intensity"},
 	{&Rows::background_grain, SettingsGroup::BACKGROUND, "Grain", "", "background backdrop noise film texture strength intensity"},
-	{&Rows::snow, SettingsGroup::BACKGROUND, "Snow", "Gently falling snow behind your games. Uses a bit more power.",
-	 "weather winter snowfall seasonal christmas effect"},
+	{&Rows::snow, SettingsGroup::BACKGROUND, "Snow", "Gently falling snow behind your games. Uses a bit more power.", "weather winter snowfall seasonal christmas effect"},
 	{&Rows::font, SettingsGroup::TEXT, "Font", "", "typeface family text"},
 	{&Rows::font_size, SettingsGroup::TEXT, "Font size", "", "text scale zoom bigger interface"},
 	{&Rows::secondary_font_size, SettingsGroup::TEXT, "Small text size", "", "secondary font labels hints scale smaller"},
 	{&Rows::caret_style, SettingsGroup::CURSOR, "Cursor style", "", "caret text typing shape bar beam line block underline"},
 	{&Rows::caret_trail, SettingsGroup::CURSOR, "Cursor trail", "", "caret typing smooth smear glide hop neovide kitty strength length"},
-	{&Rows::glass, SettingsGroup::GLASS, "Frosted glass", "",
-	 "blur popups menus translucent transparent acrylic vibrancy frost background strength tint opacity"},
+	{&Rows::glass, SettingsGroup::GLASS, "Frosted glass", "", "blur popups menus translucent transparent acrylic vibrancy frost background strength tint opacity"},
 	{&Rows::glass_tint, SettingsGroup::GLASS, "", "", "glass tint popups menus opacity darkness transparency see through"},
 	{&Rows::animations, SettingsGroup::MOTION, "Animations", "", "motion effects reduce animate popups speed fast slow"},
 	{&Rows::notifications, SettingsGroup::GENERAL, "Notifications", "", "toast popup alert confirmation messages"},
-	{&Rows::start_with_system, SettingsGroup::GENERAL, "Start with Windows", "",
-	 "startup boot sign in login launch automatically autostart run minimized tray open hidden"},
+	{&Rows::start_with_system, SettingsGroup::GENERAL, "Start with Windows", "", "startup boot sign in login launch automatically autostart run minimized tray open hidden"},
 	{&Rows::close_to_tray, SettingsGroup::GENERAL, "When closing", "", "close to tray minimize quit exit background system tray hide"},
 	{&Rows::renderer, SettingsGroup::GENERAL, "Renderer", "Restart Pulsar to switch.", "graphics gpu direct3d directx metal opengl driver"},
-	{&Rows::riot_client, SettingsGroup::RIOT_CLIENT, "Location", "Found automatically when you log in.",
-	 "riot client path folder install location exe riotclientservices browse locate find launcher"},
-	{&Rows::hide_from_capture, SettingsGroup::PROTECTION, "Hide from screen capture", "Hide Pulsar from screenshares, recordings and screenshots.",
-	 "stream record share obs discord"},
-	{&Rows::block_overlay_injection, SettingsGroup::PROTECTION, "Block overlay injection", "Block overlays and keyloggers. Restart to apply.",
-	 "security inject dll"},
+	{&Rows::riot_client, SettingsGroup::RIOT_CLIENT, "Location", "Found automatically when you log in.", "riot client path folder install location exe riotclientservices browse locate find launcher"},
+	{&Rows::hide_from_capture, SettingsGroup::PROTECTION, "Hide from screen capture", "Hide Pulsar from screenshares, recordings and screenshots.", "stream record share obs discord"},
+	{&Rows::block_overlay_injection, SettingsGroup::PROTECTION, "Block overlay injection", "Block overlays and keyloggers. Restart to apply.", "security inject dll"},
 	{&Rows::auto_lock, SettingsGroup::VAULT, "Auto-lock", "Lock the vault after being idle.", "timeout idle inactive away"},
 	{&Rows::master_password, SettingsGroup::VAULT, "Master password", "Encrypts saved passwords.", "change reset vault encryption"},
 };
@@ -688,12 +707,9 @@ auto SettingsPanel::restore_default(SettingsPanel* t_panel) -> void
 
 const EnumArray<SettingsPanel::ResettableSetting, SettingsPanel::ResetSpec> SettingsPanel::K_RESETS{{
 	{&Rows::theme, ResetAnchor::DROPDOWN, at_default<&Settings::theme>, [](SettingsPanel* t_panel) { t_panel->select_theme(K_DEFAULT_SETTINGS.theme); }},
-	{&Rows::font, ResetAnchor::DROPDOWN, [](const Settings* t_settings) { return std::string_view{t_settings->font_name} == K_DEFAULT_SETTINGS.font_name; },
-	 [](SettingsPanel* t_panel) { t_panel->restore_font(); }},
-	{&Rows::font_size, ResetAnchor::STEPPER, at_default<&Settings::font_size>,
-	 [](SettingsPanel* t_panel) { t_panel->restore_font_size(&Settings::font_size); }},
-	{&Rows::secondary_font_size, ResetAnchor::STEPPER, at_default<&Settings::secondary_font_size>,
-	 [](SettingsPanel* t_panel) { t_panel->restore_font_size(&Settings::secondary_font_size); }},
+	{&Rows::font, ResetAnchor::DROPDOWN, [](const Settings* t_settings) { return std::string_view{t_settings->font_name} == K_DEFAULT_SETTINGS.font_name; }, [](SettingsPanel* t_panel) { t_panel->restore_font(); }},
+	{&Rows::font_size, ResetAnchor::STEPPER, at_default<&Settings::font_size>, [](SettingsPanel* t_panel) { t_panel->restore_font_size(&Settings::font_size); }},
+	{&Rows::secondary_font_size, ResetAnchor::STEPPER, at_default<&Settings::secondary_font_size>, [](SettingsPanel* t_panel) { t_panel->restore_font_size(&Settings::secondary_font_size); }},
 	{&Rows::accent, ResetAnchor::SWATCH, [](const Settings* t_settings) { return t_settings->accent == theme_preset(t_settings->theme).default_accent; },
 	 [](SettingsPanel* t_panel) {
 		 t_panel->m_settings->accent = theme_preset(t_panel->m_settings->theme).default_accent;
@@ -716,8 +732,7 @@ const EnumArray<SettingsPanel::ResettableSetting, SettingsPanel::ResetSpec> Sett
 	{&Rows::animations, ResetAnchor::TOGGLE, at_default<&Settings::animations_enabled>, restore_default<&Settings::animations_enabled>},
 	{&Rows::animations, ResetAnchor::SLIDER, at_default<&Settings::animation_speed>, restore_default<&Settings::animation_speed>},
 	{&Rows::notifications, ResetAnchor::TOGGLE, at_default<&Settings::show_notifications>, restore_default<&Settings::show_notifications>},
-	{&Rows::start_with_system, ResetAnchor::CHOICE,
-	 [](const Settings* t_settings) { return at_default<&Settings::start_with_system>(t_settings) && at_default<&Settings::start_minimized>(t_settings); },
+	{&Rows::start_with_system, ResetAnchor::CHOICE, [](const Settings* t_settings) { return at_default<&Settings::start_with_system>(t_settings) && at_default<&Settings::start_minimized>(t_settings); },
 	 [](SettingsPanel* t_panel) {
 		 restore_default<&Settings::start_with_system>(t_panel);
 		 restore_default<&Settings::start_minimized>(t_panel);
@@ -734,12 +749,7 @@ const EnumArray<SettingsPanel::ResettableSetting, SettingsPanel::ResetSpec> Sett
 	{&Rows::auto_lock, ResetAnchor::SLIDER, at_default<&Settings::auto_lock_minutes>, restore_default<&Settings::auto_lock_minutes>},
 }};
 
-SettingsPanel::SettingsPanel(Settings*         t_settings,
-                             Fonts*            t_fonts,
-                             Renderer*         t_renderer,
-                             const os::Window* t_window,
-                             const Assets*     t_assets,
-                             CommandQueue*     t_commands)
+SettingsPanel::SettingsPanel(Settings* t_settings, Fonts* t_fonts, Renderer* t_renderer, const os::Window* t_window, const Assets* t_assets, CommandQueue* t_commands)
 	: m_settings(t_settings)
 	, m_fonts(t_fonts)
 	, m_renderer(t_renderer)
@@ -758,20 +768,17 @@ SettingsPanel::SettingsPanel(Settings*         t_settings,
 	               t_assets,
 	               t_settings,
 	               ListPopupOptions{
-					   .search_placeholder = "Search themes",
-					   .empty_message      = "No themes match your search",
-					   .min_width          = K_THEME_LIST_WIDTH,
-					   .preview_size       = K_THEME_PREVIEW_SIZE,
-					   .draw_preview =
-						   [](DrawList* t_draw_list, Rect t_preview, u32 t_theme, Color t_backdrop, u8 t_alpha) {
-							   draw_theme_preview(t_draw_list, t_preview, enum_at<ThemeKind>(t_theme), t_backdrop, t_alpha);
-						   },
+					   .search_placeholder    = "Search themes",
+					   .empty_message         = "No themes match your search",
+					   .min_width             = K_THEME_LIST_WIDTH,
+					   .preview_size          = K_THEME_PREVIEW_SIZE,
+					   .draw_preview          = [](DrawList* t_draw_list, Rect t_preview, u32 t_theme, Color t_backdrop, u8 t_alpha) { draw_theme_preview(t_draw_list, t_preview, enum_at<ThemeKind>(t_theme), t_backdrop, t_alpha); },
 					   .hover_preview_seconds = K_THEME_HOVER_PREVIEW_SECONDS,
 				   })
 	, m_color_picker(t_fonts, t_assets)
 {
 	m_search.set_max_length(K_SEARCH_MAX_LENGTH);
-	m_search.set_placeholder("Search settings");
+	m_search.m_placeholder = "Search settings";
 
 	sync_with_settings();
 	start_font_scan();
@@ -796,7 +803,7 @@ auto SettingsPanel::sync_with_settings() -> void
 		m_choice_shown[choice] = static_cast<float>(K_CHOICES[choice].chosen(m_settings));
 	}
 
-	for (u32 i = 0; i < K_TOGGLE_COUNT; i += 1) {
+	for (const u32 i : std::views::iota(0u, K_TOGGLE_COUNT)) {
 		m_toggles_shown[i] = m_settings->*K_TOGGLES[i].value ? 1.0f : 0.0f;
 	}
 
@@ -840,10 +847,9 @@ auto SettingsPanel::close() -> void
 
 auto SettingsPanel::layout() const -> SettingsPanel::Layout
 {
-	const Vec2  window = m_window->size();
-	const float size_scale =
-		std::max({1.0f, m_fonts->body.pixel_height / K_REFERENCE_BODY_PIXEL_HEIGHT, m_fonts->secondary.pixel_height / K_REFERENCE_SECONDARY_PIXEL_HEIGHT});
-	const Vec2 max_size{K_PANEL_MAX_SIZE.x * size_scale, K_PANEL_MAX_SIZE.y * size_scale};
+	const Vec2  window     = m_window->size();
+	const float size_scale = std::max({1.0f, m_fonts->body.pixel_height / K_REFERENCE_BODY_PIXEL_HEIGHT, m_fonts->secondary.pixel_height / K_REFERENCE_SECONDARY_PIXEL_HEIGHT});
+	const Vec2  max_size{K_PANEL_MAX_SIZE.x * size_scale, K_PANEL_MAX_SIZE.y * size_scale};
 
 	float width  = std::min(max_size.x, std::max(0.0f, window.x - K_PANEL_MARGIN * 2.0f));
 	float height = std::min(max_size.y, std::max(0.0f, window.y - K_PANEL_MARGIN * 2.0f));
@@ -951,7 +957,6 @@ auto SettingsPanel::is_listed(const RowSpec& t_spec) const -> bool
 	return is_searching() ? matches_search(t_spec) : K_GROUPS[t_spec.group].tab == m_tab;
 }
 
-// Glass tint folds out under Frosted glass, opening and closing with it.
 auto SettingsPanel::row_extent(const RowSpec& t_spec) const -> float
 {
 	const float height = *t_spec.description == '\0' ? single_row_height(m_fonts) : row_height(m_fonts);
@@ -968,7 +973,6 @@ auto SettingsPanel::slider_on(Rect Rows::* t_row) -> std::optional<SettingsPanel
 	return std::nullopt;
 }
 
-// A slider shows while the setting it fine-tunes is turned on.
 auto SettingsPanel::slider_offered(SliderKind t_slider) const -> bool
 {
 	const SliderSpec& spec = K_SLIDERS[t_slider];
@@ -1021,7 +1025,7 @@ auto SettingsPanel::slider_hit_rect(const Rows& t_rows, SliderKind t_slider) con
 	return Rect{slider.x, row.y, slider.w, row.h};
 }
 
-// The setting a slider shows, in the setting's own units. Auto-lock's is the stop it sits at.
+// Auto-lock's value is the stop it sits at.
 auto SettingsPanel::slider_value(SliderKind t_slider) const -> float
 {
 	if (t_slider == SliderKind::AUTO_LOCK) return static_cast<float>(auto_lock_stop(m_settings->auto_lock_minutes));
@@ -1032,11 +1036,9 @@ auto SettingsPanel::slider_value(SliderKind t_slider) const -> float
 auto SettingsPanel::slider_fraction(SliderKind t_slider) const -> float
 {
 	const float shown = m_slider_shown[t_slider];
-
 	if (t_slider == SliderKind::AUTO_LOCK) return shown / static_cast<float>(K_AUTO_LOCK_STOP_COUNT - 1);
 
 	const SliderSpec& spec = K_SLIDERS[t_slider];
-
 	return fraction_in(shown, spec.min, spec.max);
 }
 
@@ -1044,11 +1046,10 @@ auto SettingsPanel::slider_readout(SliderKind t_slider, char (&t_buffer)[16]) co
 {
 	if (t_slider == SliderKind::AUTO_LOCK) return auto_lock_label(m_settings->auto_lock_minutes, t_buffer);
 
-	const float shown   = m_slider_shown[t_slider];
-	const int   written = t_slider == SliderKind::ANIMATION_SPEED ? std::snprintf(t_buffer, sizeof(t_buffer), "%.2fx", shown)
-	                                                              : std::snprintf(t_buffer, sizeof(t_buffer), "%.0f%%", shown * 100.0f);
+	const float shown = m_slider_shown[t_slider];
+	if (t_slider == SliderKind::ANIMATION_SPEED) return format_into(t_buffer, "{:.2f}x", shown);
 
-	return std::string_view{t_buffer, static_cast<usize>(std::max(written, 0))};
+	return format_into(t_buffer, "{:.0f}%", shown * 100.0f);
 }
 
 auto SettingsPanel::slider_at(const Layout& t_layout, const Rows& t_rows, Vec2 t_point) const -> std::optional<SettingsPanel::SliderKind>
@@ -1108,11 +1109,10 @@ auto SettingsPanel::pattern_tile_size() const -> Vec2
 
 auto SettingsPanel::pattern_popup_rect(const Rows& t_rows) const -> Rect
 {
-	const Vec2  tile  = pattern_tile_size();
-	const auto  count = static_cast<u32>(K_ENUM_COUNT<BackgroundStyle>);
-	const u32   lines = (count + K_PATTERN_COLUMNS - 1) / K_PATTERN_COLUMNS;
-	const float width =
-		K_PATTERN_POPUP_PADDING * 2.0f + static_cast<float>(K_PATTERN_COLUMNS) * tile.x + static_cast<float>(K_PATTERN_COLUMNS - 1) * K_TILE_GAP;
+	const Vec2  tile   = pattern_tile_size();
+	const auto  count  = static_cast<u32>(K_ENUM_COUNT<BackgroundStyle>);
+	const u32   lines  = (count + K_PATTERN_COLUMNS - 1) / K_PATTERN_COLUMNS;
+	const float width  = K_PATTERN_POPUP_PADDING * 2.0f + static_cast<float>(K_PATTERN_COLUMNS) * tile.x + static_cast<float>(K_PATTERN_COLUMNS - 1) * K_TILE_GAP;
 	const float height = K_PATTERN_POPUP_PADDING * 2.0f + static_cast<float>(lines) * tile.y + static_cast<float>(lines - 1) * K_TILE_ROW_GAP;
 	const Rect  anchor = pattern_select_rect(t_rows.background, m_fonts);
 	const Rect  bounds = content_rect(m_window->size()).inset(K_PATTERN_POPUP_MARGIN);
@@ -1135,8 +1135,7 @@ auto SettingsPanel::pattern_tile(Rect t_popup, BackgroundStyle t_style) const ->
 	const auto column = static_cast<float>(index % K_PATTERN_COLUMNS);
 	const auto line   = static_cast<float>(index / K_PATTERN_COLUMNS);
 
-	return Rect{t_popup.x + K_PATTERN_POPUP_PADDING + column * (tile.x + K_TILE_GAP), t_popup.y + K_PATTERN_POPUP_PADDING + line * (tile.y + K_TILE_ROW_GAP),
-	            tile.x, tile.y};
+	return Rect{t_popup.x + K_PATTERN_POPUP_PADDING + column * (tile.x + K_TILE_GAP), t_popup.y + K_PATTERN_POPUP_PADDING + line * (tile.y + K_TILE_ROW_GAP), tile.x, tile.y};
 }
 
 auto SettingsPanel::pattern_at(Rect t_popup, Vec2 t_point) const -> std::optional<BackgroundStyle>
@@ -1163,7 +1162,7 @@ auto SettingsPanel::choice_segment(Rect t_choice, std::span<const std::string_vi
 	const Rect inner = t_choice.inset(K_SEGMENT_INSET);
 	float      x     = inner.x;
 
-	for (u32 i = 0; i < t_index; i += 1) {
+	for (const u32 i : std::views::iota(0u, t_index)) {
 		x += text_width(m_fonts->body, t_labels[i]) + K_SEGMENT_PADDING_X * 2.0f;
 	}
 
@@ -1242,8 +1241,7 @@ auto SettingsPanel::rows_scroll(const Layout& t_layout, const Rows& t_rows) cons
 {
 	const Rect  region        = t_layout.rows_region;
 	const float bottom_margin = t_layout.docked ? K_SCROLLBAR_MARGIN : std::max(K_SCROLLBAR_MARGIN, K_PANEL_RADIUS * controls::K_POPUP_ROUNDNESS * 0.75f);
-	const Rect  track{region.right() - K_SCROLLBAR_WIDTH - K_SCROLLBAR_MARGIN, region.y + K_SCROLLBAR_MARGIN, K_SCROLLBAR_WIDTH,
-	                  std::max(0.0f, region.h - K_SCROLLBAR_MARGIN - bottom_margin)};
+	const Rect  track{region.right() - K_SCROLLBAR_WIDTH - K_SCROLLBAR_MARGIN, region.y + K_SCROLLBAR_MARGIN, K_SCROLLBAR_WIDTH, std::max(0.0f, region.h - K_SCROLLBAR_MARGIN - bottom_margin)};
 
 	return ScrollGeometry{track, t_rows.content_height, region.h};
 }
@@ -1260,29 +1258,28 @@ auto SettingsPanel::hits(const Layout& t_layout, Rect t_row, Rect t_control, Vec
 
 auto SettingsPanel::open_list() -> ListPopup*
 {
-	if (m_font_list.is_open()) return &m_font_list;
-	if (m_theme_list.is_open()) return &m_theme_list;
+	if (m_font_list.m_open) return &m_font_list;
+	if (m_theme_list.m_open) return &m_theme_list;
 
 	return nullptr;
 }
 
 auto SettingsPanel::open_list() const -> const ListPopup*
 {
-	if (m_font_list.is_open()) return &m_font_list;
-	if (m_theme_list.is_open()) return &m_theme_list;
+	if (m_font_list.m_open) return &m_font_list;
+	if (m_theme_list.m_open) return &m_theme_list;
 
 	return nullptr;
 }
 
 auto SettingsPanel::has_popup_open() const -> bool
 {
-	return m_color_picker.is_open() || m_pattern_open || open_list() != nullptr;
+	return m_color_picker.m_open || m_pattern_open || open_list() != nullptr;
 }
 
 auto SettingsPanel::is_row_hovered(const Layout& t_layout, Rect t_row) const -> bool
 {
-	return is_blocking() && !has_popup_open() && t_layout.rows_region.contains(m_mouse) && is_on_screen(t_layout, t_row) &&
-	       t_row.inset(K_HIGHLIGHT_INSET_X, K_HIGHLIGHT_INSET_Y).contains(m_mouse);
+	return is_blocking() && !has_popup_open() && t_layout.rows_region.contains(m_mouse) && is_on_screen(t_layout, t_row) && t_row.inset(K_HIGHLIGHT_INSET_X, K_HIGHLIGHT_INSET_Y).contains(m_mouse);
 }
 
 auto SettingsPanel::reset_control(const Rows& t_rows, ResettableSetting t_setting) const -> Rect
@@ -1380,7 +1377,7 @@ auto SettingsPanel::reset_to_default(ResettableSetting t_setting) -> void
 
 auto SettingsPanel::load_fonts(std::string_view t_file) -> bool
 {
-	return m_fonts->load(m_renderer, t_file, m_settings->font_size, m_settings->secondary_font_size, m_window->dpi_scale());
+	return m_fonts->load(m_renderer, t_file, m_settings->font_size, m_settings->secondary_font_size, m_window->m_dpi_scale);
 }
 
 auto SettingsPanel::open_font_list() -> void
@@ -1421,8 +1418,7 @@ auto SettingsPanel::restore_font_size(float Settings::* t_size) -> void
 	load_fonts(m_settings->font_name);
 }
 
-// Listing every installed font takes a moment on macOS, so it happens off the UI thread: once at startup and again whenever settings
-// opens, which picks up fonts installed since.
+// Listing every installed font takes a moment on macOS, so it happens off the UI thread: once at startup and again whenever settings opens, which picks up fonts installed since.
 auto SettingsPanel::start_font_scan() -> void
 {
 	if (m_font_scan.valid()) return;
@@ -1482,7 +1478,7 @@ auto SettingsPanel::update_theme_preview() -> void
 	const ThemeChoice original = *m_theme_before_preview;
 	ThemeChoice       shown    = original;
 
-	if (!m_theme_list.is_open()) {
+	if (!m_theme_list.m_open) {
 		m_theme_before_preview.reset();
 	} else if (const std::optional<u32> previewed = m_theme_list.previewed_item()) {
 		const auto kind = enum_at<ThemeKind>(*previewed);
@@ -1505,7 +1501,7 @@ auto SettingsPanel::choose_background(BackgroundStyle t_style) -> void
 auto SettingsPanel::pull_picked_color() -> void
 {
 	if (m_color_picker.take_changed()) {
-		m_settings->accent = m_color_picker.color();
+		m_settings->accent = m_color_picker.m_color;
 	}
 }
 
@@ -1528,25 +1524,22 @@ auto SettingsPanel::update(float t_delta_seconds) -> void
 	}
 
 	const float scale_travel = m_window->size().x * 0.5f * (1.0f - K_PANEL_CLOSED_SCALE);
-	m_open_amount = animation::ease_toward(m_open_amount, m_open ? 1.0f : 0.0f, K_OPEN_EASE_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS / scale_travel);
+	m_open_amount            = animation::ease_toward(m_open_amount, m_open ? 1.0f : 0.0f, K_OPEN_EASE_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS / scale_travel);
 
-	for (u32 i = 0; i < K_TOGGLE_COUNT; i += 1) {
+	for (const u32 i : std::views::iota(0u, K_TOGGLE_COUNT)) {
 		const float target = m_settings->*K_TOGGLES[i].value ? 1.0f : 0.0f;
 		m_toggles_shown[i] = animation::ease_toward(m_toggles_shown[i], target, K_TOGGLE_EASE_RATE, t_delta_seconds);
 	}
 
-	const auto ease_value = [t_delta_seconds](float t_shown, float t_actual) {
-		return animation::ease_toward(t_shown, t_actual, K_VALUE_EASE_RATE, t_delta_seconds);
-	};
+	const auto ease_value = [t_delta_seconds](float t_shown, float t_actual) { return animation::ease_toward(t_shown, t_actual, K_VALUE_EASE_RATE, t_delta_seconds); };
 
 	m_font_size_shown           = ease_value(m_font_size_shown, m_settings->font_size);
 	m_secondary_font_size_shown = ease_value(m_secondary_font_size_shown, m_settings->secondary_font_size);
 
-	// A slider being dragged follows the pointer exactly. Otherwise it eases to the setting, as when it is reset.
 	for (const SliderKind slider : each<SliderKind>()) {
 		const float actual = slider_value(slider);
 
-		m_slider_shown[slider]  = m_slider_drags[slider].is_pressed() ? actual : ease_value(m_slider_shown[slider], actual);
+		m_slider_shown[slider]  = m_slider_drags[slider].m_pressed ? actual : ease_value(m_slider_shown[slider], actual);
 		m_slider_reveal[slider] = animation::ease_toward(m_slider_reveal[slider], slider_offered(slider) ? 1.0f : 0.0f, K_REVEAL_EASE_RATE, t_delta_seconds);
 	}
 
@@ -1565,12 +1558,11 @@ auto SettingsPanel::update(float t_delta_seconds) -> void
 	set_corner_roundness(m_slider_shown[SliderKind::CORNER_ROUNDNESS]);
 
 	const u8 accent[3]{m_settings->accent.r, m_settings->accent.g, m_settings->accent.b};
-	for (u32 channel = 0; channel < 3; channel += 1) {
+	for (const u32 channel : std::views::iota(0u, 3u)) {
 		m_accent_shown[channel] = ease_value(m_accent_shown[channel], accent[channel]);
 	}
 
-	m_tab_indicator = animation::ease_toward(m_tab_indicator, static_cast<float>(enum_index(m_tab)), K_TAB_SLIDE_RATE, t_delta_seconds,
-	                                         animation::K_SETTLED_PIXELS / tab_height(m_fonts));
+	m_tab_indicator = animation::ease_toward(m_tab_indicator, static_cast<float>(enum_index(m_tab)), K_TAB_SLIDE_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS / tab_height(m_fonts));
 
 	m_search.update(t_delta_seconds);
 	refresh_search();
@@ -1607,9 +1599,8 @@ auto SettingsPanel::update_hover_hints(float t_delta_seconds) -> void
 	}
 
 	for (const SliderKind slider : each<SliderKind>()) {
-		const bool over    = pointer_live && m_slider_reveal[slider] > 0.5f &&
-		                     hits(current, current_rows.*K_SLIDERS[slider].row, slider_hit_rect(current_rows, slider), m_mouse);
-		const bool engaged = m_slider_drags[slider].is_pressed() || over;
+		const bool over    = pointer_live && m_slider_reveal[slider] > 0.5f && hits(current, current_rows.*K_SLIDERS[slider].row, slider_hit_rect(current_rows, slider), m_mouse);
+		const bool engaged = m_slider_drags[slider].m_pressed || over;
 
 		m_slider_hover[slider] = animation::ease_toward(m_slider_hover[slider], engaged ? 1.0f : 0.0f, K_SLIDER_HOVER_RATE, t_delta_seconds);
 	}
@@ -1617,9 +1608,7 @@ auto SettingsPanel::update_hover_hints(float t_delta_seconds) -> void
 	for (const ResettableSetting setting : each<ResettableSetting>()) {
 		const bool resettable = can_reset(setting);
 		const Rect row        = current_rows.*K_RESETS[setting].row;
-		const bool shown      = shows_reset_on_hover(setting)
-		                            ? pointer_live && resettable && is_row_hovered(current, Rect{row.x, row.y, current_rows.row_width, row.h})
-		                            : resettable;
+		const bool shown      = shows_reset_on_hover(setting) ? pointer_live && resettable && is_row_hovered(current, Rect{row.x, row.y, current_rows.row_width, row.h}) : resettable;
 
 		m_reset_visible[setting] = animation::ease_toward(m_reset_visible[setting], shown ? 1.0f : 0.0f, K_RESET_APPEAR_RATE, t_delta_seconds);
 		m_reset_spin[setting]    = animation::ease_toward(m_reset_spin[setting], 0.0f, K_RESET_SPIN_RATE, t_delta_seconds);
@@ -1692,13 +1681,13 @@ auto SettingsPanel::on_pointer_move(Vec2 t_point) -> bool
 	pull_picked_color();
 
 	for (const SliderKind slider : each<SliderKind>()) {
-		if (!m_slider_drags[slider].is_pressed()) continue;
+		if (!m_slider_drags[slider].m_pressed) continue;
 
 		m_slider_drags[slider].update(t_point);
 		apply_slider(slider, slider_fraction_at(slider_rect(current_rows, slider), t_point.x));
 	}
 
-	if (m_search.is_selecting()) {
+	if (m_search.m_selecting) {
 		m_search.on_pointer_move(m_fonts->secondary, controls::search_text_rect(search_rect(current), K_SEARCH_INSET), t_point.x);
 	}
 
@@ -1709,7 +1698,7 @@ auto SettingsPanel::on_pointer_up(Vec2 t_point) -> bool
 {
 	if (!is_blocking()) return false;
 
-	if (m_font_list.is_open()) {
+	if (m_font_list.m_open) {
 		if (const std::optional<u32> chosen = m_font_list.on_pointer_up(t_point)) {
 			choose_font(*chosen);
 		}
@@ -1717,7 +1706,7 @@ auto SettingsPanel::on_pointer_up(Vec2 t_point) -> bool
 		return true;
 	}
 
-	if (m_theme_list.is_open()) {
+	if (m_theme_list.m_open) {
 		if (const std::optional<u32> chosen = m_theme_list.on_pointer_up(t_point)) {
 			choose_theme(enum_at<ThemeKind>(*chosen));
 		}
@@ -1730,7 +1719,7 @@ auto SettingsPanel::on_pointer_up(Vec2 t_point) -> bool
 		return true;
 	}
 
-	const bool ended_drag = m_rows_scroll.is_dragging() || std::ranges::any_of(m_slider_drags, &Draggable::is_pressed) || m_search.is_selecting();
+	const bool ended_drag = m_rows_scroll.m_dragging || std::ranges::any_of(m_slider_drags, &Draggable::m_pressed) || m_search.m_selecting;
 
 	m_rows_scroll.on_pointer_up();
 	for (Draggable& drag : m_slider_drags) {
@@ -1814,7 +1803,7 @@ auto SettingsPanel::handle_click(Vec2 t_point) -> void
 		const Rect        area = choice_rect(current_rows, choice);
 		if (!hits(current, current_rows.*spec.row, area, t_point)) continue;
 
-		for (u32 segment = 0; segment < spec.labels.size(); segment += 1) {
+		for (const u32 segment : std::views::iota(0u, spec.labels.size())) {
 			if (choice_segment(area, spec.labels, segment).contains(t_point)) {
 				spec.choose(m_settings, segment);
 			}
@@ -1828,8 +1817,7 @@ auto SettingsPanel::handle_click(Vec2 t_point) -> void
 	}
 
 	if (is_on_screen(current, current_rows.secondary_font_size)) {
-		step_font_size(stepper_rect(current_rows.secondary_font_size, m_fonts), &m_settings->secondary_font_size, K_SECONDARY_FONT_SIZE_MIN,
-		               K_SECONDARY_FONT_SIZE_MAX, t_point);
+		step_font_size(stepper_rect(current_rows.secondary_font_size, m_fonts), &m_settings->secondary_font_size, K_SECONDARY_FONT_SIZE_MIN, K_SECONDARY_FONT_SIZE_MAX, t_point);
 	}
 
 	for (const Toggle& toggle : K_TOGGLES) {
@@ -1843,7 +1831,7 @@ auto SettingsPanel::handle_click(Vec2 t_point) -> void
 
 	const Rect swatch = swatch_rect(current_rows.accent);
 	if (hits(current, current_rows.accent, swatch, t_point)) {
-		if (m_color_picker.is_open()) {
+		if (m_color_picker.m_open) {
 			m_color_picker.close();
 		} else {
 			m_color_picker.open(m_settings->accent, swatch, content_rect(m_window->size()));
@@ -1852,7 +1840,7 @@ auto SettingsPanel::handle_click(Vec2 t_point) -> void
 		return;
 	}
 
-	if (m_color_picker.is_open()) {
+	if (m_color_picker.m_open) {
 		m_color_picker.close();
 		return;
 	}
@@ -1917,8 +1905,9 @@ auto SettingsPanel::on_scroll(Vec2 t_point, float t_wheel_delta) -> bool
 		m_theme_wheel += t_wheel_delta;
 
 		while (std::fabs(m_theme_wheel) >= 1.0f) {
-			const float notch = m_theme_wheel > 0.0f ? 1.0f : -1.0f;
-			select_theme(stepped(m_settings->theme, notch > 0.0f ? -1 : 1));
+			const float notch     = m_theme_wheel > 0.0f ? 1.0f : -1.0f;
+			const i32   direction = notch > 0.0f ? -1 : 1;
+			select_theme(stepped(m_settings->theme, direction));
 			m_theme_wheel -= notch;
 		}
 
@@ -1934,11 +1923,11 @@ auto SettingsPanel::on_key_down(os::Key t_key) -> bool
 {
 	if (!is_blocking()) return false;
 
-	if (m_font_list.is_open()) {
+	if (m_font_list.m_open) {
 		if (const std::optional<u32> chosen = m_font_list.on_key_down(t_key)) {
 			choose_font(*chosen);
 		}
-	} else if (m_theme_list.is_open()) {
+	} else if (m_theme_list.m_open) {
 		if (const std::optional<u32> chosen = m_theme_list.on_key_down(t_key)) {
 			choose_theme(enum_at<ThemeKind>(*chosen));
 		}
@@ -1948,16 +1937,17 @@ auto SettingsPanel::on_key_down(os::Key t_key) -> bool
 		pull_picked_color();
 	} else if (t_key == os::Key::ESCAPE && is_searching()) {
 		clear_search();
-	} else if (t_key == os::Key::ESCAPE && m_search.is_focused()) {
+	} else if (t_key == os::Key::ESCAPE && m_search.m_focused) {
 		m_search.set_focused(false);
 	} else if (t_key == os::Key::ESCAPE) {
 		close();
 	} else if (t_key == os::Key::TAB && os::modifiers().control) {
+		const i32 direction = os::modifiers().shift ? -1 : 1;
 		clear_search();
-		select_tab(stepped(m_tab, os::modifiers().shift ? -1 : 1));
+		select_tab(stepped(m_tab, direction));
 	} else if (t_key == os::Key::F && os::modifiers().shortcut) {
 		focus_search();
-	} else if (m_search.is_focused()) {
+	} else if (m_search.m_focused) {
 		m_search.on_key_down(t_key);
 	}
 
@@ -1979,11 +1969,11 @@ auto SettingsPanel::on_char(u32 t_character) -> bool
 	}
 
 	const bool printable = t_character >= 32 && t_character != 127;
-	if (printable && !m_search.is_focused() && search_rect(layout()).w > 0.0f) {
+	if (printable && !m_search.m_focused && search_rect(layout()).w > 0.0f) {
 		m_search.set_focused(true);
 	}
 
-	if (m_search.is_focused()) {
+	if (m_search.m_focused) {
 		m_search.on_char(t_character);
 	}
 
@@ -1999,11 +1989,11 @@ auto SettingsPanel::cursor() const -> CursorKind
 		return pattern_at(pattern_popup_rect(rows(layout())), m_mouse) ? CursorKind::HAND : CursorKind::ARROW;
 	}
 
-	const bool dragging = m_rows_scroll.is_dragging() || m_color_picker.is_dragging() || std::ranges::any_of(m_slider_drags, &Draggable::is_pressed);
+	const bool dragging = m_rows_scroll.m_dragging || m_color_picker.is_dragging() || std::ranges::any_of(m_slider_drags, &Draggable::m_pressed);
 	if (dragging) return CursorKind::DRAG;
-	if (m_search.is_selecting()) return CursorKind::I_BEAM;
+	if (m_search.m_selecting) return CursorKind::I_BEAM;
 
-	if (m_color_picker.is_open()) {
+	if (m_color_picker.m_open) {
 		const CursorKind picker = m_color_picker.cursor(m_mouse);
 		if (picker != CursorKind::ARROW) return picker;
 	}
@@ -2076,14 +2066,16 @@ auto SettingsPanel::draw_chrome(DrawList* t_draw_list, const Layout& t_layout, u
 		t_draw_list->add_rounded_outline(t_layout.panel, rounded(K_PANEL_RADIUS), K_PANEL_BORDER, faded(g_theme.border, t_alpha));
 	}
 
-	const Rect back         = back_button_rect(t_layout.header);
-	const bool back_hovered = back.contains(m_mouse);
+	const Rect  back         = back_button_rect(t_layout.header);
+	const Rect  arrow        = back.centered(K_BACK_ICON_SIZE, K_BACK_ICON_SIZE);
+	const bool  back_hovered = back.contains(m_mouse);
+	const Color back_fill    = back_hovered ? g_theme.control_hover : g_theme.control;
+	const Color arrow_color  = back_hovered ? g_theme.text : g_theme.text_dim;
+	const Vec2  title_baseline{back.right() + K_TITLE_GAP, body.centered_baseline(t_layout.header)};
 
-	t_draw_list->add_rounded_rect(back, rounded(back.w * 0.5f), faded(back_hovered ? g_theme.control_hover : g_theme.control, t_alpha));
-	t_draw_list->add_image(back.centered(K_BACK_ICON_SIZE, K_BACK_ICON_SIZE), m_assets->get(Asset::ICON_ARROW_BACK),
-	                       faded(back_hovered ? g_theme.text : g_theme.text_dim, t_alpha));
-
-	draw_text(t_draw_list, body, Vec2{back.right() + K_TITLE_GAP, body.centered_baseline(t_layout.header)}, K_PANEL_TITLE, faded(g_theme.text, t_alpha));
+	t_draw_list->add_rounded_rect(back, rounded(back.w * 0.5f), faded(back_fill, t_alpha));
+	t_draw_list->add_image(arrow, m_assets->texture(Asset::ICON_ARROW_BACK), faded(arrow_color, t_alpha));
+	draw_text(t_draw_list, body, title_baseline, K_PANEL_TITLE, faded(g_theme.text, t_alpha));
 }
 
 auto SettingsPanel::draw_rail(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void
@@ -2093,22 +2085,24 @@ auto SettingsPanel::draw_rail(DrawList* t_draw_list, const Layout& t_layout, u8 
 	const bool  searching    = is_searching();
 	const float height       = tab_height(m_fonts);
 
-	t_draw_list->add_rect(Rect{t_layout.rail.right(), t_layout.rail.y, 1.0f, t_layout.rail.h}, faded(g_theme.separator, t_alpha));
+	const Rect edge{t_layout.rail.right(), t_layout.rail.y, 1.0f, t_layout.rail.h};
+	t_draw_list->add_rect(edge, faded(g_theme.separator, t_alpha));
 
 	for (const SettingsTab tab : each<SettingsTab>()) {
 		const Rect item      = tab_rect(t_layout, tab);
 		const bool is_active = tab == m_tab && !searching;
 
 		if (!is_active && pointer_live && item.contains(m_mouse)) {
-			t_draw_list->add_rounded_rect(item.inset(0.0f, K_TAB_GAP * 0.5f), rounded(K_CONTROL_RADIUS),
-			                              faded(controls::glass_highlight(K_HOVERED_TAB_FILL), t_alpha));
+			const Color hover = faded(controls::glass_highlight(K_HOVERED_TAB_FILL), t_alpha);
+			t_draw_list->add_rounded_rect(item.inset(0.0f, K_TAB_GAP * 0.5f), rounded(K_CONTROL_RADIUS), hover);
 		}
 	}
 
 	if (!searching) {
-		const Rect first_tab = tab_rect(t_layout, SettingsTab::APPEARANCE);
-		const Rect active{first_tab.x, snapped_to_pixel(first_tab.y + m_tab_indicator * height), first_tab.w, height};
-		t_draw_list->add_rounded_rect(active.inset(0.0f, K_TAB_GAP * 0.5f), rounded(K_CONTROL_RADIUS), faded(controls::glass_highlight(), t_alpha));
+		const Rect  first_tab = tab_rect(t_layout, SettingsTab::APPEARANCE);
+		const Rect  active{first_tab.x, snapped_to_pixel(first_tab.y + m_tab_indicator * height), first_tab.w, height};
+		const Color highlight = faded(controls::glass_highlight(), t_alpha);
+		t_draw_list->add_rounded_rect(active.inset(0.0f, K_TAB_GAP * 0.5f), rounded(K_CONTROL_RADIUS), highlight);
 	}
 
 	for (const SettingsTab tab : each<SettingsTab>()) {
@@ -2122,22 +2116,22 @@ auto SettingsPanel::draw_rail(DrawList* t_draw_list, const Layout& t_layout, u8 
 			label = mix(g_theme.text_dim, g_theme.text, K_HOVERED_TAB_BRIGHTENING);
 		}
 
-		draw_text_truncated(t_draw_list, body, Vec2{item.x + K_TAB_LABEL_INSET, body.centered_baseline(item)}, K_TAB_NAMES[tab],
-		                    item.w - K_TAB_LABEL_INSET * 2.0f, faded(label, t_alpha));
+		const Vec2  label_baseline{item.x + K_TAB_LABEL_INSET, body.centered_baseline(item)};
+		const float label_room = item.w - K_TAB_LABEL_INSET * 2.0f;
+		draw_text_truncated(t_draw_list, body, label_baseline, K_TAB_NAMES[tab], label_room, faded(label, t_alpha));
 	}
 }
 
 auto SettingsPanel::renderer_note(char (&t_buffer)[96]) const -> const char*
 {
-	const GraphicsApi running   = m_renderer->api();
-	const GraphicsApi requested = m_renderer->requested_api();
+	const GraphicsApi running   = m_renderer->m_api;
+	const GraphicsApi requested = m_renderer->m_requested_api;
 	const GraphicsApi chosen    = m_settings->renderer;
 
 	if (running != requested && chosen == requested) {
-		std::snprintf(t_buffer, sizeof(t_buffer), "%s isn't available, so Pulsar uses %s.", graphics_api_name(requested).data(),
-		              graphics_api_name(running).data());
+		std::ignore = format_into(t_buffer, "{} isn't available, so Pulsar uses {}.", graphics_api_name(requested), graphics_api_name(running));
 	} else if (chosen != running) {
-		std::snprintf(t_buffer, sizeof(t_buffer), "Restart Pulsar to switch to %s.", graphics_api_name(chosen).data());
+		std::ignore = format_into(t_buffer, "Restart Pulsar to switch to {}.", graphics_api_name(chosen));
 	} else {
 		return spec_of(&Rows::renderer).description;
 	}
@@ -2155,13 +2149,7 @@ auto SettingsPanel::draw_label(DrawList* t_draw_list, const Rows& t_rows, Rect R
 	draw_row_label(t_draw_list, m_fonts, row, spec.title, description, label_right_edge(t_control), t_alpha);
 }
 
-auto SettingsPanel::draw_dropdown_row(DrawList*     t_draw_list,
-                                      const Layout& t_layout,
-                                      const Rows&   t_rows,
-                                      Rect Rows::*     t_row,
-                                      std::string_view t_value,
-                                      bool             t_open,
-                                      u8               t_alpha) const -> void
+auto SettingsPanel::draw_dropdown_row(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, Rect Rows::* t_row, std::string_view t_value, bool t_open, u8 t_alpha) const -> void
 {
 	const Rect row = t_rows.*t_row;
 	if (!is_on_screen(t_layout, row)) return;
@@ -2178,8 +2166,8 @@ auto SettingsPanel::draw_appearance(DrawList* t_draw_list, const Layout& t_layou
 	const Font& body   = m_fonts->body;
 	const Color accent = m_settings->accent;
 
-	draw_dropdown_row(t_draw_list, t_layout, t_rows, &Rows::theme, K_THEME_LABELS[m_settings->theme].name, m_theme_list.is_open(), t_alpha);
-	draw_dropdown_row(t_draw_list, t_layout, t_rows, &Rows::font, m_font_label, m_font_list.is_open(), t_alpha);
+	draw_dropdown_row(t_draw_list, t_layout, t_rows, &Rows::theme, K_THEME_LABELS[m_settings->theme].name, m_theme_list.m_open, t_alpha);
+	draw_dropdown_row(t_draw_list, t_layout, t_rows, &Rows::font, m_font_label, m_font_list.m_open, t_alpha);
 
 	if (is_on_screen(t_layout, t_rows.font_size)) {
 		const Rect stepper = stepper_rect(t_rows.font_size, m_fonts);
@@ -2197,9 +2185,8 @@ auto SettingsPanel::draw_appearance(DrawList* t_draw_list, const Layout& t_layou
 		const Rect  swatch     = swatch_rect(t_rows.accent);
 		const Rect  ring       = swatch.inset(-(K_SWATCH_RING_GAP + K_SWATCH_RING));
 		const bool  hovered    = !has_popup_open() && hits(t_layout, t_rows.accent, ring, m_mouse);
-		const Color ring_color = m_color_picker.is_open() ? accent : (hovered ? g_theme.text_dim : g_theme.border);
-		const Color shown{static_cast<u8>(std::lround(m_accent_shown[0])), static_cast<u8>(std::lround(m_accent_shown[1])),
-		                  static_cast<u8>(std::lround(m_accent_shown[2])), accent.a};
+		const Color ring_color = m_color_picker.m_open ? accent : (hovered ? g_theme.text_dim : g_theme.border);
+		const Color shown{static_cast<u8>(std::lround(m_accent_shown[0])), static_cast<u8>(std::lround(m_accent_shown[1])), static_cast<u8>(std::lround(m_accent_shown[2])), accent.a};
 
 		draw_label(t_draw_list, t_rows, &Rows::accent, ring, t_alpha);
 
@@ -2218,9 +2205,10 @@ auto SettingsPanel::draw_pattern_row(DrawList* t_draw_list, const Layout& t_layo
 	const bool     hovered = !has_popup_open() && hits(t_layout, row, button, m_mouse);
 	const RowSpec& spec    = spec_of(&Rows::background);
 
-	draw_row_label(t_draw_list, m_fonts, row, spec.title, spec.description, inline_slider_left(row) - K_RESET_COLUMN - K_LABEL_CONTROL_GAP, t_alpha);
-	draw_select(t_draw_list, m_fonts->body, button, K_BACKGROUND_LABELS[m_settings->background_style].name, m_pattern_open, hovered, m_settings->accent,
-	            t_alpha);
+	const float label_right = inline_slider_left(row) - K_RESET_COLUMN - K_LABEL_CONTROL_GAP;
+
+	draw_row_label(t_draw_list, m_fonts, row, spec.title, spec.description, label_right, t_alpha);
+	draw_select(t_draw_list, m_fonts->body, button, K_BACKGROUND_LABELS[m_settings->background_style].name, m_pattern_open, hovered, m_settings->accent, t_alpha);
 }
 
 auto SettingsPanel::draw_pattern_popup(DrawList* t_draw_list, const Rows& t_rows, u8 t_alpha) const -> void
@@ -2248,24 +2236,26 @@ auto SettingsPanel::draw_pattern_popup(DrawList* t_draw_list, const Rows& t_rows
 		const bool  hovered = m_pattern_open && pattern_tile(resting, style).contains(m_mouse);
 
 		if (ring > 0.01f) {
-			const float outer = K_TILE_RING_GAP + K_TILE_RING;
+			const float outer      = K_TILE_RING_GAP + K_TILE_RING;
+			const Color ring_color = faded(m_settings->accent, static_cast<u8>(alpha * ring));
 
-			t_draw_list->add_rounded_outline(preview.inset(-outer), rounded(K_TILE_RADIUS + outer), K_TILE_RING,
-			                                 faded(m_settings->accent, static_cast<u8>(alpha * ring)));
+			t_draw_list->add_rounded_outline(preview.inset(-outer), rounded(K_TILE_RADIUS + outer), K_TILE_RING, ring_color);
 		}
 
-		t_draw_list->add_rounded_rect(preview, rounded(K_TILE_RADIUS), faded(hovered ? g_theme.border : g_theme.separator, alpha));
+		const Color frame = hovered ? g_theme.border : g_theme.separator;
+
+		t_draw_list->add_rounded_rect(preview, rounded(K_TILE_RADIUS), faded(frame, alpha));
 		t_draw_list->add_pattern_swatch(preview.inset(1.0f), rounded(K_TILE_RADIUS - 1.0f), faded(g_theme.window, alpha), style);
 
-		const std::string_view name  = K_BACKGROUND_LABELS[style].name;
-		const Color            label = hovered ? g_theme.text : mix(g_theme.text_dim, g_theme.text, ring);
-		draw_text(t_draw_list, secondary,
-		          Vec2{snapped_to_pixel(preview.center().x - text_width(secondary, name) * 0.5f), preview.bottom() + K_TILE_LABEL_GAP + secondary.ascent}, name,
-		          faded(label, alpha));
+		const std::string_view name   = K_BACKGROUND_LABELS[style].name;
+		const Color            label  = hovered ? g_theme.text : mix(g_theme.text_dim, g_theme.text, ring);
+		const float            name_x = snapped_to_pixel(preview.center().x - text_width(secondary, name) * 0.5f);
+		const Vec2             name_baseline{name_x, preview.bottom() + K_TILE_LABEL_GAP + secondary.ascent};
+
+		draw_text(t_draw_list, secondary, name_baseline, name, faded(label, alpha));
 	}
 }
 
-// The segments slide their highlight between options, so the eased selection falls between two of them while it moves.
 auto SettingsPanel::draw_choice(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, ChoiceKind t_choice, u8 t_alpha) const -> void
 {
 	const ChoiceSpec& spec = K_CHOICES[t_choice];
@@ -2288,13 +2278,14 @@ auto SettingsPanel::draw_choice(DrawList* t_draw_list, const Layout& t_layout, c
 	draw_inset_control(t_draw_list, choice, g_theme.separator, t_alpha);
 	t_draw_list->add_bordered_rect(thumb, rounded(K_CONTROL_RADIUS - K_SEGMENT_INSET), faded(g_theme.popup, t_alpha), faded(g_theme.separator, t_alpha), 1.0f);
 
-	for (u32 i = 0; i < labels.size(); i += 1) {
+	for (const u32 i : std::views::iota(0u, labels.size())) {
 		const Rect  segment   = choice_segment(choice, labels, i);
 		const float closeness = std::max(0.0f, 1.0f - std::fabs(static_cast<float>(i) - selected));
 		const bool  hovered   = pointer_live && segment.contains(m_mouse);
 		const Color idle      = hovered ? mix(g_theme.text_dim, g_theme.text, K_HOVERED_TAB_BRIGHTENING) : g_theme.text_dim;
+		const Color label     = faded(mix(idle, g_theme.text, closeness), t_alpha);
 
-		draw_text_centered(t_draw_list, body, segment, labels[i], faded(mix(idle, g_theme.text, closeness), t_alpha));
+		draw_text_centered(t_draw_list, body, segment, labels[i], label);
 	}
 }
 
@@ -2344,7 +2335,9 @@ auto SettingsPanel::draw_cards(DrawList* t_draw_list, const Layout& t_layout, co
 	for (const Rect& card : t_rows.cards) {
 		if (!is_on_screen(t_layout, card)) continue;
 
-		t_draw_list->add_rounded_rect(card, rounded(K_CARD_RADIUS), faded(controls::glass_highlight(K_CARD_WASH), t_alpha));
+		const Color wash = faded(controls::glass_highlight(K_CARD_WASH), t_alpha);
+
+		t_draw_list->add_rounded_rect(card, rounded(K_CARD_RADIUS), wash);
 		t_draw_list->add_rounded_outline(card, rounded(K_CARD_RADIUS), 1.0f, faded(g_theme.separator, t_alpha));
 	}
 
@@ -2359,7 +2352,8 @@ auto SettingsPanel::draw_cards(DrawList* t_draw_list, const Layout& t_layout, co
 
 		if (first || spec.row == &Rows::glass_tint || !is_on_screen(t_layout, row)) continue;
 
-		t_draw_list->add_rect(Rect{row.x + K_ROW_INSET_X, row.y, t_rows.row_width - K_ROW_INSET_X * 2.0f, 1.0f}, faded(g_theme.separator, t_alpha));
+		const Rect separator{row.x + K_ROW_INSET_X, row.y, t_rows.row_width - K_ROW_INSET_X * 2.0f, 1.0f};
+		t_draw_list->add_rect(separator, faded(g_theme.separator, t_alpha));
 	}
 }
 
@@ -2371,8 +2365,8 @@ auto SettingsPanel::draw_captions(DrawList* t_draw_list, const Layout& t_layout,
 		const Rect title = t_rows.group_titles[group];
 		if (!is_on_screen(t_layout, title)) continue;
 
-		draw_text(t_draw_list, secondary, Vec2{title.x + K_ROW_INSET_X * 0.5f, title.bottom() - K_GROUP_TITLE_BOTTOM_GAP - secondary.descent},
-		          K_GROUPS[group].title, faded(g_theme.text_faint, t_alpha));
+		const Vec2 title_baseline{title.x + K_ROW_INSET_X * 0.5f, title.bottom() - K_GROUP_TITLE_BOTTOM_GAP - secondary.descent};
+		draw_text(t_draw_list, secondary, title_baseline, K_GROUPS[group].title, faded(g_theme.text_faint, t_alpha));
 	}
 }
 
@@ -2383,7 +2377,7 @@ auto SettingsPanel::draw_no_results(DrawList* t_draw_list, const Layout& t_layou
 
 auto SettingsPanel::draw_toggles(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void
 {
-	for (u32 i = 0; i < K_TOGGLE_COUNT; i += 1) {
+	for (const u32 i : std::views::iota(0u, K_TOGGLE_COUNT)) {
 		const Toggle& toggle = K_TOGGLES[i];
 		const Rect    row    = t_rows.*toggle.row;
 		if (!is_on_screen(t_layout, row)) continue;
@@ -2404,8 +2398,7 @@ auto SettingsPanel::draw_riot_client(DrawList* t_draw_list, const Layout& t_layo
 	const Rect     button      = riot_client_button_rect(row, m_fonts);
 
 	draw_row_label(t_draw_list, m_fonts, row, spec.title, description, label_right_edge(button), t_alpha);
-	controls::draw_button(t_draw_list, m_fonts->body, button, "Browse", controls::ButtonStyle::NEUTRAL, m_settings->accent, true,
-	                      !has_popup_open() && hits(t_layout, row, button, m_mouse), t_alpha);
+	controls::draw_button(t_draw_list, m_fonts->body, button, "Browse", controls::ButtonStyle::NEUTRAL, m_settings->accent, true, !has_popup_open() && hits(t_layout, row, button, m_mouse), t_alpha);
 }
 
 auto SettingsPanel::draw_master_password(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void
@@ -2416,8 +2409,7 @@ auto SettingsPanel::draw_master_password(DrawList* t_draw_list, const Layout& t_
 	const Rect button = master_password_button_rect(row, m_fonts);
 	draw_label(t_draw_list, t_rows, &Rows::master_password, button, t_alpha);
 
-	controls::draw_button(t_draw_list, m_fonts->body, button, "Reset password", controls::ButtonStyle::NEUTRAL, m_settings->accent, true,
-	                      !has_popup_open() && hits(t_layout, row, button, m_mouse), t_alpha);
+	controls::draw_button(t_draw_list, m_fonts->body, button, "Reset password", controls::ButtonStyle::NEUTRAL, m_settings->accent, true, !has_popup_open() && hits(t_layout, row, button, m_mouse), t_alpha);
 }
 
 auto SettingsPanel::draw_reset_buttons(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void
@@ -2428,8 +2420,7 @@ auto SettingsPanel::draw_reset_buttons(DrawList* t_draw_list, const Layout& t_la
 		if (!is_on_screen(t_layout, t_rows.*K_RESETS[setting].row)) continue;
 
 		const Rect button = reset_button(t_rows, setting);
-		draw_reset_button(t_draw_list, m_assets->get(Asset::ICON_RESET), button, m_reset_visible[setting], m_reset_spin[setting],
-		                  pointer_live && button.contains(m_mouse), t_alpha);
+		draw_reset_button(t_draw_list, m_assets->texture(Asset::ICON_RESET), button, m_reset_visible[setting], m_reset_spin[setting], pointer_live && button.contains(m_mouse), t_alpha);
 	}
 }
 

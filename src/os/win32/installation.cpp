@@ -1,11 +1,11 @@
 #include "os/installation.h"
 
 #include <chrono>
-#include <cstdio>
 #include <cstring>
 #include <cwchar>
 #include <filesystem>
 #include <iterator>
+#include <ranges>
 #include <utility>
 
 #include <Windows.h>
@@ -16,6 +16,7 @@
 #include <wrl/client.h>
 
 #include "core/app_identity.h"
+#include "core/str.h"
 #include "os/process.h"
 #include "os/win32/win32.h"
 
@@ -286,11 +287,7 @@ auto apply_options(const std::wstring& t_location, const std::wstring& t_executa
 	RegistryKey key;
 	if (!key.create(K_UNINSTALL_KEY)) return false;
 
-	return key.set(L"DisplayName", std::wstring{os::win32::K_APP_NAME_WIDE}) && key.set(L"DisplayVersion", to_wide(K_APP_VERSION)) &&
-	       key.set(L"DisplayIcon", t_executable + L",0") && key.set(L"Publisher", std::wstring{os::win32::K_APP_NAME_WIDE}) &&
-	       key.set(L"InstallLocation", t_location) && key.set(L"InstallDate", today()) && key.set(L"UninstallString", quoted(t_executable) + L" --uninstall") &&
-	       key.set(L"ModifyPath", quoted(t_executable) + L" --setup") && key.set(L"URLInfoAbout", std::wstring{L"" PULSAR_RELEASE_REPO}) &&
-	       key.set(L"NoRepair", 1) && key.set(L"EstimatedSize", file_kilobytes(t_executable));
+	return key.set(L"DisplayName", std::wstring{os::win32::K_APP_NAME_WIDE}) && key.set(L"DisplayVersion", to_wide(K_APP_VERSION)) && key.set(L"DisplayIcon", t_executable + L",0") && key.set(L"Publisher", std::wstring{os::win32::K_APP_NAME_WIDE}) && key.set(L"InstallLocation", t_location) && key.set(L"InstallDate", today()) && key.set(L"UninstallString", quoted(t_executable) + L" --uninstall") && key.set(L"ModifyPath", quoted(t_executable) + L" --setup") && key.set(L"URLInfoAbout", std::wstring{L"" PULSAR_RELEASE_REPO}) && key.set(L"NoRepair", 1) && key.set(L"EstimatedSize", file_kilobytes(t_executable));
 }
 
 [[nodiscard]] auto copy_error(DWORD t_error) -> std::string
@@ -317,9 +314,8 @@ auto apply_options(const std::wstring& t_location, const std::wstring& t_executa
 	}
 
 	char message[96];
-	std::snprintf(message, sizeof(message), "Pulsar couldn't be copied there (error %lu).", static_cast<unsigned long>(t_error));
 
-	return message;
+	return std::string{format_into(message, "Pulsar couldn't be copied there (error {}).", t_error)};
 }
 
 [[nodiscard]] auto delete_with_retries(const std::wstring& t_path) -> bool
@@ -333,8 +329,7 @@ auto apply_options(const std::wstring& t_location, const std::wstring& t_executa
 	return false;
 }
 
-// A running executable can't delete itself, so a hidden shell finishes the job once this process has exited. The
-// paths travel through environment variables so characters like % or & in a folder name are never parsed by cmd.
+// A running executable can't delete itself, so a hidden shell finishes the job once this process has exited. The paths travel through environment variables so characters like % or & in a folder name are never parsed by cmd.
 auto remove_after_exit(const WideInstalled& t_installed) -> void
 {
 	wchar_t    system[MAX_PATH];

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <ranges>
 
 namespace {
 constexpr u32   K_MAX_SCOPES        = 64;
@@ -42,7 +43,7 @@ Profiler g_profiler;
 
 [[nodiscard]] auto find_or_add_scope(const char* t_name) -> Scope*
 {
-	for (u32 i = 0; i < g_profiler.scope_count; i += 1) {
+	for (const u32 i : std::views::iota(0u, g_profiler.scope_count)) {
 		if (g_profiler.scopes[i].name == t_name) return &g_profiler.scopes[i];
 	}
 
@@ -64,7 +65,7 @@ auto profiler::begin_frame() -> void
 	g_profiler.in_frame          = true;
 	g_profiler.open_count        = 0;
 
-	for (u32 i = 0; i < g_profiler.scope_count; i += 1) {
+	for (const u32 i : std::views::iota(0u, g_profiler.scope_count)) {
 		g_profiler.scopes[i].frame_ticks = 0;
 		g_profiler.scopes[i].frame_calls = 0;
 	}
@@ -77,7 +78,7 @@ auto profiler::end_frame() -> void
 	g_profiler.frame_ms = ticks_to_ms(current_ticks() - g_profiler.frame_start_ticks);
 	g_profiler.in_frame = false;
 
-	for (u32 i = 0; i < g_profiler.scope_count; i += 1) {
+	for (const u32 i : std::views::iota(0u, g_profiler.scope_count)) {
 		Scope*      scope   = &g_profiler.scopes[i];
 		const float last_ms = ticks_to_ms(scope->frame_ticks);
 
@@ -114,7 +115,7 @@ auto profiler::end_scope() -> void
 
 auto profiler::reset() -> void
 {
-	for (u32 i = 0; i < g_profiler.scope_count; i += 1) {
+	for (const u32 i : std::views::iota(0u, g_profiler.scope_count)) {
 		g_profiler.scopes[i].stats.average_ms = 0.0f;
 		g_profiler.scopes[i].stats.peak_ms    = 0.0f;
 	}

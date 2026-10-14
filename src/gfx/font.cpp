@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstring>
 #include <print>
+#include <ranges>
 #include <span>
 #include <unordered_map>
 
@@ -48,8 +49,7 @@ bool                                   g_fallbacks_opened = false;
 
 [[nodiscard]] auto sorts_before_ignoring_case(std::string_view t_a, std::string_view t_b) -> bool
 {
-	return std::ranges::lexicographical_compare(
-		t_a, t_b, [](char t_left, char t_right) { return static_cast<u8>(ascii_lowered(t_left)) < static_cast<u8>(ascii_lowered(t_right)); });
+	return std::ranges::lexicographical_compare(t_a, t_b, [](char t_left, char t_right) { return static_cast<u8>(ascii_lowered(t_left)) < static_cast<u8>(ascii_lowered(t_right)); });
 }
 
 // Font files are mapped rather than read, so the large CJK fallbacks only cost the pages a glyph actually touches.
@@ -208,10 +208,9 @@ auto forget_glyphs(GlyphCache* t_cache) -> void
 
 	t_cache->coverage.resize(static_cast<usize>(width) * height);
 	t_cache->rgba.resize(t_cache->coverage.size() * 4);
-	stbtt_MakeGlyphBitmap(&face->info, t_cache->coverage.data(), static_cast<int>(width), static_cast<int>(height), static_cast<int>(width), scale, scale,
-	                      index);
+	stbtt_MakeGlyphBitmap(&face->info, t_cache->coverage.data(), static_cast<int>(width), static_cast<int>(height), static_cast<int>(width), scale, scale, index);
 
-	for (usize i = 0; i < t_cache->coverage.size(); i += 1) {
+	for (const usize i : std::views::iota(usize{0}, t_cache->coverage.size())) {
 		const float boosted = std::pow(t_cache->coverage[i] / 255.0f, K_COVERAGE_GAMMA) * 255.0f;
 
 		t_cache->rgba[i * 4 + 0] = 255;
@@ -302,7 +301,7 @@ auto Font::glyph(u32 t_codepoint) const -> const Glyph*
 
 auto InstalledFonts::index_of_file(std::string_view t_file) const -> std::optional<u32>
 {
-	for (u32 i = 0; i < files.size(); i += 1) {
+	for (const u32 i : std::views::iota(0u, files.size())) {
 		if (equals_ignoring_case(files[i], t_file)) return i;
 	}
 
@@ -316,8 +315,7 @@ auto installed_fonts() -> InstalledFonts
 
 	std::ranges::stable_sort(entries, [](const os::SystemFont& t_a, const os::SystemFont& t_b) { return sorts_before_ignoring_case(t_a.name, t_b.name); });
 
-	const auto duplicates =
-		std::ranges::unique(entries, [](const os::SystemFont& t_a, const os::SystemFont& t_b) { return equals_ignoring_case(t_a.name, t_b.name); });
+	const auto duplicates = std::ranges::unique(entries, [](const os::SystemFont& t_a, const os::SystemFont& t_b) { return equals_ignoring_case(t_a.name, t_b.name); });
 	entries.erase(duplicates.begin(), duplicates.end());
 
 	InstalledFonts fonts;
@@ -339,16 +337,21 @@ auto Fonts::load(Renderer* t_renderer, std::string_view t_file, float t_body_siz
 	const std::string path = os::system_font_path(t_file);
 	if (path.empty()) return false;
 
+	const auto load = [&](Font* t_font, float t_size_setting) {
+		const float pixel_height = t_size_setting * K_SETTING_TO_PIXEL_SCALE;
+		return t_font->load(t_renderer, path.c_str(), pixel_height, t_dpi_scale);
+	};
+
+	const float title_size   = t_body_size * K_TITLE_SIZE_RATIO;
+	const float caption_size = t_secondary_size * K_CAPTION_SIZE_RATIO;
+
 	Font loaded_title;
 	Font loaded_body;
 	Font loaded_secondary;
 	Font loaded_caption;
-	if (!loaded_title.load(t_renderer, path.c_str(), t_body_size * K_TITLE_SIZE_RATIO * K_SETTING_TO_PIXEL_SCALE, t_dpi_scale) ||
-	    !loaded_body.load(t_renderer, path.c_str(), t_body_size * K_SETTING_TO_PIXEL_SCALE, t_dpi_scale) ||
-	    !loaded_secondary.load(t_renderer, path.c_str(), t_secondary_size * K_SETTING_TO_PIXEL_SCALE, t_dpi_scale) ||
-	    !loaded_caption.load(t_renderer, path.c_str(), t_secondary_size * K_CAPTION_SIZE_RATIO * K_SETTING_TO_PIXEL_SCALE, t_dpi_scale)) {
-		return false;
-	}
+
+	const bool all_loaded = load(&loaded_title, title_size) && load(&loaded_body, t_body_size) && load(&loaded_secondary, t_secondary_size) && load(&loaded_caption, caption_size);
+	if (!all_loaded) return false;
 
 	title     = std::move(loaded_title);
 	body      = std::move(loaded_body);

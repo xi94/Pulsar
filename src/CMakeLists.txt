@@ -23,6 +23,7 @@ add_library (pulsar_portable OBJECT
 
   "render/renderer.cpp"
 
+  "ui/account_list.cpp"
   "ui/account_modal.cpp"
   "ui/account_search.cpp"
   "ui/app_menu.cpp"

@@ -1,5 +1,6 @@
 #include "ui/theme.h"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cmath>
@@ -378,9 +379,7 @@ ThemeFade g_fade{K_DARK, ThemeKind::DARK, 1.0f};
 	const auto  to   = std::bit_cast<ThemeColors>(t_to);
 	ThemeColors blended{};
 
-	for (usize i = 0; i < K_COLORS_PER_THEME; i += 1) {
-		blended[i] = blend(from[i], to[i], t_amount);
-	}
+	std::ranges::transform(from, to, blended.begin(), [t_amount](Color t_a, Color t_b) { return blend(t_a, t_b, t_amount); });
 
 	return std::bit_cast<Theme>(blended);
 }

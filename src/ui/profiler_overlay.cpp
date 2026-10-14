@@ -2,8 +2,9 @@
 
 #ifdef PULSAR_PROFILING
 
-#include <cstdio>
+#include <ranges>
 
+#include "core/str.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
 #include "ui/text.h"
@@ -57,24 +58,26 @@ auto ProfilerOverlay::draw(DrawList* t_draw_list) -> void
 	const float x        = panel.x + K_PADDING;
 	float       baseline = panel.y + K_PADDING + font.ascent;
 
-	char line[64];
-	std::snprintf(line, sizeof(line), "Frame %.2f ms   F1 hide   F2 reset", profiler::frame_ms());
-	draw_text(t_draw_list, font, Vec2{x, baseline}, line, profiler::frame_ms() > K_FRAME_BUDGET_MS ? K_COLOR_OVER_BUDGET : K_COLOR_HEADING);
+	char                   line[64];
+	const std::string_view frame_line  = format_into(line, "Frame {:.2f} ms   F1 hide   F2 reset", profiler::frame_ms());
+	const Color            frame_color = profiler::frame_ms() > K_FRAME_BUDGET_MS ? K_COLOR_OVER_BUDGET : K_COLOR_HEADING;
+	draw_text(t_draw_list, font, Vec2{x, baseline}, frame_line, frame_color);
 
 	baseline += font.line_height();
 	draw_text(t_draw_list, font, Vec2{x, baseline}, "scope                     avg    peak  n", K_COLOR_NAME);
 
-	for (u32 i = 0; i < scope_count; i += 1) {
+	for (const u32 i : std::views::iota(0u, scope_count)) {
 		const profiler::ScopeStats& stats = profiler::scope(i);
 		baseline += font.line_height();
 
-		std::snprintf(line, sizeof(line), "%6.2f  %6.2f  %3u", stats.average_ms, stats.peak_ms, stats.calls);
+		const std::string_view numbers = format_into(line, "{:6.2f}  {:6.2f}  {:3}", stats.average_ms, stats.peak_ms, stats.calls);
 
-		const float numbers_x = x + K_PANEL_WIDTH - K_PADDING * 2.0f - text_width(font, line);
-		const float name_x    = x + stats.depth * K_INDENT_PER_DEPTH;
+		const float numbers_x  = x + K_PANEL_WIDTH - K_PADDING * 2.0f - text_width(font, numbers);
+		const float name_x     = x + stats.depth * K_INDENT_PER_DEPTH;
+		const float name_width = numbers_x - name_x - K_PADDING;
 
-		draw_text_truncated(t_draw_list, font, Vec2{name_x, baseline}, stats.name, numbers_x - name_x - K_PADDING, K_COLOR_NAME);
-		draw_text(t_draw_list, font, Vec2{numbers_x, baseline}, line, K_COLOR_NUMBERS);
+		draw_text_truncated(t_draw_list, font, Vec2{name_x, baseline}, stats.name, name_width, K_COLOR_NAME);
+		draw_text(t_draw_list, font, Vec2{numbers_x, baseline}, numbers, K_COLOR_NUMBERS);
 	}
 }
 

@@ -1,6 +1,7 @@
 #include "os/self_update.h"
 
 #include <optional>
+#include <ranges>
 
 #include "core/version.h"
 #include "os/process.h"

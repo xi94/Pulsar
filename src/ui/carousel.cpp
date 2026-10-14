@@ -2,13 +2,14 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <numbers>
+#include <ranges>
 #include <utility>
 
 #include "core/animation.h"
 #include "core/profiler.h"
 #include "core/settings.h"
+#include "core/str.h"
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
@@ -156,7 +157,7 @@ constexpr u32 K_SWITCHER_ROW_COUNT = static_cast<u32>(std::size(K_SWITCHER_ROWS)
 
 [[nodiscard]] auto row_index_at_stop(i32 t_stop) -> u32
 {
-	for (u32 index = 0; index < K_SWITCHER_ROW_COUNT; index += 1) {
+	for (const u32 index : std::views::iota(0u, K_SWITCHER_ROW_COUNT)) {
 		if (t_stop >= K_SWITCHER_ROWS[index].first_stop && t_stop <= K_SWITCHER_ROWS[index].last_stop) return index;
 	}
 
@@ -216,8 +217,7 @@ constexpr u32 K_SWITCHER_ROW_COUNT = static_cast<u32>(std::size(K_SWITCHER_ROWS)
 {
 	const float t = zoom_within(t_zoom_percent, K_GRID_FIRST_STOP, K_GRID_LAST_STOP);
 
-	return Vec2{(K_GRID_CARD_MIN_SIZE.x + (K_GRID_CARD_MAX_SIZE.x - K_GRID_CARD_MIN_SIZE.x) * t) * t_view_scale,
-	            (K_GRID_CARD_MIN_SIZE.y + (K_GRID_CARD_MAX_SIZE.y - K_GRID_CARD_MIN_SIZE.y) * t) * t_view_scale};
+	return Vec2{(K_GRID_CARD_MIN_SIZE.x + (K_GRID_CARD_MAX_SIZE.x - K_GRID_CARD_MIN_SIZE.x) * t) * t_view_scale, (K_GRID_CARD_MIN_SIZE.y + (K_GRID_CARD_MAX_SIZE.y - K_GRID_CARD_MIN_SIZE.y) * t) * t_view_scale};
 }
 
 [[nodiscard]] auto icon_art_size(float t_zoom_percent, float t_view_scale) -> float
@@ -249,33 +249,34 @@ constexpr u32 K_SWITCHER_ROW_COUNT = static_cast<u32>(std::size(K_SWITCHER_ROWS)
 	return K_CARD_CORNER_RADIUS;
 }
 
-auto draw_centered_label(DrawList*        t_draw_list,
-                         const Font&      t_font,
-                         float            t_center_x,
-                         float            t_baseline,
-                         std::string_view t_text,
-                         float            t_max_width,
-                         Color            t_color) -> void
+[[nodiscard]] auto lifted_radius(ViewMode t_mode) -> float
 {
-	const float width = std::min(text_width(t_font, t_text), t_max_width);
+	switch (t_mode) {
+		using enum ViewMode;
 
-	draw_text_truncated(t_draw_list, t_font, Vec2{snapped_to_pixel(t_center_x - width * 0.5f), t_baseline}, t_text, t_max_width, t_color);
-}
+		case LIBRARY: {
+			return K_SIDEBAR_ROW_RADIUS;
+		}
 
-[[nodiscard]] auto visible_account_count(const Library& t_library, u32 t_game) -> u32
-{
-	const auto target = static_cast<u16>(1u << t_game);
-	u32        count  = 0;
+		case ICONS: {
+			return K_ICON_TILE_RADIUS;
+		}
 
-	for (u32 game = 0; game < t_library.game_count; game += 1) {
-		for (u32 i = 0; i < t_library.games[game].account_count; i += 1) {
-			if ((t_library.games[game].accounts[i].visible_games(game) & target) != 0) {
-				count += 1;
-			}
+		case CAROUSEL:
+		case GRID: {
+			break;
 		}
 	}
 
-	return count;
+	return K_CARD_CORNER_RADIUS;
+}
+
+auto draw_centered_label(DrawList* t_draw_list, const Font& t_font, float t_center_x, float t_baseline, std::string_view t_text, float t_max_width, Color t_color) -> void
+{
+	const float width = std::min(text_width(t_font, t_text), t_max_width);
+	const Vec2  baseline{snapped_to_pixel(t_center_x - width * 0.5f), t_baseline};
+
+	draw_text_truncated(t_draw_list, t_font, baseline, t_text, t_max_width, t_color);
 }
 
 [[nodiscard]] auto grid_columns(float t_width, float t_zoom_percent, float t_view_scale) -> u32
@@ -304,7 +305,7 @@ auto draw_centered_label(DrawList*        t_draw_list,
 	float       covered        = 0.0f;
 	float       previous_width = K_CARD_WIDTH * card_scale(0.0f);
 
-	for (i32 i = 1; i <= INTEGRATION_STEPS; i += 1) {
+	for (const i32 i : std::views::iota(1, INTEGRATION_STEPS + 1)) {
 		const float width = K_CARD_WIDTH * card_scale(step * i);
 		covered += (previous_width + width) * 0.5f * step;
 		previous_width = width;
@@ -334,14 +335,14 @@ struct CardLook {
 	const Color to    = t_to.border_thickness > 0.0f ? t_to.border : with_alpha(t_from.border, 0);
 	const auto  blend = [t_amount](float t_start, float t_end) { return t_start + (t_end - t_start) * t_amount; };
 
-	return CardLook{with_alpha(mix(from, to, t_amount), static_cast<u8>(blend(from.a, to.a))), blend(t_from.border_thickness, t_to.border_thickness),
-	                blend(t_from.glow_size, t_to.glow_size), static_cast<u8>(blend(t_from.glow_alpha, t_to.glow_alpha))};
+	return CardLook{with_alpha(mix(from, to, t_amount), static_cast<u8>(blend(from.a, to.a))), blend(t_from.border_thickness, t_to.border_thickness), blend(t_from.glow_size, t_to.glow_size), static_cast<u8>(blend(t_from.glow_alpha, t_to.glow_alpha))};
 }
 
 auto draw_framed_art(DrawList* t_draw_list, Rect t_rect, const Game& t_game, const CardLook& t_look, float t_radius, float t_icon_share, u8 t_alpha) -> void
 {
 	if (t_look.glow_size > 0.0f && t_look.glow_alpha > 0) {
-		t_draw_list->add_banner_glow(t_rect, t_radius, t_look.glow_size, faded(faded(t_game.accent, t_look.glow_alpha), t_alpha));
+		const Color glow = faded(faded(t_game.accent, t_look.glow_alpha), t_alpha);
+		t_draw_list->add_banner_glow(t_rect, t_radius, t_look.glow_size, glow);
 	}
 
 	if (t_look.border_thickness > 0.0f) {
@@ -349,17 +350,20 @@ auto draw_framed_art(DrawList* t_draw_list, Rect t_rect, const Game& t_game, con
 	}
 
 	const Rect        art        = t_rect.inset(t_look.border_thickness);
+	const float       art_aspect = art.w / art.h;
 	const CornerRadii radii      = rounded(std::max(0.0f, t_radius - t_look.border_thickness));
 	const float       icon_share = t_game.icon != nullptr ? t_icon_share : 0.0f;
 
 	if (t_game.banner != nullptr && icon_share < 1.0f) {
-		t_draw_list->add_image(art, t_game.banner, faded(K_COLOR_IMAGE, static_cast<u8>(t_alpha * (1.0f - icon_share))), radii,
-		                       cover_uv(art.w / art.h, t_game.banner->aspect()));
+		const Color  tint = faded(K_COLOR_IMAGE, static_cast<u8>(t_alpha * (1.0f - icon_share)));
+		const UvRect crop = cover_uv(art_aspect, t_game.banner->aspect());
+		t_draw_list->add_image(art, t_game.banner, tint, radii, crop);
 	}
 
 	if (icon_share > 0.0f) {
-		t_draw_list->add_image(art, t_game.icon, faded(K_COLOR_IMAGE, static_cast<u8>(t_alpha * icon_share)), radii,
-		                       cover_uv(art.w / art.h, t_game.icon->aspect()));
+		const Color  tint = faded(K_COLOR_IMAGE, static_cast<u8>(t_alpha * icon_share));
+		const UvRect crop = cover_uv(art_aspect, t_game.icon->aspect());
+		t_draw_list->add_image(art, t_game.icon, tint, radii, crop);
 	}
 }
 
@@ -381,8 +385,7 @@ auto draw_framed_art(DrawList* t_draw_list, Rect t_rect, const Game& t_game, con
 	const float left  = size_slider_icon_rect(t_slider, false).right() + K_SIZE_SLIDER_ICON_GAP;
 	const float right = size_slider_icon_rect(t_slider, true).x - K_SIZE_SLIDER_ICON_GAP;
 
-	return Rect{left, snapped_to_pixel(size_slider_center_y(t_slider) - K_SIZE_SLIDER_TRACK_HEIGHT * 0.5f), std::max(0.0f, right - left),
-	            K_SIZE_SLIDER_TRACK_HEIGHT};
+	return Rect{left, snapped_to_pixel(size_slider_center_y(t_slider) - K_SIZE_SLIDER_TRACK_HEIGHT * 0.5f), std::max(0.0f, right - left), K_SIZE_SLIDER_TRACK_HEIGHT};
 }
 
 [[nodiscard]] auto size_slider_grab_rect(Rect t_slider) -> Rect
@@ -400,13 +403,7 @@ auto draw_framed_art(DrawList* t_draw_list, Rect t_rect, const Game& t_game, con
 }
 }
 
-Carousel::Carousel(Library*        t_library,
-                   const Settings* t_settings,
-                   const Fonts*    t_fonts,
-                   const Assets*   t_assets,
-                   Toasts*         t_toasts,
-                   LoginSession*   t_session,
-                   CommandQueue*   t_commands)
+Carousel::Carousel(Library* t_library, const Settings* t_settings, const Fonts* t_fonts, const Assets* t_assets, Toasts* t_toasts, LoginSession* t_session, CommandQueue* t_commands)
 	: m_library(t_library)
 	, m_settings(t_settings)
 	, m_fonts(t_fonts)
@@ -414,7 +411,7 @@ Carousel::Carousel(Library*        t_library,
 	, m_commands(t_commands)
 	, m_library_view(t_library, t_settings, t_fonts, t_assets, t_toasts, t_session, t_commands)
 {
-	for (u32 i = 0; i < K_MAX_GAMES; i += 1) {
+	for (const u32 i : std::views::iota(0u, K_MAX_GAMES)) {
 		m_order[i]   = static_cast<u8>(i);
 		m_slot_of[i] = static_cast<u8>(i);
 	}
@@ -449,14 +446,14 @@ auto Carousel::set_order(std::span<const u8> t_order) -> void
 		count += 1;
 	}
 
-	for (u32 game = 0; game < m_library->game_count; game += 1) {
+	for (const u32 game : std::views::iota(0u, m_library->game_count)) {
 		if (used[game]) continue;
 
 		m_order[count] = static_cast<u8>(game);
 		count += 1;
 	}
 
-	for (u32 slot = 0; slot < count; slot += 1) {
+	for (const u32 slot : std::views::iota(0u, count)) {
 		m_slot_of[m_order[slot]] = static_cast<u8>(slot);
 	}
 }
@@ -517,8 +514,7 @@ auto Carousel::overview_slot(u32 t_slot) const -> Rect
 {
 	const u32   count  = std::max<u32>(1, m_library->game_count);
 	const float aspect = K_CARD_WIDTH / K_CARD_HEIGHT;
-	const Rect  area{m_bounds.x + K_OVERVIEW_PADDING, m_bounds.y + K_OVERVIEW_PADDING, m_bounds.w - K_OVERVIEW_PADDING * 2.0f,
-	                 m_bounds.h - K_OVERVIEW_PADDING * 2.0f - K_OVERVIEW_HINT_ROOM * m_reorder_hint};
+	const Rect  area{m_bounds.x + K_OVERVIEW_PADDING, m_bounds.y + K_OVERVIEW_PADDING, m_bounds.w - K_OVERVIEW_PADDING * 2.0f, m_bounds.h - K_OVERVIEW_PADDING * 2.0f - K_OVERVIEW_HINT_ROOM * m_reorder_hint};
 
 	const float by_width  = (area.w - (count - 1) * K_OVERVIEW_GAP) / count;
 	const float width     = std::min({by_width, area.h * aspect, K_CARD_WIDTH * view_scale()});
@@ -581,8 +577,7 @@ auto Carousel::is_library_shown() const -> bool
 auto Carousel::icon_tile_size() const -> Vec2
 {
 	const float art = icon_art_size(m_zoom_percent, view_scale());
-	return Vec2{art + K_ICON_TILE_PADDING_X * 2.0f,
-	            K_ICON_TILE_PADDING_TOP + art + K_ICON_LABEL_GAP + m_fonts->body.line_height() + K_ICON_TILE_PADDING_BOTTOM};
+	return Vec2{art + K_ICON_TILE_PADDING_X * 2.0f, K_ICON_TILE_PADDING_TOP + art + K_ICON_LABEL_GAP + m_fonts->body.line_height() + K_ICON_TILE_PADDING_BOTTOM};
 }
 
 auto Carousel::icon_columns() const -> u32
@@ -761,13 +756,7 @@ auto Carousel::art_source(u32 t_game) const -> ArtSource
 	const CardLook  look  = card_look(state.highlighted, state.centered);
 	const Rect      art   = grown(card, t_game);
 
-	return ArtSource{.rect         = art.scaled_from_center(scale),
-	                 .radius       = K_CARD_CORNER_RADIUS,
-	                 .is_icon      = false,
-	                 .border       = look.border_thickness,
-	                 .border_color = look.border,
-	                 .glow         = look.glow_size,
-	                 .glow_color   = faded(game.accent, look.glow_alpha)};
+	return ArtSource{.rect = art.scaled_from_center(scale), .radius = K_CARD_CORNER_RADIUS, .is_icon = false, .border = look.border_thickness, .border_color = look.border, .glow = look.glow_size, .glow_color = faded(game.accent, look.glow_alpha)};
 }
 
 auto Carousel::wrap_content_height() const -> float
@@ -810,7 +799,7 @@ auto Carousel::game_at(Vec2 t_point) const -> std::optional<u32>
 	std::optional<u32> closest;
 	float              closest_distance = 0.0f;
 
-	for (u32 game = 0; game < m_library->game_count; game += 1) {
+	for (const u32 game : std::views::iota(0u, m_library->game_count)) {
 		if (!shown_card(m_mode, game).contains(t_point)) continue;
 
 		const float distance = std::fabs(static_cast<float>(m_slot_of[game]) - m_scroll);
@@ -908,9 +897,9 @@ auto Carousel::set_zoom_stop(i32 t_stop) -> void
 			m_wrap_scroll     = Scrollable{};
 
 			if (mode == ViewMode::LIBRARY) {
-				m_library_view.restart();
+				m_library_view.show_game(std::nullopt);
 			} else {
-				m_library_view.blur();
+				m_library_view.unfocus();
 			}
 		}
 
@@ -966,7 +955,6 @@ auto Carousel::open_game(u32 t_game) -> void
 	m_commands->push(Command{.type = CommandType::OPEN_GAME, .game = t_game});
 }
 
-// In the library a click picks the game whose accounts fill the pane.
 auto Carousel::choose_game(u32 t_game) -> void
 {
 	m_target_scroll = static_cast<float>(m_slot_of[t_game]);
@@ -976,13 +964,13 @@ auto Carousel::choose_game(u32 t_game) -> void
 auto Carousel::drop_lost_press() -> void
 {
 	m_long_press.game.reset();
-	m_library_view.drop_press();
+	m_library_view.cancel_press();
 
 	if (m_reorder.active) {
 		end_reorder(false);
 	}
 
-	if (m_card_drag.is_pressed()) {
+	if (m_card_drag.m_pressed) {
 		m_card_drag.end();
 		m_target_scroll = clamp_scroll(std::round(m_scroll));
 	}
@@ -1073,14 +1061,14 @@ auto Carousel::move_to_slot(u32 t_game, u32 t_slot) -> void
 
 auto Carousel::capture_centers(Vec2 (&t_centers)[K_MAX_GAMES]) const -> void
 {
-	for (u32 game = 0; game < m_library->game_count; game += 1) {
+	for (const u32 game : std::views::iota(0u, m_library->game_count)) {
 		t_centers[game] = shown_card(m_mode, game).center();
 	}
 }
 
 auto Carousel::restore_centers(const Vec2 (&t_centers)[K_MAX_GAMES]) -> void
 {
-	for (u32 game = 0; game < m_library->game_count; game += 1) {
+	for (const u32 game : std::views::iota(0u, m_library->game_count)) {
 		const Vec2 slot     = slot_rect(m_mode, m_slot_of[game]).center();
 		m_card_offset[game] = Vec2{t_centers[game].x - slot.x, t_centers[game].y - slot.y};
 	}
@@ -1094,7 +1082,7 @@ auto Carousel::retarget_reorder() -> void
 	u32   best          = m_slot_of[game];
 	float best_distance = -1.0f;
 
-	for (u32 slot = 0; slot < m_library->game_count; slot += 1) {
+	for (const u32 slot : std::views::iota(0u, m_library->game_count)) {
 		const Vec2  cell     = slot_rect(m_mode, slot).center();
 		const float dx       = m_mode == ViewMode::LIBRARY ? 0.0f : cell.x - center.x;
 		const float dy       = m_mode == ViewMode::CAROUSEL ? 0.0f : cell.y - center.y;
@@ -1132,8 +1120,7 @@ auto Carousel::update_reorder(float t_delta_seconds) -> void
 	const bool pressing = m_long_press.game.has_value();
 	const bool overview = active && m_mode == ViewMode::CAROUSEL;
 
-	m_overview = animation::ease_toward(m_overview, overview ? 1.0f : 0.0f, K_OVERVIEW_EASE_RATE, t_delta_seconds,
-	                                    animation::K_SETTLED_PIXELS / std::max(m_bounds.w, 1.0f));
+	m_overview = animation::ease_toward(m_overview, overview ? 1.0f : 0.0f, K_OVERVIEW_EASE_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS / std::max(m_bounds.w, 1.0f));
 	if (!pressing) {
 		m_lift = animation::ease_toward(m_lift, active ? 1.0f : 0.0f, K_LIFT_EASE_RATE, t_delta_seconds);
 	}
@@ -1144,10 +1131,14 @@ auto Carousel::update_reorder(float t_delta_seconds) -> void
 		const float above = m_bounds.y + K_REORDER_SCROLL_ZONE - m_mouse.y;
 		const float below = m_mouse.y - (m_bounds.bottom() - K_REORDER_SCROLL_ZONE);
 
+		const ScrollGeometry geometry = wrap_scroll_geometry();
+
 		if (above > 0.0f) {
-			m_wrap_scroll.scroll_by(-K_REORDER_SCROLL_SPEED * std::min(above / K_REORDER_SCROLL_ZONE, 1.0f) * t_delta_seconds, wrap_scroll_geometry());
+			const float speed = K_REORDER_SCROLL_SPEED * std::min(above / K_REORDER_SCROLL_ZONE, 1.0f);
+			m_wrap_scroll.scroll_by(-speed * t_delta_seconds, geometry);
 		} else if (below > 0.0f) {
-			m_wrap_scroll.scroll_by(K_REORDER_SCROLL_SPEED * std::min(below / K_REORDER_SCROLL_ZONE, 1.0f) * t_delta_seconds, wrap_scroll_geometry());
+			const float speed = K_REORDER_SCROLL_SPEED * std::min(below / K_REORDER_SCROLL_ZONE, 1.0f);
+			m_wrap_scroll.scroll_by(speed * t_delta_seconds, geometry);
 		}
 	}
 
@@ -1157,15 +1148,13 @@ auto Carousel::update_reorder(float t_delta_seconds) -> void
 
 	bool settled = true;
 
-	for (u32 game = 0; game < m_library->game_count; game += 1) {
+	for (const u32 game : std::views::iota(0u, m_library->game_count)) {
 		Vec2* offset   = &m_card_offset[game];
 		Vec2* velocity = &m_card_velocity[game];
 
-		offset->x =
-			animation::spring_toward(offset->x, &velocity->x, 0.0f, K_REORDER_STIFFNESS, K_REORDER_DAMPING_RATIO, t_delta_seconds, animation::K_SETTLED_PIXELS);
-		offset->y =
-			animation::spring_toward(offset->y, &velocity->y, 0.0f, K_REORDER_STIFFNESS, K_REORDER_DAMPING_RATIO, t_delta_seconds, animation::K_SETTLED_PIXELS);
-		settled = settled && offset->x == 0.0f && offset->y == 0.0f;
+		offset->x = animation::spring_toward(offset->x, &velocity->x, 0.0f, K_REORDER_STIFFNESS, K_REORDER_DAMPING_RATIO, t_delta_seconds, animation::K_SETTLED_PIXELS);
+		offset->y = animation::spring_toward(offset->y, &velocity->y, 0.0f, K_REORDER_STIFFNESS, K_REORDER_DAMPING_RATIO, t_delta_seconds, animation::K_SETTLED_PIXELS);
+		settled   = settled && offset->x == 0.0f && offset->y == 0.0f;
 	}
 
 	if (!active && !pressing && m_reorder.game && settled && m_lift == 0.0f) {
@@ -1176,7 +1165,7 @@ auto Carousel::update_reorder(float t_delta_seconds) -> void
 
 auto Carousel::capture_mode_morph() -> void
 {
-	for (u32 game = 0; game < m_library->game_count; game += 1) {
+	for (const u32 game : std::views::iota(0u, m_library->game_count)) {
 		m_morph_from_art[game]   = morph_art(game);
 		m_morph_from_frame[game] = shown_card(m_mode, game);
 	}
@@ -1187,7 +1176,7 @@ auto Carousel::smooth_grid_reflow() -> void
 	const u32 columns = wrap_columns();
 
 	if (columns != 0 && m_grid_columns != 0 && columns != m_grid_columns) {
-		for (u32 game = 0; game < m_library->game_count; game += 1) {
+		for (const u32 game : std::views::iota(0u, m_library->game_count)) {
 			if (m_reorder.active && game == m_reorder.game) continue;
 
 			const Vec2 slot     = slot_rect(m_mode, m_slot_of[game]).center();
@@ -1228,7 +1217,7 @@ auto Carousel::switcher_pointer_down(Vec2 t_point) -> bool
 		}
 	}
 
-	for (u32 row = 0; row < K_SWITCHER_ROW_COUNT; row += 1) {
+	for (const u32 row : std::views::iota(0u, K_SWITCHER_ROW_COUNT)) {
 		if (row != active && switcher_row_rect(panel, row).contains(t_point)) {
 			set_zoom_stop(K_SWITCHER_ROWS[row].first_stop);
 			return true;
@@ -1240,7 +1229,7 @@ auto Carousel::switcher_pointer_down(Vec2 t_point) -> bool
 
 auto Carousel::switcher_pointer_move(Vec2 t_point) -> bool
 {
-	if (!m_switcher_drag.is_pressed()) return false;
+	if (!m_switcher_drag.m_pressed) return false;
 
 	m_switcher_drag.update(t_point);
 
@@ -1269,7 +1258,7 @@ auto Carousel::on_pointer_down(Vec2 t_point) -> bool
 		return true;
 	}
 
-	m_library_view.blur();
+	m_library_view.unfocus();
 
 	const std::optional<u32> pressed = m_mode_transition <= 0.001f ? game_at(t_point) : std::nullopt;
 
@@ -1314,10 +1303,10 @@ auto Carousel::on_pointer_move(Vec2 t_point) -> bool
 
 	if (m_mode != ViewMode::CAROUSEL) {
 		m_wrap_scroll.on_pointer_move(t_point.y, wrap_scroll_geometry());
-		return m_wrap_scroll.is_dragging();
+		return m_wrap_scroll.m_dragging;
 	}
 
-	if (!m_card_drag.is_pressed()) return false;
+	if (!m_card_drag.m_pressed) return false;
 
 	m_card_drag.update(t_point);
 	m_scroll        = m_drag_start_scroll - m_card_drag.delta_x() / (K_DRAG_PIXELS_PER_CARD * view_scale());
@@ -1342,7 +1331,7 @@ auto Carousel::on_pointer_up(Vec2 t_point) -> bool
 	if (m_library_view.on_pointer_up(t_point)) return true;
 
 	if (m_mode != ViewMode::CAROUSEL) {
-		if (m_wrap_scroll.is_dragging()) {
+		if (m_wrap_scroll.m_dragging) {
 			m_wrap_scroll.on_pointer_up();
 			return true;
 		}
@@ -1367,9 +1356,9 @@ auto Carousel::on_pointer_up(Vec2 t_point) -> bool
 		return true;
 	}
 
-	if (!m_card_drag.is_pressed()) return false;
+	if (!m_card_drag.m_pressed) return false;
 
-	const bool dragged = m_card_drag.has_moved();
+	const bool dragged = m_card_drag.m_moved;
 	m_card_drag.end();
 
 	if (dragged) {
@@ -1410,7 +1399,8 @@ auto Carousel::on_scroll(Vec2 t_point, float t_wheel_delta) -> bool
 
 	if (os::modifiers().shortcut) {
 		if (t_wheel_delta != 0.0f) {
-			set_zoom_stop(m_zoom_stop + (t_wheel_delta > 0.0f ? 1 : -1));
+			const i32 direction = t_wheel_delta > 0.0f ? 1 : -1;
+			set_zoom_stop(m_zoom_stop + direction);
 		}
 	} else if (m_mode == ViewMode::CAROUSEL) {
 		m_target_scroll = clamp_scroll(m_target_scroll + t_wheel_delta);
@@ -1494,8 +1484,8 @@ auto Carousel::cursor() const -> CursorKind
 {
 	if (m_reorder.active) return CursorKind::MOVE;
 
-	const bool dragging_cards = m_mode == ViewMode::CAROUSEL && m_card_drag.is_pressed();
-	if (m_switcher_drag.is_pressed() || dragging_cards || m_wrap_scroll.is_dragging()) return CursorKind::DRAG;
+	const bool dragging_cards = m_mode == ViewMode::CAROUSEL && m_card_drag.m_pressed;
+	if (m_switcher_drag.m_pressed || dragging_cards || m_wrap_scroll.m_dragging) return CursorKind::DRAG;
 
 	if (m_library->game_count > 0 && status_indicator_rect().contains(m_mouse)) return CursorKind::HAND;
 
@@ -1503,15 +1493,14 @@ auto Carousel::cursor() const -> CursorKind
 		const Rect panel  = switcher_panel_rect();
 		const u32  active = row_index_at_stop(m_zoom_stop);
 
-		for (u32 row = 0; row < K_SWITCHER_ROW_COUNT; row += 1) {
+		for (const u32 row : std::views::iota(0u, K_SWITCHER_ROW_COUNT)) {
 			if (row != active && switcher_row_rect(panel, row).contains(m_mouse)) return CursorKind::HAND;
 		}
 
 		if (is_size_slider_open()) {
 			const Rect slider = size_slider_rect(panel);
 
-			if (size_slider_grab_rect(slider).contains(m_mouse) || size_slider_icon_rect(slider, false).inset(-K_SIZE_SLIDER_ICON_REACH).contains(m_mouse) ||
-			    size_slider_icon_rect(slider, true).inset(-K_SIZE_SLIDER_ICON_REACH).contains(m_mouse)) {
+			if (size_slider_grab_rect(slider).contains(m_mouse) || size_slider_icon_rect(slider, false).inset(-K_SIZE_SLIDER_ICON_REACH).contains(m_mouse) || size_slider_icon_rect(slider, true).inset(-K_SIZE_SLIDER_ICON_REACH).contains(m_mouse)) {
 				return CursorKind::HAND;
 			}
 		}
@@ -1534,19 +1523,17 @@ auto Carousel::update(float t_delta_seconds) -> void
 		drop_lost_press();
 	}
 
-	m_scroll          = animation::ease_toward(m_scroll, m_target_scroll, K_SCROLL_EASE_RATE, t_delta_seconds,
-	                                           animation::K_SETTLED_PIXELS / (K_DRAG_PIXELS_PER_CARD * view_scale()));
+	m_scroll          = animation::ease_toward(m_scroll, m_target_scroll, K_SCROLL_EASE_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS / (K_DRAG_PIXELS_PER_CARD * view_scale()));
 	m_mode_transition = animation::step_toward(m_mode_transition, 0.0f, K_MODE_MORPH_SECONDS, t_delta_seconds);
 	m_zoom_percent    = animation::ease_toward(m_zoom_percent, stop_percent(m_zoom_stop), K_ZOOM_EASE_RATE, t_delta_seconds);
 	m_shelf           = animation::ease_toward(m_shelf, is_shelf_stop(m_zoom_stop) ? 1.0f : 0.0f, K_SHELF_EASE_RATE, t_delta_seconds);
-	m_spread          = animation::ease_toward(m_spread, m_zoom_stop == K_SPREAD_STOP ? 1.0f : 0.0f, K_OVERVIEW_EASE_RATE, t_delta_seconds,
-	                                           animation::K_SETTLED_PIXELS / std::max(m_bounds.w, 1.0f));
+	m_spread          = animation::ease_toward(m_spread, m_zoom_stop == K_SPREAD_STOP ? 1.0f : 0.0f, K_OVERVIEW_EASE_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS / std::max(m_bounds.w, 1.0f));
 	m_wrap_scroll.update(t_delta_seconds);
 	smooth_grid_reflow();
 
 	const std::optional<u32> hovered_card = m_mode != ViewMode::LIBRARY && !m_reorder.active ? game_at(m_mouse) : std::nullopt;
 
-	for (u32 game = 0; game < m_library->game_count; game += 1) {
+	for (const u32 game : std::views::iota(0u, m_library->game_count)) {
 		const bool raised  = game == hovered_card || is_focus_shown(game);
 		m_card_hover[game] = animation::ease_toward(m_card_hover[game], raised ? 1.0f : 0.0f, K_HOVER_EASE_RATE, t_delta_seconds);
 	}
@@ -1564,14 +1551,12 @@ auto Carousel::update(float t_delta_seconds) -> void
 	const float switcher_target = m_switcher_hold_seconds > 0.0f ? 1.0f : 0.0f;
 	m_switcher_shown            = animation::ease_toward(m_switcher_shown, switcher_target, K_SWITCHER_EASE_RATE, t_delta_seconds);
 
-	const bool fold_open = is_switcher_shown() && has_sizes(row_at_stop(m_zoom_stop)) &&
-	                       (m_switcher_drag.is_pressed() || switcher_active_pill(switcher_panel_rect()).contains(m_mouse));
-	m_size_slider_fold   = animation::ease_toward(m_size_slider_fold, fold_open ? 1.0f : 0.0f, K_SIZE_SLIDER_FOLD_RATE, t_delta_seconds,
-	                                              animation::K_SETTLED_PIXELS / K_SIZE_SLIDER_HEIGHT);
+	const bool fold_open = is_switcher_shown() && has_sizes(row_at_stop(m_zoom_stop)) && (m_switcher_drag.m_pressed || switcher_active_pill(switcher_panel_rect()).contains(m_mouse));
+	m_size_slider_fold   = animation::ease_toward(m_size_slider_fold, fold_open ? 1.0f : 0.0f, K_SIZE_SLIDER_FOLD_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS / K_SIZE_SLIDER_HEIGHT);
 
 	update_reorder(t_delta_seconds);
 
-	for (u32 game = 0; game < m_library->game_count; game += 1) {
+	for (const u32 game : std::views::iota(0u, m_library->game_count)) {
 		m_last_centers[game] = shown_card(m_mode, game).center();
 	}
 
@@ -1579,8 +1564,8 @@ auto Carousel::update(float t_delta_seconds) -> void
 		const bool settled       = m_mode == ViewMode::LIBRARY && m_mode_transition <= 0.0f && !m_reorder.active;
 		const bool over_switcher = is_switcher_shown() && switcher_panel_rect().contains(m_mouse);
 
-		m_library_view.set_bounds(library_pane());
-		m_library_view.set_mouse(settled && !over_switcher ? m_mouse : Vec2{-1.0f, -1.0f});
+		m_library_view.m_bounds = library_pane();
+		m_library_view.m_mouse  = settled && !over_switcher ? m_mouse : Vec2{-1.0f, -1.0f};
 		m_library_view.show_game(selected_game());
 		m_library_view.update(t_delta_seconds);
 	}
@@ -1593,7 +1578,7 @@ auto Carousel::draw_card(DrawList* t_draw_list, Rect t_rect, const Game& t_game,
 
 auto Carousel::draw_carousel_mode(DrawList* t_draw_list) const -> void
 {
-	for (u32 game = 0; game < m_library->game_count; game += 1) {
+	for (const u32 game : std::views::iota(0u, m_library->game_count)) {
 		if (game == m_detached_game || is_raised(ViewMode::CAROUSEL, game)) continue;
 
 		const Rect card = shown_card(ViewMode::CAROUSEL, game);
@@ -1625,12 +1610,14 @@ auto Carousel::draw_carousel_edges(DrawList* t_draw_list, u8 t_alpha) const -> v
 
 	if (left > 0.0f) {
 		const Color opaque = faded(g_theme.window, static_cast<u8>(fade * left));
-		fade_cards(t_draw_list, Rect{m_bounds.x, m_bounds.y, K_EDGE_FADE_WIDTH, m_bounds.h}, opaque, clear, opaque, clear);
+		const Rect  band{m_bounds.x, m_bounds.y, K_EDGE_FADE_WIDTH, m_bounds.h};
+		fade_cards(t_draw_list, band, opaque, clear, opaque, clear);
 	}
 
 	if (right > 0.0f) {
 		const Color opaque = faded(g_theme.window, static_cast<u8>(fade * right));
-		fade_cards(t_draw_list, Rect{m_bounds.right() - K_EDGE_FADE_WIDTH, m_bounds.y, K_EDGE_FADE_WIDTH, m_bounds.h}, clear, opaque, clear, opaque);
+		const Rect  band{m_bounds.right() - K_EDGE_FADE_WIDTH, m_bounds.y, K_EDGE_FADE_WIDTH, m_bounds.h};
+		fade_cards(t_draw_list, band, clear, opaque, clear, opaque);
 	}
 }
 
@@ -1647,7 +1634,7 @@ auto Carousel::fade_cards(DrawList* t_draw_list, Rect t_band, Color t_top_left, 
 {
 	if (t_band.w <= 0.0f || t_band.h <= 0.0f) return;
 
-	for (u32 game = 0; game < m_library->game_count; game += 1) {
+	for (const u32 game : std::views::iota(0u, m_library->game_count)) {
 		const Rect card    = faded_rect(game);
 		const bool touches = card.right() > t_band.x && card.x < t_band.right() && card.bottom() > t_band.y && card.y < t_band.bottom();
 		if (!touches) continue;
@@ -1674,7 +1661,7 @@ auto Carousel::draw_grid_mode(DrawList* t_draw_list) const -> void
 {
 	t_draw_list->push_clip(m_bounds);
 
-	for (u32 game = 0; game < m_library->game_count; game += 1) {
+	for (const u32 game : std::views::iota(0u, m_library->game_count)) {
 		if (game == m_detached_game || is_raised(ViewMode::GRID, game)) continue;
 
 		const Rect card = shown_card(ViewMode::GRID, game);
@@ -1700,21 +1687,23 @@ auto Carousel::draw_sidebar_row_frame(DrawList* t_draw_list, Rect t_row, u32 t_g
 	const bool  selected  = t_game == selected_game();
 
 	if (t_highlighted && !selected) {
-		t_draw_list->add_rounded_rect(t_row, rounded(K_SIDEBAR_ROW_RADIUS), faded(mix(g_theme.surface, g_theme.row_hover, K_SIDEBAR_HOVER_FILL), t_alpha));
+		const Color hover = faded(mix(g_theme.surface, g_theme.row_hover, K_SIDEBAR_HOVER_FILL), t_alpha);
+		t_draw_list->add_rounded_rect(t_row, rounded(K_SIDEBAR_ROW_RADIUS), hover);
 	}
 
 	char                   digits[12];
-	const int              written  = std::snprintf(digits, sizeof(digits), "%u", visible_account_count(*m_library, t_game));
-	const std::string_view count    = {digits, static_cast<usize>(std::max(written, 0))};
-	const float            baseline = body.centered_baseline(t_row);
-	const float            count_x  = t_row.right() - K_SIDEBAR_COUNT_INSET - text_width(secondary, count);
-	const float            title_x  = sidebar_icon(t_row).right() + K_SIDEBAR_TEXT_GAP;
-	const Color            title    = selected || t_highlighted ? g_theme.text : g_theme.text_dim;
-	const Color            counted  = selected ? mix(g_theme.text_dim, g_theme.text, K_SIDEBAR_COUNT_LIFT) : g_theme.text_faint;
+	const std::string_view count      = format_into(digits, "{}", m_library->visible_account_count(t_game));
+	const float            baseline   = body.centered_baseline(t_row);
+	const float            count_x    = t_row.right() - K_SIDEBAR_COUNT_INSET - text_width(secondary, count);
+	const float            title_x    = sidebar_icon(t_row).right() + K_SIDEBAR_TEXT_GAP;
+	const float            title_room = std::max(0.0f, count_x - K_SIDEBAR_TEXT_GAP - title_x);
+	const Color            title      = selected || t_highlighted ? g_theme.text : g_theme.text_dim;
+	const Color            counted    = selected ? mix(g_theme.text_dim, g_theme.text, K_SIDEBAR_COUNT_LIFT) : g_theme.text_faint;
+	const Vec2             title_baseline{title_x, baseline};
+	const Vec2             count_baseline{count_x, baseline};
 
-	draw_text_truncated(t_draw_list, body, Vec2{title_x, baseline}, m_library->games[t_game].short_title,
-	                    std::max(0.0f, count_x - K_SIDEBAR_TEXT_GAP - title_x), faded(title, t_alpha));
-	draw_text(t_draw_list, secondary, Vec2{count_x, baseline}, count, faded(counted, t_alpha));
+	draw_text_truncated(t_draw_list, body, title_baseline, m_library->games[t_game].short_title, title_room, faded(title, t_alpha));
+	draw_text(t_draw_list, secondary, count_baseline, count, faded(counted, t_alpha));
 }
 
 auto Carousel::draw_sidebar_row(DrawList* t_draw_list, Rect t_row, u32 t_game, bool t_highlighted, u8 t_alpha) const -> void
@@ -1730,9 +1719,11 @@ auto Carousel::draw_sidebar_row(DrawList* t_draw_list, Rect t_row, u32 t_game, b
 auto Carousel::draw_sidebar_chrome(DrawList* t_draw_list, Rect t_selection, u8 t_alpha) const -> void
 {
 	const Rect column = sidebar_column();
+	const Rect fill{column.x, column.y, column.w - 1.0f, column.h};
+	const Rect edge{column.right() - 1.0f, column.y, 1.0f, column.h};
 
-	t_draw_list->add_rect(Rect{column.x, column.y, column.w - 1.0f, column.h}, faded(g_theme.surface, t_alpha));
-	t_draw_list->add_rect(Rect{column.right() - 1.0f, column.y, 1.0f, column.h}, faded(g_theme.separator, t_alpha));
+	t_draw_list->add_rect(fill, faded(g_theme.surface, t_alpha));
+	t_draw_list->add_rect(edge, faded(g_theme.separator, t_alpha));
 
 	if (m_library->game_count == 0) return;
 
@@ -1783,7 +1774,7 @@ auto Carousel::draw_icons_mode(DrawList* t_draw_list) const -> void
 {
 	t_draw_list->push_clip(m_bounds);
 
-	for (u32 game = 0; game < m_library->game_count; game += 1) {
+	for (const u32 game : std::views::iota(0u, m_library->game_count)) {
 		if (is_raised(ViewMode::ICONS, game)) continue;
 
 		const Rect tile = shown_card(ViewMode::ICONS, game);
@@ -1808,7 +1799,7 @@ auto Carousel::draw_library_mode(DrawList* t_draw_list) const -> void
 
 	t_draw_list->push_clip(sidebar_column());
 
-	for (u32 game = 0; game < m_library->game_count; game += 1) {
+	for (const u32 game : std::views::iota(0u, m_library->game_count)) {
 		if (is_raised(ViewMode::LIBRARY, game)) continue;
 
 		const Rect row = shown_card(ViewMode::LIBRARY, game);
@@ -1832,7 +1823,7 @@ auto Carousel::draw_raised(DrawList* t_draw_list, ViewMode t_mode) const -> void
 
 	const u32   game   = *m_reorder.game;
 	const bool  framed = uses_frame(t_mode);
-	const float radius = t_mode == ViewMode::LIBRARY ? K_SIDEBAR_ROW_RADIUS : t_mode == ViewMode::ICONS ? K_ICON_TILE_RADIUS : K_CARD_CORNER_RADIUS;
+	const float radius = lifted_radius(t_mode);
 
 	if (!framed && m_reorder.game == m_detached_game) return;
 
@@ -1852,7 +1843,8 @@ auto Carousel::draw_raised(DrawList* t_draw_list, ViewMode t_mode) const -> void
 	controls::draw_panel_shadow(t_draw_list, lifted, radius, m_lift);
 
 	if (t_mode == ViewMode::LIBRARY) {
-		t_draw_list->add_rounded_rect(lifted, rounded(radius), faded(g_theme.popup, to_alpha(std::min(m_lift, 1.0f))));
+		const Color backing = faded(g_theme.popup, to_alpha(std::min(m_lift, 1.0f)));
+		t_draw_list->add_rounded_rect(lifted, rounded(radius), backing);
 		draw_sidebar_row(t_draw_list, lifted, game, state.highlighted, 255);
 	} else if (t_mode == ViewMode::ICONS) {
 		draw_icon_tile(t_draw_list, lifted, game, state.highlighted, 255);
@@ -1879,15 +1871,14 @@ auto Carousel::draw_reorder_hint(DrawList* t_draw_list) const -> void
 	controls::draw_popup_shadow(t_draw_list, pill, height * 0.5f, m_reorder_hint);
 	controls::draw_glass(t_draw_list, pill, rounded(height * 0.5f), controls::GlassSurface::SOFT, alpha);
 
-	float x = pill.x + K_HINT_PADDING_X;
-	draw_text(t_draw_list, font, Vec2{x, baseline}, PLACE, faded(g_theme.text, alpha));
-	x += text_width(font, PLACE) + K_HINT_DOT_GAP;
+	const Vec2  place_baseline{pill.x + K_HINT_PADDING_X, baseline};
+	const float dot_x = place_baseline.x + text_width(font, PLACE) + K_HINT_DOT_GAP;
+	const Rect  dot{dot_x, pill.center().y - K_HINT_DOT_SIZE * 0.5f, K_HINT_DOT_SIZE, K_HINT_DOT_SIZE};
+	const Vec2  cancel_baseline{dot.right() + K_HINT_DOT_GAP, baseline};
 
-	t_draw_list->add_rounded_rect(Rect{x, pill.center().y - K_HINT_DOT_SIZE * 0.5f, K_HINT_DOT_SIZE, K_HINT_DOT_SIZE}, rounded(K_HINT_DOT_SIZE * 0.5f),
-	                              faded(g_theme.text_faint, alpha));
-	x += K_HINT_DOT_SIZE + K_HINT_DOT_GAP;
-
-	draw_text(t_draw_list, font, Vec2{x, baseline}, CANCEL, faded(g_theme.text_dim, alpha));
+	draw_text(t_draw_list, font, place_baseline, PLACE, faded(g_theme.text, alpha));
+	t_draw_list->add_rounded_rect(dot, rounded(K_HINT_DOT_SIZE * 0.5f), faded(g_theme.text_faint, alpha));
+	draw_text(t_draw_list, font, cancel_baseline, CANCEL, faded(g_theme.text_dim, alpha));
 }
 
 auto Carousel::draw_mode(DrawList* t_draw_list, ViewMode t_mode) const -> void
@@ -1944,7 +1935,7 @@ auto Carousel::draw_mode_morph(DrawList* t_draw_list) const -> void
 		draw_sidebar_chrome(t_draw_list, library_slot(m_scroll), incoming);
 	}
 
-	for (u32 game = 0; game < m_library->game_count; game += 1) {
+	for (const u32 game : std::views::iota(0u, m_library->game_count)) {
 		if (from_framed) {
 			draw_frame(t_draw_list, m_previous_mode, m_morph_from_frame[game], game, false, outgoing);
 		}
@@ -1955,7 +1946,7 @@ auto Carousel::draw_mode_morph(DrawList* t_draw_list) const -> void
 		}
 	}
 
-	for (u32 game = 0; game < m_library->game_count; game += 1) {
+	for (const u32 game : std::views::iota(0u, m_library->game_count)) {
 		if (game == m_detached_game) continue;
 
 		const Rect     from = m_morph_from_art[game];
@@ -1990,8 +1981,10 @@ auto Carousel::draw_status_bar(DrawList* t_draw_list) const -> void
 
 	const SwitcherRow& current = row_at_stop(m_zoom_stop);
 
-	t_draw_list->add_image(icon, m_assets->get(current.icon), g_theme.text_dim);
-	draw_text(t_draw_list, font, Vec2{icon.right() + K_STATUS_ICON_GAP, font.centered_baseline(indicator) - K_BASELINE_NUDGE}, current.name, g_theme.text_dim);
+	const Vec2 name_baseline{icon.right() + K_STATUS_ICON_GAP, font.centered_baseline(indicator) - K_BASELINE_NUDGE};
+
+	t_draw_list->add_image(icon, m_assets->texture(current.icon), g_theme.text_dim);
+	draw_text(t_draw_list, font, name_baseline, current.name, g_theme.text_dim);
 }
 
 auto Carousel::draw_switcher_rows(DrawList* t_draw_list, Rect t_panel, u8 t_alpha) const -> void
@@ -1999,23 +1992,26 @@ auto Carousel::draw_switcher_rows(DrawList* t_draw_list, Rect t_panel, u8 t_alph
 	const Font& font         = m_fonts->body;
 	const u32   active       = row_index_at_stop(m_zoom_stop);
 	const Color active_fill  = hovered(g_theme.popup);
-	const bool  pointer_live = !m_switcher_drag.is_pressed();
+	const bool  pointer_live = !m_switcher_drag.m_pressed;
 
 	const CornerRadii row_corners = [] {
 		const RoundnessScope corners{controls::K_POPUP_ROUNDNESS};
 		return rounded(K_SWITCHER_ROW_RADIUS);
 	}();
 
-	t_draw_list->add_rounded_rect(switcher_active_pill(t_panel), row_corners, faded(controls::glass_highlight(), t_alpha));
+	const Rect  active_pill = switcher_active_pill(t_panel);
+	const Color highlight   = faded(controls::glass_highlight(), t_alpha);
+	t_draw_list->add_rounded_rect(active_pill, row_corners, highlight);
 
-	for (u32 index = 0; index < K_SWITCHER_ROW_COUNT; index += 1) {
+	for (const u32 index : std::views::iota(0u, K_SWITCHER_ROW_COUNT)) {
 		const SwitcherRow& entry      = K_SWITCHER_ROWS[index];
 		const Rect         row        = switcher_row_rect(t_panel, index);
 		const bool         is_active  = index == active;
 		const bool         is_hovered = !is_active && pointer_live && row.contains(m_mouse);
 
 		if (is_hovered) {
-			t_draw_list->add_rounded_rect(row, row_corners, faded(controls::glass_highlight(K_SWITCHER_HOVER_FILL), t_alpha));
+			const Color hover = faded(controls::glass_highlight(K_SWITCHER_HOVER_FILL), t_alpha);
+			t_draw_list->add_rounded_rect(row, row_corners, hover);
 		}
 
 		Color content = g_theme.text_dim;
@@ -2028,16 +2024,18 @@ auto Carousel::draw_switcher_rows(DrawList* t_draw_list, Rect t_panel, u8 t_alph
 		const float icon_center_y = row.center().y + font.ascent * 0.15f;
 		const Rect  icon{row.x + K_SWITCHER_CONTENT_INSET, icon_center_y - K_SWITCHER_ICON_SIZE * 0.5f, K_SWITCHER_ICON_SIZE, K_SWITCHER_ICON_SIZE};
 
-		t_draw_list->add_image(icon, m_assets->get(entry.icon), faded(content, t_alpha));
-		draw_text(t_draw_list, font, Vec2{icon.right() + K_SWITCHER_ICON_GAP, font.centered_baseline(row)}, entry.name, faded(content, t_alpha));
+		const Vec2 name_baseline{icon.right() + K_SWITCHER_ICON_GAP, font.centered_baseline(row)};
+
+		t_draw_list->add_image(icon, m_assets->texture(entry.icon), faded(content, t_alpha));
+		draw_text(t_draw_list, font, name_baseline, entry.name, faded(content, t_alpha));
 
 		if (!is_active || !has_sizes(entry) || m_size_slider_fold >= 0.999f) continue;
 
 		const auto dots_alpha = static_cast<u8>(static_cast<float>(t_alpha) * (1.0f - m_size_slider_fold));
 		const i32  sizes      = entry.last_stop - entry.first_stop + 1;
-		float      x = row.right() - K_SWITCHER_CONTENT_INSET - (static_cast<float>(sizes) * K_SIZE_DOT_SIZE + static_cast<float>(sizes - 1) * K_SIZE_DOT_GAP);
+		float      x          = row.right() - K_SWITCHER_CONTENT_INSET - (static_cast<float>(sizes) * K_SIZE_DOT_SIZE + static_cast<float>(sizes - 1) * K_SIZE_DOT_GAP);
 
-		for (i32 size = 0; size < sizes; size += 1) {
+		for (const i32 size : std::views::iota(0, sizes)) {
 			const Rect  dot{snapped_to_pixel(x), snapped_to_pixel(icon_center_y - K_SIZE_DOT_SIZE * 0.5f), K_SIZE_DOT_SIZE, K_SIZE_DOT_SIZE};
 			const Color fill = entry.first_stop + size == m_zoom_stop ? m_settings->accent : mix(g_theme.text_faint, active_fill, K_SIZE_DOT_DIMMING);
 
@@ -2054,7 +2052,7 @@ auto Carousel::draw_size_slider(DrawList* t_draw_list, Rect t_panel, u8 t_alpha)
 
 	const Color backdrop     = hovered(g_theme.popup);
 	const auto  alpha        = static_cast<u8>(static_cast<float>(t_alpha) * m_size_slider_fold);
-	const bool  pointer_live = !m_switcher_drag.is_pressed();
+	const bool  pointer_live = !m_switcher_drag.m_pressed;
 
 	Rect       slider = size_slider_rect(t_panel);
 	const Rect shown{slider.x, slider.y, slider.w, size_slider_shown_height()};
@@ -2069,25 +2067,26 @@ auto Carousel::draw_size_slider(DrawList* t_draw_list, Rect t_panel, u8 t_alpha)
 		const Rect icon         = size_slider_icon_rect(slider, large);
 		const bool icon_hovered = pointer_live && icon.inset(-K_SIZE_SLIDER_ICON_REACH).contains(m_mouse);
 
-		t_draw_list->add_image(icon, m_assets->get(Asset::ICON_IMAGE), faded(icon_hovered ? g_theme.text : g_theme.text_faint, alpha));
+		const Color tint = icon_hovered ? g_theme.text : g_theme.text_faint;
+		t_draw_list->add_image(icon, m_assets->texture(Asset::ICON_IMAGE), faded(tint, alpha));
 	}
 
 	t_draw_list->add_rounded_rect(track, rounded(track.h * 0.5f), faded(g_theme.track, alpha));
 
-	for (i32 size = 0; size < sizes; size += 1) {
+	for (const i32 size : std::views::iota(0, sizes)) {
 		const float x = track.x + track.w * static_cast<float>(size) / static_cast<float>(sizes - 1);
-		const Rect  tick{snapped_to_pixel(x - K_SIZE_SLIDER_TICK_SIZE * 0.5f), track.center().y - K_SIZE_SLIDER_TICK_SIZE * 0.5f, K_SIZE_SLIDER_TICK_SIZE,
-		                 K_SIZE_SLIDER_TICK_SIZE};
+		const Rect  tick{snapped_to_pixel(x - K_SIZE_SLIDER_TICK_SIZE * 0.5f), track.center().y - K_SIZE_SLIDER_TICK_SIZE * 0.5f, K_SIZE_SLIDER_TICK_SIZE, K_SIZE_SLIDER_TICK_SIZE};
 
 		t_draw_list->add_rounded_rect(tick, rounded(K_SIZE_SLIDER_TICK_SIZE * 0.5f), faded(g_theme.text_faint, alpha));
 	}
 
 	const float thumb_x = track.x + track.w * zoom_within(m_zoom_percent, entry.first_stop, entry.last_stop);
-	const Rect  thumb{thumb_x - K_SIZE_SLIDER_THUMB_SIZE * 0.5f, track.center().y - K_SIZE_SLIDER_THUMB_SIZE * 0.5f, K_SIZE_SLIDER_THUMB_SIZE,
-	                  K_SIZE_SLIDER_THUMB_SIZE};
+	const Rect  thumb{thumb_x - K_SIZE_SLIDER_THUMB_SIZE * 0.5f, track.center().y - K_SIZE_SLIDER_THUMB_SIZE * 0.5f, K_SIZE_SLIDER_THUMB_SIZE, K_SIZE_SLIDER_THUMB_SIZE};
 
-	t_draw_list->add_rounded_rect(thumb.inset(-K_SIZE_SLIDER_THUMB_RING), rounded(K_SIZE_SLIDER_THUMB_SIZE * 0.5f + K_SIZE_SLIDER_THUMB_RING),
-	                              faded(backdrop, alpha));
+	const Rect  ring        = thumb.inset(-K_SIZE_SLIDER_THUMB_RING);
+	const float ring_radius = K_SIZE_SLIDER_THUMB_SIZE * 0.5f + K_SIZE_SLIDER_THUMB_RING;
+
+	t_draw_list->add_rounded_rect(ring, rounded(ring_radius), faded(backdrop, alpha));
 	t_draw_list->add_rounded_rect(thumb, rounded(K_SIZE_SLIDER_THUMB_SIZE * 0.5f), faded(m_settings->accent, alpha));
 
 	t_draw_list->pop_clip();
@@ -2123,8 +2122,9 @@ auto Carousel::draw(DrawList* t_draw_list) -> void
 	}
 
 	if (is_library_shown()) {
-		const float amount = m_mode_transition > 0.0f ? mode_morph() : 1.0f;
-		m_library_view.draw(t_draw_list, to_alpha(m_mode == ViewMode::LIBRARY ? amount : 1.0f - amount));
+		const float amount  = m_mode_transition > 0.0f ? mode_morph() : 1.0f;
+		const float library = m_mode == ViewMode::LIBRARY ? amount : 1.0f - amount;
+		m_library_view.draw(t_draw_list, to_alpha(library));
 	}
 
 	if (m_reorder.lifted) {

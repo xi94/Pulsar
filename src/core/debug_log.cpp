@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <mutex>
+#include <ranges>
 #include <span>
 #include <string>
 #include <system_error>
@@ -80,9 +81,7 @@ auto write_line(const char* t_category, const char* t_message) -> void
 	const u64           elapsed_ms = now_ms() - g_start_ms;
 
 	char line[1400];
-	std::snprintf(line, sizeof(line), "%02u:%02u:%02u.%03u  +%4llu.%03llus  t%-5llu  %-8s  %s\n", time.hour, time.minute, time.second, time.millisecond,
-	              static_cast<unsigned long long>(elapsed_ms / 1000), static_cast<unsigned long long>(elapsed_ms % 1000),
-	              static_cast<unsigned long long>(os::current_thread_id()), t_category != nullptr ? t_category : "-", t_message);
+	std::snprintf(line, sizeof(line), "%02u:%02u:%02u.%03u  +%4llu.%03llus  t%-5llu  %-8s  %s\n", time.hour, time.minute, time.second, time.millisecond, static_cast<unsigned long long>(elapsed_ms / 1000), static_cast<unsigned long long>(elapsed_ms % 1000), static_cast<unsigned long long>(os::current_thread_id()), t_category != nullptr ? t_category : "-", t_message);
 
 	const std::lock_guard lock(g_write_lock);
 
@@ -161,8 +160,10 @@ auto report_stuck_scopes() -> void
 	const u32   report_count        = collect_stuck_scopes(now_ms(), reports, &past_hang_threshold);
 
 	for (const StuckReport& report : std::span{reports, report_count}) {
-		write_unchecked("watchdog", "STILL RUNNING after %llums on thread t%llu  [%s] %s", static_cast<unsigned long long>(report.age_ms),
-		                static_cast<unsigned long long>(report.thread_id), report.category != nullptr ? report.category : "-", report.label);
+		const auto  age_ms    = static_cast<unsigned long long>(report.age_ms);
+		const auto  thread_id = static_cast<unsigned long long>(report.thread_id);
+		const char* category  = report.category != nullptr ? report.category : "-";
+		write_unchecked("watchdog", "STILL RUNNING after %llums on thread t%llu  [%s] %s", age_ms, thread_id, category, report.label);
 	}
 
 	if (past_hang_threshold) {
@@ -180,8 +181,7 @@ auto report_ui_thread_stall() -> void
 	if (since_ms >= K_UI_STALL_MS) {
 		bool already_reported = false;
 		if (g_ui_stall_reported.compare_exchange_strong(already_reported, true)) {
-			write_unchecked("watchdog", "UI THREAD STALLED - no frame for %llums (the whole app is frozen, not just a worker)",
-			                static_cast<unsigned long long>(since_ms));
+			write_unchecked("watchdog", "UI THREAD STALLED - no frame for %llums (the whole app is frozen, not just a worker)", static_cast<unsigned long long>(since_ms));
 		}
 
 		return;
@@ -316,7 +316,7 @@ debug_log::Scope::Scope(const char* t_category, const char* t_format, ...)
 
 	const std::lock_guard lock(g_scope_lock);
 
-	for (u32 i = 0; i < K_MAX_OPEN_SCOPES; i += 1) {
+	for (const u32 i : std::views::iota(0u, K_MAX_OPEN_SCOPES)) {
 		OpenScope* scope = &g_open_scopes[i];
 		if (scope->in_use) continue;
 

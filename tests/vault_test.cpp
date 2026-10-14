@@ -68,7 +68,7 @@ TEST_CASE("the master password unlocks the vault key it created")
 
 	MasterKey unlocked;
 	REQUIRE(unlocked.unlock("correct horse battery staple", params));
-	CHECK(std::equal(created.data_key(), created.data_key() + crypto::K_KEY_SIZE, unlocked.data_key()));
+	CHECK(std::equal(created.m_data_key, created.m_data_key + crypto::K_KEY_SIZE, unlocked.m_data_key));
 }
 
 TEST_CASE("a wrong master password doesn't unlock the vault")
@@ -79,5 +79,5 @@ TEST_CASE("a wrong master password doesn't unlock the vault")
 
 	MasterKey unlocked;
 	CHECK(!unlocked.unlock("correct horse battery stapler", params));
-	CHECK(!unlocked.is_unlocked());
+	CHECK(!unlocked.m_unlocked);
 }

@@ -6,6 +6,7 @@
 #include <cwchar>
 #include <iterator>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <utility>
 #include <vector>
@@ -157,7 +158,6 @@ constexpr float K_TOAST_SUCCESS_SECONDS = 2.0f;
 constexpr float K_TOAST_ERROR_SECONDS   = 5.0f;
 constexpr float K_TOAST_FADE_SHARE      = 0.45f;
 
-// What the pointer is over on the login toast: one of the failed card's two buttons, or the pill itself, which opens Pulsar.
 enum class ToastHit : u8 {
 	RETRY,
 	OPEN,
@@ -223,7 +223,6 @@ struct TextFormats {
 	ComPtr<IDWriteTextFormat> badge;
 };
 
-// What a layered window is drawn on: a bitmap that Direct2D paints and the window shows with its alpha.
 struct Canvas {
 	HDC                         dc       = nullptr;
 	HBITMAP                     pixels   = nullptr;
@@ -232,9 +231,6 @@ struct Canvas {
 	ComPtr<ID2D1DCRenderTarget> target;
 };
 
-// How far a panel's rows have scrolled, and its scrollbar, which works like the app's own: thin at rest, and wide while the pointer is on it,
-// while it is dragged and for a moment after the wheel turns. thickness goes from 0 for thin to 1 for wide. grab is where on the thumb the
-// pointer holds it while dragging.
 struct Scroll {
 	float                offset    = 0.0f;
 	float                target    = 0.0f;
@@ -246,8 +242,6 @@ struct Scroll {
 	bool                 was_held   = false;
 };
 
-// One panel of the menu: the games with the app's actions under them, or the accounts of the game being pointed at. frame is where it sits in
-// the menu's window, in DIPs, and its rows are laid out from its top left corner.
 struct Panel {
 	std::vector<Row>   rows;
 	D2D1_RECT_F        frame{};
@@ -295,7 +289,6 @@ auto cap_rows(Panel* t_panel) -> void
 	return D2D1::RectF(track.left, top, track.right, top + size);
 }
 
-// Eases the rows toward where they're headed and the scrollbar toward thin or wide, and says whether either is still moving.
 auto step_scroll(Scroll* t_scroll, float t_seconds) -> bool
 {
 	t_scroll->offset += (t_scroll->target - t_scroll->offset) * (1.0f - std::exp(-K_SCROLL_EASE_RATE * t_seconds));
@@ -329,7 +322,6 @@ struct MenuImages {
 	ComPtr<ID2D1Bitmap> game_icons[os::K_TRAY_MAX_GAMES];
 };
 
-// The update pill at the end of the menu's header, as drawn.
 struct UpdateBadge {
 	os::TrayUpdate state = os::TrayUpdate::NONE;
 	float          spin  = 0.0f;
@@ -337,7 +329,6 @@ struct UpdateBadge {
 	float          shown = 1.0f;
 };
 
-// The small window by the tray that follows a login: a slim pill with the login's progress, which grows into a card when it fails.
 struct LoginToast {
 	HWND                                  window = nullptr;
 	Canvas                                canvas;
@@ -414,7 +405,6 @@ struct Painter {
 	return amount * amount * (3.0f - 2.0f * amount);
 }
 
-// Eases out a little past the end and settles back, a small spring for something growing into place.
 [[nodiscard]] auto sprung(float t_amount) -> float
 {
 	const float rest = std::clamp(t_amount, 0.0f, 1.0f) - 1.0f;
@@ -443,9 +433,7 @@ struct Painter {
 
 [[nodiscard]] auto inside_triangle(D2D1_POINT_2F t_point, D2D1_POINT_2F t_a, D2D1_POINT_2F t_b, D2D1_POINT_2F t_c) -> bool
 {
-	const auto side = [&](D2D1_POINT_2F t_from, D2D1_POINT_2F t_to) {
-		return (t_to.x - t_from.x) * (t_point.y - t_from.y) - (t_to.y - t_from.y) * (t_point.x - t_from.x);
-	};
+	const auto side = [&](D2D1_POINT_2F t_from, D2D1_POINT_2F t_to) { return (t_to.x - t_from.x) * (t_point.y - t_from.y) - (t_to.y - t_from.y) * (t_point.x - t_from.x); };
 
 	const float ab = side(t_a, t_b);
 	const float bc = side(t_b, t_c);
@@ -454,8 +442,7 @@ struct Painter {
 	return (ab > 0.0f && bc > 0.0f && ca > 0.0f) || (ab < 0.0f && bc < 0.0f && ca < 0.0f);
 }
 
-// The toast's shape inside its window, which keeps room around it for the shadow. It grows from the pill into the card with its bottom right
-// corner, the one nearest the tray, held still.
+// The toast's shape inside its window, which keeps room around it for the shadow. It grows from the pill into the card with its bottom right corner, the one nearest the tray, held still.
 [[nodiscard]] auto toast_shape(const LoginToast& t_toast, float t_window_width, float t_window_height) -> D2D1_RECT_F
 {
 	const float grow   = smoothed(t_toast.card);
@@ -489,7 +476,6 @@ struct Painter {
 	return t_row.kind == RowKind::GAME || t_row.kind == RowKind::ACCOUNT || t_row.kind == RowKind::ACTION;
 }
 
-// An account logs in from its Login button alone, which sits at the end of its row as far in from the side as from the top.
 [[nodiscard]] auto login_rect(const Row& t_row, float t_panel_width, float t_login_width, float t_scale) -> D2D1_RECT_F
 {
 	const float right = t_panel_width - K_PANEL_PADDING - (K_ROW_HEIGHT - K_LOGIN_HEIGHT) * 0.5f;
@@ -506,7 +492,6 @@ struct Painter {
 	return 0.0f;
 }
 
-// The update control sits at the end of the header, lined up with the accounts' Login buttons.
 [[nodiscard]] auto update_rect(const Row& t_row, float t_panel_width, float t_width, float t_scale) -> D2D1_RECT_F
 {
 	const float right = t_panel_width - K_PANEL_PADDING - (K_ROW_HEIGHT - K_UPDATE_SIZE) * 0.5f;
@@ -571,7 +556,6 @@ struct Painter {
 	return result;
 }
 
-// Scales a PNG to a square of t_pixels with a box filter and rounds its corners, as premultiplied BGRA ready for Direct2D.
 [[nodiscard]] auto icon_pixels(std::span<const u8> t_png, int t_pixels, float t_radius) -> std::vector<u8>
 {
 	int width    = 0;
@@ -592,19 +576,19 @@ struct Painter {
 
 	std::vector<u8> pixels(static_cast<usize>(t_pixels) * t_pixels * 4);
 
-	for (int y = 0; y < t_pixels; y += 1) {
+	for (const int y : std::views::iota(0, t_pixels)) {
 		const int source_y0 = y * height / t_pixels;
 		const int source_y1 = std::max((y + 1) * height / t_pixels, source_y0 + 1);
 
-		for (int x = 0; x < t_pixels; x += 1) {
+		for (const int x : std::views::iota(0, t_pixels)) {
 			const int source_x0 = x * width / t_pixels;
 			const int source_x1 = std::max((x + 1) * width / t_pixels, source_x0 + 1);
 
 			float sum[4]{};
 			float samples = 0.0f;
 
-			for (int sy = source_y0; sy < std::min(source_y1, height); sy += 1) {
-				for (int sx = source_x0; sx < std::min(source_x1, width); sx += 1) {
+			for (const int sy : std::views::iota(source_y0, std::min(source_y1, height))) {
+				for (const int sx : std::views::iota(source_x0, std::min(source_x1, width))) {
 					const u8*   texel = source + (static_cast<usize>(sy) * width + sx) * 4;
 					const float alpha = texel[3] / 255.0f;
 
@@ -643,14 +627,11 @@ struct Painter {
 	const D2D1_BITMAP_PROPERTIES properties = D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), dpi, dpi);
 	ComPtr<ID2D1Bitmap>          bitmap;
 
-	t_target->CreateBitmap(D2D1::SizeU(static_cast<UINT32>(pixels), static_cast<UINT32>(pixels)), data.data(), static_cast<UINT32>(pixels) * 4, properties,
-	                       &bitmap);
+	t_target->CreateBitmap(D2D1::SizeU(static_cast<UINT32>(pixels), static_cast<UINT32>(pixels)), data.data(), static_cast<UINT32>(pixels) * 4, properties, &bitmap);
 
 	return bitmap;
 }
 
-// Readies a layered window's canvas for a frame of t_size pixels. The bitmap and the Direct2D target are made the first time they are needed, and
-// the bitmap again whenever the size changes.
 [[nodiscard]] auto prepare_canvas(Canvas* t_canvas, ID2D1Factory* t_factory, SIZE t_size, float t_scale) -> bool
 {
 	if (t_canvas->dc == nullptr) {
@@ -659,8 +640,7 @@ struct Painter {
 	}
 
 	if (!t_canvas->target) {
-		const D2D1_RENDER_TARGET_PROPERTIES properties =
-			D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+		const D2D1_RENDER_TARGET_PROPERTIES properties = D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
 		if (FAILED(t_factory->CreateDCRenderTarget(&properties, &t_canvas->target))) return false;
 
 		t_canvas->target->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
@@ -741,11 +721,10 @@ auto release_canvas(Canvas* t_canvas) -> void
 	return K_FONT_FAMILIES[std::size(K_FONT_FAMILIES) - 1];
 }
 
-[[nodiscard]] auto make_format(IDWriteFactory* t_writer, const wchar_t* t_family, float t_size, DWRITE_FONT_WEIGHT t_weight, DWRITE_TEXT_ALIGNMENT t_alignment)
-	-> ComPtr<IDWriteTextFormat>
+[[nodiscard]] auto make_format(IDWriteFactory* t_writer, const wchar_t* t_family, float t_size, DWRITE_FONT_WEIGHT t_weight, DWRITE_TEXT_ALIGNMENT t_alignment) -> ComPtr<IDWriteTextFormat>
 {
 	ComPtr<IDWriteTextFormat> format;
-	const HRESULT created = t_writer->CreateTextFormat(t_family, nullptr, t_weight, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, t_size, L"", &format);
+	const HRESULT             created = t_writer->CreateTextFormat(t_family, nullptr, t_weight, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, t_size, L"", &format);
 	if (FAILED(created)) return nullptr;
 
 	format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
@@ -787,18 +766,11 @@ auto release_canvas(Canvas* t_canvas) -> void
 	return std::ceil(metrics.height);
 }
 
-auto draw_label(ID2D1RenderTarget* t_target,
-                IDWriteTextFormat* t_format,
-                std::wstring_view  t_text,
-                float              t_left,
-                float              t_right,
-                const D2D1_RECT_F& t_row,
-                ID2D1Brush*        t_brush) -> void
+auto draw_label(ID2D1RenderTarget* t_target, IDWriteTextFormat* t_format, std::wstring_view t_text, float t_left, float t_right, const D2D1_RECT_F& t_row, ID2D1Brush* t_brush) -> void
 {
 	if (t_format == nullptr || t_text.empty() || t_right <= t_left) return;
 
-	t_target->DrawText(t_text.data(), static_cast<UINT32>(t_text.size()), t_format, D2D1::RectF(t_left, t_row.top, t_right, t_row.bottom), t_brush,
-	                   D2D1_DRAW_TEXT_OPTIONS_CLIP);
+	t_target->DrawText(t_text.data(), static_cast<UINT32>(t_text.size()), t_format, D2D1::RectF(t_left, t_row.top, t_right, t_row.bottom), t_brush, D2D1_DRAW_TEXT_OPTIONS_CLIP);
 }
 
 // Tabler's outline icons, drawn from their 24 unit outlines so they stay sharp at any scale.
@@ -820,21 +792,17 @@ auto draw_glyph(ID2D1RenderTarget* t_target, const Painter& t_painter, Glyph t_g
 	};
 
 	const auto frame = [&](float t_left, float t_top, float t_right, float t_bottom) {
-		const D2D1_ROUNDED_RECT shape{D2D1::RectF(at(t_left, t_top).x, at(t_left, t_top).y, at(t_right, t_bottom).x, at(t_right, t_bottom).y), 2.0f * unit,
-		                              2.0f * unit};
+		const D2D1_ROUNDED_RECT shape{D2D1::RectF(at(t_left, t_top).x, at(t_left, t_top).y, at(t_right, t_bottom).x, at(t_right, t_bottom).y), 2.0f * unit, 2.0f * unit};
 		t_target->DrawRoundedRectangle(shape, t_brush, stroke, t_painter.stroke);
 	};
 
 	const auto dot = [&](float t_x, float t_y, float t_radius) { t_target->FillEllipse(D2D1::Ellipse(at(t_x, t_y), t_radius, t_radius), t_brush); };
 
-	const auto corner = [&](float t_x, float t_y, D2D1_SWEEP_DIRECTION t_direction) {
-		return D2D1::ArcSegment(at(t_x, t_y), D2D1::SizeF(2.0f * unit, 2.0f * unit), 0.0f, t_direction, D2D1_ARC_SIZE_SMALL);
-	};
+	const auto corner = [&](float t_x, float t_y, D2D1_SWEEP_DIRECTION t_direction) { return D2D1::ArcSegment(at(t_x, t_y), D2D1::SizeF(2.0f * unit, 2.0f * unit), 0.0f, t_direction, D2D1_ARC_SIZE_SMALL); };
 
 	switch (t_glyph) {
 		using enum Glyph;
 
-		// A box with an arrow leaving it, the usual sign for opening something.
 		case OPEN: {
 			trace([&](ID2D1GeometrySink* t_sink) {
 				t_sink->BeginFigure(at(12.0f, 6.0f), D2D1_FIGURE_BEGIN_HOLLOW);
@@ -863,8 +831,7 @@ auto draw_glyph(ID2D1RenderTarget* t_target, const Painter& t_painter, Glyph t_g
 			trace([&](ID2D1GeometrySink* t_sink) {
 				t_sink->BeginFigure(at(8.0f, 11.0f), D2D1_FIGURE_BEGIN_HOLLOW);
 				t_sink->AddLine(at(8.0f, 7.0f));
-				t_sink->AddArc(
-					D2D1::ArcSegment(at(16.0f, 7.0f), D2D1::SizeF(4.0f * unit, 4.0f * unit), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+				t_sink->AddArc(D2D1::ArcSegment(at(16.0f, 7.0f), D2D1::SizeF(4.0f * unit, 4.0f * unit), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
 				t_sink->AddLine(at(16.0f, 11.0f));
 				t_sink->EndFigure(D2D1_FIGURE_END_OPEN);
 			});
@@ -874,8 +841,7 @@ auto draw_glyph(ID2D1RenderTarget* t_target, const Painter& t_painter, Glyph t_g
 		case POWER: {
 			trace([&](ID2D1GeometrySink* t_sink) {
 				t_sink->BeginFigure(at(7.0f, 6.0f), D2D1_FIGURE_BEGIN_HOLLOW);
-				t_sink->AddArc(D2D1::ArcSegment(at(17.0f, 6.0f), D2D1::SizeF(7.75f * unit, 7.75f * unit), 0.0f, D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE,
-				                                D2D1_ARC_SIZE_LARGE));
+				t_sink->AddArc(D2D1::ArcSegment(at(17.0f, 6.0f), D2D1::SizeF(7.75f * unit, 7.75f * unit), 0.0f, D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE, D2D1_ARC_SIZE_LARGE));
 				t_sink->EndFigure(D2D1_FIGURE_END_OPEN);
 				t_sink->BeginFigure(at(12.0f, 4.0f), D2D1_FIGURE_BEGIN_HOLLOW);
 				t_sink->AddLine(at(12.0f, 12.0f));
@@ -968,42 +934,43 @@ auto draw_glyph(ID2D1RenderTarget* t_target, const Painter& t_painter, Glyph t_g
 	return D2D1::RectF(left, top, left + t_size, top + t_size);
 }
 
-auto draw_bitmap(ID2D1RenderTarget* t_target, ID2D1Bitmap* t_bitmap, float t_left, float t_middle, float t_scale, float t_opacity = 1.0f) -> void
+auto set_hand_cursor(bool t_hand) -> void
 {
-	const D2D1_SIZE_F size = t_bitmap->GetSize();
-	const float       left = snapped(t_left, t_scale);
-	const float       top  = snapped(t_middle - size.height * 0.5f, t_scale);
-
-	t_target->DrawBitmap(t_bitmap, D2D1::RectF(left, top, left + size.width, top + size.height), t_opacity, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+	const LPCWSTR shape = t_hand ? IDC_HAND : IDC_ARROW;
+	SetCursor(LoadCursorW(nullptr, shape));
 }
 
-// Stacked layers of faint black make a soft shadow without a blur pass.
+auto draw_bitmap(ID2D1RenderTarget* t_target, ID2D1Bitmap* t_bitmap, float t_left, float t_middle, float t_scale, float t_opacity = 1.0f) -> void
+{
+	const D2D1_SIZE_F size        = t_bitmap->GetSize();
+	const float       left        = snapped(t_left, t_scale);
+	const float       top         = snapped(t_middle - size.height * 0.5f, t_scale);
+	const D2D1_RECT_F destination = D2D1::RectF(left, top, left + size.width, top + size.height);
+
+	t_target->DrawBitmap(t_bitmap, destination, t_opacity, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+}
+
 auto draw_soft_shadow(ID2D1RenderTarget* t_target, ID2D1SolidColorBrush* t_brush, const D2D1_RECT_F& t_shape) -> void
 {
-	const float step = (K_SHADOW_MARGIN - K_SHADOW_DROP) / static_cast<float>(K_SHADOW_LAYERS);
-	t_brush->SetColor(D2D1::ColorF(0.0f, 0.0f, 0.0f, K_SHADOW_ALPHA / static_cast<float>(K_SHADOW_LAYERS)));
+	const float step        = (K_SHADOW_MARGIN - K_SHADOW_DROP) / static_cast<float>(K_SHADOW_LAYERS);
+	const float layer_alpha = K_SHADOW_ALPHA / static_cast<float>(K_SHADOW_LAYERS);
+	t_brush->SetColor(D2D1::ColorF(0.0f, 0.0f, 0.0f, layer_alpha));
 
 	for (u32 layer = K_SHADOW_LAYERS; layer > 0; layer -= 1) {
-		const float       spread = static_cast<float>(layer) * step;
-		const D2D1_RECT_F area =
-			D2D1::RectF(t_shape.left - spread, t_shape.top - spread + K_SHADOW_DROP, t_shape.right + spread, t_shape.bottom + spread + K_SHADOW_DROP);
+		const float             spread = static_cast<float>(layer) * step;
+		const float             radius = K_SURFACE_RADIUS + spread;
+		const D2D1_RECT_F       area   = D2D1::RectF(t_shape.left - spread, t_shape.top - spread + K_SHADOW_DROP, t_shape.right + spread, t_shape.bottom + spread + K_SHADOW_DROP);
+		const D2D1_ROUNDED_RECT shadow{area, radius, radius};
 
-		t_target->FillRoundedRectangle(D2D1_ROUNDED_RECT{area, K_SURFACE_RADIUS + spread, K_SURFACE_RADIUS + spread}, t_brush);
+		t_target->FillRoundedRectangle(shadow, t_brush);
 	}
 }
 
-// The surface's body in the theme's colour, with a hairline edge.
-auto paint_body(ID2D1RenderTarget*    t_target,
-                ID2D1SolidColorBrush* t_brush,
-                const os::TrayColors& t_colors,
-                const D2D1_RECT_F&    t_shape,
-                Color                 t_edge,
-                float                 t_scale) -> void
+auto paint_body(ID2D1RenderTarget* t_target, ID2D1SolidColorBrush* t_brush, const os::TrayColors& t_colors, const D2D1_RECT_F& t_shape, Color t_edge, float t_scale) -> void
 {
 	const float             half = 0.5f / t_scale;
 	const D2D1_ROUNDED_RECT body{t_shape, K_SURFACE_RADIUS, K_SURFACE_RADIUS};
-	const D2D1_ROUNDED_RECT edge{D2D1::RectF(t_shape.left + half, t_shape.top + half, t_shape.right - half, t_shape.bottom - half), K_SURFACE_RADIUS,
-	                             K_SURFACE_RADIUS};
+	const D2D1_ROUNDED_RECT edge{D2D1::RectF(t_shape.left + half, t_shape.top + half, t_shape.right - half, t_shape.bottom - half), K_SURFACE_RADIUS, K_SURFACE_RADIUS};
 
 	t_brush->SetColor(to_d2d(t_colors.background));
 	t_target->FillRoundedRectangle(body, t_brush);
@@ -1011,8 +978,7 @@ auto paint_body(ID2D1RenderTarget*    t_target,
 	t_target->DrawRoundedRectangle(edge, t_brush, 1.0f / t_scale);
 }
 
-// While rows are hidden above or below, a shadow falls inward from that edge, darkening over the first K_EDGE_SHADOW_TRAVEL of hidden rows. It
-// fills the inside of the body's outline so it follows the rounded corners.
+// Filling the body's inner outline keeps the shadow inside the rounded corners.
 auto paint_edge_shadows(ID2D1RenderTarget* t_target, const Painter& t_painter, const Panel& t_panel) -> void
 {
 	const float             inset = 1.0f / t_painter.scale;
@@ -1038,11 +1004,15 @@ auto paint_edge_shadows(ID2D1RenderTarget* t_target, const Painter& t_painter, c
 		t_target->FillRoundedRectangle(inside, brush.Get());
 	};
 
-	shade(t_panel.scroll.offset, inset, inset + K_EDGE_SHADOW_HEIGHT);
-	shade(max_scroll(t_panel) - t_panel.scroll.offset, t_panel.height - inset, t_panel.height - inset - K_EDGE_SHADOW_HEIGHT);
+	const float hidden_above = t_panel.scroll.offset;
+	const float hidden_below = max_scroll(t_panel) - t_panel.scroll.offset;
+	const float top_edge     = inset;
+	const float bottom_edge  = t_panel.height - inset;
+
+	shade(hidden_above, top_edge, top_edge + K_EDGE_SHADOW_HEIGHT);
+	shade(hidden_below, bottom_edge, bottom_edge - K_EDGE_SHADOW_HEIGHT);
 }
 
-// The thumb on its track, widening from its middle as the bar wakes up, with the track itself showing only while it is wide.
 auto paint_scrollbar(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1SolidColorBrush* t_brush, const Panel& t_panel) -> void
 {
 	const os::TrayColors& colors = t_painter.colors;
@@ -1053,21 +1023,25 @@ auto paint_scrollbar(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D
 	const D2D1_RECT_F     track  = track_rect(t_panel);
 	const D2D1_RECT_F     thumb  = thumb_rect(t_panel);
 
+	const D2D1_ROUNDED_RECT shown_track{D2D1::RectF(track.left + inset, track.top, track.right - inset, track.bottom), round, round};
+	const D2D1_ROUNDED_RECT shown_thumb{D2D1::RectF(thumb.left + inset, thumb.top, thumb.right - inset, thumb.bottom), round, round};
+
 	Color lit = mix(colors.scroll_thumb, colors.text, K_THUMB_HOVER_STRENGTH);
 	lit.a     = colors.scroll_thumb.a;
 
+	const bool  thumb_lit   = scroll.grab || scroll.over_thumb;
+	const Color thumb_color = thumb_lit ? lit : colors.scroll_thumb;
+
 	if (scroll.thickness > 0.001f) {
 		t_brush->SetColor(to_d2d(colors.separator, scroll.thickness));
-		t_target->FillRoundedRectangle(D2D1_ROUNDED_RECT{D2D1::RectF(track.left + inset, track.top, track.right - inset, track.bottom), round, round}, t_brush);
+		t_target->FillRoundedRectangle(shown_track, t_brush);
 	}
 
-	t_brush->SetColor(to_d2d(scroll.grab || scroll.over_thumb ? lit : colors.scroll_thumb));
-	t_target->FillRoundedRectangle(D2D1_ROUNDED_RECT{D2D1::RectF(thumb.left + inset, thumb.top, thumb.right - inset, thumb.bottom), round, round}, t_brush);
+	t_brush->SetColor(to_d2d(thumb_color));
+	t_target->FillRoundedRectangle(shown_thumb, t_brush);
 }
 
-// The update pill shows only once there is an update to get, or while one installs.
-auto paint_update(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1SolidColorBrush* t_brush, const UpdateBadge& t_badge, const D2D1_RECT_F& t_box)
-	-> void
+auto paint_update(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1SolidColorBrush* t_brush, const UpdateBadge& t_badge, const D2D1_RECT_F& t_box) -> void
 {
 	const os::TrayColors& colors  = t_painter.colors;
 	const TextFormats&    formats = *t_painter.formats;
@@ -1085,8 +1059,10 @@ auto paint_update(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1So
 	D2D1::Matrix3x2F base;
 	t_target->GetTransform(&base);
 
-	const float size = lerp(K_UPDATE_FROM_SCALE, 1.0f, eased_out(t_badge.shown));
-	t_target->SetTransform(D2D1::Matrix3x2F::Scale(size, size, D2D1::Point2F((t_box.left + t_box.right) * 0.5f, middle)) * base);
+	const float            size       = lerp(K_UPDATE_FROM_SCALE, 1.0f, eased_out(t_badge.shown));
+	const D2D1_POINT_2F    box_center = D2D1::Point2F((t_box.left + t_box.right) * 0.5f, middle);
+	const D2D1::Matrix3x2F popping    = D2D1::Matrix3x2F::Scale(size, size, box_center);
+	t_target->SetTransform(popping * base);
 
 	switch (t_badge.state) {
 		using enum os::TrayUpdate;
@@ -1096,7 +1072,8 @@ auto paint_update(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1So
 			const Color             ink   = mix(colors.accent, colors.accent_ink, t_badge.hover);
 			const D2D1_RECT_F       glyph = centered_box(t_box.left + K_UPDATE_PADDING, middle, K_UPDATE_GLYPH_SIZE, scale);
 
-			t_target->FillRoundedRectangle(pill, paint(colors.accent, lerp(K_UPDATE_FILL_ALPHA, 1.0f, t_badge.hover)));
+			const float fill_alpha = lerp(K_UPDATE_FILL_ALPHA, 1.0f, t_badge.hover);
+			t_target->FillRoundedRectangle(pill, paint(colors.accent, fill_alpha));
 			draw_glyph(t_target, t_painter, Glyph::DOWNLOAD, glyph, paint(ink));
 			draw_label(t_target, formats.badge.Get(), K_UPDATE_LABEL, glyph.right + K_UPDATE_GAP, t_box.right, t_box, paint(ink));
 			break;
@@ -1106,12 +1083,15 @@ auto paint_update(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1So
 			const D2D1_ROUNDED_RECT pill{t_box, K_UPDATE_RADIUS, K_UPDATE_RADIUS};
 			const D2D1_RECT_F       glyph = centered_box(t_box.left + K_UPDATE_PADDING, middle, K_UPDATE_GLYPH_SIZE, scale);
 
-			const D2D1_POINT_2F center = D2D1::Point2F((glyph.left + glyph.right) * 0.5f, (glyph.top + glyph.bottom) * 0.5f);
+			const D2D1_POINT_2F center     = D2D1::Point2F((glyph.left + glyph.right) * 0.5f, (glyph.top + glyph.bottom) * 0.5f);
+			const float         fill_alpha = K_CHIP_ALPHA + K_CHIP_ALPHA * t_badge.hover;
 			D2D1::Matrix3x2F    upright;
 			t_target->GetTransform(&upright);
 
-			t_target->FillRoundedRectangle(pill, paint(colors.text, K_CHIP_ALPHA + K_CHIP_ALPHA * t_badge.hover));
-			t_target->SetTransform(D2D1::Matrix3x2F::Rotation(t_badge.spin * 360.0f, center) * upright);
+			const D2D1::Matrix3x2F spinning = D2D1::Matrix3x2F::Rotation(t_badge.spin * 360.0f, center);
+
+			t_target->FillRoundedRectangle(pill, paint(colors.text, fill_alpha));
+			t_target->SetTransform(spinning * upright);
 			draw_glyph(t_target, t_painter, Glyph::REFRESH, glyph, paint(colors.accent));
 			t_target->SetTransform(upright);
 			draw_label(t_target, formats.badge.Get(), K_UPDATING_LABEL, glyph.right + K_UPDATE_GAP, t_box.right, t_box, paint(colors.text_dim));
@@ -1126,14 +1106,7 @@ auto paint_update(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1So
 	t_target->SetTransform(base);
 }
 
-// Draws a panel at its frame, under t_base: its shadow, its body and its rows, and the update control in its header when it has one.
-auto paint_panel(ID2D1RenderTarget*      t_target,
-                 const Painter&          t_painter,
-                 ID2D1SolidColorBrush*   t_brush,
-                 const Panel&            t_panel,
-                 const MenuImages&       t_images,
-                 const UpdateBadge*      t_badge,
-                 const D2D1::Matrix3x2F& t_base) -> void
+auto paint_panel(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1SolidColorBrush* t_brush, const Panel& t_panel, const MenuImages& t_images, const UpdateBadge* t_badge, const D2D1::Matrix3x2F& t_base) -> void
 {
 	const os::TrayColors& colors  = t_painter.colors;
 	const TextFormats&    formats = *t_painter.formats;
@@ -1149,16 +1122,16 @@ auto paint_panel(ID2D1RenderTarget*      t_target,
 	draw_soft_shadow(t_target, t_brush, t_panel.frame);
 	paint_body(t_target, t_brush, colors, t_panel.frame, colors.border, scale);
 
-	const bool scrolls = t_panel.gutter > 0.0f;
+	const bool        scrolls = t_panel.gutter > 0.0f;
+	const D2D1_RECT_F rows_window{t_panel.frame.left, t_panel.frame.top + K_PANEL_PADDING, t_panel.frame.right, t_panel.frame.bottom - K_PANEL_PADDING};
 	if (scrolls) {
-		t_target->PushAxisAlignedClip(
-			D2D1::RectF(t_panel.frame.left, t_panel.frame.top + K_PANEL_PADDING, t_panel.frame.right, t_panel.frame.bottom - K_PANEL_PADDING),
-			D2D1_ANTIALIAS_MODE_ALIASED);
+		t_target->PushAxisAlignedClip(rows_window, D2D1_ANTIALIAS_MODE_ALIASED);
 	}
 
-	t_target->SetTransform(D2D1::Matrix3x2F::Translation(t_panel.frame.left, t_panel.frame.top - t_panel.scroll.offset) * t_base);
+	const D2D1::Matrix3x2F rows_origin = D2D1::Matrix3x2F::Translation(t_panel.frame.left, t_panel.frame.top - t_panel.scroll.offset);
+	t_target->SetTransform(rows_origin * t_base);
 
-	for (usize index = 0; index < t_panel.rows.size(); index += 1) {
+	for (const usize index : std::views::iota(usize{0}, t_panel.rows.size())) {
 		const Row&        row = t_panel.rows[index];
 		const D2D1_RECT_F box{K_PANEL_PADDING, row.top, width - K_PANEL_PADDING - t_panel.gutter, row.top + row.height};
 		const float       left   = box.left + K_ROW_INSET;
@@ -1168,7 +1141,8 @@ auto paint_panel(ID2D1RenderTarget*      t_target,
 
 		if (row.hover > 0.0f && is_selectable(row) && row.kind != RowKind::ACCOUNT) {
 			const D2D1_ROUNDED_RECT pill{D2D1::RectF(box.left, box.top + 1.0f, box.right, box.bottom - 1.0f), K_ROW_RADIUS, K_ROW_RADIUS};
-			t_target->FillRoundedRectangle(pill, paint(row.destructive ? colors.error : colors.accent, K_HOVER_ALPHA * row.hover));
+			const Color             tint = row.destructive ? colors.error : colors.accent;
+			t_target->FillRoundedRectangle(pill, paint(tint, K_HOVER_ALPHA * row.hover));
 		}
 
 		switch (row.kind) {
@@ -1176,7 +1150,8 @@ auto paint_panel(ID2D1RenderTarget*      t_target,
 
 			case BRAND: {
 				if (t_images.logo) {
-					draw_bitmap(t_target, t_images.logo.Get(), left + (K_ICON_SIZE - K_LOGO_SIZE) * 0.5f, middle, scale);
+					const float logo_x = left + (K_ICON_SIZE - K_LOGO_SIZE) * 0.5f;
+					draw_bitmap(t_target, t_images.logo.Get(), logo_x, middle, scale);
 				}
 
 				draw_label(t_target, formats.strong.Get(), row.label, row.label_x, right, box, paint(colors.text));
@@ -1199,7 +1174,9 @@ auto paint_panel(ID2D1RenderTarget*      t_target,
 					t_target->FillRoundedRectangle(D2D1_ROUNDED_RECT{blank, K_ICON_RADIUS, K_ICON_RADIUS}, paint(colors.text_disabled, 0.4f));
 				}
 
-				draw_label(t_target, formats.body.Get(), row.label, row.label_x, (row.detail.empty() ? chevron : count) - K_ICON_GAP, box, paint(colors.text));
+				const float label_end = (row.detail.empty() ? chevron : count) - K_ICON_GAP;
+
+				draw_label(t_target, formats.body.Get(), row.label, row.label_x, label_end, box, paint(colors.text));
 				draw_label(t_target, formats.count.Get(), row.detail, count, chevron - K_COUNT_GAP, box, paint(colors.text_disabled));
 				draw_glyph(t_target, t_painter, Glyph::CHEVRON, centered_box(chevron, middle, K_CHEVRON_SIZE, scale), paint(ink));
 				break;
@@ -1212,8 +1189,9 @@ auto paint_panel(ID2D1RenderTarget*      t_target,
 				const bool        followed   = index + 1 < t_panel.rows.size() && t_panel.rows[index + 1].kind == RowKind::ACCOUNT;
 
 				if (followed) {
-					const float y = snapped(box.bottom - 0.5f, scale);
-					t_target->FillRectangle(D2D1::RectF(left, y, right, y + 1.0f / scale), paint(colors.separator));
+					const float       y = snapped(box.bottom - 0.5f, scale);
+					const D2D1_RECT_F line{left, y, right, y + 1.0f / scale};
+					t_target->FillRectangle(line, paint(colors.separator));
 				}
 
 				if (!row.detail.empty()) {
@@ -1224,8 +1202,8 @@ auto paint_panel(ID2D1RenderTarget*      t_target,
 					draw_label(t_target, formats.chip.Get(), row.detail, chip_left, chip_right, chip.rect, paint(colors.text_dim));
 				}
 
-				draw_label(t_target, formats.body.Get(), row.label, row.label_x, (row.detail.empty() ? login.left : chip_left) - K_CHIP_GAP, box,
-				           paint(colors.text));
+				const float label_end = (row.detail.empty() ? login.left : chip_left) - K_CHIP_GAP;
+				draw_label(t_target, formats.body.Get(), row.label, row.label_x, label_end, box, paint(colors.text));
 
 				if (row.hover > 0.0f) {
 					const float             slide = (1.0f - row.hover) * K_LOGIN_SLIDE;
@@ -1267,8 +1245,9 @@ auto paint_panel(ID2D1RenderTarget*      t_target,
 			}
 
 			case SEPARATOR: {
-				const float y = snapped(middle, scale);
-				t_target->FillRectangle(D2D1::RectF(box.left + K_SEPARATOR_INSET, y, box.right - K_SEPARATOR_INSET, y + 1.0f / scale), paint(colors.separator));
+				const float       y = snapped(middle, scale);
+				const D2D1_RECT_F line{box.left + K_SEPARATOR_INSET, y, box.right - K_SEPARATOR_INSET, y + 1.0f / scale};
+				t_target->FillRectangle(line, paint(colors.separator));
 				break;
 			}
 		}
@@ -1285,16 +1264,7 @@ auto paint_panel(ID2D1RenderTarget*      t_target,
 	t_target->SetTransform(t_base);
 }
 
-// The tray menu: the games, and the accounts of the game being pointed at growing out of that game's row as t_reveal goes from 0 to 1.
-auto paint_menu(ID2D1RenderTarget* t_target,
-                const Painter&     t_painter,
-                const Panel&       t_games,
-                const Panel*       t_accounts,
-                const MenuImages&  t_images,
-                const UpdateBadge& t_badge,
-                float              t_reveal,
-                D2D1_POINT_2F      t_grow_from,
-                ID2D1Layer*        t_layer) -> void
+auto paint_menu(ID2D1RenderTarget* t_target, const Painter& t_painter, const Panel& t_games, const Panel* t_accounts, const MenuImages& t_images, const UpdateBadge& t_badge, float t_reveal, D2D1_POINT_2F t_grow_from, ID2D1Layer* t_layer) -> void
 {
 	ComPtr<ID2D1SolidColorBrush> brush;
 	if (FAILED(t_target->CreateSolidColorBrush(to_d2d(t_painter.colors.text), &brush))) return;
@@ -1310,8 +1280,7 @@ auto paint_menu(ID2D1RenderTarget* t_target,
 		const bool             fading  = opacity < 1.0f && t_layer != nullptr;
 
 		if (fading) {
-			t_target->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), nullptr, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1::IdentityMatrix(), opacity),
-			                    t_layer);
+			t_target->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), nullptr, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1::IdentityMatrix(), opacity), t_layer);
 		}
 
 		paint_panel(t_target, t_painter, brush.Get(), *t_accounts, t_images, nullptr, grow);
@@ -1351,12 +1320,10 @@ auto paint_toast(ID2D1RenderTarget* t_target, const Painter& t_painter, const Lo
 	const float right     = shape.right - K_TOAST_PADDING;
 	const float text_left = left + K_TOAST_LOGO_SIZE + K_TOAST_ICON_GAP;
 
-	// While the pill grows into the card, what's inside stays inside the outline.
 	t_target->PushAxisAlignedClip(shape, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
 
 	if (pill_alpha > 0.0f) {
-		const D2D1_RECT_F line{left, shape.top + K_TOAST_LINE_CENTER - K_TOAST_HEADER_HEIGHT * 0.5f, right,
-		                       shape.top + K_TOAST_LINE_CENTER + K_TOAST_HEADER_HEIGHT * 0.5f};
+		const D2D1_RECT_F line{left, shape.top + K_TOAST_LINE_CENTER - K_TOAST_HEADER_HEIGHT * 0.5f, right, shape.top + K_TOAST_LINE_CENTER + K_TOAST_HEADER_HEIGHT * 0.5f};
 		const bool        succeeded = t_toast.login.state == os::TrayLoginState::SUCCEEDED;
 		const float       middle    = (line.top + line.bottom) * 0.5f;
 
@@ -1368,9 +1335,9 @@ auto paint_toast(ID2D1RenderTarget* t_target, const Painter& t_painter, const Lo
 		draw_label(t_target, formats.toast_text.Get(), status, text_left, right - K_TOAST_COUNT_WIDTH, line, paint(colors.text, pill_alpha));
 
 		if (t_toast.login.step > 0 && t_toast.done < 1.0f) {
-			const std::wstring count = std::to_wstring(t_toast.login.step) + L"/" + std::to_wstring(t_toast.login.step_count);
-			draw_label(t_target, formats.toast_count.Get(), count, right - K_TOAST_COUNT_WIDTH, right, line,
-			           paint(colors.text_disabled, pill_alpha * (1.0f - t_toast.done)));
+			const std::wstring count       = std::to_wstring(t_toast.login.step) + L"/" + std::to_wstring(t_toast.login.step_count);
+			const float        count_alpha = pill_alpha * (1.0f - t_toast.done);
+			draw_label(t_target, formats.toast_count.Get(), count, right - K_TOAST_COUNT_WIDTH, right, line, paint(colors.text_disabled, count_alpha));
 		}
 
 		if (t_toast.done > 0.0f) {
@@ -1401,22 +1368,23 @@ auto paint_toast(ID2D1RenderTarget* t_target, const Painter& t_painter, const Lo
 
 		const D2D1_RECT_F alert = centered_box(card.header.right - K_TOAST_GLYPH_SIZE, middle, K_TOAST_GLYPH_SIZE, scale);
 		draw_glyph(t_target, t_painter, Glyph::ALERT_CIRCLE, alert, paint(colors.error, card_alpha));
-		draw_label(t_target, formats.toast_title.Get(), L"Couldn't log in to " + t_toast.account, text_left, alert.left - K_TOAST_ICON_GAP, card.header,
-		           paint(colors.text, card_alpha));
+		draw_label(t_target, formats.toast_title.Get(), L"Couldn't log in to " + t_toast.account, text_left, alert.left - K_TOAST_ICON_GAP, card.header, paint(colors.text, card_alpha));
 
-		t_target->DrawText(t_toast.status.c_str(), static_cast<UINT32>(t_toast.status.size()), formats.message.Get(), card.message,
-		                   paint(colors.text_dim, card_alpha), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+		t_target->DrawText(t_toast.status.c_str(), static_cast<UINT32>(t_toast.status.size()), formats.message.Get(), card.message, paint(colors.text_dim, card_alpha), D2D1_DRAW_TEXT_OPTIONS_CLIP);
 
 		const D2D1_ROUNDED_RECT retry{card.retry, K_TOAST_BUTTON_RADIUS, K_TOAST_BUTTON_RADIUS};
 		const D2D1_ROUNDED_RECT open{card.open, K_TOAST_BUTTON_RADIUS, K_TOAST_BUTTON_RADIUS};
 
+		const float        retry_lift = K_LOGIN_LIFT * t_toast.hover[ToastHit::RETRY] * card_alpha;
+		const float        open_fill  = (K_TOAST_GHOST_ALPHA + K_TOAST_GHOST_HOVER * t_toast.hover[ToastHit::OPEN]) * card_alpha;
+		const std::wstring open_label = std::wstring{L"Open "} + os::win32::K_APP_NAME_WIDE;
+
 		t_target->FillRoundedRectangle(retry, paint(colors.accent, card_alpha));
-		t_target->FillRoundedRectangle(retry, paint(Color{255, 255, 255, 255}, K_LOGIN_LIFT * t_toast.hover[ToastHit::RETRY] * card_alpha));
+		t_target->FillRoundedRectangle(retry, paint(Color{255, 255, 255, 255}, retry_lift));
 		draw_label(t_target, formats.button.Get(), K_RETRY_LABEL, card.retry.left, card.retry.right, card.retry, paint(colors.accent_ink, card_alpha));
 
-		t_target->FillRoundedRectangle(open, paint(colors.text, (K_TOAST_GHOST_ALPHA + K_TOAST_GHOST_HOVER * t_toast.hover[ToastHit::OPEN]) * card_alpha));
-		draw_label(t_target, formats.button.Get(), std::wstring{L"Open "} + os::win32::K_APP_NAME_WIDE, card.open.left, card.open.right, card.open,
-		           paint(colors.text, card_alpha));
+		t_target->FillRoundedRectangle(open, paint(colors.text, open_fill));
+		draw_label(t_target, formats.button.Get(), open_label, card.open.left, card.open.right, card.open, paint(colors.text, card_alpha));
 	}
 
 	t_target->PopAxisAlignedClip();
@@ -1522,7 +1490,7 @@ struct Tray::Native {
 	auto lay_out(Panel* t_panel, float t_min_width, bool t_icon_column) -> void;
 	[[nodiscard]] auto pixel_size(const Panel& t_panel) const -> SIZE;
 	[[nodiscard]] auto accounts_screen_rect(u32 t_row, SIZE t_size) const -> RECT;
-	[[nodiscard]] auto frame_of(const RECT& t_screen) const -> D2D1_RECT_F;
+	[[nodiscard]] auto to_menu_space(const RECT& t_screen) const -> D2D1_RECT_F;
 	auto open_accounts(u32 t_row) -> void;
 	auto close_accounts() -> void;
 	auto enter_accounts() -> void;
@@ -1736,14 +1704,12 @@ auto Tray::Native::ensure_popup() -> bool
 {
 	if (popup_ready) return true;
 
-	if (FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, factory.GetAddressOf())) ||
-	    FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(writer.GetAddressOf())))) {
+	if (FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, factory.GetAddressOf())) || FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(writer.GetAddressOf())))) {
 		debug_log::write(K_LOG_CATEGORY, "Direct2D or DirectWrite is unavailable, so the tray has no menu");
 		return false;
 	}
 
-	const D2D1_STROKE_STYLE_PROPERTIES round =
-		D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_LINE_JOIN_ROUND);
+	const D2D1_STROKE_STYLE_PROPERTIES round = D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_LINE_JOIN_ROUND);
 	factory->CreateStrokeStyle(round, nullptr, 0, &stroke);
 
 	const wchar_t* family = menu_font_family(writer.Get());
@@ -1793,11 +1759,9 @@ auto Tray::Native::ensure_popup() -> bool
 	return true;
 }
 
-// The menu and the login toast are layered windows Pulsar draws itself, each with its own soft shadow and fades. Neither shows on the taskbar.
 auto Tray::Native::popup_window(DWORD t_extra_style) -> HWND
 {
-	return CreateWindowExW(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | t_extra_style, os::win32::K_TRAY_MENU_CLASS_NAME, L"", WS_POPUP, 0, 0, 1, 1,
-	                       nullptr, nullptr, GetModuleHandleW(nullptr), this);
+	return CreateWindowExW(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | t_extra_style, os::win32::K_TRAY_MENU_CLASS_NAME, L"", WS_POPUP, 0, 0, 1, 1, nullptr, nullptr, GetModuleHandleW(nullptr), this);
 }
 
 auto Tray::Native::painter(float t_scale) const -> Painter
@@ -1917,8 +1881,7 @@ auto Tray::Native::pixel_size(const Panel& t_panel) const -> SIZE
 	return SIZE{static_cast<LONG>(std::ceil(t_panel.width * scale)), static_cast<LONG>(std::ceil(t_panel.height * scale))};
 }
 
-// A game's accounts sit just clear of the games, with their first row level with the game. The shadows fill the gap between the panels, which
-// keeps the pointer on the menu's window as it crosses.
+// A game's accounts sit just clear of the games, with their first row level with the game. The shadows fill the gap between the panels, which keeps the pointer on the menu's window as it crosses.
 auto Tray::Native::accounts_screen_rect(u32 t_row, SIZE t_size) const -> RECT
 {
 	const auto gap    = static_cast<LONG>(std::lround(K_ACCOUNTS_GAP * scale));
@@ -1929,10 +1892,14 @@ auto Tray::Native::accounts_screen_rect(u32 t_row, SIZE t_size) const -> RECT
 	return RECT{x, y, x + t_size.cx, y + t_size.cy};
 }
 
-auto Tray::Native::frame_of(const RECT& t_screen) const -> D2D1_RECT_F
+auto Tray::Native::to_menu_space(const RECT& t_screen) const -> D2D1_RECT_F
 {
-	return D2D1::RectF(static_cast<float>(t_screen.left - menu_origin.x) / scale, static_cast<float>(t_screen.top - menu_origin.y) / scale,
-	                   static_cast<float>(t_screen.right - menu_origin.x) / scale, static_cast<float>(t_screen.bottom - menu_origin.y) / scale);
+	const float left   = static_cast<float>(t_screen.left - menu_origin.x) / scale;
+	const float top    = static_cast<float>(t_screen.top - menu_origin.y) / scale;
+	const float right  = static_cast<float>(t_screen.right - menu_origin.x) / scale;
+	const float bottom = static_cast<float>(t_screen.bottom - menu_origin.y) / scale;
+
+	return D2D1::RectF(left, top, right, bottom);
 }
 
 // The menu is one window holding the games and room for any game's accounts beside them, which open on the side with space for them.
@@ -1986,7 +1953,7 @@ auto Tray::Native::show_menu() -> void
 
 	RECT bounds = games_screen;
 
-	for (u32 row = 0; row < games.rows.size(); row += 1) {
+	for (const u32 row : std::views::iota(0u, games.rows.size())) {
 		const Row& game = games.rows[row];
 		if (game.kind != RowKind::GAME || !game.item || *game.item >= K_TRAY_MAX_GAMES) continue;
 
@@ -2003,7 +1970,7 @@ auto Tray::Native::show_menu() -> void
 
 	menu_origin = POINT{bounds.left, bounds.top};
 	menu_size   = SIZE{bounds.right - bounds.left, bounds.bottom - bounds.top};
-	games.frame = frame_of(games_screen);
+	games.frame = to_menu_space(games_screen);
 	games.hot.reset();
 	open             = true;
 	activated        = false;
@@ -2054,7 +2021,6 @@ auto Tray::Native::choose(const Row& t_row) -> void
 	pending_event = event;
 }
 
-// A game's accounts grow out of its row from nothing, the same whether they open for the first time or take over from another game's.
 auto Tray::Native::open_accounts(u32 t_row) -> void
 {
 	open_row         = t_row;
@@ -2065,12 +2031,12 @@ auto Tray::Native::open_accounts(u32 t_row) -> void
 	build_accounts(&accounts, *games.rows[t_row].item);
 	lay_out(&accounts, K_ACCOUNTS_WIDTH, false);
 	cap_rows(&accounts);
-	accounts.frame = frame_of(accounts_screen_rect(t_row, pixel_size(accounts)));
+	const RECT accounts_screen = accounts_screen_rect(t_row, pixel_size(accounts));
+	accounts.frame             = to_menu_space(accounts_screen);
 
 	start_animation();
 }
 
-// The accounts shrink back into their game's row, and stay drawn until they're gone.
 auto Tray::Native::close_accounts() -> void
 {
 	if (!open_row) return;
@@ -2129,13 +2095,12 @@ auto Tray::Native::aims_at_accounts(D2D1_POINT_2F t_point) const -> bool
 
 	const float edge = accounts_left ? accounts.frame.right : accounts.frame.left;
 
-	return inside_triangle(t_point, last_pointer, D2D1::Point2F(edge, accounts.frame.top - K_AIM_SLOP),
-	                       D2D1::Point2F(edge, accounts.frame.bottom + K_AIM_SLOP));
+	return inside_triangle(t_point, last_pointer, D2D1::Point2F(edge, accounts.frame.top - K_AIM_SLOP), D2D1::Point2F(edge, accounts.frame.bottom + K_AIM_SLOP));
 }
 
 auto Tray::Native::row_at(const Panel& t_panel, float t_y) const -> std::optional<u32>
 {
-	for (u32 i = 0; i < t_panel.rows.size(); i += 1) {
+	for (const u32 i : std::views::iota(0u, t_panel.rows.size())) {
 		const Row& row = t_panel.rows[i];
 		if (t_y >= row.top && t_y < row.top + row.height) return i;
 	}
@@ -2143,7 +2108,6 @@ auto Tray::Native::row_at(const Panel& t_panel, float t_y) const -> std::optiona
 	return std::nullopt;
 }
 
-// The accounts only count once they've mostly grown in.
 auto Tray::Native::panel_at(D2D1_POINT_2F t_point) -> Panel*
 {
 	if (open_row && reveal > K_GROW_FADE_SHARE && contains(accounts.frame, t_point.x, t_point.y)) return &accounts;
@@ -2166,7 +2130,6 @@ auto Tray::Native::cursor_point() const -> D2D1_POINT_2F
 	return D2D1::Point2F(static_cast<float>(cursor.x) / scale, static_cast<float>(cursor.y) / scale);
 }
 
-// Accounts opening to the left grow out of the game's icon, which is on that side. Accounts opening to the right grow out of its chevron.
 auto Tray::Native::grow_from() const -> D2D1_POINT_2F
 {
 	if (!shown_row || *shown_row >= games.rows.size()) return D2D1::Point2F();
@@ -2230,7 +2193,7 @@ auto Tray::Native::on_pointer(LPARAM t_lparam) -> void
 
 	if (over != update_hot) {
 		update_hot = over;
-		SetCursor(LoadCursorW(nullptr, over ? IDC_HAND : IDC_ARROW));
+		set_hand_cursor(over);
 	}
 
 	if (panel == &accounts) {
@@ -2246,7 +2209,7 @@ auto Tray::Native::on_pointer(LPARAM t_lparam) -> void
 
 	if (accounts.login_hot) {
 		accounts.login_hot = false;
-		SetCursor(LoadCursorW(nullptr, IDC_ARROW));
+		set_hand_cursor(false);
 	}
 
 	accounts.scroll.over_bar   = false;
@@ -2287,7 +2250,7 @@ auto Tray::Native::point_at_account(D2D1_POINT_2F t_point) -> void
 	const D2D1_RECT_F        thumb     = bar ? thumb_rect(accounts) : D2D1_RECT_F{};
 
 	if (login_hot != accounts.login_hot) {
-		SetCursor(LoadCursorW(nullptr, login_hot ? IDC_HAND : IDC_ARROW));
+		set_hand_cursor(login_hot);
 	}
 
 	accounts.hot               = row && is_selectable(accounts.rows[*row]) ? row : std::nullopt;
@@ -2312,7 +2275,6 @@ auto Tray::Native::on_leave() -> void
 	start_animation();
 }
 
-// Pressing the scrollbar takes hold of its thumb, and pressing the track beside the thumb brings the thumb's middle there first.
 auto Tray::Native::on_press(LPARAM t_lparam) -> void
 {
 	const D2D1_POINT_2F point = menu_point(t_lparam);
@@ -2398,7 +2360,6 @@ auto Tray::Native::press_update() -> void
 	pending_event = TrayEvent{.type = TrayEventType::SHOW_UPDATES};
 }
 
-// The pill pops in when an update turns up while the menu is open, and its arrows spin while the update installs.
 auto Tray::Native::step_badge(float t_seconds, float t_blend) -> bool
 {
 	const bool  installing = update == TrayUpdate::INSTALLING;
@@ -2493,7 +2454,6 @@ auto Tray::Native::step_hot(Panel* t_panel, i32 t_step) -> void
 	const auto count = static_cast<u32>(t_panel->rows.size());
 	if (count == 0) return;
 
-	// One step forward or back, wrapping round. With nothing lit, the first step lands on the first or the last row.
 	const u32 step = t_step > 0 ? 1 : count - 1;
 	u32       row  = t_panel->hot ? *t_panel->hot : (t_step > 0 ? count - 1 : 0);
 
@@ -2540,8 +2500,7 @@ auto Tray::Native::watch() -> void
 	}
 }
 
-// Windows only sends timer messages while no input is waiting, so a pointer moving over the menu would hold the timer back and freeze the
-// animations. Every change steps them by the time that has passed, whether the timer or the pointer asks.
+// Windows only sends timer messages while no input is waiting, so a pointer moving over the menu would hold the timer back and freeze the animations. Every change steps them by the time that has passed, whether the timer or the pointer asks.
 auto Tray::Native::start_animation() -> void
 {
 	if (!open) return;
@@ -2582,7 +2541,7 @@ auto Tray::Native::animate() -> void
 	}
 
 	const auto ease = [&](Panel* t_panel, std::optional<u32> t_lit_row) {
-		for (u32 i = 0; i < t_panel->rows.size(); i += 1) {
+		for (const u32 i : std::views::iota(0u, t_panel->rows.size())) {
 			Row&        row    = t_panel->rows[i];
 			const bool  lit    = (i == t_panel->hot || i == t_lit_row) && is_selectable(row);
 			const float target = lit ? 1.0f : 0.0f;
@@ -2692,7 +2651,6 @@ auto Tray::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lpar
 auto Tray::Native::handle_menu_message(UINT t_message, WPARAM t_wparam, LPARAM t_lparam) -> LRESULT
 {
 	switch (t_message) {
-		// Losing focus closes the menu, the same as clicking outside a system menu.
 		case WM_ACTIVATE: {
 			if (LOWORD(t_wparam) != WA_INACTIVE) {
 				activated = true;
@@ -2735,13 +2693,14 @@ auto Tray::Native::handle_menu_message(UINT t_message, WPARAM t_wparam, LPARAM t
 		}
 
 		case WM_MOUSEWHEEL: {
-			scroll_accounts(-static_cast<float>(GET_WHEEL_DELTA_WPARAM(t_wparam)) / static_cast<float>(WHEEL_DELTA) * K_PIXELS_PER_NOTCH);
+			const float notches = static_cast<float>(GET_WHEEL_DELTA_WPARAM(t_wparam)) / static_cast<float>(WHEEL_DELTA);
+			scroll_accounts(-notches * K_PIXELS_PER_NOTCH);
 			return 0;
 		}
 
 		case WM_SETCURSOR: {
 			if (accounts.login_hot || update_hot) {
-				SetCursor(LoadCursorW(nullptr, IDC_HAND));
+				set_hand_cursor(true);
 				return TRUE;
 			}
 
@@ -2838,8 +2797,7 @@ auto Tray::Native::show_login(const TrayLogin& t_login) -> void
 		toast.message_height          = std::min(text_height(writer.Get(), formats.message.Get(), toast.status, width), K_TOAST_MESSAGE_MAX);
 		toast.retry_width             = text_width(writer.Get(), formats.button.Get(), K_RETRY_LABEL) + K_TOAST_BUTTON_PADDING * 2.0f;
 		toast.open_width              = text_width(writer.Get(), formats.button.Get(), open_label) + K_TOAST_BUTTON_PADDING * 2.0f;
-		toast.card_height =
-			K_TOAST_PADDING * 2.0f + K_TOAST_HEADER_HEIGHT + K_TOAST_MESSAGE_GAP + toast.message_height + K_TOAST_BUTTON_GAP + K_TOAST_BUTTON_HEIGHT;
+		toast.card_height             = K_TOAST_PADDING * 2.0f + K_TOAST_HEADER_HEIGHT + K_TOAST_MESSAGE_GAP + toast.message_height + K_TOAST_BUTTON_GAP + K_TOAST_BUTTON_HEIGHT;
 	}
 
 	if (changed) {
@@ -2860,7 +2818,6 @@ auto Tray::Native::hide_login() -> void
 	}
 }
 
-// Room for the card when the login failed or the pill is still growing back from it, and for the shadow all round.
 auto Tray::Native::toast_size() const -> SIZE
 {
 	const bool  card   = toast.card > 0.0f || toast.login.state == TrayLoginState::FAILED;
@@ -2916,8 +2873,6 @@ auto Tray::Native::render_toast() -> void
 	present_canvas(toast.canvas, toast.window, origin, shown);
 }
 
-// Slides and fades the toast in, grows it into the card when the login fails, and lets it go a while after the login ends. The pointer resting
-// on it holds it open.
 auto Tray::Native::step_toast() -> void
 {
 	const Clock::time_point now     = Clock::now();
@@ -2974,7 +2929,7 @@ auto Tray::Native::handle_toast_message(UINT t_message, WPARAM t_wparam, LPARAM 
 
 			toast.hot     = toast_hit(t_lparam);
 			toast.hovered = contains(toast_shape(toast, width, static_cast<float>(toast.canvas.size.cy) / toast.scale), x, y);
-			SetCursor(LoadCursorW(nullptr, toast.hot ? IDC_HAND : IDC_ARROW));
+			set_hand_cursor(toast.hot.has_value());
 			return 0;
 		}
 
@@ -2986,7 +2941,7 @@ auto Tray::Native::handle_toast_message(UINT t_message, WPARAM t_wparam, LPARAM 
 		}
 
 		case WM_SETCURSOR: {
-			SetCursor(LoadCursorW(nullptr, toast.hot ? IDC_HAND : IDC_ARROW));
+			set_hand_cursor(toast.hot.has_value());
 			return TRUE;
 		}
 

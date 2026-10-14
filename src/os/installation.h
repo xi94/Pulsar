@@ -79,29 +79,20 @@ class Job {
 	[[nodiscard]] auto step_label() const -> std::string_view;
 	[[nodiscard]] auto step_count() const -> u32;
 
-	[[nodiscard]] auto task() const -> Task
-	{
-		return m_task;
-	}
-
-	[[nodiscard]] auto installed_executable() const -> const std::string&
-	{
-		return m_installed_executable;
-	}
-
 	auto reset() -> void;
+
+	Task        m_task = Task::INSTALL;
+	std::string m_installed_executable;
 
   private:
 	auto begin(Task t_task) -> void;
 	auto finish(bool t_succeeded, std::string t_error) -> void;
 
-	Task              m_task = Task::INSTALL;
 	std::thread       m_thread;
 	std::atomic<u32>  m_step{0};
 	std::atomic<bool> m_finished{false};
 	bool              m_succeeded = false;
 	std::string       m_error;
-	std::string       m_installed_executable;
 };
 
 }

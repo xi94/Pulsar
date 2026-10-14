@@ -22,7 +22,6 @@ struct HttpProgress {
 	std::atomic<double>*     bytes_per_second = nullptr;
 };
 
-[[nodiscard]] auto http_get(std::string_view t_url, usize t_max_bytes, std::vector<u8>* t_out_body, const HttpProgress& t_progress, std::string* t_out_error)
-	-> HttpResult;
+[[nodiscard]] auto http_get(std::string_view t_url, usize t_max_bytes, std::vector<u8>* t_out_body, const HttpProgress& t_progress, std::string* t_out_error) -> HttpResult;
 
 }

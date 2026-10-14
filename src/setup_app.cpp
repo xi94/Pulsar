@@ -1,6 +1,7 @@
 #include "setup_app.h"
 
 #include <algorithm>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -52,7 +53,7 @@ auto SetupApp::create() -> bool
 	if (!m_assets.finish_upload(&m_renderer)) return false;
 	if (!reload_fonts()) return false;
 
-	m_screen.set_app_icon(m_assets.get(Asset::ICON_LOGO));
+	m_screen.m_app_icon = m_assets.texture(Asset::ICON_LOGO);
 
 	m_draw_list.init(K_DRAW_LIST_VERTEX_CAPACITY, K_DRAW_LIST_INDEX_CAPACITY);
 	m_window.on_redraw([this] { redraw_while_moving(); });
@@ -65,11 +66,9 @@ auto SetupApp::create() -> bool
 auto SetupApp::reload_fonts() -> bool
 {
 	const auto load = [this] {
-		const float scale = m_window.dpi_scale();
+		const float scale = m_window.m_dpi_scale;
 
-		return m_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size, m_settings.secondary_font_size, scale) &&
-		       m_heading_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size * K_HEADING_FONT_SCALE, m_settings.secondary_font_size, scale) &&
-		       m_title_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size * K_TITLE_FONT_SCALE, m_settings.secondary_font_size, scale);
+		return m_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size, m_settings.secondary_font_size, scale) && m_heading_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size * K_HEADING_FONT_SCALE, m_settings.secondary_font_size, scale) && m_title_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size * K_TITLE_FONT_SCALE, m_settings.secondary_font_size, scale);
 	};
 
 	if (load()) return true;
@@ -81,7 +80,7 @@ auto SetupApp::reload_fonts() -> bool
 
 auto SetupApp::title_bar() const -> TitleBarLayout
 {
-	return TitleBarLayout{.width = static_cast<float>(m_window.width()), .native_controls_width = m_window.native_controls_width(), .dialog = true};
+	return TitleBarLayout{.width = static_cast<float>(m_window.m_width), .native_controls_width = m_window.m_native_controls_width, .dialog = true};
 }
 
 auto SetupApp::run() -> SetupOutcome
@@ -92,7 +91,7 @@ auto SetupApp::run() -> SetupOutcome
 	m_window.show();
 	m_window.bring_to_front();
 
-	while (!m_window.should_quit()) {
+	while (!m_window.m_should_quit) {
 		m_window.pump_messages();
 
 		for (const os::InputEvent& event : m_window.input_events()) {
@@ -102,7 +101,7 @@ auto SetupApp::run() -> SetupOutcome
 		frame();
 		recover_graphics();
 
-		if (const std::optional<SetupOutcome> outcome = m_screen.outcome()) return *outcome;
+		if (const std::optional<SetupOutcome> outcome = m_screen.m_outcome) return *outcome;
 
 		const float requested_wait = animation::take_idle_wait(K_IDLE_POLL_SECONDS);
 		const float wait           = m_window.is_minimized() ? K_IDLE_POLL_SECONDS : requested_wait;
@@ -181,13 +180,12 @@ auto SetupApp::handle_input(const os::InputEvent& t_event) -> void
 
 auto SetupApp::redraw_while_moving() -> void
 {
-	if (m_window.physical_width() == 0 || m_window.physical_height() == 0) return;
+	if (m_window.m_physical_width == 0 || m_window.m_physical_height == 0) return;
 
 	m_renderer.resize(&m_window);
 	frame();
 }
 
-// Same as the main window: after the device is lost, keep trying for a new one and upload everything again once it comes up.
 auto SetupApp::recover_graphics() -> void
 {
 	if (!m_renderer.is_device_lost()) return;
@@ -200,7 +198,7 @@ auto SetupApp::recover_graphics() -> void
 	}
 
 	m_assets.restore(&m_renderer);
-	static_cast<void>(reload_fonts());
+	std::ignore = reload_fonts();
 	animation::request_frame();
 }
 
@@ -214,13 +212,14 @@ auto SetupApp::frame() -> void
 	const float delta_seconds = std::chrono::duration<float>(now - m_last_frame_time).count();
 	m_last_frame_time         = now;
 
-	set_pixel_scale(m_window.dpi_scale());
-	m_screen.set_mouse(m_mouse);
+	set_pixel_scale(m_window.m_dpi_scale);
+	m_screen.m_mouse = m_mouse;
 	m_screen.update(delta_seconds);
 	m_truncation_hint.update(delta_seconds, m_pointer_down);
 
-	const bool over_controls = title_bar().button_at(m_mouse) != TitleBarButton::NONE;
-	m_window.set_cursor(over_controls ? CursorKind::ARROW : m_screen.cursor());
+	const bool       over_controls = title_bar().button_at(m_mouse) != TitleBarButton::NONE;
+	const CursorKind cursor        = over_controls ? CursorKind::ARROW : m_screen.cursor();
+	m_window.set_cursor(cursor);
 
 	if (!m_window.is_minimized() && !m_window.is_hidden()) {
 		render();
@@ -232,14 +231,16 @@ auto SetupApp::frame() -> void
 auto SetupApp::render() -> void
 {
 	const Vec2 size = m_window.size();
+	const Rect whole_window{0.0f, 0.0f, size.x, size.y};
+	const Rect below_title_bar{0.0f, K_TITLE_BAR_HEIGHT, size.x, size.y - K_TITLE_BAR_HEIGHT};
 
 	m_draw_list.clear();
-	m_draw_list.add_rect(Rect{0.0f, 0.0f, size.x, size.y}, g_theme.window);
+	m_draw_list.add_rect(whole_window, g_theme.window);
 	begin_truncation_probe(&m_draw_list, m_mouse);
 	m_screen.draw(&m_draw_list);
 	draw_window_controls();
 	m_truncation_hint.capture(&m_draw_list);
-	m_truncation_hint.draw(&m_draw_list, Rect{0.0f, K_TITLE_BAR_HEIGHT, size.x, size.y - K_TITLE_BAR_HEIGHT});
+	m_truncation_hint.draw(&m_draw_list, below_title_bar);
 	m_draw_list.finish();
 
 	m_renderer.render(&m_draw_list, g_theme.window);
@@ -257,7 +258,8 @@ auto SetupApp::draw_window_controls() -> void
 		const bool is_hovered = hovered_button == button && rect.contains(m_mouse);
 
 		if (is_hovered) {
-			m_draw_list.add_rect(rect, close ? K_TITLE_BAR_CLOSE_HOVER : with_alpha(g_theme.text, K_TITLE_BAR_HOVER_ALPHA));
+			const Color hover = close ? K_TITLE_BAR_CLOSE_HOVER : with_alpha(g_theme.text, K_TITLE_BAR_HOVER_ALPHA);
+			m_draw_list.add_rect(rect, hover);
 		}
 
 		Color glyph = g_theme.text_dim;
@@ -265,6 +267,8 @@ auto SetupApp::draw_window_controls() -> void
 			glyph = close ? K_TITLE_BAR_CLOSE_GLYPH_HOVER : g_theme.text;
 		}
 
-		m_draw_list.add_image(rect.centered(K_CONTROL_ICON_SIZE, K_CONTROL_ICON_SIZE), m_assets.get(close ? Asset::ICON_CLOSE : Asset::ICON_MINIMIZE), glyph);
+		const Rect  icon  = rect.centered(K_CONTROL_ICON_SIZE, K_CONTROL_ICON_SIZE);
+		const Asset image = close ? Asset::ICON_CLOSE : Asset::ICON_MINIMIZE;
+		m_draw_list.add_image(icon, m_assets.texture(image), glyph);
 	}
 }

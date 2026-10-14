@@ -33,18 +33,14 @@ class SingleInstanceGuard {
 	SingleInstanceGuard(const SingleInstanceGuard&)                    = delete;
 	auto operator=(const SingleInstanceGuard&) -> SingleInstanceGuard& = delete;
 
-	[[nodiscard]] auto is_first_instance() const -> bool
-	{
-		return m_first_instance;
-	}
-
 	auto release() -> void;
+
+	bool m_first_instance = false;
 
   private:
 	struct Native;
 
 	std::unique_ptr<Native> m_native;
-	bool                    m_first_instance = false;
 };
 
 }

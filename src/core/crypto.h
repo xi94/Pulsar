@@ -44,17 +44,8 @@ class MasterKey {
 	auto lock() -> void;
 	auto swap(MasterKey* t_other) -> void;
 
-	[[nodiscard]] auto is_unlocked() const -> bool
-	{
-		return m_unlocked;
-	}
-
-	[[nodiscard]] auto data_key() const -> const u8*
-	{
-		return m_data_key;
-	}
-
-  private:
 	u8   m_data_key[crypto::K_KEY_SIZE]{};
 	bool m_unlocked = false;
+
+  private:
 };

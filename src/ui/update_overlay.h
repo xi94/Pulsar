@@ -23,11 +23,6 @@ class UpdateOverlay : public Widget {
 	auto close() -> void;
 	auto show_release_notes(std::string_view t_version, std::string_view t_notes) -> void;
 
-	[[nodiscard]] auto is_open() const -> bool
-	{
-		return m_open;
-	}
-
 	[[nodiscard]] auto is_shown() const -> bool
 	{
 		return m_open_amount > 0.01f;
@@ -36,16 +31,6 @@ class UpdateOverlay : public Widget {
 	[[nodiscard]] auto wants_status() const -> bool
 	{
 		return m_check_requested || m_status_linger > 0.0f;
-	}
-
-	[[nodiscard]] auto shown_stage() const -> UpdateStage
-	{
-		return m_shown_stage;
-	}
-
-	[[nodiscard]] auto is_showing_release_notes() const -> bool
-	{
-		return m_showing_release;
 	}
 
 	auto update(float t_delta_seconds) -> void override;
@@ -63,6 +48,10 @@ class UpdateOverlay : public Widget {
 	}
 
 	[[nodiscard]] auto cursor() const -> CursorKind override;
+
+	bool        m_open                  = false;
+	UpdateStage m_shown_stage           = UpdateStage::IDLE;
+	bool        m_showing_release_notes = false;
 
   private:
 	enum class Action : u8 {
@@ -124,21 +113,18 @@ class UpdateOverlay : public Widget {
 	const Assets*     m_assets;
 	const os::Window* m_window;
 
-	bool        m_open            = false;
-	float       m_open_amount     = 0.0f;
-	float       m_height          = 0.0f;
-	float       m_content_fade    = 1.0f;
-	float       m_progress        = 0.0f;
-	float       m_spin            = 0.0f;
-	u32         m_content_key     = 0;
-	UpdateStage m_shown_stage     = UpdateStage::IDLE;
-	float       m_shown_seconds   = 0.0f;
-	bool        m_check_requested = false;
-	float       m_status_linger   = 0.0f;
-	bool        m_pressed_outside = false;
-	Scrollable  m_notes_scroll;
+	float      m_open_amount     = 0.0f;
+	float      m_height          = 0.0f;
+	float      m_content_fade    = 1.0f;
+	float      m_progress        = 0.0f;
+	float      m_spin            = 0.0f;
+	u32        m_content_key     = 0;
+	float      m_shown_seconds   = 0.0f;
+	bool       m_check_requested = false;
+	float      m_status_linger   = 0.0f;
+	bool       m_pressed_outside = false;
+	Scrollable m_notes_scroll;
 
-	bool m_showing_release = false;
 	char m_release_version[32]{};
 	char m_release_notes[1024]{};
 };

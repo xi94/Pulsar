@@ -3,6 +3,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cmath>
+#include <ranges>
 #include <string>
 #include <thread>
 #include <utility>
@@ -117,8 +118,7 @@ class ViewEvents {
 	m_events      = t_events;
 	m_marked_text = [[NSMutableString alloc] init];
 
-	const NSTrackingAreaOptions options =
-		NSTrackingMouseMoved | NSTrackingMouseEnteredAndExited | NSTrackingCursorUpdate | NSTrackingActiveAlways | NSTrackingInVisibleRect;
+	const NSTrackingAreaOptions options = NSTrackingMouseMoved | NSTrackingMouseEnteredAndExited | NSTrackingCursorUpdate | NSTrackingActiveAlways | NSTrackingInVisibleRect;
 	[self addTrackingArea:[[NSTrackingArea alloc] initWithRect:NSZeroRect options:options owner:self userInfo:nil]];
 
 	return self;
@@ -406,10 +406,7 @@ auto Window::create(std::string_view t_title, u32 t_width, u32 t_height, WindowK
 	};
 
 	NSDistributedNotificationCenter* notifications = NSDistributedNotificationCenter.defaultCenter;
-	native->activation_observer                    = [notifications addObserverForName:macos::notification_name(activation_event(t_kind))
-																				object:nil
-																				 queue:NSOperationQueue.mainQueue
-																			usingBlock:bring_forward];
+	native->activation_observer                    = [notifications addObserverForName:macos::notification_name(activation_event(t_kind)) object:nil queue:NSOperationQueue.mainQueue usingBlock:bring_forward];
 
 	return true;
 }
@@ -441,9 +438,7 @@ auto Window::set_app_menu(std::span<const AppMenuItem> t_items) -> void
 	if (t_items.empty()) return;
 
 	for (const AppMenuItem& entry : t_items) {
-		NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:macos::to_ns_string(entry.label)
-													  action:@selector(chooseMenuItem:)
-											   keyEquivalent:key_equivalent(entry.shortcut)];
+		NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:macos::to_ns_string(entry.label) action:@selector(chooseMenuItem:) keyEquivalent:key_equivalent(entry.shortcut)];
 		item.target      = native->view;
 		item.tag         = static_cast<NSInteger>(entry.id);
 		[native->app_menu_items addObject:item];
@@ -641,8 +636,10 @@ auto Window::Native::mouse_down(NSEvent* t_event) -> void
 
 auto Window::Native::mouse_up(NSEvent* t_event) -> void
 {
-	const Vec2 point = point_of(t_event);
-	push_mouse(std::exchange(control_click, false) ? InputEventType::RIGHT_CLICK : InputEventType::MOUSE_UP, point);
+	const Vec2           point     = point_of(t_event);
+	const bool           was_right = std::exchange(control_click, false);
+	const InputEventType type      = was_right ? InputEventType::RIGHT_CLICK : InputEventType::MOUSE_UP;
+	push_mouse(type, point);
 
 	if (!NSPointInRect(NSMakePoint(point.x, point.y), view.bounds)) {
 		mouse_exited();
@@ -660,8 +657,9 @@ auto Window::Native::mouse_exited() -> void
 	// The view keeps receiving drag events while a button is held, so leaving now would make the next drag jump.
 	if ((NSEvent.pressedMouseButtons & 1) != 0) return;
 
+	const Vec2 nowhere{-1.0f, -1.0f};
 	mouse_inside = false;
-	push_mouse(InputEventType::MOUSE_MOVE, Vec2{-1.0f, -1.0f});
+	push_mouse(InputEventType::MOUSE_MOVE, nowhere);
 }
 
 auto Window::Native::right_mouse_up(NSEvent* t_event) -> void
@@ -796,12 +794,13 @@ auto Window::Native::layout_window_buttons() const -> void
 
 	CGFloat right = 0.0;
 
-	for (usize i = 0; i < std::size(K_WINDOW_BUTTONS); i += 1) {
+	for (const usize i : std::views::iota(usize{0}, std::size(K_WINDOW_BUTTONS))) {
 		NSButton* button = [window standardWindowButton:K_WINDOW_BUTTONS[i]];
 		if (button == nil || button.hidden) continue;
 
 		const CGFloat inset = std::round((height - NSHeight(button.frame)) * 0.5);
-		[button setFrameOrigin:NSMakePoint(inset + static_cast<CGFloat>(i) * K_WINDOW_BUTTON_SPACING, inset)];
+		const CGFloat left  = inset + static_cast<CGFloat>(i) * K_WINDOW_BUTTON_SPACING;
+		[button setFrameOrigin:NSMakePoint(left, inset)];
 		right = NSMaxX(button.frame) + inset;
 	}
 
@@ -851,10 +850,7 @@ auto bring_window_to_front(WindowKind t_kind) -> bool
 		[[NSApplication sharedApplication] yieldActivationToApplicationWithBundleIdentifier:@PULSAR_BUNDLE_IDENTIFIER];
 	}
 
-	[NSDistributedNotificationCenter.defaultCenter postNotificationName:macos::notification_name(activation_event(t_kind))
-																 object:nil
-															   userInfo:nil
-													 deliverImmediately:YES];
+	[NSDistributedNotificationCenter.defaultCenter postNotificationName:macos::notification_name(activation_event(t_kind)) object:nil userInfo:nil deliverImmediately:YES];
 
 	return true;
 }

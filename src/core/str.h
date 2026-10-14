@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cstring>
+#include <format>
 #include <string>
 #include <string_view>
+#include <utility>
 
 struct Utf8Codepoint {
 	u32 value;
@@ -31,6 +33,15 @@ template <usize Capacity>
 auto copy_to(std::string_view t_text, char (&t_destination)[Capacity]) -> void
 {
 	copy_to(t_text, t_destination, Capacity);
+}
+
+template <usize Capacity, typename... Args>
+[[nodiscard]] auto format_into(char (&t_buffer)[Capacity], std::format_string<Args...> t_format, Args&&... t_args) -> std::string_view
+{
+	const auto written = std::format_to_n(t_buffer, Capacity - 1, t_format, std::forward<Args>(t_args)...);
+	*written.out       = '\0';
+
+	return std::string_view{t_buffer, written.out};
 }
 
 [[nodiscard]] auto decode_utf8(std::string_view t_text, usize t_index) -> Utf8Codepoint;

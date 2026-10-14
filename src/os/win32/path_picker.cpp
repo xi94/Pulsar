@@ -1,6 +1,7 @@
 #include "os/path_picker.h"
 
 #include <atomic>
+#include <ranges>
 #include <thread>
 #include <utility>
 
@@ -59,7 +60,7 @@ auto CALLBACK close_thread_window(HWND t_window, LPARAM) -> BOOL
 	}
 
 	if (t_request.file_type_pattern != nullptr) {
-		const std::wstring      name    = to_wide(t_request.file_type_name != nullptr ? t_request.file_type_name : "");
+		const std::wstring      name    = t_request.file_type_name != nullptr ? to_wide(t_request.file_type_name) : std::wstring{};
 		const std::wstring      pattern = to_wide(t_request.file_type_pattern);
 		const COMDLG_FILTERSPEC file_type{name.c_str(), pattern.c_str()};
 		dialog->SetFileTypes(1, &file_type);

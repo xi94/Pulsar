@@ -53,8 +53,12 @@ constexpr ULONGLONG K_ACTIVATE_EXISTING_TIMEOUT_MS = 3000;
 	const bool  top    = t_cursor.y < window_rect.top + border.y;
 	const bool  bottom = t_cursor.y >= window_rect.bottom - border.y;
 
-	if (top) return left ? HTTOPLEFT : right ? HTTOPRIGHT : HTTOP;
-	if (bottom) return left ? HTBOTTOMLEFT : right ? HTBOTTOMRIGHT : HTBOTTOM;
+	if (top && left) return HTTOPLEFT;
+	if (top && right) return HTTOPRIGHT;
+	if (top) return HTTOP;
+	if (bottom && left) return HTBOTTOMLEFT;
+	if (bottom && right) return HTBOTTOMRIGHT;
+	if (bottom) return HTBOTTOM;
 	if (left) return HTLEFT;
 	if (right) return HTRIGHT;
 
@@ -172,8 +176,7 @@ auto Window::create(std::string_view t_title, u32 t_width, u32 t_height, WindowK
 	const std::wstring title = win32::to_wide(t_title);
 	const DWORD        style = dialog ? WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX : WS_OVERLAPPEDWINDOW;
 
-	const HWND window = CreateWindowExW(0, class_name, title.c_str(), style, x, y, static_cast<int>(m_physical_width), static_cast<int>(m_physical_height),
-	                                    nullptr, nullptr, instance, m_native.get());
+	const HWND window = CreateWindowExW(0, class_name, title.c_str(), style, x, y, static_cast<int>(m_physical_width), static_cast<int>(m_physical_height), nullptr, nullptr, instance, m_native.get());
 	if (window == nullptr) return false;
 
 	m_native->correct_size_for_actual_dpi(t_width, t_height);
@@ -217,7 +220,8 @@ auto Window::minimize() -> void
 
 auto Window::toggle_maximized() -> void
 {
-	ShowWindow(m_native->window, is_maximized() ? SW_RESTORE : SW_MAXIMIZE);
+	const int show_command = is_maximized() ? SW_RESTORE : SW_MAXIMIZE;
+	ShowWindow(m_native->window, show_command);
 }
 
 auto Window::restore() -> void
@@ -336,7 +340,8 @@ auto Window::set_excluded_from_capture(bool t_excluded) -> void
 {
 	if (t_excluded == m_excluded_from_capture) return;
 
-	SetWindowDisplayAffinity(m_native->window, t_excluded ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
+	const DWORD affinity = t_excluded ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE;
+	SetWindowDisplayAffinity(m_native->window, affinity);
 	m_excluded_from_capture = t_excluded;
 }
 
@@ -354,8 +359,7 @@ auto Window::Native::correct_size_for_actual_dpi(u32 t_width, u32 t_height) cons
 	if (actual_scale == owner->m_dpi_scale) return;
 
 	owner->m_dpi_scale = actual_scale;
-	SetWindowPos(window, nullptr, 0, 0, static_cast<int>(scaled(t_width, actual_scale)), static_cast<int>(scaled(t_height, actual_scale)),
-	             SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+	SetWindowPos(window, nullptr, 0, 0, static_cast<int>(scaled(t_width, actual_scale)), static_cast<int>(scaled(t_height, actual_scale)), SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 auto Window::Native::to_logical(POINT t_physical) const -> Vec2
@@ -424,8 +428,9 @@ auto Window::Native::handle_dpi_changed(WPARAM t_wparam, LPARAM t_lparam) const 
 	}
 
 	const RECT* suggested = reinterpret_cast<const RECT*>(t_lparam);
-	SetWindowPos(window, nullptr, suggested->left, suggested->top, suggested->right - suggested->left, suggested->bottom - suggested->top,
-	             SWP_NOZORDER | SWP_NOACTIVATE);
+	const int   width     = suggested->right - suggested->left;
+	const int   height    = suggested->bottom - suggested->top;
+	SetWindowPos(window, nullptr, suggested->left, suggested->top, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 auto Window::Native::handle_size(WPARAM t_wparam, LPARAM t_lparam) const -> void

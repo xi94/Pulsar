@@ -25,34 +25,13 @@ enum class ViewMode : u8 {
 
 class Carousel : public Widget {
   public:
-	Carousel(Library*        t_library,
-	         const Settings* t_settings,
-	         const Fonts*    t_fonts,
-	         const Assets*   t_assets,
-	         Toasts*         t_toasts,
-	         LoginSession*   t_session,
-	         CommandQueue*   t_commands);
-
-	auto set_bounds(Rect t_bounds) -> void
-	{
-		m_bounds = t_bounds;
-	}
-
-	[[nodiscard]] auto zoom_stop() const -> i32
-	{
-		return m_zoom_stop;
-	}
+	Carousel(Library* t_library, const Settings* t_settings, const Fonts* t_fonts, const Assets* t_assets, Toasts* t_toasts, LoginSession* t_session, CommandQueue* t_commands);
 
 	[[nodiscard]] auto selected_game() const -> u32;
 
 	[[nodiscard]] auto is_library() const -> bool
 	{
 		return m_mode == ViewMode::LIBRARY;
-	}
-
-	[[nodiscard]] auto library_view() -> LibraryView*
-	{
-		return &m_library_view;
 	}
 
 	auto restore(i32 t_zoom_stop, u32 t_selected_game) -> void;
@@ -67,11 +46,6 @@ class Carousel : public Widget {
 
 	auto show_game(u32 t_game) -> void;
 
-	auto set_detached_game(std::optional<u32> t_game) -> void
-	{
-		m_detached_game = t_game;
-	}
-
 	auto update(float t_delta_seconds) -> void override;
 	auto draw(DrawList* t_draw_list) -> void override;
 	auto draw_status_bar(DrawList* t_draw_list) const -> void;
@@ -85,6 +59,11 @@ class Carousel : public Widget {
 	auto on_char(u32 t_character) -> bool override;
 
 	[[nodiscard]] auto cursor() const -> CursorKind override;
+
+	i32                m_zoom_stop = 0;
+	LibraryView        m_library_view;
+	Rect               m_bounds{};
+	std::optional<u32> m_detached_game;
 
   private:
 	struct Reorder {
@@ -203,14 +182,11 @@ class Carousel : public Widget {
 	const Assets*   m_assets;
 	CommandQueue*   m_commands;
 
-	Rect m_bounds{};
-
 	float     m_scroll        = 0.0f;
 	float     m_target_scroll = 0.0f;
 	Draggable m_card_drag;
 	float     m_drag_start_scroll = 0.0f;
 
-	i32        m_zoom_stop       = 0;
 	float      m_zoom_percent    = 0.0f;
 	ViewMode   m_mode            = ViewMode::CAROUSEL;
 	ViewMode   m_previous_mode   = ViewMode::CAROUSEL;
@@ -229,10 +205,9 @@ class Carousel : public Widget {
 	Draggable m_switcher_drag;
 	bool      m_switcher_owns_pointer = false;
 
-	float              m_card_hover[K_MAX_GAMES]{};
-	u32                m_focused_game         = 0;
-	bool               m_keyboard_focus_shown = false;
-	std::optional<u32> m_detached_game;
+	float m_card_hover[K_MAX_GAMES]{};
+	u32   m_focused_game         = 0;
+	bool  m_keyboard_focus_shown = false;
 
 	u8        m_order[K_MAX_GAMES]{};
 	u8        m_slot_of[K_MAX_GAMES]{};
@@ -244,6 +219,4 @@ class Carousel : public Widget {
 	float     m_overview        = 0.0f;
 	float     m_lift            = 0.0f;
 	float     m_reorder_hint    = 0.0f;
-
-	LibraryView m_library_view;
 };

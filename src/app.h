@@ -87,14 +87,14 @@ class App {
 	auto open_setup() -> void;
 	auto locate_riot_client(const Command& t_command) -> void;
 	auto take_picked_riot_client() -> void;
-	[[nodiscard]] auto account_for(AccountRef t_account) const -> const Account*;
 	auto clear_clipboard_secret() -> void;
 
 	auto pump_input() -> void;
 	auto handle_tray_event() -> void;
 	auto handle_input(const os::InputEvent& t_event) -> void;
-	auto process_commands() -> void;
-	auto process(const Command& t_command) -> void;
+	auto run_shortcut(os::Key t_key) -> bool;
+	auto run_commands() -> void;
+	auto run_command(const Command& t_command) -> void;
 	auto open_account_menu(const Command& t_command) -> void;
 	auto open_library_account_menu(const Command& t_command) -> void;
 	auto open_picked_menu(const Command& t_command) -> void;
@@ -113,6 +113,7 @@ class App {
 	auto frame() -> void;
 	auto render() -> void;
 	auto draw_status_bar() -> void;
+	auto draw_auto_lock_countdown(float t_x, float t_baseline) -> void;
 
 	os::SingleInstanceGuard m_instance_guard;
 	Settings                m_settings;

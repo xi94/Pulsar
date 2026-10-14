@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <ranges>
 
 #include "core/animation.h"
 #include "core/profiler.h"
@@ -26,6 +27,7 @@ constexpr float K_ICON_SIZE          = 15.0f;
 constexpr float K_ICON_GAP           = 8.0f;
 constexpr float K_ICON_TURN_SECONDS  = 5.0f;
 constexpr float K_BAR_HEIGHT         = 3.0f;
+constexpr float K_BAR_RADIUS         = K_BAR_HEIGHT * 0.5f;
 constexpr float K_BAR_GAP            = 7.0f;
 constexpr float K_BREATHING_WIDTH    = 26.0f;
 constexpr float K_MIN_CARD_WIDTH     = 150.0f;
@@ -53,7 +55,8 @@ Toasts::Toasts(const Settings* t_settings, const Fonts* t_fonts, const Assets* t
 
 auto Toasts::notify(const Notification& t_notification) -> void
 {
-	show(t_notification, t_notification.seconds > 0.0f ? t_notification.seconds : K_LIFETIME_SECONDS, false);
+	const float seconds = t_notification.seconds > 0.0f ? t_notification.seconds : K_LIFETIME_SECONDS;
+	show(t_notification, seconds, false);
 }
 
 auto Toasts::notify_countdown(std::string_view t_message, float t_seconds) -> void
@@ -133,8 +136,7 @@ auto Toasts::update(float t_delta_seconds) -> void
 		m_showing           = m_remaining_seconds > 0.0f;
 	}
 
-	m_presence =
-		animation::ease_toward(m_presence, m_showing ? 1.0f : 0.0f, K_PRESENCE_EASE_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS / K_SLIDE_DISTANCE);
+	m_presence = animation::ease_toward(m_presence, m_showing ? 1.0f : 0.0f, K_PRESENCE_EASE_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS / K_SLIDE_DISTANCE);
 	m_elapsed_seconds += t_delta_seconds;
 
 	if (m_showing || m_presence > 0.0f) {
@@ -185,17 +187,20 @@ auto Toasts::draw(DrawList* t_draw_list) -> void
 	}
 
 	if (m_icon) {
-		const float first_line_center = card.y + K_PADDING_Y + font.line_height() * 0.5f;
-		const Rect  icon{card.x + K_PADDING_X, first_line_center - K_ICON_SIZE * 0.5f, K_ICON_SIZE, K_ICON_SIZE};
-		const float turn    = std::fmod(m_elapsed_seconds, K_ICON_TURN_SECONDS) / K_ICON_TURN_SECONDS;
-		const float radians = m_spin_icon ? turn * 2.0f * std::numbers::pi_v<float> : 0.0f;
+		const float    first_line_center = card.y + K_PADDING_Y + font.line_height() * 0.5f;
+		const Rect     icon{card.x + K_PADDING_X, first_line_center - K_ICON_SIZE * 0.5f, K_ICON_SIZE, K_ICON_SIZE};
+		const float    turn    = std::fmod(m_elapsed_seconds, K_ICON_TURN_SECONDS) / K_ICON_TURN_SECONDS;
+		const float    radians = m_spin_icon ? turn * 2.0f * std::numbers::pi_v<float> : 0.0f;
+		const Texture* image   = m_assets->texture(*m_icon);
+		const Color    tint    = faded(m_settings->accent, alpha);
 
-		t_draw_list->add_rotated_image(icon, radians, m_assets->get(*m_icon), faded(m_settings->accent, alpha));
+		t_draw_list->add_rotated_image(icon, radians, image, tint);
 	}
 
-	const float text_x = card.x + K_PADDING_X + icon_column_width();
-	draw_wrapped_text(t_draw_list, font, Vec2{text_x, card.y + K_PADDING_Y + font.ascent}, card.right() - K_PADDING_X - text_x, m_message,
-	                  faded(g_theme.text, alpha), K_MAX_LINES);
+	const float text_x    = card.x + K_PADDING_X + icon_column_width();
+	const float max_width = card.right() - K_PADDING_X - text_x;
+	const Vec2  first_baseline{text_x, card.y + K_PADDING_Y + font.ascent};
+	draw_wrapped_text(t_draw_list, font, first_baseline, max_width, m_message, faded(g_theme.text, alpha), K_MAX_LINES);
 
 	draw_time_left_bar(t_draw_list, card, alpha);
 }
@@ -207,26 +212,32 @@ auto Toasts::draw_time_left_bar(DrawList* t_draw_list, Rect t_card, u8 t_alpha) 
 	const float remaining = m_total_seconds > 0.0f ? m_remaining_seconds / m_total_seconds : 0.0f;
 	const Rect  fill{track.x, track.y, track.w * std::clamp(remaining, 0.0f, 1.0f), track.h};
 
-	t_draw_list->add_rounded_rect(track, rounded(K_BAR_HEIGHT * 0.5f), faded(g_theme.control, t_alpha));
+	t_draw_list->add_rounded_rect(track, rounded(K_BAR_RADIUS), faded(g_theme.control, t_alpha));
 	if (fill.w <= 0.0f) return;
 
-	for (u32 layer = 1; layer <= K_BAR_GLOW_LAYERS; layer += 1) {
+	for (const u32 layer : std::views::iota(1u, K_BAR_GLOW_LAYERS + 1)) {
 		const float spread     = K_BAR_GLOW_SPREAD * layer;
+		const Rect  glow       = fill.inset(-spread);
 		const auto  glow_alpha = static_cast<u8>(K_BAR_GLOW_ALPHA / layer * m_presence);
-		t_draw_list->add_rounded_rect(fill.inset(-spread), rounded(K_BAR_HEIGHT * 0.5f + spread), with_alpha(accent, glow_alpha));
+		t_draw_list->add_rounded_rect(glow, rounded(K_BAR_RADIUS + spread), with_alpha(accent, glow_alpha));
 	}
 
-	t_draw_list->add_rounded_rect(fill, rounded(K_BAR_HEIGHT * 0.5f), faded(accent, t_alpha));
+	t_draw_list->add_rounded_rect(fill, rounded(K_BAR_RADIUS), faded(accent, t_alpha));
 
-	t_draw_list->push_clip(fill.inset(0.0f, -K_BAR_GLOW_SPREAD * K_BAR_GLOW_LAYERS));
+	const Rect glow_area = fill.inset(0.0f, -K_BAR_GLOW_SPREAD * K_BAR_GLOW_LAYERS);
+	t_draw_list->push_clip(glow_area);
 
-	const float sweep_x    = fill.x - K_SWEEP_WIDTH + std::fmod(m_elapsed_seconds * K_SWEEPS_PER_SECOND, 1.0f) * (fill.w + K_SWEEP_WIDTH);
-	const Color sweep_edge = with_alpha(lightened(accent, 70), 0);
-	const Color sweep_peak = with_alpha(lightened(accent, 70), static_cast<u8>(K_SWEEP_ALPHA * m_presence));
-	const float half_sweep = K_SWEEP_WIDTH * 0.5f;
+	const float sweep_phase = std::fmod(m_elapsed_seconds * K_SWEEPS_PER_SECOND, 1.0f);
+	const float sweep_x     = fill.x - K_SWEEP_WIDTH + sweep_phase * (fill.w + K_SWEEP_WIDTH);
+	const Color sweep_color = lightened(accent, 70);
+	const Color sweep_edge  = with_alpha(sweep_color, 0);
+	const Color sweep_peak  = with_alpha(sweep_color, static_cast<u8>(K_SWEEP_ALPHA * m_presence));
+	const float half_sweep  = K_SWEEP_WIDTH * 0.5f;
+	const Rect  rising_half{sweep_x, fill.y, half_sweep, fill.h};
+	const Rect  falling_half{sweep_x + half_sweep, fill.y, half_sweep, fill.h};
 
-	t_draw_list->add_gradient(Rect{sweep_x, fill.y, half_sweep, fill.h}, sweep_edge, sweep_peak, sweep_edge, sweep_peak);
-	t_draw_list->add_gradient(Rect{sweep_x + half_sweep, fill.y, half_sweep, fill.h}, sweep_peak, sweep_edge, sweep_peak, sweep_edge);
+	t_draw_list->add_gradient(rising_half, sweep_edge, sweep_peak, sweep_edge, sweep_peak);
+	t_draw_list->add_gradient(falling_half, sweep_peak, sweep_edge, sweep_peak, sweep_edge);
 
 	t_draw_list->pop_clip();
 }

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <ranges>
 #include <vector>
 
 #include "core/animation.h"
@@ -39,11 +40,13 @@ constexpr Color K_LIGHT_THEME_SNOW{150, 164, 188, 255};
 
 	std::vector<u8> pixels(static_cast<usize>(K_SPRITE_SIZE) * K_SPRITE_SIZE * 4);
 
-	for (u32 y = 0; y < K_SPRITE_SIZE; y += 1) {
-		for (u32 x = 0; x < K_SPRITE_SIZE; x += 1) {
-			const float distance = std::hypot(static_cast<float>(x) + 0.5f - HALF, static_cast<float>(y) + 0.5f - HALF) / HALF;
-			const float edge     = std::clamp((1.0f - distance) / (1.0f - K_SPRITE_SOLID_SHARE), 0.0f, 1.0f);
-			u8*         pixel    = pixels.data() + (static_cast<usize>(y) * K_SPRITE_SIZE + x) * 4;
+	for (const u32 y : std::views::iota(0u, K_SPRITE_SIZE)) {
+		for (const u32 x : std::views::iota(0u, K_SPRITE_SIZE)) {
+			const float from_center_x = static_cast<float>(x) + 0.5f - HALF;
+			const float from_center_y = static_cast<float>(y) + 0.5f - HALF;
+			const float distance      = std::hypot(from_center_x, from_center_y) / HALF;
+			const float edge          = std::clamp((1.0f - distance) / (1.0f - K_SPRITE_SOLID_SHARE), 0.0f, 1.0f);
+			u8*         pixel         = pixels.data() + (static_cast<usize>(y) * K_SPRITE_SIZE + x) * 4;
 
 			pixel[0] = 255;
 			pixel[1] = 255;
@@ -117,7 +120,7 @@ auto Snowfall::update(float t_delta_seconds, Rect t_area, bool t_focused) -> voi
 	const float right   = m_area.right() + K_WRAP_MARGIN;
 	m_time += step;
 
-	for (u32 layer = 0; layer < K_LAYER_COUNT; layer += 1) {
+	for (const u32 layer : std::views::iota(0u, K_LAYER_COUNT)) {
 		std::vector<Flake>* flakes  = &m_flakes[layer];
 		const auto          wanted  = static_cast<usize>(std::lround(static_cast<float>(K_LAYER_FLAKES[layer]) * density));
 		const bool          filling = flakes->empty();
@@ -161,10 +164,11 @@ auto Snowfall::draw(DrawList* t_draw_list) const -> void
 
 	t_draw_list->push_clip(m_area);
 
-	for (u32 layer = 0; layer < K_LAYER_COUNT; layer += 1) {
+	for (const u32 layer : std::views::iota(0u, K_LAYER_COUNT)) {
 		for (const Flake& flake : m_flakes[layer]) {
-			const Rect dot{flake.x - flake.radius, flake.y - flake.radius, flake.radius * 2.0f, flake.radius * 2.0f};
-			t_draw_list->add_image(dot, m_sprite.get(), with_alpha(color, to_alpha(flake.alpha)));
+			const Rect  dot{flake.x - flake.radius, flake.y - flake.radius, flake.radius * 2.0f, flake.radius * 2.0f};
+			const Color tint = with_alpha(color, to_alpha(flake.alpha));
+			t_draw_list->add_image(dot, m_sprite.get(), tint);
 		}
 	}
 

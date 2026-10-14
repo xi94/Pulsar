@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <tuple>
 
 #include "core/debug_log.h"
 #include "core/enum_array.h"
@@ -69,8 +70,7 @@ auto blur_level_extent(u32 t_frame_extent, u32 t_level) -> u32
 	return std::max((t_frame_extent + scale - 1) / scale, 1u);
 }
 
-// Glass blurs at the level where its spread is one or two texels wide, so a pass or two covers it, and reads the level back through
-// a cubic filter that hides the texels. Halving and that filter already spread the image a little, so the passes only add the rest.
+// Glass blurs at the level where its spread is one or two texels wide, so a pass or two covers it, and reads the level back through a cubic filter that hides the texels. Halving and that filter already spread the image a little, so the passes only add the rest.
 auto blur_plan(const RenderFrame& t_frame, const DrawCommand& t_command) -> BlurPlan
 {
 	constexpr float LEVEL_SPREAD    = 1.5f;
@@ -117,11 +117,11 @@ auto backdrop_constants(const RenderFrame& t_frame) -> BackdropConstants
 	return BackdropConstants{
 		.target_width  = static_cast<float>(t_frame.physical_width),
 		.target_height = static_cast<float>(t_frame.physical_height),
-		.intensity     = t_frame.backdrop_intensity,
-		.style         = static_cast<float>(enum_index(t_frame.backdrop_style)),
+		.intensity     = t_frame.backdrop.intensity,
+		.style         = static_cast<float>(enum_index(t_frame.backdrop.style)),
 		.pixel_scale   = pixel_scale(t_frame),
-		.light         = t_frame.backdrop_light,
-		.grain         = t_frame.backdrop_grain,
+		.light         = t_frame.backdrop.light,
+		.grain         = t_frame.backdrop.grain,
 	};
 }
 
@@ -203,8 +203,8 @@ auto Renderer::init(const os::Window* t_window, GraphicsApi t_preferred_api) -> 
 
 auto Renderer::resize(const os::Window* t_window) -> void
 {
-	const u32 width  = t_window->physical_width();
-	const u32 height = t_window->physical_height();
+	const u32 width  = t_window->m_physical_width;
+	const u32 height = t_window->m_physical_height;
 	if (m_backend == nullptr || width == 0 || height == 0 || (width == m_physical_width && height == m_physical_height)) return;
 
 	m_backend->resize(width, height);
@@ -223,10 +223,7 @@ auto Renderer::render(const DrawList* t_draw_list, Color t_clear_color) -> void
 		.logical_width       = m_logical_width,
 		.logical_height      = m_logical_height,
 		.effect_time_seconds = m_effect_time_seconds,
-		.backdrop_style      = m_backdrop_style,
-		.backdrop_intensity  = m_backdrop_intensity,
-		.backdrop_light      = m_backdrop_light,
-		.backdrop_grain      = m_backdrop_grain,
+		.backdrop            = m_backdrop,
 	});
 }
 
@@ -240,8 +237,7 @@ auto Renderer::is_device_lost() const -> bool
 	return m_backend == nullptr || m_backend->is_device_lost();
 }
 
-// Builds a new device after the old one was lost. Every texture slot stays with the Texture that holds it, but the new device starts empty,
-// so their owners upload their pixels again once this succeeds.
+// Builds a new device after the old one was lost. Every texture slot stays with the Texture that holds it, but the new device starts empty, so their owners upload their pixels again once this succeeds.
 auto Renderer::recover(const os::Window* t_window) -> bool
 {
 	m_backend.reset();
@@ -290,7 +286,7 @@ auto Renderer::destroy_texture(u32 t_slot) -> void
 auto Renderer::restore_texture(u32 t_slot, std::span<const TextureLevel> t_levels) -> void
 {
 	if (m_backend != nullptr) {
-		static_cast<void>(m_backend->create_texture(t_slot, t_levels, false));
+		std::ignore = m_backend->create_texture(t_slot, t_levels, false);
 	}
 }
 
@@ -320,8 +316,8 @@ auto Renderer::release_texture_slot(u32 t_slot) -> void
 
 auto Renderer::remember_size(const os::Window* t_window) -> void
 {
-	m_physical_width  = t_window->physical_width();
-	m_physical_height = t_window->physical_height();
-	m_logical_width   = static_cast<float>(t_window->width());
-	m_logical_height  = static_cast<float>(t_window->height());
+	m_physical_width  = t_window->m_physical_width;
+	m_physical_height = t_window->m_physical_height;
+	m_logical_width   = static_cast<float>(t_window->m_width);
+	m_logical_height  = static_cast<float>(t_window->m_height);
 }

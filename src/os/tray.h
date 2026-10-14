@@ -43,7 +43,6 @@ struct TrayAccount {
 	u32  row;
 };
 
-// The menu and the login toast follow the app's theme.
 struct TrayColors {
 	Color background;
 	Color border;
@@ -61,7 +60,6 @@ struct TrayColors {
 	auto operator==(const TrayColors&) const -> bool = default;
 };
 
-// An update the tray menu offers at its top right.
 enum class TrayUpdate : u8 {
 	NONE,
 	AVAILABLE,
@@ -74,7 +72,6 @@ enum class TrayLoginState : u8 {
 	FAILED,
 };
 
-// A login shown in the small window by the tray: its status while it runs, then how it went.
 struct TrayLogin {
 	TrayLoginState state = TrayLoginState::RUNNING;
 	char           account[64]{};
@@ -111,7 +108,7 @@ class Tray {
 	auto set_locked(bool t_locked) -> void;
 	auto set_update(TrayUpdate t_update) -> void;
 
-	// Shows a login in the small window by the tray, or brings it up to date. A finished login closes itself after a moment.
+	// A finished login closes itself after a moment.
 	auto show_login(const TrayLogin& t_login) -> void;
 	auto hide_login() -> void;
 

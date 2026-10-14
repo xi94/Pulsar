@@ -3,13 +3,12 @@
 #include <optional>
 #include <span>
 #include <string_view>
-#include <vector>
 
 #include "core/enum_array.h"
 #include "core/library.h"
+#include "ui/account_list.h"
 #include "ui/commands.h"
 #include "ui/list_popup.h"
-#include "ui/row_selection.h"
 #include "ui/scrollable.h"
 #include "ui/text_input.h"
 #include "ui/tooltip.h"
@@ -26,32 +25,19 @@ struct Settings;
 
 class AccountModal : public Widget {
   public:
-	AccountModal(Library*          t_library,
-	             Settings*         t_settings,
-	             const Fonts*      t_fonts,
-	             const Assets*     t_assets,
-	             const os::Window* t_window,
-	             Toasts*           t_toasts,
-	             LoginSession*     t_session,
-	             CommandQueue*     t_commands);
+	AccountModal(Library* t_library, Settings* t_settings, const Fonts* t_fonts, const Assets* t_assets, const os::Window* t_window, Toasts* t_toasts, LoginSession* t_session, CommandQueue* t_commands);
 
 	auto open(u32 t_game) -> void;
-
-	auto set_art_source(ArtSource t_source) -> void
-	{
-		m_art_source = t_source;
-	}
-
-	[[nodiscard]] auto detached_game() const -> std::optional<u32>;
 	auto close() -> void;
 	auto quick_login(u32 t_game, AccountRef t_account) -> void;
 	auto edit_account(AccountRef t_account) -> void;
-	auto undo_delete() -> void;
 	auto edit_row(std::optional<u32> t_row) -> void;
 	auto delete_row(std::optional<u32> t_row) -> void;
 	auto delete_picked() -> void;
+	auto undo_delete() -> void;
 	auto forget_secrets() -> void;
 
+	[[nodiscard]] auto detached_game() const -> std::optional<u32>;
 	[[nodiscard]] auto account_at_row(std::optional<u32> t_row) const -> const Account*;
 
 	auto update(float t_delta_seconds) -> void override;
@@ -72,6 +58,8 @@ class AccountModal : public Widget {
 
 	[[nodiscard]] auto cursor() const -> CursorKind override;
 
+	std::optional<ArtSource> m_art_source;
+
   private:
 	enum class Mode : u8 {
 		ACCOUNT_LIST,
@@ -88,17 +76,18 @@ class AccountModal : public Widget {
 		Rect footer;
 	};
 
-	struct AccountRows {
+	struct ListLayout {
 		VisibleAccounts accounts;
 		float           row_height;
-		Rect            region;
+		Rect            area;
 		ScrollGeometry  scroll;
 	};
 
 	struct FormLayout {
-		Rect                       region;
+		Rect                       area;
 		EnumArray<EditField, Rect> field_labels;
 		EnumArray<EditField, Rect> field_inputs;
+		Rect                       reveal;
 		Rect                       region_label;
 		Rect                       region_input;
 		Rect                       show_in_label;
@@ -108,141 +97,97 @@ class AccountModal : public Widget {
 		float                      content_height;
 	};
 
-	struct DeletedAccount {
-		Account    account;
-		AccountRef position;
-	};
-
-	struct RowRange {
-		u32 first;
-		u32 last;
-	};
-
-	[[nodiscard]] auto has_game() const -> bool;
-	[[nodiscard]] auto back_badge_rect(const Layout& t_layout) const -> Rect;
-	auto request_tooltip() -> void;
-	auto request_row_tooltip(const Layout& t_layout) -> void;
-	[[nodiscard]] auto empty_zone(const Layout& t_layout, Rect t_region) const -> Rect;
 	[[nodiscard]] auto floating_panel_size() const -> Vec2;
 	[[nodiscard]] auto expanded_form_panel_height(float t_panel_width) const -> float;
 	[[nodiscard]] auto is_docked() const -> bool;
 	[[nodiscard]] auto panel_rect() const -> Rect;
 	[[nodiscard]] auto layout() const -> Layout;
+	[[nodiscard]] auto back_badge_rect(const Layout& t_layout) const -> Rect;
 
-	[[nodiscard]] auto displayed_accounts() const -> VisibleAccounts;
+	[[nodiscard]] auto list_layout(const Layout& t_layout) const -> ListLayout;
+	[[nodiscard]] auto list_to_screen(const ListLayout& t_list, float t_list_y) const -> float;
+	[[nodiscard]] auto pointer_in_list(const ListLayout& t_list, float t_y) const -> float;
+	[[nodiscard]] auto row_rect_at(const Layout& t_layout, const ListLayout& t_list, float t_top_in_list) const -> Rect;
+	[[nodiscard]] auto row_rect(const Layout& t_layout, const ListLayout& t_list, u32 t_row) const -> Rect;
+	[[nodiscard]] auto row_at(const Layout& t_layout, const ListLayout& t_list, Vec2 t_point) const -> std::optional<u32>;
 	[[nodiscard]] auto row_account(std::optional<u32> t_row) const -> std::optional<AccountRef>;
-	[[nodiscard]] auto account_rows(const Layout& t_layout) const -> AccountRows;
-
-	[[nodiscard]] auto content_to_screen(const AccountRows& t_rows, float t_content_y) const -> float;
-	[[nodiscard]] auto row_rect_at(const Layout& t_layout, const AccountRows& t_rows, float t_content_top) const -> Rect;
-	[[nodiscard]] auto row_rect(const Layout& t_layout, const AccountRows& t_rows, u32 t_row) const -> Rect;
-	[[nodiscard]] auto row_at(const Layout& t_layout, const AccountRows& t_rows, Vec2 t_point) const -> std::optional<u32>;
 	[[nodiscard]] auto login_button_rect(Rect t_row) const -> Rect;
 	[[nodiscard]] auto favorite_button_rect(Rect t_row) const -> Rect;
 	[[nodiscard]] auto is_row_button_hit(Rect t_row, Vec2 t_point) const -> bool;
 	[[nodiscard]] auto list_header(Rect t_main) const -> Rect;
 	[[nodiscard]] auto add_button_rect(Rect t_main) const -> Rect;
 	[[nodiscard]] auto search_rect(Rect t_main) const -> Rect;
+	[[nodiscard]] auto is_search_visible() const -> bool;
+	[[nodiscard]] auto empty_zone(const Layout& t_layout, Rect t_list_area) const -> Rect;
+	[[nodiscard]] auto lifted_top(const ListLayout& t_list) const -> float;
+	[[nodiscard]] auto raised_top(const ListLayout& t_list, u32 t_row) const -> float;
+	[[nodiscard]] auto can_select() const -> bool;
+
 	[[nodiscard]] auto primary_button_rect(Rect t_footer) const -> Rect;
 	[[nodiscard]] auto cancel_button_rect(Rect t_primary) const -> Rect;
-	[[nodiscard]] auto form_region(Rect t_main) const -> Rect;
-	[[nodiscard]] auto form_scroll(Rect t_main) const -> ScrollGeometry;
-	[[nodiscard]] auto form_layout(Rect t_main) const -> FormLayout;
-	[[nodiscard]] auto field_input_rect(Rect t_main, EditField t_field) const -> Rect;
-	[[nodiscard]] auto field_text_rect(Rect t_main, EditField t_field) const -> Rect;
-	[[nodiscard]] auto reveal_button_rect(Rect t_main) const -> Rect;
-	[[nodiscard]] auto show_in_rect(Rect t_main) const -> Rect;
-	[[nodiscard]] auto is_show_in_hit(Rect t_main, Vec2 t_point) const -> bool;
-	[[nodiscard]] auto region_rect(Rect t_main) const -> Rect;
-	[[nodiscard]] auto is_region_hit(Rect t_main, Vec2 t_point) const -> bool;
-	auto open_region_list() -> void;
-	auto choose_region(u32 t_index) -> void;
-	[[nodiscard]] auto edit_header_height() const -> float;
-	[[nodiscard]] auto save_label() const -> std::string_view;
 	[[nodiscard]] auto asks_for_permission() const -> bool;
+	[[nodiscard]] auto save_label() const -> std::string_view;
+	[[nodiscard]] auto edit_header_height() const -> float;
+	[[nodiscard]] auto form_area(Rect t_main) const -> Rect;
+	[[nodiscard]] auto form_layout(Rect t_main) const -> FormLayout;
+	[[nodiscard]] auto form_scroll(const FormLayout& t_form) const -> ScrollGeometry;
+	[[nodiscard]] auto field_text_rect(const FormLayout& t_form, EditField t_field) const -> Rect;
 	[[nodiscard]] auto show_in_columns(float t_width) const -> u32;
 	[[nodiscard]] auto show_in_tile_height() const -> float;
 	[[nodiscard]] auto show_in_tile(const FormLayout& t_form, u32 t_game) const -> Rect;
-	[[nodiscard]] auto show_in_tile_at(Rect t_main, Vec2 t_point) const -> std::optional<u32>;
-	auto toggle_visible_game(u32 t_game) -> void;
+	[[nodiscard]] auto show_in_tile_at(const FormLayout& t_form, Vec2 t_point) const -> std::optional<u32>;
+	[[nodiscard]] auto is_in_form(const FormLayout& t_form, Rect t_part, Vec2 t_point) const -> bool;
+	[[nodiscard]] auto field_at(const FormLayout& t_form, Vec2 t_point) const -> std::optional<EditField>;
 
-	[[nodiscard]] auto field(EditField t_field) -> TextInput*
-	{
-		return &m_fields[t_field];
-	}
-
-	[[nodiscard]] auto field(EditField t_field) const -> const TextInput*
-	{
-		return &m_fields[t_field];
-	}
-
-	[[nodiscard]] auto focused_field() const -> std::optional<EditField>;
-	auto focus_field(std::optional<EditField> t_field) -> void;
-	[[nodiscard]] auto field_at(Rect t_main, Vec2 t_point) const -> std::optional<EditField>;
-	[[nodiscard]] auto is_reveal_hit(Rect t_main, Vec2 t_point) const -> bool;
-	auto reveal_field(std::optional<EditField> t_field) -> void;
-
-	auto start_adding() -> void;
-	auto start_editing(AccountRef t_account) -> void;
-	[[nodiscard]] auto can_save() const -> bool;
-	[[nodiscard]] auto has_changes() const -> bool;
-	auto save_edit() -> void;
-	auto delete_account(AccountRef t_account) -> void;
-	auto delete_accounts(std::span<const AccountRef> t_accounts) -> void;
-	auto forget_deleted() -> void;
-	auto toggle_favorite(AccountRef t_account) -> void;
-	auto follow_insert(AccountRef t_inserted) -> void;
-	auto follow_removal(AccountRef t_removed) -> void;
+	auto start_form(std::optional<AccountRef> t_account) -> void;
+	auto save_form() -> void;
+	auto open_region_list() -> void;
+	auto reveal_field(EditField t_field) -> void;
 
 	auto request_login(u32 t_game, AccountRef t_account) -> void;
-	auto cancel_login() -> void;
-
+	auto toggle_favorite(AccountRef t_account) -> void;
+	auto delete_accounts(std::span<const AccountRef> t_accounts) -> void;
 	auto refresh_search() -> void;
 	auto clear_search() -> void;
 	auto reveal_account(AccountRef t_account) -> void;
-
-	[[nodiscard]] auto is_search_visible() const -> bool;
-	[[nodiscard]] auto drag_range(const VisibleAccounts& t_accounts, u32 t_row) const -> RowRange;
-	[[nodiscard]] auto lifted_top(const AccountRows& t_rows) const -> float;
-	[[nodiscard]] auto raised_top(const AccountRows& t_rows, u32 t_row) const -> float;
-	[[nodiscard]] auto can_select() const -> bool;
-	auto lift_row(const AccountRows& t_rows, u32 t_row, Vec2 t_point) -> void;
+	auto lift_row(const ListLayout& t_list, u32 t_row, Vec2 t_point) -> void;
 	auto drop_row() -> void;
 	auto cancel_row_drag() -> void;
-	auto update_row_drag(float t_delta_seconds) -> void;
-	auto update_marquee(float t_delta_seconds) -> void;
-	auto scroll_near_edges(const AccountRows& t_rows, float t_delta_seconds) -> void;
-	auto select_with_modifiers(u32 t_row) -> bool;
-	auto update_row_hover(float t_delta_seconds) -> void;
-	auto animate_reorder(const VisibleAccounts& t_before) -> void;
-	auto reset_row_motion() -> void;
+	auto scroll_near_edges(const ListLayout& t_list, float t_delta_seconds) -> void;
+	auto update_list(float t_delta_seconds) -> void;
+	auto update_marquee(const ListLayout& t_list, float t_delta_seconds) -> void;
+	auto request_tooltip() -> void;
+	auto request_row_tooltip(const Layout& t_layout) -> void;
 
-	auto handle_list_key(os::Key t_key) -> bool;
-	auto handle_list_press(const Layout& t_layout, Vec2 t_point) -> void;
-	auto handle_list_click(const Layout& t_layout, Vec2 t_point) -> void;
-	auto handle_edit_click(const Layout& t_layout, Vec2 t_point) -> void;
-
-	auto notify(std::string_view t_message) -> void;
+	auto press_in_list(const Layout& t_layout, Vec2 t_point) -> void;
+	auto click_in_list(const Layout& t_layout, Vec2 t_point) -> void;
+	auto click_in_form(const Layout& t_layout, Vec2 t_point) -> void;
+	auto click_in_login_progress(const Layout& t_layout, Vec2 t_point) -> void;
+	auto key_in_list(os::Key t_key) -> void;
+	auto key_in_form(os::Key t_key) -> void;
+	auto escape() -> void;
 
 	[[nodiscard]] auto list_cursor(const Layout& t_layout) const -> CursorKind;
-	[[nodiscard]] auto edit_cursor(const Layout& t_layout) const -> CursorKind;
+	[[nodiscard]] auto form_cursor(const Layout& t_layout) const -> CursorKind;
 
 	auto draw_chrome(DrawList* t_draw_list, const Layout& t_layout, bool t_with_art, u8 t_alpha) const -> void;
 	auto draw_back_badge(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void;
 	auto draw_morphing_art(DrawList* t_draw_list, const Layout& t_layout, float t_scale) const -> void;
 	auto draw_list_header(DrawList* t_draw_list, Rect t_main, float t_rows_top, u8 t_alpha) -> void;
-	auto draw_search(DrawList* t_draw_list, Rect t_main, u8 t_alpha) -> void;
-	auto draw_empty_state(DrawList* t_draw_list, const Layout& t_layout, Rect t_region, u8 t_alpha) const -> void;
-	auto draw_no_matches(DrawList* t_draw_list, Rect t_region, u8 t_alpha) const -> void;
+	auto draw_empty_state(DrawList* t_draw_list, const Layout& t_layout, Rect t_list_area, u8 t_alpha) const -> void;
+	auto draw_no_matches(DrawList* t_draw_list, Rect t_list_area, u8 t_alpha) const -> void;
 	auto draw_account_list(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) -> void;
-	auto draw_account_rows(DrawList* t_draw_list, const Layout& t_layout, const AccountRows& t_rows, u8 t_alpha) -> void;
-	auto draw_account_row(DrawList* t_draw_list, Rect t_row, const Account* t_account, bool t_raised, bool t_selected, float t_hover, u8 t_alpha) const -> void;
+	auto draw_account_rows(DrawList* t_draw_list, const Layout& t_layout, const ListLayout& t_list, u8 t_alpha) -> void;
+	auto draw_account_row(DrawList* t_draw_list, Rect t_row, const Account& t_account, bool t_raised, bool t_selected, float t_hover, u8 t_alpha) const -> void;
 	auto draw_login_progress(DrawList* t_draw_list, Rect t_main, u8 t_alpha) const -> void;
-	auto draw_edit_header(DrawList* t_draw_list, Rect t_main, u8 t_alpha) const -> void;
+	auto draw_form_header(DrawList* t_draw_list, Rect t_main, u8 t_alpha) const -> void;
+	auto draw_form(DrawList* t_draw_list, Rect t_main, u8 t_alpha) -> void;
+	auto draw_form_fields(DrawList* t_draw_list, const FormLayout& t_form, bool t_live, u8 t_alpha) -> void;
+	auto draw_form_region(DrawList* t_draw_list, const FormLayout& t_form, bool t_live, u8 t_alpha) const -> void;
 	auto draw_show_in(DrawList* t_draw_list, const FormLayout& t_form, u8 t_alpha) const -> void;
-	auto draw_edit_form(DrawList* t_draw_list, Rect t_main, u8 t_alpha) -> void;
+	auto draw_show_in_tiles(DrawList* t_draw_list, const FormLayout& t_form, bool t_live, u8 t_alpha) const -> void;
 	auto draw_footer(DrawList* t_draw_list, Rect t_footer, u8 t_alpha) const -> void;
-	auto draw_edit_footer(DrawList* t_draw_list, Rect t_footer, u8 t_alpha) const -> void;
+	auto draw_form_footer(DrawList* t_draw_list, Rect t_footer, u8 t_alpha) const -> void;
 
 	Library*          m_library;
 	Settings*         m_settings;
@@ -253,36 +198,20 @@ class AccountModal : public Widget {
 	LoginSession*     m_session;
 	CommandQueue*     m_commands;
 
-	bool                     m_open        = false;
-	float                    m_open_amount = 0.0f;
-	std::optional<ArtSource> m_art_source;
-	float                    m_morph_progress  = 0.0f;
-	bool                     m_press_swallowed = false;
-	std::optional<u32>       m_game;
-	Mode                     m_mode = Mode::ACCOUNT_LIST;
-	Scrollable               m_rows_scroll;
-	Scrollable               m_form_scroll;
-	Tooltip                  m_tooltip;
+	AccountList m_list;
+	AccountForm m_form;
+	TextInput   m_search;
+	Scrollable  m_rows_scroll;
+	Scrollable  m_form_scroll;
+	Tooltip     m_tooltip;
+	ListPopup   m_region_list;
 
-	TextInput m_search;
-	char      m_applied_query[K_TEXT_INPUT_CAPACITY]{};
-
-	RowDrag      m_drag;
-	RowSelection m_selection;
-	float        m_row_offsets[K_MAX_VISIBLE_ACCOUNTS]{};
-	float        m_row_hover[K_MAX_VISIBLE_ACCOUNTS]{};
-	RowSet       m_raised;
-	float        m_lift_amount = 0.0f;
-	float        m_zone_hover  = 0.0f;
-
-	std::vector<DeletedAccount> m_deleted;
-
-	EnumArray<EditField, TextInput> m_fields{};
-	std::optional<AccountRef>       m_edited;
-	bool                            m_show_required  = false;
-	u16                             m_visible_mask   = 0;
-	bool                            m_show_in_open   = false;
-	float                           m_show_in_amount = 0.0f;
-	char                            m_region[8]{};
-	ListPopup                       m_region_list;
+	Mode  m_mode            = Mode::ACCOUNT_LIST;
+	bool  m_open            = false;
+	float m_open_amount     = 0.0f;
+	float m_morph_progress  = 0.0f;
+	bool  m_press_swallowed = false;
+	float m_zone_hover      = 0.0f;
+	bool  m_show_in_open    = false;
+	float m_show_in_amount  = 0.0f;
 };

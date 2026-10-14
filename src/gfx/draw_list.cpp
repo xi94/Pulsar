@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cmath>
 #include <numbers>
+#include <ranges>
 
 #include "core/enum_array.h"
 #include "core/profiler.h"
@@ -30,8 +31,8 @@ float g_pixel_scale      = 1.0f;
 		constexpr float CORNER_START_DEGREES[4]{180.0f, 270.0f, 0.0f, 90.0f};
 
 		std::array<Vec2, K_ROUNDED_POINT_COUNT> arc{};
-		for (u32 corner = 0; corner < 4; corner += 1) {
-			for (u32 step = 0; step < K_POINTS_PER_CORNER; step += 1) {
+		for (const u32 corner : std::views::iota(0u, 4u)) {
+			for (const u32 step : std::views::iota(0u, K_POINTS_PER_CORNER)) {
 				const float degrees = CORNER_START_DEGREES[corner] + 90.0f * step / K_CORNER_SEGMENTS;
 				const float radians = degrees * K_DEGREES_TO_RADIANS;
 
@@ -70,7 +71,7 @@ float g_pixel_scale      = 1.0f;
 
 	remaining -= straight_width * 0.5f;
 
-	for (u32 i = 0; i < 4; i += 1) {
+	for (const u32 i : std::views::iota(0u, 4u)) {
 		const float start_angle = QUARTER_TURN * (static_cast<float>(i) - 1.0f);
 
 		if (remaining <= arc_length) {
@@ -275,9 +276,7 @@ auto DrawList::target(ShaderKind t_shader, const Texture* t_texture, RoundedBoxP
 	const bool clipped = m_clip_depth > 0;
 	const Rect clip    = clipped ? m_clip_stack[m_clip_depth - 1] : Rect{};
 
-	const bool continues_open_command = m_has_open_command && m_open.shader == t_shader && m_open.texture == t_texture && m_open.clipped == clipped &&
-	                                    m_open.clip == clip && (!uses_rounded_box(t_shader) || m_open.box == t_box) &&
-	                                    (t_shader != ShaderKind::OUTLINE_COUNTDOWN || m_open.outline == t_outline);
+	const bool continues_open_command = m_has_open_command && m_open.shader == t_shader && m_open.texture == t_texture && m_open.clipped == clipped && m_open.clip == clip && (!uses_rounded_box(t_shader) || m_open.box == t_box) && (t_shader != ShaderKind::OUTLINE_COUNTDOWN || m_open.outline == t_outline);
 	if (continues_open_command) return;
 
 	close_command();
@@ -314,7 +313,7 @@ auto DrawList::push_quad(const Vertex2D (&t_corners)[4]) -> void
 	assert(m_index_count + 6 <= m_index_capacity);
 
 	const u32 base = m_vertex_count;
-	for (u32 i = 0; i < 4; i += 1) {
+	for (const u32 i : std::views::iota(0u, 4u)) {
 		const Vec2 position  = scaled(Vec2{t_corners[i].x, t_corners[i].y});
 		m_vertices[base + i] = Vertex2D{position.x, position.y, t_corners[i].u, t_corners[i].v, t_corners[i].color};
 	}
@@ -371,7 +370,7 @@ auto DrawList::push_rounded(Rect t_rect, CornerRadii t_radii, UvRect t_uv, u32 t
 	m_vertices[center_vertex] = Vertex2D{scaled_center.x, scaled_center.y, center_uv.x, center_uv.y, t_color};
 
 	const auto& directions = corner_arc_directions();
-	for (u32 i = 0; i < K_ROUNDED_POINT_COUNT; i += 1) {
+	for (const u32 i : std::views::iota(0u, K_ROUNDED_POINT_COUNT)) {
 		const u32  corner = i / K_POINTS_PER_CORNER;
 		const Vec2 point{corner_centers[corner].x + radius[corner] * directions[i].x, corner_centers[corner].y + radius[corner] * directions[i].y};
 		const Vec2 uv = uv_at(t_rect, t_uv, point);
@@ -382,7 +381,7 @@ auto DrawList::push_rounded(Rect t_rect, CornerRadii t_radii, UvRect t_uv, u32 t
 
 	m_vertex_count += K_ROUNDED_POINT_COUNT + 1;
 
-	for (u32 i = 0; i < K_ROUNDED_POINT_COUNT; i += 1) {
+	for (const u32 i : std::views::iota(0u, K_ROUNDED_POINT_COUNT)) {
 		m_indices[m_index_count + 0] = center_vertex;
 		m_indices[m_index_count + 1] = center_vertex + 1 + i;
 		m_indices[m_index_count + 2] = center_vertex + 1 + (i + 1) % K_ROUNDED_POINT_COUNT;
@@ -405,7 +404,7 @@ auto DrawList::push_rounded_ring(Rect t_rect, CornerRadii t_radii, float t_thick
 	for (const bool outer : {true, false}) {
 		const Rect box = outer ? t_rect : inner;
 
-		for (u32 i = 0; i < K_ROUNDED_POINT_COUNT; i += 1) {
+		for (const u32 i : std::views::iota(0u, K_ROUNDED_POINT_COUNT)) {
 			const u32   corner = i / K_POINTS_PER_CORNER;
 			const float radius = outer ? std::min(corners[corner], outer_most) : std::clamp(corners[corner] - t_thickness, 0.0f, inner_most);
 			const Vec2  center{corner == 0 || corner == 3 ? box.x + radius : box.right() - radius, corner < 2 ? box.y + radius : box.bottom() - radius};
@@ -416,10 +415,9 @@ auto DrawList::push_rounded_ring(Rect t_rect, CornerRadii t_radii, float t_thick
 		}
 	}
 
-	for (u32 i = 0; i < K_ROUNDED_POINT_COUNT; i += 1) {
+	for (const u32 i : std::views::iota(0u, K_ROUNDED_POINT_COUNT)) {
 		const u32 next = (i + 1) % K_ROUNDED_POINT_COUNT;
-		const u32 quad[6]{
-			first + i, first + next, first + K_ROUNDED_POINT_COUNT + i, first + next, first + K_ROUNDED_POINT_COUNT + next, first + K_ROUNDED_POINT_COUNT + i};
+		const u32 quad[6]{first + i, first + next, first + K_ROUNDED_POINT_COUNT + i, first + next, first + K_ROUNDED_POINT_COUNT + next, first + K_ROUNDED_POINT_COUNT + i};
 
 		for (const u32 index : quad) {
 			m_indices[m_index_count] = index;
@@ -446,7 +444,7 @@ auto DrawList::add_triangle(Vec2 t_a, Vec2 t_b, Vec2 t_c, Color t_color) -> void
 	const u32  color = pack(t_color);
 	const Vec2 corners[3]{scaled(t_a), scaled(t_b), scaled(t_c)};
 
-	for (u32 i = 0; i < 3; i += 1) {
+	for (const u32 i : std::views::iota(0u, 3u)) {
 		m_vertices[base + i]         = Vertex2D{corners[i].x, corners[i].y, 0.0f, 0.0f, color};
 		m_indices[m_index_count + i] = base + i;
 	}
@@ -457,12 +455,17 @@ auto DrawList::add_triangle(Vec2 t_a, Vec2 t_b, Vec2 t_c, Color t_color) -> void
 
 auto DrawList::add_rect_outline(Rect t_rect, float t_thickness, Color t_color) -> void
 {
+	const float inner_top    = t_rect.y + t_thickness;
 	const float inner_height = t_rect.h - t_thickness * 2.0f;
+	const Rect  top{t_rect.x, t_rect.y, t_rect.w, t_thickness};
+	const Rect  bottom{t_rect.x, t_rect.bottom() - t_thickness, t_rect.w, t_thickness};
+	const Rect  left{t_rect.x, inner_top, t_thickness, inner_height};
+	const Rect  right{t_rect.right() - t_thickness, inner_top, t_thickness, inner_height};
 
-	add_rect(Rect{t_rect.x, t_rect.y, t_rect.w, t_thickness}, t_color);
-	add_rect(Rect{t_rect.x, t_rect.bottom() - t_thickness, t_rect.w, t_thickness}, t_color);
-	add_rect(Rect{t_rect.x, t_rect.y + t_thickness, t_thickness, inner_height}, t_color);
-	add_rect(Rect{t_rect.right() - t_thickness, t_rect.y + t_thickness, t_thickness, inner_height}, t_color);
+	add_rect(top, t_color);
+	add_rect(bottom, t_color);
+	add_rect(left, t_color);
+	add_rect(right, t_color);
 }
 
 auto DrawList::add_gradient(Rect t_rect, Color t_top_left, Color t_top_right, Color t_bottom_left, Color t_bottom_right) -> void
@@ -490,14 +493,14 @@ auto DrawList::add_convex_polygon(std::span<const Vec2> t_points, std::span<cons
 	assert(m_index_count + (count - 2) * 3 <= m_index_capacity);
 
 	const u32 base = m_vertex_count;
-	for (u32 i = 0; i < count; i += 1) {
+	for (const u32 i : std::views::iota(0u, count)) {
 		const Vec2 position  = scaled(t_points[i]);
 		m_vertices[base + i] = Vertex2D{position.x, position.y, 0.0f, 0.0f, pack(t_colors[i])};
 	}
 
 	m_vertex_count += count;
 
-	for (u32 i = 1; i + 1 < count; i += 1) {
+	for (const u32 i : std::views::iota(1u, count - 1)) {
 		m_indices[m_index_count + 0] = base;
 		m_indices[m_index_count + 1] = base + i;
 		m_indices[m_index_count + 2] = base + i + 1;
@@ -630,9 +633,7 @@ auto DrawList::add_rotated_image(Rect t_rect, float t_radians, const Texture* t_
 	const float half_h    = t_rect.h * 0.5f;
 	const u32   tint      = pack(t_tint);
 
-	const auto corner = [&](float t_offset_x, float t_offset_y, float t_u, float t_v) {
-		return Vertex2D{center.x + t_offset_x * cos_angle - t_offset_y * sin_angle, center.y + t_offset_x * sin_angle + t_offset_y * cos_angle, t_u, t_v, tint};
-	};
+	const auto corner = [&](float t_offset_x, float t_offset_y, float t_u, float t_v) { return Vertex2D{center.x + t_offset_x * cos_angle - t_offset_y * sin_angle, center.y + t_offset_x * sin_angle + t_offset_y * cos_angle, t_u, t_v, tint}; };
 
 	const Vertex2D corners[4]{
 		corner(-half_w, -half_h, 0.0f, 0.0f),
@@ -752,11 +753,11 @@ auto DrawList::add_dashed_outline(Rect t_rect, float t_radius, float t_thickness
 
 	target(ShaderKind::SOLID);
 
-	for (u32 i = 0; i < static_cast<u32>(count); i += 1) {
+	for (const u32 i : std::views::iota(0u, static_cast<u32>(count))) {
 		const float start = static_cast<float>(i) * period;
 		Edges       from  = edges_at(start);
 
-		for (u32 piece = 1; piece <= pieces; piece += 1) {
+		for (const u32 piece : std::views::iota(1u, pieces + 1)) {
 			const Edges    to = edges_at(start + dash * static_cast<float>(piece) / static_cast<float>(pieces));
 			const Vertex2D corners[4]{
 				{from.left.x, from.left.y, 0.0f, 0.0f, color},

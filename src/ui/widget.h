@@ -60,26 +60,11 @@ class Widget {
 		return CursorKind::ARROW;
 	}
 
-	auto set_mouse(Vec2 t_mouse) -> void
-	{
-		m_mouse = t_mouse;
-	}
-
-	[[nodiscard]] auto is_visible() const -> bool
-	{
-		return m_visible;
-	}
-
-	auto set_visible(bool t_visible) -> void
-	{
-		m_visible = t_visible;
-	}
-
-  protected:
+	bool m_visible = true;
 	Vec2 m_mouse{-1.0f, -1.0f};
 
+  protected:
   private:
-	bool m_visible = true;
 };
 
 class WidgetStack {

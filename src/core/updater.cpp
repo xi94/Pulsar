@@ -3,10 +3,10 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
-#include <cstdio>
 #include <cstring>
 #include <optional>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -22,8 +22,38 @@
 
 namespace {
 constexpr std::array<u8, 32> K_RELEASE_SIGNING_PUBLIC_KEY{
-	0xD0, 0x82, 0xF5, 0xE2, 0x12, 0xC9, 0x37, 0x3F, 0x4E, 0xEE, 0x56, 0x8D, 0xA3, 0x32, 0x8A, 0x64,
-	0x3E, 0x73, 0x86, 0xBA, 0x0F, 0xE6, 0x13, 0xC3, 0x7F, 0x70, 0x23, 0x76, 0x63, 0x73, 0xF5, 0xE3,
+	0xD0,
+	0x82,
+	0xF5,
+	0xE2,
+	0x12,
+	0xC9,
+	0x37,
+	0x3F,
+	0x4E,
+	0xEE,
+	0x56,
+	0x8D,
+	0xA3,
+	0x32,
+	0x8A,
+	0x64,
+	0x3E,
+	0x73,
+	0x86,
+	0xBA,
+	0x0F,
+	0xE6,
+	0x13,
+	0xC3,
+	0x7F,
+	0x70,
+	0x23,
+	0x76,
+	0x63,
+	0x73,
+	0xF5,
+	0xE3,
 };
 
 constexpr auto  K_SHUTDOWN_JOIN_TIMEOUT = std::chrono::milliseconds(3000);
@@ -53,9 +83,7 @@ auto parse_update_manifest(const std::vector<u8>& t_json, UpdateManifest* t_out_
 	const nlohmann::json parsed = nlohmann::json::parse(t_json.begin(), t_json.end(), nullptr, false);
 	if (!parsed.is_object()) return false;
 
-	const bool has_required_fields = copy_string_field(parsed, "version", t_out_manifest->version) && copy_string_field(parsed, "url", t_out_manifest->url) &&
-	                                 copy_string_field(parsed, "sha256", t_out_manifest->sha256_hex) &&
-	                                 copy_string_field(parsed, "signature", t_out_manifest->signature_base64);
+	const bool has_required_fields = copy_string_field(parsed, "version", t_out_manifest->version) && copy_string_field(parsed, "url", t_out_manifest->url) && copy_string_field(parsed, "sha256", t_out_manifest->sha256_hex) && copy_string_field(parsed, "signature", t_out_manifest->signature_base64);
 	if (!has_required_fields) return false;
 
 	if (!copy_string_field(parsed, "min_upgrade_version", t_out_manifest->min_upgrade_version)) {
@@ -84,9 +112,7 @@ auto verify_update(const std::vector<u8>& t_build, const UpdateManifest& t_manif
 
 	u8         signature[crypto_sign_BYTES];
 	usize      signature_length = 0;
-	const bool decoded = sodium_base642bin(signature, sizeof(signature), t_manifest.signature_base64, std::strlen(t_manifest.signature_base64), nullptr,
-	                                       &signature_length, nullptr, sodium_base64_VARIANT_ORIGINAL) == 0 &&
-	                     signature_length == crypto_sign_BYTES;
+	const bool decoded          = sodium_base642bin(signature, sizeof(signature), t_manifest.signature_base64, std::strlen(t_manifest.signature_base64), nullptr, &signature_length, nullptr, sodium_base64_VARIANT_ORIGINAL) == 0 && signature_length == crypto_sign_BYTES;
 
 	if (!decoded) {
 		*t_out_error = "the manifest's signature is malformed";
@@ -164,7 +190,7 @@ auto Updater::finish_worker(UpdateStage t_stage) -> void
 
 auto Updater::fail_worker(UpdateStage t_stage, const char* t_prefix, const char* t_detail) -> void
 {
-	std::snprintf(m_error_message, sizeof(m_error_message), "%s%s", t_prefix, t_detail);
+	std::ignore = format_into(m_error_message, "{}{}", t_prefix, t_detail);
 	finish_worker(t_stage);
 }
 

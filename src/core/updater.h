@@ -31,8 +31,7 @@ struct UpdateManifest {
 };
 
 [[nodiscard]] auto parse_update_manifest(const std::vector<u8>& t_json, UpdateManifest* t_out_manifest) -> bool;
-[[nodiscard]] auto
-verify_update(const std::vector<u8>& t_build, const UpdateManifest& t_manifest, std::span<const u8, 32> t_public_key, std::string* t_out_error) -> bool;
+[[nodiscard]] auto verify_update(const std::vector<u8>& t_build, const UpdateManifest& t_manifest, std::span<const u8, 32> t_public_key, std::string* t_out_error) -> bool;
 
 class Updater {
   public:
@@ -58,16 +57,6 @@ class Updater {
 		return m_stage.load(std::memory_order_acquire);
 	}
 
-	[[nodiscard]] auto manifest() const -> const UpdateManifest&
-	{
-		return m_manifest;
-	}
-
-	[[nodiscard]] auto error_message() const -> const char*
-	{
-		return m_error_message;
-	}
-
 	[[nodiscard]] auto bytes_downloaded() const -> u64
 	{
 		return m_bytes_downloaded.load(std::memory_order_relaxed);
@@ -82,6 +71,9 @@ class Updater {
 	{
 		return m_bytes_per_second.load(std::memory_order_relaxed);
 	}
+
+	UpdateManifest m_manifest{};
+	char           m_error_message[256]{};
 
   private:
 	auto check_for_update_on_worker() -> void;
@@ -100,7 +92,4 @@ class Updater {
 	std::atomic<u64>    m_bytes_downloaded{0};
 	std::atomic<u64>    m_total_bytes{0};
 	std::atomic<double> m_bytes_per_second{0.0};
-
-	UpdateManifest m_manifest{};
-	char           m_error_message[256]{};
 };

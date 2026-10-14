@@ -37,13 +37,9 @@ class VariantString {
 	VariantString(const VariantString&)                    = delete;
 	auto operator=(const VariantString&) -> VariantString& = delete;
 
-	[[nodiscard]] auto get() const -> const VARIANT&
-	{
-		return m_value;
-	}
+	VARIANT m_value;
 
   private:
-	VARIANT m_value;
 };
 
 [[nodiscard]] auto variant_from_control_type(CONTROLTYPEID t_control_type) -> VARIANT
@@ -113,8 +109,7 @@ auto CALLBACK find_top_level_window_proc(HWND t_window, LPARAM t_search) -> BOOL
 	return FALSE;
 }
 
-[[nodiscard]] auto run_lookup(const char* t_label, const std::invocable<ComPtr<IUIAutomationElement>*> auto& t_lookup, const std::atomic<bool>* t_cancel)
-	-> ComPtr<IUIAutomationElement>
+[[nodiscard]] auto run_lookup(const char* t_label, const std::invocable<ComPtr<IUIAutomationElement>*> auto& t_lookup, const std::atomic<bool>* t_cancel) -> ComPtr<IUIAutomationElement>
 {
 	auto                   result = std::make_shared<ComPtr<IUIAutomationElement>>();
 	const debug_log::Scope scope(K_LOG_CATEGORY, "%s", t_label);
@@ -232,8 +227,7 @@ auto UiAutomation::keep_process_mta_alive() -> void
 	if (cookie != nullptr) return;
 
 	const HRESULT result = CoIncrementMTAUsage(&cookie);
-	debug_log::write(K_LOG_CATEGORY, "CoIncrementMTAUsage hr=0x%08lX (process-wide MTA %s)", static_cast<unsigned long>(result),
-	                 SUCCEEDED(result) ? "held open" : "NOT held - apartment will be torn down between attempts");
+	debug_log::write(K_LOG_CATEGORY, "CoIncrementMTAUsage hr=0x%08lX (process-wide MTA %s)", static_cast<unsigned long>(result), SUCCEEDED(result) ? "held open" : "NOT held - apartment will be torn down between attempts");
 }
 
 auto UiAutomation::init() -> bool
@@ -245,8 +239,7 @@ auto UiAutomation::init() -> bool
 		const HRESULT          result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 		m_com_initialized             = result == S_OK || result == S_FALSE;
 
-		debug_log::write(K_LOG_CATEGORY, "CoInitializeEx hr=0x%08lX (%s)", static_cast<unsigned long>(result),
-		                 m_com_initialized ? "in the MTA" : "NOT initialised by us");
+		debug_log::write(K_LOG_CATEGORY, "CoInitializeEx hr=0x%08lX (%s)", static_cast<unsigned long>(result), m_com_initialized ? "in the MTA" : "NOT initialised by us");
 	}
 
 	const debug_log::Scope scope(K_LOG_CATEGORY, "CoCreateInstance(CLSID_CUIAutomation)");
@@ -288,12 +281,7 @@ auto UiAutomation::element_from_window(HWND t_window) const -> UiElement
 	char label[64];
 	_snprintf_s(label, _TRUNCATE, "ElementFromHandle(hwnd=0x%p)", t_window);
 
-	return UiElement{run_lookup(
-		label,
-		[automation = m_automation, t_window](ComPtr<IUIAutomationElement>* t_out) {
-			automation->ElementFromHandle(t_window, t_out->ReleaseAndGetAddressOf());
-		},
-		m_cancel)};
+	return UiElement{run_lookup(label, [automation = m_automation, t_window](ComPtr<IUIAutomationElement>* t_out) { automation->ElementFromHandle(t_window, t_out->ReleaseAndGetAddressOf()); }, m_cancel)};
 }
 
 auto UiAutomation::find_descendant(const UiElement& t_root, const wchar_t* t_name) const -> UiElement
@@ -303,7 +291,7 @@ auto UiAutomation::find_descendant(const UiElement& t_root, const wchar_t* t_nam
 	const VariantString name(t_name);
 
 	ComPtr<IUIAutomationCondition> condition;
-	if (FAILED(m_automation->CreatePropertyCondition(UIA_NamePropertyId, name.get(), &condition))) return {};
+	if (FAILED(m_automation->CreatePropertyCondition(UIA_NamePropertyId, name.m_value, &condition))) return {};
 
 	char label[192];
 	_snprintf_s(label, _TRUNCATE, "FindFirst(Name=%ls)", t_name);
@@ -321,9 +309,7 @@ auto UiAutomation::find_descendant(const UiElement& t_root, const wchar_t* t_nam
 	ComPtr<IUIAutomationCondition> type_condition;
 	ComPtr<IUIAutomationCondition> both;
 
-	if (FAILED(m_automation->CreatePropertyCondition(UIA_NamePropertyId, name.get(), &name_condition)) ||
-	    FAILED(m_automation->CreatePropertyCondition(UIA_ControlTypePropertyId, variant_from_control_type(t_control_type), &type_condition)) ||
-	    FAILED(m_automation->CreateAndCondition(name_condition.Get(), type_condition.Get(), &both))) {
+	if (FAILED(m_automation->CreatePropertyCondition(UIA_NamePropertyId, name.m_value, &name_condition)) || FAILED(m_automation->CreatePropertyCondition(UIA_ControlTypePropertyId, variant_from_control_type(t_control_type), &type_condition)) || FAILED(m_automation->CreateAndCondition(name_condition.Get(), type_condition.Get(), &both))) {
 		return {};
 	}
 
@@ -346,9 +332,7 @@ auto UiAutomation::find_edit(const UiElement& t_root, bool t_password) const -> 
 	ComPtr<IUIAutomationCondition> password_condition;
 	ComPtr<IUIAutomationCondition> both;
 
-	if (FAILED(m_automation->CreatePropertyCondition(UIA_ControlTypePropertyId, variant_from_control_type(UIA_EditControlTypeId), &type_condition)) ||
-	    FAILED(m_automation->CreatePropertyCondition(UIA_IsPasswordPropertyId, password, &password_condition)) ||
-	    FAILED(m_automation->CreateAndCondition(type_condition.Get(), password_condition.Get(), &both))) {
+	if (FAILED(m_automation->CreatePropertyCondition(UIA_ControlTypePropertyId, variant_from_control_type(UIA_EditControlTypeId), &type_condition)) || FAILED(m_automation->CreatePropertyCondition(UIA_IsPasswordPropertyId, password, &password_condition)) || FAILED(m_automation->CreateAndCondition(type_condition.Get(), password_condition.Get(), &both))) {
 		return {};
 	}
 
@@ -388,8 +372,7 @@ auto UiAutomation::type_text(const wchar_t* t_text) const -> void
 		}
 	}
 
-	debug_log::write(K_LOG_CATEGORY, "type_text: %u character(s) sent, %u rejected%s", sent, rejected,
-	                 rejected != 0 ? " - SendInput was blocked (elevation/UIPI?)" : "");
+	debug_log::write(K_LOG_CATEGORY, "type_text: %u character(s) sent, %u rejected%s", sent, rejected, rejected != 0 ? " - SendInput was blocked (elevation/UIPI?)" : "");
 }
 
 auto UiAutomation::press_key(WORD t_virtual_key) const -> void
@@ -402,8 +385,7 @@ auto UiAutomation::press_key(WORD t_virtual_key) const -> void
 
 	const UINT inserted = SendInput(2, inputs, sizeof(INPUT));
 
-	debug_log::write(K_LOG_CATEGORY, "press_key(vk=0x%02X): %u of 2 event(s) inserted%s", t_virtual_key, inserted,
-	                 inserted != 2 ? " - SendInput was blocked (elevation/UIPI?)" : "");
+	debug_log::write(K_LOG_CATEGORY, "press_key(vk=0x%02X): %u of 2 event(s) inserted%s", t_virtual_key, inserted, inserted != 2 ? " - SendInput was blocked (elevation/UIPI?)" : "");
 }
 
 auto UiAutomation::is_cancelled() const -> bool
@@ -418,10 +400,5 @@ auto UiAutomation::can_search(const UiElement& t_root) const -> bool
 
 auto UiAutomation::find_first(const UiElement& t_root, const ComPtr<IUIAutomationCondition>& t_condition, const char* t_label) const -> UiElement
 {
-	return UiElement{run_lookup(
-		t_label,
-		[root = t_root.com(), t_condition](ComPtr<IUIAutomationElement>* t_out) {
-			root->FindFirst(TreeScope_Descendants, t_condition.Get(), t_out->ReleaseAndGetAddressOf());
-		},
-		m_cancel)};
+	return UiElement{run_lookup(t_label, [root = t_root.m_element, t_condition](ComPtr<IUIAutomationElement>* t_out) { root->FindFirst(TreeScope_Descendants, t_condition.Get(), t_out->ReleaseAndGetAddressOf()); }, m_cancel)};
 }

@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstring>
 #include <optional>
+#include <ranges>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -37,8 +38,7 @@ constexpr UINT K_MSAA_SAMPLE_COUNT       = 4;
 #endif
 
 	ComPtr<ID3DBlob> errors;
-	const HRESULT    result = D3DCompile(K_SHADER_SOURCE, std::strlen(K_SHADER_SOURCE), nullptr, nullptr, nullptr, t_entry_point, t_target, flags, 0,
-	                                     t_out_blob->ReleaseAndGetAddressOf(), &errors);
+	const HRESULT    result = D3DCompile(K_SHADER_SOURCE, std::strlen(K_SHADER_SOURCE), nullptr, nullptr, nullptr, t_entry_point, t_target, flags, 0, t_out_blob->ReleaseAndGetAddressOf(), &errors);
 
 	if (FAILED(result) && errors != nullptr) {
 		OutputDebugStringA(static_cast<const char*>(errors->GetBufferPointer()));
@@ -73,8 +73,7 @@ template <typename Constants>
 
 [[nodiscard]] auto means_device_lost(HRESULT t_result) -> bool
 {
-	return t_result == DXGI_ERROR_DEVICE_REMOVED || t_result == DXGI_ERROR_DEVICE_RESET || t_result == DXGI_ERROR_DEVICE_HUNG ||
-	       t_result == DXGI_ERROR_DRIVER_INTERNAL_ERROR;
+	return t_result == DXGI_ERROR_DEVICE_REMOVED || t_result == DXGI_ERROR_DEVICE_RESET || t_result == DXGI_ERROR_DEVICE_HUNG || t_result == DXGI_ERROR_DRIVER_INTERNAL_ERROR;
 }
 
 auto upload(ID3D11DeviceContext* t_context, ID3D11Buffer* t_buffer, const void* t_data, usize t_bytes) -> void
@@ -179,8 +178,8 @@ auto D3D11Backend::init(const os::Window* t_window) -> bool
 	DXGI_SWAP_CHAIN_DESC swap_chain_desc{
 		.BufferDesc =
 			{
-				.Width       = t_window->physical_width(),
-				.Height      = t_window->physical_height(),
+				.Width       = t_window->m_physical_width,
+				.Height      = t_window->m_physical_height,
 				.RefreshRate = {.Numerator = 0, .Denominator = 1},
 				.Format      = DXGI_FORMAT_R8G8B8A8_UNORM,
 			},
@@ -203,22 +202,19 @@ auto D3D11Backend::init(const os::Window* t_window) -> bool
 	const D3D_FEATURE_LEVEL feature_level = D3D_FEATURE_LEVEL_11_0;
 	const auto              device_start  = std::chrono::steady_clock::now();
 
-	if (FAILED(D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, device_flags, &feature_level, 1, D3D11_SDK_VERSION, &swap_chain_desc,
-	                                         &swap_chain, &device, nullptr, &context))) {
+	if (FAILED(D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, device_flags, &feature_level, 1, D3D11_SDK_VERSION, &swap_chain_desc, &swap_chain, &device, nullptr, &context))) {
 		return false;
 	}
 
 	const auto pipeline_start = std::chrono::steady_clock::now();
 
-	const bool ready = create_render_target_view() && create_shaders() && create_constant_buffers() && create_pipeline_states() &&
-	                   create_vertex_buffer(K_INITIAL_VERTEX_CAPACITY) && create_index_buffer(K_INITIAL_INDEX_CAPACITY);
+	const bool ready = create_render_target_view() && create_shaders() && create_constant_buffers() && create_pipeline_states() && create_vertex_buffer(K_INITIAL_VERTEX_CAPACITY) && create_index_buffer(K_INITIAL_INDEX_CAPACITY);
 	if (!ready) return false;
 
-	debug_log::write(K_LOG_CATEGORY, "device %.1f ms, pipeline %.1f ms", std::chrono::duration<float, std::milli>(pipeline_start - device_start).count(),
-	                 std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - pipeline_start).count());
+	debug_log::write(K_LOG_CATEGORY, "device %.1f ms, pipeline %.1f ms", std::chrono::duration<float, std::milli>(pipeline_start - device_start).count(), std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - pipeline_start).count());
 
-	set_viewport(t_window->physical_width(), t_window->physical_height());
-	size_blur_targets(t_window->physical_width(), t_window->physical_height());
+	set_viewport(t_window->m_physical_width, t_window->m_physical_height);
+	size_blur_targets(t_window->m_physical_width, t_window->m_physical_height);
 
 	return true;
 }
@@ -313,8 +309,7 @@ auto D3D11Backend::create_texture(u32 t_slot, std::span<const TextureLevel> t_le
 	}
 
 	TextureSlot* texture = &textures[t_slot];
-	if (FAILED(device->CreateTexture2D(&desc, pixels.data(), &texture->texture)) ||
-	    FAILED(device->CreateShaderResourceView(texture->texture.Get(), nullptr, &texture->view))) {
+	if (FAILED(device->CreateTexture2D(&desc, pixels.data(), &texture->texture)) || FAILED(device->CreateShaderResourceView(texture->texture.Get(), nullptr, &texture->view))) {
 		*texture = TextureSlot{};
 		return false;
 	}
@@ -373,7 +368,7 @@ auto D3D11Backend::size_blur_targets(u32 t_width, u32 t_height) -> void
 {
 	blur_ready = create_blur_target(t_width, t_height, false, &capture);
 
-	for (u32 level = 0; level < K_BLUR_LEVEL_COUNT; level += 1) {
+	for (const u32 level : std::views::iota(0u, K_BLUR_LEVEL_COUNT)) {
 		const u32 width  = blur_level_extent(t_width, level);
 		const u32 height = blur_level_extent(t_height, level);
 
@@ -387,7 +382,6 @@ auto D3D11Backend::size_blur_targets(u32 t_width, u32 t_height) -> void
 	}
 }
 
-// Resolves what is drawn so far, halves it down to the plan's level and blurs it there, then puts the frame's own state back.
 auto D3D11Backend::blur_frame(const RenderFrame& t_frame, BlurPlan t_plan) -> void
 {
 	PULSAR_PROFILE_SCOPE("Render.Blur");
@@ -425,8 +419,10 @@ auto D3D11Backend::blur_frame(const RenderFrame& t_frame, BlurPlan t_plan) -> vo
 
 	const BlurTarget* source = &capture;
 
-	for (u32 level = 0; level <= t_plan.level; level += 1) {
-		pass(levels[level][0], *source, downsample_shader.Get(), 1.0f / static_cast<float>(source->width), 1.0f / static_cast<float>(source->height));
+	for (const u32 level : std::views::iota(0u, t_plan.level + 1)) {
+		const float texel_width  = 1.0f / static_cast<float>(source->width);
+		const float texel_height = 1.0f / static_cast<float>(source->height);
+		pass(levels[level][0], *source, downsample_shader.Get(), texel_width, texel_height);
 		source = &levels[level][0];
 	}
 
@@ -434,7 +430,7 @@ auto D3D11Backend::blur_frame(const RenderFrame& t_frame, BlurPlan t_plan) -> vo
 	const float       step_x  = t_plan.step / static_cast<float>(blurred[0].width);
 	const float       step_y  = t_plan.step / static_cast<float>(blurred[0].height);
 
-	for (u32 i = 0; i < t_plan.iterations; i += 1) {
+	for (u32 iteration = 0; iteration < t_plan.iterations; iteration += 1) {
 		pass(blurred[1], blurred[0], blur_shader.Get(), step_x, 0.0f);
 		pass(blurred[0], blurred[1], blur_shader.Get(), 0.0f, step_y);
 	}
@@ -473,9 +469,7 @@ auto D3D11Backend::create_shaders() -> bool
 	}
 
 	std::vector<std::thread> compilers;
-	const auto               compile = [&compilers](CompileJob* t_job) {
-		compilers.emplace_back([t_job]() { t_job->compiled = compile_shader(t_job->entry_point, t_job->target, &t_job->blob); });
-	};
+	const auto               compile = [&compilers](CompileJob* t_job) { compilers.emplace_back([t_job]() { t_job->compiled = compile_shader(t_job->entry_point, t_job->target, &t_job->blob); }); };
 
 	compile(&vertex_job);
 	compile(&fullscreen_job);
@@ -492,14 +486,12 @@ auto D3D11Backend::create_shaders() -> bool
 	if (!vertex_job.compiled || !std::ranges::all_of(pixel_jobs, &CompileJob::compiled)) return false;
 	if (!fullscreen_job.compiled || !downsample_job.compiled || !blur_job.compiled) return false;
 
-	const auto bytecode = [](const CompileJob& t_job) { return std::pair{t_job.blob->GetBufferPointer(), t_job.blob->GetBufferSize()}; };
+	const auto bytecode                           = [](const CompileJob& t_job) { return std::pair{t_job.blob->GetBufferPointer(), t_job.blob->GetBufferSize()}; };
 	const auto [fullscreen_code, fullscreen_size] = bytecode(fullscreen_job);
 	const auto [downsample_code, downsample_size] = bytecode(downsample_job);
 	const auto [blur_code, blur_size]             = bytecode(blur_job);
 
-	if (FAILED(device->CreateVertexShader(fullscreen_code, fullscreen_size, nullptr, &fullscreen_shader)) ||
-	    FAILED(device->CreatePixelShader(downsample_code, downsample_size, nullptr, &downsample_shader)) ||
-	    FAILED(device->CreatePixelShader(blur_code, blur_size, nullptr, &blur_shader))) {
+	if (FAILED(device->CreateVertexShader(fullscreen_code, fullscreen_size, nullptr, &fullscreen_shader)) || FAILED(device->CreatePixelShader(downsample_code, downsample_size, nullptr, &downsample_shader)) || FAILED(device->CreatePixelShader(blur_code, blur_size, nullptr, &blur_shader))) {
 		return false;
 	}
 
@@ -522,17 +514,12 @@ auto D3D11Backend::create_shaders() -> bool
 		{"COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, offsetof(Vertex2D, color), D3D11_INPUT_PER_VERTEX_DATA, 0},
 	};
 
-	return SUCCEEDED(
-		device->CreateInputLayout(vertex_layout, ARRAYSIZE(vertex_layout), vertex_blob->GetBufferPointer(), vertex_blob->GetBufferSize(), &input_layout));
+	return SUCCEEDED(device->CreateInputLayout(vertex_layout, ARRAYSIZE(vertex_layout), vertex_blob->GetBufferPointer(), vertex_blob->GetBufferSize(), &input_layout));
 }
 
 auto D3D11Backend::create_constant_buffers() -> bool
 {
-	return create_constant_buffer<ViewportConstants>(device.Get(), &viewport_constants) &&
-	       create_constant_buffer<BannerGlowConstants>(device.Get(), &banner_glow_constants) &&
-	       create_constant_buffer<ShadowConstants>(device.Get(), &shadow_constants) &&
-	       create_constant_buffer<OutlineCountdownConstants>(device.Get(), &outline_countdown_constants) &&
-	       create_constant_buffer<BackdropConstants>(device.Get(), &backdrop_constants) && create_constant_buffer<BlurConstants>(device.Get(), &blur_constants);
+	return create_constant_buffer<ViewportConstants>(device.Get(), &viewport_constants) && create_constant_buffer<BannerGlowConstants>(device.Get(), &banner_glow_constants) && create_constant_buffer<ShadowConstants>(device.Get(), &shadow_constants) && create_constant_buffer<OutlineCountdownConstants>(device.Get(), &outline_countdown_constants) && create_constant_buffer<BackdropConstants>(device.Get(), &backdrop_constants) && create_constant_buffer<BlurConstants>(device.Get(), &blur_constants);
 }
 
 auto D3D11Backend::create_pipeline_states() -> bool
@@ -564,8 +551,7 @@ auto D3D11Backend::create_pipeline_states() -> bool
 		.MaxLOD        = D3D11_FLOAT32_MAX,
 	};
 
-	return SUCCEEDED(device->CreateBlendState(&blend_desc, &blend_state)) && SUCCEEDED(device->CreateRasterizerState(&rasterizer_desc, &rasterizer_state)) &&
-	       SUCCEEDED(device->CreateSamplerState(&sampler_desc, &sampler_state));
+	return SUCCEEDED(device->CreateBlendState(&blend_desc, &blend_state)) && SUCCEEDED(device->CreateRasterizerState(&rasterizer_desc, &rasterizer_state)) && SUCCEEDED(device->CreateSamplerState(&sampler_desc, &sampler_state));
 }
 
 auto D3D11Backend::create_vertex_buffer(u32 t_capacity) -> bool
@@ -653,7 +639,7 @@ auto D3D11Backend::draw_command(const RenderFrame& t_frame, const DrawCommand& t
 		case TEXTURED: {
 			if (!t_command.texture->is_valid()) return;
 
-			image = textures[t_command.texture->slot()].view.Get();
+			image = textures[t_command.texture->m_slot].view.Get();
 			break;
 		}
 

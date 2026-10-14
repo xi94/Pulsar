@@ -25,22 +25,12 @@ class ColorPicker {
 	auto open(Color t_initial, Rect t_anchor, Rect t_bounds) -> void;
 	auto close() -> void;
 
-	[[nodiscard]] auto is_open() const -> bool
-	{
-		return m_open;
-	}
-
 	[[nodiscard]] auto is_dragging() const -> bool
 	{
-		return m_saturation_value_drag.is_pressed() || m_hue_drag.is_pressed() || m_alpha_drag.is_pressed();
+		return m_saturation_value_drag.m_pressed || m_hue_drag.m_pressed || m_alpha_drag.m_pressed;
 	}
 
 	[[nodiscard]] auto contains(Vec2 t_point) const -> bool;
-
-	[[nodiscard]] auto color() const -> Color
-	{
-		return m_color;
-	}
 
 	[[nodiscard]] auto take_changed() -> bool;
 
@@ -57,8 +47,10 @@ class ColorPicker {
 	[[nodiscard]] auto cursor(Vec2 t_mouse) const -> CursorKind;
 	auto draw(DrawList* t_draw_list, Vec2 t_mouse) -> void;
 
+	bool  m_open = false;
+	Color m_color{};
+
   private:
-	// The hex code, then red, green and blue.
 	enum class ColorField : u8 {
 		HEX,
 		RED,
@@ -71,7 +63,6 @@ class ColorPicker {
 
 	static constexpr EnumArray<ColorField, std::string_view> K_FIELD_LABELS{{"#", "R", "G", "B"}};
 
-	// The byte of the colour each channel field edits.
 	static constexpr EnumArray<ColorField, u8 Color::*> K_CHANNELS{{nullptr, &Color::r, &Color::g, &Color::b}};
 
 	enum class Press : u8 {
@@ -110,12 +101,10 @@ class ColorPicker {
 	const Fonts*  m_fonts;
 	const Assets* m_assets;
 
-	bool m_open = false;
 	Rect m_anchor{};
 	Rect m_bounds{};
 
 	Color m_initial{};
-	Color m_color{};
 	bool  m_changed = false;
 
 	float m_hue        = 0.0f;

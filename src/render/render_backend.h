@@ -57,8 +57,7 @@ struct BackdropConstants {
 	float padding;
 };
 
-// The blur passes read step as the distance between taps. The glass draw reads the frame size, and as step the texel size of the
-// level it samples.
+// The blur passes read step as the distance between taps. The glass draw reads the frame size, and as step the texel size of the level it samples.
 struct BlurConstants {
 	float target_width;
 	float target_height;
@@ -89,10 +88,7 @@ struct RenderFrame {
 	float           logical_width;
 	float           logical_height;
 	float           effect_time_seconds;
-	BackgroundStyle backdrop_style;
-	float           backdrop_intensity;
-	float           backdrop_light;
-	float           backdrop_grain;
+	Backdrop        backdrop;
 };
 
 struct ScissorRect {

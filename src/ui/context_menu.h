@@ -16,9 +16,8 @@ struct ContextMenuItem {
 	Command          command;
 	bool             enabled = true;
 	std::string_view shortcut;
-	Asset            icon = Asset::COUNT;
-	// A line above this item splits it from the group before it.
-	bool separated = false;
+	Asset            icon      = Asset::COUNT;
+	bool             separated = false;
 	// Destructive items are red and only act on a second click, made before the bar under them runs out.
 	bool destructive = false;
 };

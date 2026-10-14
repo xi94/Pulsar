@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <ranges>
 #include <utility>
 
 #include "core/animation.h"
@@ -34,9 +35,7 @@ constexpr float            K_FOOTER_PADDING_X    = 10.0f;
 constexpr float            K_FOOTER_PADDING_Y    = 5.0f;
 constexpr float            K_HINT_GAP            = 14.0f;
 constexpr float            K_HINT_KEY_GAP        = 5.0f;
-constexpr float            K_HINT_ARROW_GAP      = 3.0f;
 constexpr float            K_HINT_LINE_GAP       = 4.0f;
-constexpr Vec2             K_HINT_ARROW_SIZE{7.0f, 4.0f};
 constexpr std::string_view K_HINT_KEYS[]{"", "Enter", "Esc", ""};
 constexpr std::string_view K_HINT_LABELS[]{"navigate", "select", "close", "preview"};
 constexpr u32              K_HOVER_HINT       = 3;
@@ -64,7 +63,7 @@ ListPopup::ListPopup(const Fonts* t_fonts, const Assets* t_assets, const Setting
 	, m_settings(t_settings)
 	, m_options(std::move(t_options))
 {
-	m_search.set_placeholder(m_options.search_placeholder);
+	m_search.m_placeholder = m_options.search_placeholder;
 }
 
 auto ListPopup::open(std::span<const std::string_view> t_items, std::optional<u32> t_selected) -> void
@@ -108,7 +107,7 @@ auto ListPopup::popup_width() const -> float
 	if (!is_searchable()) return width;
 
 	float hints = K_FOOTER_PADDING_X * 2.0f + 2.0f;
-	for (u32 i = 0; i < hint_count(); i += 1) {
+	for (const u32 i : std::views::iota(0u, hint_count())) {
 		hints += hint_width(i) + (i > 0 ? K_HINT_GAP : 0.0f);
 	}
 
@@ -126,7 +125,7 @@ auto ListPopup::hint_width(u32 t_hint) const -> float
 	float       keys = 0.0f;
 
 	if (t_hint == 0) {
-		keys = controls::keycap_height(font) * 2.0f + K_HINT_ARROW_GAP + K_HINT_KEY_GAP;
+		keys = controls::arrow_keys_width(controls::keycap_height(font)) + K_HINT_KEY_GAP;
 	} else if (t_hint == K_HOVER_HINT) {
 		keys = controls::keycap_height(font) + K_HINT_KEY_GAP;
 	} else if (!K_HINT_KEYS[t_hint].empty()) {
@@ -142,7 +141,7 @@ auto ListPopup::hint_lines() const -> u32
 	u32         lines = 1;
 	float       x     = 0.0f;
 
-	for (u32 i = 0; i < hint_count(); i += 1) {
+	for (const u32 i : std::views::iota(0u, hint_count())) {
 		const float width = hint_width(i);
 
 		if (x > 0.0f && x + width > room) {
@@ -273,13 +272,13 @@ auto ListPopup::rebuild_matches() -> void
 	m_matched_query              = query;
 	m_matches.clear();
 
-	for (u32 i = 0; i < m_items.size(); i += 1) {
+	for (const u32 i : std::views::iota(0u, m_items.size())) {
 		if (find_ignoring_case(m_items[i], query) == 0) {
 			m_matches.push_back(i);
 		}
 	}
 
-	for (u32 i = 0; i < m_items.size(); i += 1) {
+	for (const u32 i : std::views::iota(0u, m_items.size())) {
 		const usize found = find_ignoring_case(m_items[i], query);
 		if (found != 0 && found != std::string_view::npos) {
 			m_matches.push_back(i);
@@ -341,8 +340,7 @@ auto ListPopup::update(float t_delta_seconds, Rect t_anchor, Rect t_bounds) -> v
 	}
 
 	m_open_amount = animation::ease_toward(m_open_amount, m_open ? 1.0f : 0.0f, K_OPEN_EASE_RATE, t_delta_seconds);
-	m_shown_rows  = animation::ease_toward(m_shown_rows, static_cast<float>(shown_row_target()), K_RESIZE_EASE_RATE, t_delta_seconds,
-	                                       animation::K_SETTLED_PIXELS / row_height(m_fonts));
+	m_shown_rows  = animation::ease_toward(m_shown_rows, static_cast<float>(shown_row_target()), K_RESIZE_EASE_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS / row_height(m_fonts));
 	m_scroll.update(t_delta_seconds);
 	m_search.update(t_delta_seconds);
 }
@@ -376,7 +374,7 @@ auto ListPopup::on_pointer_move(Vec2 t_point) -> void
 	const Layout current = layout();
 	m_scroll.on_pointer_move(t_point.y, list_scroll(current));
 
-	if (m_search.is_selecting()) {
+	if (m_search.m_selecting) {
 		m_search.on_pointer_move(m_fonts->body, search_field_rect(current), t_point.x);
 	}
 
@@ -514,8 +512,8 @@ auto ListPopup::on_char(u32 t_character) -> void
 auto ListPopup::cursor(Vec2 t_mouse) const -> CursorKind
 {
 	if (!m_open) return CursorKind::ARROW;
-	if (m_scroll.is_dragging()) return CursorKind::DRAG;
-	if (m_search.is_selecting()) return CursorKind::I_BEAM;
+	if (m_scroll.m_dragging) return CursorKind::DRAG;
+	if (m_search.m_selecting) return CursorKind::I_BEAM;
 
 	const Layout current = layout();
 	if (!current.popup.contains(t_mouse)) return CursorKind::ARROW;
@@ -533,21 +531,24 @@ auto ListPopup::draw_search(DrawList* t_draw_list, const Layout& t_layout, Vec2 
 	const Rect  field     = search.inset(K_SEARCH_FIELD_MARGIN);
 	const Rect  icon{field.x + K_SEARCH_ICON_INSET, search.center().y - K_SEARCH_ICON_SIZE * 0.5f, K_SEARCH_ICON_SIZE, K_SEARCH_ICON_SIZE};
 
+	const Color lens      = has_query ? g_theme.text_dim : g_theme.text_faint;
+	const Rect  text_area = search_field_rect(t_layout);
+
 	t_draw_list->add_bordered_rect(field, rounded(K_SEARCH_FIELD_RADIUS), faded(g_theme.field, t_alpha), faded(g_theme.separator, t_alpha), 1.0f);
-	controls::draw_magnifier(t_draw_list, icon, faded(has_query ? g_theme.text_dim : g_theme.text_faint, t_alpha));
-	m_search.draw(t_draw_list, m_fonts->body, search_field_rect(t_layout), faded(g_theme.text, t_alpha), faded(m_settings->accent, t_alpha),
-	              search_field_rect(t_layout));
+	controls::draw_magnifier(t_draw_list, icon, faded(lens, t_alpha));
+	m_search.draw(t_draw_list, m_fonts->body, text_area, faded(g_theme.text, t_alpha), faded(m_settings->accent, t_alpha), text_area);
 
 	if (!has_query) return;
 
-	const Rect clear   = clear_button_rect(t_layout);
-	const bool hovered = clear.contains(t_mouse);
+	const Rect  clear   = clear_button_rect(t_layout);
+	const bool  hovered = clear.contains(t_mouse);
+	const Color cross   = hovered ? g_theme.text : g_theme.text_faint;
 
 	if (hovered) {
 		t_draw_list->add_rounded_rect(clear, rounded(clear.w * 0.5f), faded(g_theme.control_hover, t_alpha));
 	}
 
-	controls::draw_x(t_draw_list, clear.inset(2.0f), faded(hovered ? g_theme.text : g_theme.text_faint, t_alpha));
+	controls::draw_x(t_draw_list, clear.inset(2.0f), faded(cross, t_alpha));
 }
 
 auto ListPopup::draw_label(DrawList* t_draw_list, Rect t_row, float t_left, float t_max_width, std::string_view t_label, u8 t_alpha) const -> void
@@ -569,9 +570,12 @@ auto ListPopup::draw_label(DrawList* t_draw_list, Rect t_row, float t_left, floa
 	const float            after_x   = matched_x + text_width(font, matched);
 	const Color            match     = faded(mix(m_settings->accent, g_theme.text, K_MATCH_CONTRAST), t_alpha);
 
+	const Vec2 matched_baseline{matched_x, baseline.y};
+	const Vec2 after_baseline{after_x, baseline.y};
+
 	draw_text(t_draw_list, font, baseline, before, text);
-	draw_text(t_draw_list, font, Vec2{matched_x, baseline.y}, matched, match);
-	draw_text(t_draw_list, font, Vec2{after_x, baseline.y}, after, text);
+	draw_text(t_draw_list, font, matched_baseline, matched, match);
+	draw_text(t_draw_list, font, after_baseline, after, text);
 }
 
 auto ListPopup::draw_row(DrawList* t_draw_list, Rect t_row, u32 t_item, bool t_highlighted, u8 t_alpha) const -> void
@@ -579,7 +583,8 @@ auto ListPopup::draw_row(DrawList* t_draw_list, Rect t_row, u32 t_item, bool t_h
 	const Color backdrop = t_highlighted ? hovered(g_theme.popup) : g_theme.popup;
 
 	if (t_highlighted) {
-		t_draw_list->add_rounded_rect(t_row, rounded(K_ROW_RADIUS), faded(controls::glass_highlight(), t_alpha));
+		const Color highlight = faded(controls::glass_highlight(), t_alpha);
+		t_draw_list->add_rounded_rect(t_row, rounded(K_ROW_RADIUS), highlight);
 	}
 
 	float left = t_row.x + K_ROW_INSET;
@@ -597,7 +602,8 @@ auto ListPopup::draw_row(DrawList* t_draw_list, Rect t_row, u32 t_item, bool t_h
 		controls::draw_check(t_draw_list, m_assets, check, faded(m_settings->accent, t_alpha));
 	}
 
-	draw_label(t_draw_list, t_row, left, check.x - K_ROW_GAP - left, m_items[t_item], t_alpha);
+	const float label_room = check.x - K_ROW_GAP - left;
+	draw_label(t_draw_list, t_row, left, label_room, m_items[t_item], t_alpha);
 }
 
 auto ListPopup::draw_rows(DrawList* t_draw_list, const Layout& t_layout, Vec2 t_mouse, u8 t_alpha) const -> void
@@ -607,13 +613,15 @@ auto ListPopup::draw_rows(DrawList* t_draw_list, const Layout& t_layout, Vec2 t_
 		return;
 	}
 
-	const float height = row_height(m_fonts);
-	const auto  first  = static_cast<u32>(std::max(0.0f, m_scroll.offset() / height));
-	const u32   last   = std::min(static_cast<u32>(m_matches.size()), static_cast<u32>((m_scroll.offset() + t_layout.list.h) / height) + 1);
+	const float height        = row_height(m_fonts);
+	const auto  first_in_view = static_cast<u32>(std::max(0.0f, m_scroll.offset() / height));
+	const auto  last_in_view  = static_cast<u32>((m_scroll.offset() + t_layout.list.h) / height) + 1;
+	const u32   last          = std::min(static_cast<u32>(m_matches.size()), last_in_view);
+	const u32   first         = std::min(first_in_view, last);
 
 	t_draw_list->push_clip(t_layout.list);
 
-	for (u32 match = first; match < last; match += 1) {
+	for (const u32 match : std::views::iota(first, last)) {
 		draw_row(t_draw_list, row_rect(t_layout, match), m_matches[match], match == m_highlighted, t_alpha);
 	}
 
@@ -656,10 +664,12 @@ auto ListPopup::draw_key_hints(DrawList* t_draw_list, const Layout& t_layout, u8
 	float       x      = start;
 	float       y      = footer.y + K_FOOTER_PADDING_Y;
 
-	t_draw_list->add_rect(Rect{footer.x, footer.y - 1.0f, footer.w, 1.0f}, faded(g_theme.separator, t_alpha));
+	const Rect top_line{footer.x, footer.y - 1.0f, footer.w, 1.0f};
+
+	t_draw_list->add_rect(top_line, faded(g_theme.separator, t_alpha));
 	t_draw_list->add_rounded_rect(footer, rounded(0.0f, 0.0f, radius, radius), faded(g_theme.field, t_alpha));
 
-	for (u32 i = 0; i < hint_count(); i += 1) {
+	for (const u32 i : std::views::iota(0u, hint_count())) {
 		const float width = hint_width(i);
 
 		if (x > start && x + width > right) {
@@ -667,33 +677,28 @@ auto ListPopup::draw_key_hints(DrawList* t_draw_list, const Layout& t_layout, u8
 			y += cap + K_HINT_LINE_GAP;
 		}
 
-		const float baseline = font.centered_baseline(Rect{x, y, width, cap});
+		const Rect  hint_box{x, y, width, cap};
+		const float baseline = font.centered_baseline(hint_box);
+		const float key_y    = snapped_to_pixel(y);
 		float       text_x   = x;
 
 		if (i == 0) {
-			for (const bool up : {true, false}) {
-				const Rect key{snapped_to_pixel(text_x), snapped_to_pixel(y), cap, cap};
-				const Rect chevron{key.center().x - K_HINT_ARROW_SIZE.x * 0.5f, key.center().y - K_HINT_ARROW_SIZE.y * 0.5f - 0.5f, K_HINT_ARROW_SIZE.x,
-				                   K_HINT_ARROW_SIZE.y};
-
-				controls::draw_keycap_frame(t_draw_list, key, g_theme.field, t_alpha);
-				controls::draw_chevron(t_draw_list, chevron, up, faded(controls::keycap_label_color(), t_alpha));
-				text_x += cap + K_HINT_ARROW_GAP;
-			}
-
-			text_x += K_HINT_KEY_GAP - K_HINT_ARROW_GAP;
+			const Vec2 arrows_top_left{text_x, y};
+			text_x += controls::draw_arrow_keys(t_draw_list, arrows_top_left, cap, t_alpha) + K_HINT_KEY_GAP;
 		} else if (i == K_HOVER_HINT) {
-			controls::draw_mouse_keycap(t_draw_list, Rect{snapped_to_pixel(text_x), snapped_to_pixel(y), cap, cap}, g_theme.field, t_alpha);
+			const Rect mouse{snapped_to_pixel(text_x), key_y, cap, cap};
+			controls::draw_mouse_keycap(t_draw_list, mouse, g_theme.field, t_alpha);
 			text_x += cap + K_HINT_KEY_GAP;
 		} else if (!K_HINT_KEYS[i].empty()) {
 			const float key_width = controls::keycap_width(font, K_HINT_KEYS[i]);
+			const Rect  key{snapped_to_pixel(text_x), key_y, key_width, cap};
 
-			controls::draw_keycap(t_draw_list, font, Rect{snapped_to_pixel(text_x), snapped_to_pixel(y), key_width, cap}, K_HINT_KEYS[i], g_theme.field,
-			                      t_alpha);
+			controls::draw_keycap(t_draw_list, font, key, K_HINT_KEYS[i], g_theme.field, t_alpha);
 			text_x += key_width + K_HINT_KEY_GAP;
 		}
 
-		draw_text(t_draw_list, font, Vec2{snapped_to_pixel(text_x), baseline}, K_HINT_LABELS[i], label);
+		const Vec2 label_baseline{snapped_to_pixel(text_x), baseline};
+		draw_text(t_draw_list, font, label_baseline, K_HINT_LABELS[i], label);
 		x += width + K_HINT_GAP;
 	}
 }

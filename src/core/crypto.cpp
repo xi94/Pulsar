@@ -28,14 +28,12 @@ auto crypto::default_mem_limit() -> usize
 
 auto crypto::encrypt(const u8* t_key, const u8* t_nonce, std::span<const u8> t_plaintext, u8* t_out_ciphertext, u8* t_out_tag) -> bool
 {
-	return crypto_aead_xchacha20poly1305_ietf_encrypt_detached(t_out_ciphertext, t_out_tag, nullptr, t_plaintext.data(), t_plaintext.size(), nullptr, 0,
-	                                                           nullptr, t_nonce, t_key) == 0;
+	return crypto_aead_xchacha20poly1305_ietf_encrypt_detached(t_out_ciphertext, t_out_tag, nullptr, t_plaintext.data(), t_plaintext.size(), nullptr, 0, nullptr, t_nonce, t_key) == 0;
 }
 
 auto crypto::decrypt(const u8* t_key, const u8* t_nonce, std::span<const u8> t_ciphertext, const u8* t_tag, u8* t_out_plaintext) -> bool
 {
-	return crypto_aead_xchacha20poly1305_ietf_decrypt_detached(t_out_plaintext, nullptr, t_ciphertext.data(), t_ciphertext.size(), t_tag, nullptr, 0, t_nonce,
-	                                                           t_key) == 0;
+	return crypto_aead_xchacha20poly1305_ietf_decrypt_detached(t_out_plaintext, nullptr, t_ciphertext.data(), t_ciphertext.size(), t_tag, nullptr, 0, t_nonce, t_key) == 0;
 }
 
 MasterKey::~MasterKey()
@@ -74,8 +72,7 @@ auto MasterKey::create(std::string_view t_password, MasterKeyParams* t_out_param
 		return false;
 	}
 
-	const bool wrapped =
-		crypto::encrypt(key_encryption_key, params.wrap_nonce, data_key, params.wrapped_data_key, params.wrapped_data_key + crypto::K_KEY_SIZE);
+	const bool wrapped = crypto::encrypt(key_encryption_key, params.wrap_nonce, data_key, params.wrapped_data_key, params.wrapped_data_key + crypto::K_KEY_SIZE);
 	sodium_memzero(key_encryption_key, sizeof(key_encryption_key));
 
 	if (wrapped) {
@@ -98,7 +95,7 @@ auto MasterKey::unlock(std::string_view t_password, const MasterKeyParams& t_par
 
 	u8                        data_key[crypto::K_KEY_SIZE];
 	const std::span<const u8> wrapped{t_params.wrapped_data_key, crypto::K_KEY_SIZE};
-	const bool unwrapped = crypto::decrypt(key_encryption_key, t_params.wrap_nonce, wrapped, t_params.wrapped_data_key + crypto::K_KEY_SIZE, data_key);
+	const bool                unwrapped = crypto::decrypt(key_encryption_key, t_params.wrap_nonce, wrapped, t_params.wrapped_data_key + crypto::K_KEY_SIZE, data_key);
 	sodium_memzero(key_encryption_key, sizeof(key_encryption_key));
 
 	if (unwrapped) {

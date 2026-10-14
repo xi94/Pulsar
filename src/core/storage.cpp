@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <filesystem>
+#include <ranges>
 #include <span>
 #include <system_error>
 #include <vector>
@@ -67,7 +68,7 @@ u8   g_saved_accounts_digest[crypto_generichash_BYTES]{};
 
 auto accounts_digest(std::span<const u8> t_plaintext, const MasterKey* t_master_key, u8* t_out_digest) -> void
 {
-	crypto_generichash(t_out_digest, crypto_generichash_BYTES, t_plaintext.data(), t_plaintext.size(), t_master_key->data_key(), crypto::K_KEY_SIZE);
+	crypto_generichash(t_out_digest, crypto_generichash_BYTES, t_plaintext.data(), t_plaintext.size(), t_master_key->m_data_key, crypto::K_KEY_SIZE);
 }
 
 auto remember_saved_accounts(std::span<const u8> t_plaintext, const MasterKey* t_master_key) -> void
@@ -126,8 +127,7 @@ auto from_hex(const std::string& t_hex, std::span<u8> t_out) -> bool
 {
 	usize decoded = 0;
 
-	return t_hex.size() == t_out.size() * 2 && sodium_hex2bin(t_out.data(), t_out.size(), t_hex.c_str(), t_hex.size(), nullptr, &decoded, nullptr) == 0 &&
-	       decoded == t_out.size();
+	return t_hex.size() == t_out.size() * 2 && sodium_hex2bin(t_out.data(), t_out.size(), t_hex.c_str(), t_hex.size(), nullptr, &decoded, nullptr) == 0 && decoded == t_out.size();
 }
 
 [[nodiscard]] auto to_base64(std::span<const u8> t_bytes) -> std::string
@@ -232,7 +232,6 @@ auto read_bool_and_float_settings(const json& t_json, Settings* t_settings) -> v
 	return t_label.id;
 }
 
-// The choice whose id the setting holds, or t_fallback when it holds none of them.
 template <typename Choice, typename Label>
 [[nodiscard]] auto read_choice(const json& t_json, const char* t_key, const EnumArray<Choice, Label>& t_ids, Choice t_fallback) -> Choice
 {
@@ -324,7 +323,7 @@ auto read_game_order(const json& t_json, Settings* t_settings) -> void
 {
 	json titles = json::array();
 
-	for (u32 game = 0; game < t_library->game_count; game += 1) {
+	for (const u32 game : std::views::iota(0u, t_library->game_count)) {
 		if ((t_mask & (1u << game)) != 0) {
 			titles.push_back(t_library->games[game].title);
 		}
@@ -357,8 +356,13 @@ auto read_game_order(const json& t_json, Settings* t_settings) -> void
 
 	for (const Account& account : std::span{t_game.accounts, t_game.account_count}) {
 		json entry{
-			{"username", account.username}, {"note", account.note},           {"region", account.region}, {"password", account.password},
-			{"favorite", account.favorite}, {"last_used", account.last_used}, {"order", account.order},
+			{"username", account.username},
+			{"note", account.note},
+			{"region", account.region},
+			{"password", account.password},
+			{"favorite", account.favorite},
+			{"last_used", account.last_used},
+			{"order", account.order},
 		};
 
 		if (account.visible_game_mask != 0) {
@@ -418,19 +422,18 @@ struct WipedOnExit {
 	u8              tag[crypto::K_TAG_SIZE];
 	std::vector<u8> ciphertext;
 
-	if (!from_hex(t_envelope.value("nonce_hex", std::string{}), nonce) || !from_hex(t_envelope.value("tag_hex", std::string{}), tag) ||
-	    !from_base64(t_envelope.value("ciphertext_b64", std::string{}), &ciphertext)) {
+	if (!from_hex(t_envelope.value("nonce_hex", std::string{}), nonce) || !from_hex(t_envelope.value("tag_hex", std::string{}), tag) || !from_base64(t_envelope.value("ciphertext_b64", std::string{}), &ciphertext)) {
 		return false;
 	}
 
 	t_out_plaintext->resize(ciphertext.size());
 
-	return crypto::decrypt(t_master_key->data_key(), nonce, ciphertext, tag, t_out_plaintext->data());
+	return crypto::decrypt(t_master_key->m_data_key, nonce, ciphertext, tag, t_out_plaintext->data());
 }
 
 [[nodiscard]] auto read_accounts(Library* t_library, const MasterKey* t_master_key) -> storage::LoadResult
 {
-	if (!t_master_key->is_unlocked()) return storage::LoadResult::LOCKED;
+	if (!t_master_key->m_unlocked) return storage::LoadResult::LOCKED;
 
 	const std::string path = storage_path(K_ACCOUNTS_FILE_NAME);
 	if (path.empty()) return storage::LoadResult::FAILED;
@@ -490,8 +493,7 @@ auto storage::load_settings(Settings* t_settings) -> storage::LoadResult
 	const LoadResult result = read_settings(t_settings);
 
 	if (result == LoadResult::FAILED) {
-		// accounts.vault can only be decrypted with the key parameters in settings.json. Without them the app offers
-		// a fresh master password, and saving under that would overwrite the real vault.
+		// accounts.vault can only be decrypted with the key parameters in settings.json. Without them the app offers a fresh master password, and saving under that would overwrite the real vault.
 		g_settings_writable = false;
 		g_accounts_writable = false;
 		debug_log::write("storage", "%s did not load - neither file will be written this session", K_SETTINGS_FILE_NAME);
@@ -508,7 +510,7 @@ auto storage::save_settings(const Settings* t_settings) -> bool
 	if (path.empty()) return false;
 
 	json game_order = json::array();
-	for (u32 i = 0; i < t_settings->game_order_count; i += 1) {
+	for (const u32 i : std::views::iota(0u, t_settings->game_order_count)) {
 		game_order.push_back(t_settings->game_order[i]);
 	}
 
@@ -559,7 +561,7 @@ auto storage::load_accounts(Library* t_library, const MasterKey* t_master_key) -
 
 auto storage::save_accounts(const Library* t_library, const MasterKey* t_master_key) -> bool
 {
-	if (!t_master_key->is_unlocked() || !g_accounts_writable) return false;
+	if (!t_master_key->m_unlocked || !g_accounts_writable) return false;
 
 	json games = json::array();
 	for (const Game& game : std::span{t_library->games, t_library->game_count}) {
@@ -585,7 +587,7 @@ auto storage::save_accounts(const Library* t_library, const MasterKey* t_master_
 
 	u8              tag[crypto::K_TAG_SIZE];
 	std::vector<u8> ciphertext(plaintext.size());
-	if (!crypto::encrypt(t_master_key->data_key(), nonce, plaintext_bytes, ciphertext.data(), tag)) return false;
+	if (!crypto::encrypt(t_master_key->m_data_key, nonce, plaintext_bytes, ciphertext.data(), tag)) return false;
 
 	const json envelope{
 		{"format_version", K_FORMAT_VERSION},

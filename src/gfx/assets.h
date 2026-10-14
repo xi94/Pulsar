@@ -66,7 +66,7 @@ class Assets {
 	[[nodiscard]] auto finish_upload(Renderer* t_renderer) -> bool;
 	auto restore(Renderer* t_renderer) -> void;
 
-	[[nodiscard]] auto get(Asset t_asset) const -> const Texture*
+	[[nodiscard]] auto texture(Asset t_asset) const -> const Texture*
 	{
 		return m_textures[t_asset].get();
 	}

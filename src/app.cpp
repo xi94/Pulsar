@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstdio>
 #include <print>
+#include <ranges>
+#include <tuple>
 #include <utility>
 
 #include <sodium.h>
@@ -46,17 +48,11 @@ constexpr float K_STATUS_DOT_GAP        = 7.0f;
 constexpr float K_STATUS_BASELINE_NUDGE = 2.0f;
 
 constexpr os::AppMenuItem K_APP_MENU_ITEMS[]{
-	{.label = "Settings\u2026", .shortcut = os::Key::COMMA, .id = static_cast<u32>(CommandType::OPEN_SETTINGS)},
-	{.label = "Check for Updates\u2026", .shortcut = os::Key::NONE, .id = static_cast<u32>(CommandType::CHECK_FOR_UPDATES)},
+	{.label = "Settings\u2026", .shortcut = os::Key::COMMA, .id = enum_index(CommandType::OPEN_SETTINGS)},
+	{.label = "Check for Updates\u2026", .shortcut = os::Key::NONE, .id = enum_index(CommandType::CHECK_FOR_UPDATES)},
 };
 
 static_assert(os::K_TRAY_MAX_GAMES >= K_MAX_GAMES);
-
-// The name the tray uses for an account: its note when it has one, which is how people tell their accounts apart, and otherwise its username.
-[[nodiscard]] auto short_name(const Account& t_account) -> std::string_view
-{
-	return t_account.note[0] != '\0' ? std::string_view{t_account.note} : std::string_view{t_account.username};
-}
 
 auto log_startup_phase(const char* t_phase) -> void
 {
@@ -69,8 +65,7 @@ auto log_startup_phase(const char* t_phase) -> void
 	const Clock::time_point now = Clock::now();
 
 	if (previous_phase != nullptr) {
-		debug_log::write("startup", "%-20s %6.1f ms   (%6.1f ms in)", previous_phase, std::chrono::duration<float, std::milli>(now - phase_start).count(),
-		                 std::chrono::duration<float, std::milli>(now - PROCESS_START).count());
+		debug_log::write("startup", "%-20s %6.1f ms   (%6.1f ms in)", previous_phase, std::chrono::duration<float, std::milli>(now - phase_start).count(), std::chrono::duration<float, std::milli>(now - PROCESS_START).count());
 	}
 
 	previous_phase = t_phase;
@@ -202,7 +197,7 @@ App::App()
 
 auto App::start(bool t_from_startup) -> App::StartResult
 {
-	if (!m_instance_guard.is_first_instance()) {
+	if (!m_instance_guard.m_first_instance) {
 		const bool activated = os::activate_running_instance();
 		debug_log::write("app", "another instance is already running (%s) - exiting", activated ? "brought it to the front" : "it never answered");
 
@@ -299,7 +294,7 @@ auto App::create_graphics() -> bool
 
 	m_snowfall.create_texture(&m_renderer);
 
-	m_unlock_screen.set_app_icon(m_assets.get(Asset::ICON_LOGO));
+	m_unlock_screen.m_app_icon = m_assets.texture(Asset::ICON_LOGO);
 
 	if (!reload_fonts()) {
 		std::println("Failed to load the UI font.");
@@ -320,8 +315,8 @@ auto App::add_games() -> void
 			.short_title    = info.short_title,
 			.launch_product = info.launch_product,
 			.accent         = info.accent,
-			.banner         = m_assets.get(info.banner),
-			.icon           = m_assets.get(info.icon),
+			.banner         = m_assets.texture(info.banner),
+			.icon           = m_assets.texture(info.icon),
 		};
 		m_library.game_count += 1;
 	}
@@ -371,14 +366,14 @@ auto App::lock() -> void
 {
 	m_locked = true;
 	m_account_search.close();
-	m_title_bar.set_search_visible(false);
+	m_title_bar.m_search_visible = false;
 	m_tray.set_locked(true);
 }
 
 auto App::unlock() -> void
 {
-	m_locked = false;
-	m_title_bar.set_search_visible(true);
+	m_locked                     = false;
+	m_title_bar.m_search_visible = true;
 	m_unlock_screen.hide();
 	m_tray.set_locked(false);
 	m_last_activity = Clock::now();
@@ -393,7 +388,7 @@ auto App::lock_vault() -> void
 	clear_clipboard_secret();
 
 	m_account_modal.forget_secrets();
-	m_carousel.library_view()->forget_secrets();
+	m_carousel.m_library_view.forget_secrets();
 	m_settings_panel.close();
 	m_app_menu.close();
 	m_context_menu.close();
@@ -430,8 +425,8 @@ auto App::apply_game_order() -> void
 	u8  order[K_MAX_GAMES]{};
 	u32 count = 0;
 
-	for (u32 i = 0; i < m_settings.game_order_count; i += 1) {
-		for (u32 game = 0; game < m_library.game_count; game += 1) {
+	for (const u32 i : std::views::iota(0u, m_settings.game_order_count)) {
+		for (const u32 game : std::views::iota(0u, m_library.game_count)) {
 			if (m_library.games[game].title == m_settings.game_order[i]) {
 				order[count] = static_cast<u8>(game);
 				count += 1;
@@ -445,7 +440,7 @@ auto App::apply_game_order() -> void
 
 auto App::save_settings() -> void
 {
-	m_settings.zoom_stop     = m_carousel.zoom_stop();
+	m_settings.zoom_stop     = m_carousel.m_zoom_stop;
 	m_settings.selected_game = m_carousel.selected_game();
 
 	m_settings.game_order_count = 0;
@@ -491,8 +486,6 @@ auto App::commit_new_vault_key() -> void
 	m_replaced_vault_key.reset();
 }
 
-// The way back in for someone who forgot their master password. Every account and setting is deleted and Pulsar starts over at creating a
-// master password, keeping only the window's size and whether it starts with the system.
 auto App::reset_everything() -> void
 {
 	if (!m_locked) return;
@@ -572,7 +565,7 @@ auto App::take_picked_riot_client() -> void
 	copy_to(client, m_settings.riot_client_path);
 	request_save();
 
-	if (request->game && account_for(request->account) != nullptr) {
+	if (request->game && m_library.find_account(request->account) != nullptr) {
 		if (m_carousel.is_library() && !m_account_modal.is_blocking()) {
 			m_login_session.request(*request->game, request->account);
 		} else {
@@ -587,7 +580,7 @@ auto App::take_picked_riot_client() -> void
 auto App::lift_game_card(u32 t_game) -> void
 {
 	m_carousel.show_game(t_game);
-	m_account_modal.set_art_source(m_carousel.art_source(t_game));
+	m_account_modal.m_art_source = m_carousel.art_source(t_game);
 }
 
 auto App::open_account_search() -> void
@@ -600,19 +593,10 @@ auto App::open_account_search() -> void
 	m_account_search.open();
 }
 
-auto App::account_for(AccountRef t_account) const -> const Account*
-{
-	if (t_account.game >= m_library.game_count) return nullptr;
-	if (t_account.index >= m_library.games[t_account.game].account_count) return nullptr;
-
-	return m_library.account(t_account);
-}
-
-// A login that runs while Pulsar isn't the window in front shows in a small window by the tray, because the app is in the tray or the Riot Client
-// has opened over it. Once shown for a login, it follows that login to the end.
+// A login that runs while Pulsar isn't the window in front shows in a small window by the tray, because the app is in the tray or the Riot Client has opened over it. Once shown for a login, it follows that login to the end.
 auto App::update_login_toast() -> void
 {
-	const std::optional<AccountRef> shown   = m_login_session.shown_account();
+	const std::optional<AccountRef> shown   = m_login_session.m_shown_account;
 	const bool                      running = shown && !m_login_session.is_finished();
 
 	if (running && !m_window.is_focused()) {
@@ -621,7 +605,7 @@ auto App::update_login_toast() -> void
 
 	if (!m_login_toast) return;
 
-	const Account* account = shown ? account_for(*shown) : nullptr;
+	const Account* account = shown ? m_library.find_account(*shown) : nullptr;
 	if (account == nullptr || m_login_session.stage() == LoginStage::CANCELLED) {
 		m_tray.hide_login();
 		m_login_toast = false;
@@ -640,8 +624,8 @@ auto App::update_login_toast() -> void
 		m_login_toast = false;
 	}
 
-	copy_to(short_name(*account), login.account);
-	copy_to(m_login_session.status(), login.status);
+	copy_to(account->display_name(), login.account);
+	copy_to(m_login_session.m_status, login.status);
 	m_tray.show_login(login);
 }
 
@@ -666,6 +650,8 @@ auto App::fill_tray_menu(os::TrayMenu* t_menu) -> void
 		if (t_menu->game_count == os::K_TRAY_MAX_GAMES) break;
 
 		const VisibleAccounts visible = m_library.visible_accounts(game);
+		const u32             room    = os::K_TRAY_MAX_ACCOUNTS - t_menu->account_count;
+		const auto            listed  = visible.view().first(std::min(visible.count, room));
 
 		os::TrayGame* entry = &t_menu->games[t_menu->game_count];
 		t_menu->game_count += 1;
@@ -673,20 +659,19 @@ auto App::fill_tray_menu(os::TrayMenu* t_menu) -> void
 		copy_to(m_library.games[game].title, entry->title);
 		entry->game          = game;
 		entry->first_account = t_menu->account_count;
-		entry->account_count = 0;
+		entry->account_count = static_cast<u32>(listed.size());
 
-		for (u32 row = 0; row < visible.count && t_menu->account_count < os::K_TRAY_MAX_ACCOUNTS; row += 1) {
-			const Account* account = m_library.account(visible.refs[row]);
+		for (const u32 row : std::views::iota(0u, entry->account_count)) {
+			const Account&   account = *m_library.account(listed[row]);
+			os::TrayAccount* item    = &t_menu->accounts[entry->first_account + row];
 
-			os::TrayAccount* item = &t_menu->accounts[t_menu->account_count];
-			copy_to(short_name(*account), item->label);
-			copy_to(std::string_view{account->region}, item->region);
+			copy_to(account.display_name(), item->label);
+			copy_to(std::string_view{account.region}, item->region);
 			item->game = game;
 			item->row  = row;
-
-			t_menu->account_count += 1;
-			entry->account_count += 1;
 		}
+
+		t_menu->account_count += entry->account_count;
 	}
 }
 
@@ -695,9 +680,7 @@ auto App::pump_input() -> void
 	PULSAR_PROFILE_SCOPE("Input");
 
 	m_window.pump_messages();
-	m_window.set_close_to_tray(m_settings.close_to_tray && m_tray.is_icon_visible());
-	// The tray menu sits on the desktop rather than over the app, so it takes the deeper surface colour with a hint of the accent to look like part
-	// of Pulsar.
+	m_window.m_close_to_tray = m_settings.close_to_tray && m_tray.is_icon_visible();
 	m_tray.set_colors(os::TrayColors{
 		.background    = mix(g_theme.surface, m_settings.accent, K_TRAY_ACCENT_TINT),
 		.border        = g_theme.border,
@@ -708,10 +691,9 @@ auto App::pump_input() -> void
 		.text_dim      = g_theme.text_dim,
 		.text_disabled = g_theme.text_faint,
 		.accent        = m_settings.accent,
-		.accent_ink    = controls::ink_on(m_settings.accent),
+		.accent_ink    = controls::contrasting_theme_text(m_settings.accent),
 		.success       = g_theme.success,
 		.error         = g_theme.error,
-
 	});
 
 	handle_tray_event();
@@ -782,61 +764,95 @@ auto App::handle_input(const os::InputEvent& t_event) -> void
 {
 	m_last_activity = Clock::now();
 
-	if (t_event.type == os::InputEventType::MENU_ITEM) {
-		m_commands.push(Command{.type = static_cast<CommandType>(t_event.menu_item)});
-		return;
-	}
+	switch (t_event.type) {
+		using enum os::InputEventType;
 
-	const bool shortcut_held = os::modifiers().shortcut;
-	if (t_event.type == os::InputEventType::KEY_DOWN && t_event.key == os::Key::L && shortcut_held && !m_locked) {
-		lock_vault();
-		return;
-	}
-
-	if (t_event.type == os::InputEventType::KEY_DOWN && t_event.key == os::Key::S && shortcut_held && !m_locked) {
-		if (m_account_search.is_open()) {
-			m_account_search.close();
+		case MENU_ITEM: {
+			m_commands.push(Command{.type = enum_at<CommandType>(t_event.menu_item)});
 			return;
 		}
 
-		if (!m_account_modal.is_blocking() && !m_settings_panel.is_blocking()) {
-			open_account_search();
-			return;
+		case KEY_DOWN: {
+			if (run_shortcut(t_event.key)) return;
+
+			break;
 		}
-	}
 
-	if (t_event.type == os::InputEventType::KEY_DOWN && t_event.key == os::Key::COMMA && shortcut_held && !m_locked && !m_settings_panel.is_blocking()) {
-		m_app_menu.close();
-		m_settings_panel.open();
-		return;
-	}
+		case MOUSE_MOVE: {
+			m_mouse = t_event.position;
+			break;
+		}
 
-	if (t_event.type == os::InputEventType::MOUSE_MOVE) {
-		m_mouse = t_event.position;
-	} else if (t_event.type == os::InputEventType::MOUSE_DOWN) {
-		m_pointer_down = true;
-	} else if (t_event.type == os::InputEventType::MOUSE_UP) {
-		m_pointer_down = false;
+		case MOUSE_DOWN: {
+			m_pointer_down = true;
+			break;
+		}
+
+		case MOUSE_UP: {
+			m_pointer_down = false;
+			break;
+		}
+
+		default: {
+			break;
+		}
 	}
 
 	const bool consumed = m_widgets.dispatch(t_event);
-	process_commands();
+	run_commands();
 
-	const bool is_action =
-		t_event.type == os::InputEventType::MOUSE_UP || t_event.type == os::InputEventType::KEY_DOWN || t_event.type == os::InputEventType::RIGHT_CLICK;
+	const bool is_action = t_event.type == os::InputEventType::MOUSE_UP || t_event.type == os::InputEventType::KEY_DOWN || t_event.type == os::InputEventType::RIGHT_CLICK;
 	if (consumed && is_action) {
 		request_save();
 	}
 }
 
-auto App::process_commands() -> void
+auto App::run_shortcut(os::Key t_key) -> bool
 {
-	while (const std::optional<Command> command = m_commands.pop()) {
-		process(*command);
+	if (m_locked || !os::modifiers().shortcut) return false;
+
+	switch (t_key) {
+		using enum os::Key;
+
+		case L: {
+			lock_vault();
+			return true;
+		}
+
+		case S: {
+			if (m_account_search.m_open) {
+				m_account_search.close();
+				return true;
+			}
+
+			if (m_account_modal.is_blocking() || m_settings_panel.is_blocking()) return false;
+
+			open_account_search();
+			return true;
+		}
+
+		case COMMA: {
+			if (m_settings_panel.is_blocking()) return false;
+
+			m_app_menu.close();
+			m_settings_panel.open();
+			return true;
+		}
+
+		default: {
+			return false;
+		}
 	}
 }
 
-auto App::process(const Command& t_command) -> void
+auto App::run_commands() -> void
+{
+	while (const std::optional<Command> command = m_commands.pop()) {
+		run_command(*command);
+	}
+}
+
+auto App::run_command(const Command& t_command) -> void
 {
 	animation::request_frame();
 
@@ -844,7 +860,7 @@ auto App::process(const Command& t_command) -> void
 		using enum CommandType;
 
 		case TOGGLE_APP_MENU: {
-			if (m_app_menu.is_open()) {
+			if (m_app_menu.m_open) {
 				m_app_menu.close();
 			} else {
 				m_update_overlay.close();
@@ -855,7 +871,7 @@ auto App::process(const Command& t_command) -> void
 		}
 
 		case TOGGLE_UPDATE_OVERLAY: {
-			if (m_update_overlay.is_open()) {
+			if (m_update_overlay.m_open) {
 				m_update_overlay.close();
 			} else {
 				m_update_overlay.open();
@@ -910,7 +926,7 @@ auto App::process(const Command& t_command) -> void
 			if (!t_command.game) break;
 
 			m_account_modal.open(*t_command.game);
-			m_account_modal.set_art_source(m_carousel.art_source(*t_command.game));
+			m_account_modal.m_art_source = m_carousel.art_source(*t_command.game);
 			break;
 		}
 
@@ -1008,7 +1024,7 @@ auto App::process(const Command& t_command) -> void
 		}
 
 		case EDIT_ACCOUNT: {
-			if (account_for(t_command.account) != nullptr) {
+			if (m_library.find_account(t_command.account) != nullptr) {
 				m_settings_panel.close();
 				m_account_modal.edit_account(t_command.account);
 				lift_game_card(t_command.account.game);
@@ -1018,7 +1034,7 @@ auto App::process(const Command& t_command) -> void
 		}
 
 		case LOGIN_ACCOUNT: {
-			if (account_for(t_command.account) != nullptr && t_command.game) {
+			if (m_library.find_account(t_command.account) != nullptr && t_command.game) {
 				m_settings_panel.close();
 				m_account_modal.quick_login(*t_command.game, t_command.account);
 				lift_game_card(*t_command.game);
@@ -1028,33 +1044,33 @@ auto App::process(const Command& t_command) -> void
 		}
 
 		case UNDO_LIBRARY_DELETE: {
-			m_carousel.library_view()->undo_delete();
+			m_carousel.m_library_view.undo_delete();
 			break;
 		}
 
 		case EDIT_ACCOUNT_IN_PLACE: {
-			if (account_for(t_command.account) != nullptr) {
-				m_carousel.library_view()->edit(t_command.account);
+			if (m_library.find_account(t_command.account) != nullptr) {
+				m_carousel.m_library_view.edit(t_command.account);
 			}
 
 			break;
 		}
 
 		case DELETE_ACCOUNT_IN_PLACE: {
-			if (account_for(t_command.account) != nullptr) {
-				m_carousel.library_view()->delete_account(t_command.account);
+			if (m_library.find_account(t_command.account) != nullptr) {
+				m_carousel.m_library_view.delete_account(t_command.account);
 			}
 
 			break;
 		}
 
 		case DELETE_PICKED_IN_PLACE: {
-			m_carousel.library_view()->delete_picked();
+			m_carousel.m_library_view.delete_picked();
 			break;
 		}
 
 		case COPY_ACCOUNT_USERNAME: {
-			if (const Account* account = account_for(t_command.account)) {
+			if (const Account* account = m_library.find_account(t_command.account)) {
 				os::set_clipboard_text(account->username);
 				m_toasts.notify(Notification{.message = "Username copied."});
 			}
@@ -1063,7 +1079,7 @@ auto App::process(const Command& t_command) -> void
 		}
 
 		case COPY_ACCOUNT_PASSWORD: {
-			if (const Account* account = account_for(t_command.account)) {
+			if (const Account* account = m_library.find_account(t_command.account)) {
 				copy_password(account->password);
 			}
 
@@ -1102,10 +1118,9 @@ auto App::open_account_menu(const Command& t_command) -> void
 	m_context_menu.open(t_command.position, items, m_window.size());
 }
 
-// The library's rows name their account directly rather than by a row in the account list.
 auto App::open_library_account_menu(const Command& t_command) -> void
 {
-	const Account* account = account_for(t_command.account);
+	const Account* account = m_library.find_account(t_command.account);
 	if (account == nullptr) return;
 
 	const AccountRef      target = t_command.account;
@@ -1121,14 +1136,13 @@ auto App::open_library_account_menu(const Command& t_command) -> void
 	m_context_menu.open(t_command.position, items, m_window.size());
 }
 
-// Several picked accounts share a menu with only Delete in it, which deletes all of them.
 auto App::open_picked_menu(const Command& t_command) -> void
 {
-	const CommandType remove = !t_command.row ? CommandType::DELETE_PICKED_IN_PLACE : CommandType::DELETE_PICKED_ROWS;
-	std::snprintf(m_picked_label, sizeof(m_picked_label), "Delete %u accounts", t_command.picked);
+	const CommandType      remove = !t_command.row ? CommandType::DELETE_PICKED_IN_PLACE : CommandType::DELETE_PICKED_ROWS;
+	const std::string_view label  = format_into(m_picked_label, "Delete {} accounts", t_command.picked);
 
 	const ContextMenuItem items[]{
-		{.label = m_picked_label, .command = Command{.type = remove}, .icon = Asset::ICON_TRASH, .destructive = true},
+		{.label = label, .command = Command{.type = remove}, .icon = Asset::ICON_TRASH, .destructive = true},
 	};
 
 	m_context_menu.open(t_command.position, items, m_window.size());
@@ -1162,14 +1176,15 @@ auto App::announce_update_stage() -> void
 	m_announced_update_stage = stage;
 
 	const Command open_updates{.type = CommandType::OPEN_UPDATE_OVERLAY};
+	const bool    watching  = m_update_overlay.m_open || m_update_overlay.wants_status();
+	const bool    available = stage == UpdateStage::AVAILABLE || stage == UpdateStage::MANUAL_UPGRADE_REQUIRED;
+	if (watching) return;
 
-	const bool watching = m_update_overlay.is_open() || m_update_overlay.wants_status();
-
-	if ((stage == UpdateStage::AVAILABLE || stage == UpdateStage::MANUAL_UPGRADE_REQUIRED) && !watching) {
-		char message[96];
-		std::snprintf(message, sizeof(message), "Version %s available", m_updater.manifest().version);
-		m_toasts.notify(Notification{.message = message, .icon = Asset::ICON_DOWNLOAD, .on_click = open_updates});
-	} else if (stage == UpdateStage::UPDATE_FAILED && !watching) {
+	if (available) {
+		char                   message[96];
+		const std::string_view text = format_into(message, "Version {} available", std::string_view{m_updater.m_manifest.version});
+		m_toasts.notify(Notification{.message = text, .icon = Asset::ICON_DOWNLOAD, .on_click = open_updates});
+	} else if (stage == UpdateStage::UPDATE_FAILED) {
 		m_toasts.notify(Notification{.message = "The update could not be installed.", .icon = Asset::ICON_UPDATE, .on_click = open_updates});
 	}
 }
@@ -1189,9 +1204,9 @@ auto App::announce_first_run_after_update() -> void
 		return;
 	}
 
-	char message[96];
-	std::snprintf(message, sizeof(message), "Updated to %s", K_APP_VERSION);
-	m_toasts.notify(Notification{.message = message, .icon = Asset::ICON_UPDATE});
+	char                   message[96];
+	const std::string_view text = format_into(message, "Updated to {}", K_APP_VERSION);
+	m_toasts.notify(Notification{.message = text, .icon = Asset::ICON_UPDATE});
 }
 
 auto App::announce_unreadable_storage() -> void
@@ -1206,8 +1221,8 @@ auto App::relaunch_if_update_installed() -> void
 {
 	if (!m_updater.consume_ready_to_relaunch()) return;
 
-	copy_to(m_updater.manifest().version, m_settings.release_notes_version);
-	copy_to(m_updater.manifest().notes, m_settings.release_notes);
+	copy_to(m_updater.m_manifest.version, m_settings.release_notes_version);
+	copy_to(m_updater.m_manifest.notes, m_settings.release_notes);
 	save_everything();
 
 	// The replacement build would otherwise find this process's mutex and exit as a duplicate.
@@ -1219,7 +1234,7 @@ auto App::relaunch_if_update_installed() -> void
 
 auto App::redraw_while_resizing() -> void
 {
-	if (m_window.physical_width() == 0 || m_window.physical_height() == 0) return;
+	if (m_window.m_physical_width == 0 || m_window.m_physical_height == 0) return;
 
 	m_renderer.resize(&m_window);
 	frame();
@@ -1227,9 +1242,7 @@ auto App::redraw_while_resizing() -> void
 
 auto App::reload_fonts() -> bool
 {
-	const auto load = [this] {
-		return m_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size, m_settings.secondary_font_size, m_window.dpi_scale());
-	};
+	const auto load = [this] { return m_fonts.load(&m_renderer, m_settings.font_name, m_settings.font_size, m_settings.secondary_font_size, m_window.m_dpi_scale); };
 
 	if (load()) return true;
 
@@ -1238,8 +1251,6 @@ auto App::reload_fonts() -> bool
 	return load();
 }
 
-// A driver update or a GPU reset takes the device away. Pulsar draws nothing until a new device comes up, trying about once a second,
-// then uploads its images and fonts again.
 auto App::recover_graphics() -> void
 {
 	if (!m_renderer.is_device_lost()) return;
@@ -1252,7 +1263,7 @@ auto App::recover_graphics() -> void
 
 	m_assets.restore(&m_renderer);
 	m_snowfall.create_texture(&m_renderer);
-	static_cast<void>(reload_fonts());
+	std::ignore = reload_fonts();
 	animation::request_frame();
 }
 
@@ -1275,9 +1286,9 @@ auto App::frame() -> void
 	}
 
 	// The games stay drawn under the lock screen until it covers them, so locking fades over them instead of blanking first.
-	m_carousel.set_visible(!m_locked || !m_unlock_screen.covers_window());
-	m_carousel.set_bounds(content_rect(m_window.size()));
-	set_pixel_scale(m_window.dpi_scale());
+	m_carousel.m_visible = !m_locked || !m_unlock_screen.covers_window();
+	m_carousel.m_bounds  = content_rect(m_window.size());
+	set_pixel_scale(m_window.m_dpi_scale);
 	set_caret_style(m_settings.caret_style, m_settings.caret_trail, m_settings.caret_trail_strength);
 	controls::set_glass(m_renderer.supports_backdrop_blur(), m_settings.glass, m_settings.glass_tint, m_settings.glass_blur);
 	update_theme(delta_seconds);
@@ -1293,17 +1304,17 @@ auto App::frame() -> void
 
 	const std::optional<u32> detached_game = m_account_modal.detached_game();
 	if (detached_game) {
-		m_account_modal.set_art_source(m_carousel.art_source(*detached_game));
+		m_account_modal.m_art_source = m_carousel.art_source(*detached_game);
 	}
 
-	m_carousel.set_detached_game(detached_game);
+	m_carousel.m_detached_game = detached_game;
 
-	if (!m_window.is_mouse_over_resize_border()) {
+	if (!m_window.m_mouse_over_resize_border) {
 		m_window.set_cursor(m_widgets.cursor());
 	}
 
 	m_effect_seconds += delta_seconds;
-	m_renderer.set_effect_time(m_effect_seconds);
+	m_renderer.m_effect_time_seconds = m_effect_seconds;
 
 	const bool shown = !m_window.is_minimized() && !m_window.is_hidden();
 
@@ -1325,13 +1336,16 @@ auto App::draw_status_bar() -> void
 {
 	const Vec2 window = m_window.size();
 	const Rect status_bar{0.0f, window.y - K_STATUS_BAR_HEIGHT, window.x, K_STATUS_BAR_HEIGHT};
+	const Rect title_seam{0.0f, K_TITLE_BAR_HEIGHT, window.x, 1.0f};
+	const Rect status_seam{0.0f, status_bar.y - 1.0f, window.x, 1.0f};
 
-	m_draw_list.add_rect(Rect{0.0f, K_TITLE_BAR_HEIGHT, window.x, 1.0f}, g_theme.chrome_seam);
-	m_draw_list.add_rect(Rect{0.0f, status_bar.y - 1.0f, window.x, 1.0f}, g_theme.chrome_seam);
+	m_draw_list.add_rect(title_seam, g_theme.chrome_seam);
+	m_draw_list.add_rect(status_seam, g_theme.chrome_seam);
 	m_draw_list.add_rect(status_bar, g_theme.chrome);
 
-	const Rect  mark{K_STATUS_PADDING, status_bar.y + (K_STATUS_BAR_HEIGHT - K_STATUS_MARK_SIZE) * 0.5f, K_STATUS_MARK_SIZE, K_STATUS_MARK_SIZE};
-	const Font& font            = m_fonts.secondary;
+	const Font& font   = m_fonts.secondary;
+	const float mark_y = status_bar.y + (K_STATUS_BAR_HEIGHT - K_STATUS_MARK_SIZE) * 0.5f;
+	const Rect  mark{K_STATUS_PADDING, mark_y, K_STATUS_MARK_SIZE, K_STATUS_MARK_SIZE};
 	const float baseline        = font.centered_baseline(status_bar) - K_STATUS_BASELINE_NUDGE;
 	const bool  protected_vault = m_settings.master_password_enabled;
 
@@ -1344,30 +1358,41 @@ auto App::draw_status_bar() -> void
 		state = "No master password";
 	}
 
-	float x = mark.right() + K_STATUS_MARK_GAP;
-	draw_text(&m_draw_list, font, Vec2{x, baseline}, state, g_theme.text_dim);
-	x += text_width(font, state);
+	const Vec2 state_baseline{mark.right() + K_STATUS_MARK_GAP, baseline};
+	draw_text(&m_draw_list, font, state_baseline, state, g_theme.text_dim);
 
 	if (!m_locked && protected_vault && m_settings.auto_lock_minutes != 0) {
-		const auto limit     = std::chrono::minutes(m_settings.auto_lock_minutes);
-		const auto idle      = std::chrono::duration_cast<std::chrono::seconds>(Clock::now() - m_last_activity);
-		const auto remaining = std::max(std::chrono::seconds(1), limit - idle);
-		const auto minutes   = static_cast<u32>((remaining.count() + 59) / 60);
-
-		char       countdown[48];
-		const int  written = std::snprintf(countdown, sizeof(countdown), "auto-locks in %u min", minutes);
-		const Rect dot{x + K_STATUS_DOT_GAP, baseline - font.ascent * 0.35f - K_STATUS_DOT_SIZE * 0.5f, K_STATUS_DOT_SIZE, K_STATUS_DOT_SIZE};
-
-		m_draw_list.add_rounded_rect(dot, rounded(K_STATUS_DOT_SIZE * 0.5f), g_theme.text_faint);
-		draw_text(&m_draw_list, font, Vec2{dot.right() + K_STATUS_DOT_GAP, baseline}, std::string_view{countdown, static_cast<usize>(std::max(written, 0))},
-		          g_theme.text_faint);
-		animation::request_frame_after(static_cast<float>(remaining.count() - static_cast<i64>(minutes - 1) * 60) + 0.05f);
+		const float state_end = state_baseline.x + text_width(font, state);
+		draw_auto_lock_countdown(state_end, baseline);
 	}
 
 	const bool panel_open = m_account_modal.is_blocking() || m_settings_panel.is_blocking();
-	if (m_carousel.is_visible() && !panel_open) {
+	if (m_carousel.m_visible && !panel_open) {
 		m_carousel.draw_status_bar(&m_draw_list);
 	}
+}
+
+auto App::draw_auto_lock_countdown(float t_x, float t_baseline) -> void
+{
+	using std::chrono::seconds;
+
+	const Font& font      = m_fonts.secondary;
+	const auto  limit     = std::chrono::minutes(m_settings.auto_lock_minutes);
+	const auto  idle      = std::chrono::duration_cast<seconds>(Clock::now() - m_last_activity);
+	const auto  remaining = std::max(seconds(1), limit - idle);
+	const auto  minutes   = static_cast<u32>((remaining.count() + 59) / 60);
+
+	char                   countdown[48];
+	const std::string_view text  = format_into(countdown, "auto-locks in {} min", minutes);
+	const float            dot_y = t_baseline - font.ascent * 0.35f - K_STATUS_DOT_SIZE * 0.5f;
+	const Rect             dot{t_x + K_STATUS_DOT_GAP, dot_y, K_STATUS_DOT_SIZE, K_STATUS_DOT_SIZE};
+	const Vec2             text_baseline{dot.right() + K_STATUS_DOT_GAP, t_baseline};
+	const auto             next_minute_in = remaining - std::chrono::minutes(minutes - 1);
+	const float            redraw_after   = std::chrono::duration<float>(next_minute_in).count() + 0.05f;
+
+	m_draw_list.add_rounded_rect(dot, rounded(K_STATUS_DOT_SIZE * 0.5f), g_theme.text_faint);
+	draw_text(&m_draw_list, font, text_baseline, text, g_theme.text_faint);
+	animation::request_frame_after(redraw_after);
 }
 
 auto App::render() -> void
@@ -1376,15 +1401,16 @@ auto App::render() -> void
 
 	m_draw_list.clear();
 
-	const Vec2  window   = m_window.size();
+	const Vec2  window = m_window.size();
+	const Rect  whole_window{0.0f, 0.0f, window.x, window.y};
 	const Color backdrop = g_theme.window;
-	m_draw_list.add_backdrop(Rect{0.0f, 0.0f, window.x, window.y}, backdrop, backdrop, backdrop, backdrop);
+	m_draw_list.add_backdrop(whole_window, backdrop, backdrop, backdrop, backdrop);
 
-	// When Pulsar opens, everything on the backdrop eases up from slightly smaller while a cover in the window colour fades off it.
-	const float intro    = 1.0f - std::pow(1.0f - m_intro, 3.0f);
-	const bool  in_intro = intro < 1.0f;
+	const float intro       = 1.0f - std::pow(1.0f - m_intro, 3.0f);
+	const bool  in_intro    = intro < 1.0f;
+	const float intro_scale = lerp(K_INTRO_START_SCALE, 1.0f, intro);
 	if (in_intro) {
-		m_draw_list.push_scale(Vec2{window.x * 0.5f, window.y * 0.5f}, K_INTRO_START_SCALE + (1.0f - K_INTRO_START_SCALE) * intro);
+		m_draw_list.push_scale(whole_window.center(), intro_scale);
 	}
 
 	begin_truncation_probe(&m_draw_list, m_mouse);
@@ -1398,26 +1424,26 @@ auto App::render() -> void
 		m_truncation_hint.draw(&m_draw_list, content_rect(m_window.size()));
 
 		if (in_intro) {
+			const Color cover = faded(backdrop, to_alpha(1.0f - intro));
+
 			m_draw_list.pop_scale();
-			m_draw_list.add_rect(Rect{0.0f, 0.0f, window.x, window.y}, faded(backdrop, to_alpha(1.0f - intro)));
+			m_draw_list.add_rect(whole_window, cover);
 		}
 
 		m_draw_list.finish();
 	}
 
-	if (m_draw_list.has_animated_effects()) {
+	if (m_draw_list.m_has_animated_effects) {
 		animation::request_frame();
 	}
 
-	m_renderer.set_backdrop(m_settings.background_style, m_settings.background_intensity,
-	                        m_settings.background_light ? m_settings.background_light_intensity : 0.0f,
-	                        m_settings.background_grain ? m_settings.background_grain_intensity : 0.0f);
+	m_renderer.m_backdrop = Backdrop{.style = m_settings.background_style, .intensity = m_settings.background_intensity, .light = m_settings.background_light ? m_settings.background_light_intensity : 0.0f, .grain = m_settings.background_grain ? m_settings.background_grain_intensity : 0.0f};
 	m_renderer.render(&m_draw_list, g_theme.window);
 }
 
 auto App::run() -> void
 {
-	while (!m_window.should_quit()) {
+	while (!m_window.m_should_quit) {
 		pump_input();
 		announce_first_run_after_update();
 		announce_unreadable_storage();
@@ -1426,7 +1452,7 @@ auto App::run() -> void
 
 		m_updater.update();
 		announce_update_stage();
-		process_commands();
+		run_commands();
 		take_picked_riot_client();
 		relaunch_if_update_installed();
 		save_if_due();

@@ -1,5 +1,6 @@
 #include "os/tray.h"
 
+#include <ranges>
 #include <utility>
 
 #include "core/debug_log.h"
@@ -150,7 +151,6 @@ auto Tray::show_login(const TrayLogin&) -> void {}
 
 auto Tray::hide_login() -> void {}
 
-// The menu bar's own menu shows no update status.
 auto Tray::set_update(TrayUpdate) -> void {}
 
 auto Tray::set_colors(const TrayColors& t_colors) -> void
@@ -193,7 +193,7 @@ auto Tray::Native::rebuild_menu() -> void
 		game_item.image           = game_icon(game.game);
 		game_item.submenu         = accounts;
 
-		for (u32 i = 0; i < game.account_count; i += 1) {
+		for (const u32 i : std::views::iota(0u, game.account_count)) {
 			const u32 account = game.first_account + i;
 			if (account >= contents.account_count) break;
 

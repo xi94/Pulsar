@@ -100,7 +100,12 @@ auto system_font_path(std::string_view t_file) -> std::string
 auto fallback_font_paths() -> std::vector<std::string>
 {
 	const FallbackSample samples[]{
-		{@"ไทย", @"th"}, {@"日本語", @"ja"}, {@"한국어", @"ko"}, {@"繁體中文", @"zh-Hant"}, {@"简体中文", @"zh-Hans"}, {@"⌘★✓♪", nil},
+		{@"ไทย", @"th"},
+		{@"日本語", @"ja"},
+		{@"한국어", @"ko"},
+		{@"繁體中文", @"zh-Hant"},
+		{@"简体中文", @"zh-Hans"},
+		{@"⌘★✓♪", nil},
 	};
 
 	std::vector<std::string> paths;

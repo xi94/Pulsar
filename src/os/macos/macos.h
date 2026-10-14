@@ -1,7 +1,6 @@
 #pragma once
 
-// MacTypes.h, which every Apple framework pulls in, declares a QuickDraw Rect that collides with Pulsar's Rect. Apple headers are therefore
-// only included here, with that Rect renamed while they are read.
+// MacTypes.h, which every Apple framework pulls in, declares a QuickDraw Rect that collides with Pulsar's Rect. Apple headers are therefore only included here, with that Rect renamed while they are read.
 #define Rect QuickDrawRect
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>

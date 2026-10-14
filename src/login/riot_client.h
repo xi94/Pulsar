@@ -39,11 +39,6 @@ class RiotClient {
 	[[nodiscard]] auto resolve_executable_path(std::string_view t_remembered_path) -> bool;
 	[[nodiscard]] auto launch(std::string_view t_launch_product) -> bool;
 
-	[[nodiscard]] auto executable_path() const -> const std::string&
-	{
-		return m_executable_path;
-	}
-
 	auto wait_for_responsive_window() -> void;
 	auto bring_to_foreground() -> bool;
 	auto take_keyboard_focus() -> bool;
@@ -55,10 +50,11 @@ class RiotClient {
 	[[nodiscard]] auto wait_for_login_result(std::string* t_out_error, const std::string* t_error_to_ignore) -> bool;
 	[[nodiscard]] auto click_play_when_ready(u32 t_timeout_ms, std::string* t_out_error) -> PlayResult;
 
+	std::string m_executable_path;
+
   private:
 	struct Native;
 
 	const std::atomic<bool>* m_cancel;
-	std::string              m_executable_path;
 	std::unique_ptr<Native>  m_native;
 };

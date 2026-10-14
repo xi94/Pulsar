@@ -142,21 +142,21 @@ LoginSession::LoginSession(Library* t_library, Settings* t_settings, CommandQueu
 
 auto LoginSession::request(u32 t_game, AccountRef t_account) -> void
 {
-	m_shown            = t_account;
-	m_shown_game       = t_game;
-	m_progress_stage   = LoginStage::IDLE;
-	m_seconds          = 0.0f;
-	m_stage_seconds    = 0.0f;
-	m_progress         = 0.0f;
-	m_outcome          = 0.0f;
-	m_status_change    = 1.0f;
-	m_finished_seconds = 0.0f;
-	m_status_from[0]   = '\0';
-	m_status_to[0]     = '\0';
+	m_shown_account      = t_account;
+	m_shown_game         = t_game;
+	m_progress_stage     = LoginStage::IDLE;
+	m_seconds            = 0.0f;
+	m_stage_seconds      = 0.0f;
+	m_progress           = 0.0f;
+	m_outcome            = 0.0f;
+	m_status_change      = 1.0f;
+	m_finished_seconds   = 0.0f;
+	m_previous_status[0] = '\0';
+	m_status[0]          = '\0';
 
 	const PendingLogin login{t_game, t_account};
 
-	if (m_login.is_active() && !LoginAttempt::is_terminal(m_login.stage())) {
+	if (m_login.m_active && !LoginAttempt::is_terminal(m_login.stage())) {
 		m_login.cancel();
 		m_login_account.reset();
 		m_queued = login;
@@ -180,8 +180,8 @@ auto LoginSession::start(PendingLogin t_login) -> void
 
 auto LoginSession::retry() -> void
 {
-	if (m_shown) {
-		request(m_shown_game, *m_shown);
+	if (m_shown_account) {
+		request(m_shown_game, *m_shown_account);
 	}
 }
 
@@ -189,14 +189,14 @@ auto LoginSession::cancel() -> void
 {
 	m_queued.reset();
 	m_login_account.reset();
-	m_shown.reset();
+	m_shown_account.reset();
 	m_login.cancel();
 }
 
 auto LoginSession::dismiss() -> void
 {
 	if (is_finished()) {
-		m_shown.reset();
+		m_shown_account.reset();
 	}
 }
 
@@ -226,14 +226,14 @@ auto LoginSession::update(float t_delta_seconds) -> void
 	m_login.update();
 	record_result();
 
-	if (m_queued && !m_login.is_active()) {
+	if (m_queued && !m_login.m_active) {
 		const PendingLogin login = *std::exchange(m_queued, std::nullopt);
 
 		m_seconds = 0.0f;
 		start(login);
 	}
 
-	if (!m_shown) return;
+	if (!m_shown_account) return;
 
 	m_seconds += t_delta_seconds;
 	ease_progress(t_delta_seconds);
@@ -258,9 +258,9 @@ auto LoginSession::ease_progress(float t_delta_seconds) -> void
 	m_stage_seconds += t_delta_seconds;
 
 	const std::string_view current = current_status();
-	if (current != std::string_view{m_status_to}) {
-		copy_to(m_status_to, m_status_from);
-		copy_to(current, m_status_to);
+	if (current != std::string_view{m_status}) {
+		copy_to(m_status, m_previous_status);
+		copy_to(current, m_status);
 		m_status_change = 0.0f;
 	}
 
@@ -277,7 +277,7 @@ auto LoginSession::ease_progress(float t_delta_seconds) -> void
 auto LoginSession::follow_insert(AccountRef t_inserted) -> void
 {
 	shift_after_insert(&m_login_account, t_inserted);
-	shift_after_insert(&m_shown, t_inserted);
+	shift_after_insert(&m_shown_account, t_inserted);
 
 	if (m_queued) {
 		std::optional<AccountRef> queued = m_queued->account;
@@ -289,7 +289,7 @@ auto LoginSession::follow_insert(AccountRef t_inserted) -> void
 auto LoginSession::follow_removal(AccountRef t_removed) -> void
 {
 	shift_after_removal(&m_login_account, t_removed);
-	shift_after_removal(&m_shown, t_removed);
+	shift_after_removal(&m_shown_account, t_removed);
 
 	if (m_queued) {
 		std::optional<AccountRef> queued = m_queued->account;
@@ -305,17 +305,17 @@ auto LoginSession::follow_removal(AccountRef t_removed) -> void
 
 auto LoginSession::is_busy() const -> bool
 {
-	return m_queued.has_value() || m_login.is_active();
+	return m_queued.has_value() || m_login.m_active;
 }
 
 auto LoginSession::is_finished() const -> bool
 {
-	return m_shown.has_value() && !m_queued && LoginAttempt::is_terminal(m_login.stage());
+	return m_shown_account.has_value() && !m_queued && LoginAttempt::is_terminal(m_login.stage());
 }
 
 auto LoginSession::shows(u32 t_game, AccountRef t_account) const -> bool
 {
-	return m_shown == t_account && m_shown_game == t_game;
+	return m_shown_account == t_account && m_shown_game == t_game;
 }
 
 auto LoginSession::stage() const -> LoginStage

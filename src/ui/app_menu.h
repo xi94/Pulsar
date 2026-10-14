@@ -20,11 +20,6 @@ class AppMenu : public Widget {
 	auto open(bool t_unlocked, std::string_view t_update_status) -> void;
 	auto close() -> void;
 
-	[[nodiscard]] auto is_open() const -> bool
-	{
-		return m_open;
-	}
-
 	auto update(float t_delta_seconds) -> void override;
 	auto draw(DrawList* t_draw_list) -> void override;
 
@@ -36,6 +31,8 @@ class AppMenu : public Widget {
 	}
 
 	[[nodiscard]] auto cursor() const -> CursorKind override;
+
+	bool m_open = false;
 
   private:
 	static constexpr u32 K_MAX_ITEMS = 8;
@@ -49,7 +46,6 @@ class AppMenu : public Widget {
 	const Assets*     m_assets;
 	CommandQueue*     m_commands;
 
-	bool             m_open     = false;
 	bool             m_unlocked = false;
 	std::string_view m_update_status;
 	float            m_open_amount = 0.0f;

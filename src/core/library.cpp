@@ -4,6 +4,7 @@
 #include <bitset>
 #include <cassert>
 #include <cstddef>
+#include <ranges>
 #include <span>
 #include <vector>
 
@@ -33,6 +34,27 @@ auto Account::visible_games(u32 t_owning_game) const -> u16
 	return visible_game_mask != 0 ? visible_game_mask : static_cast<u16>(1u << t_owning_game);
 }
 
+auto Account::matches(std::string_view t_query) const -> bool
+{
+	const auto contains = [t_query](std::string_view t_text) { return find_ignoring_case(t_text, t_query) != std::string_view::npos; };
+
+	return contains(username) || contains(note) || contains(region);
+}
+
+auto Account::display_name() const -> std::string_view
+{
+	return note[0] != '\0' ? std::string_view{note} : std::string_view{username};
+}
+
+auto VisibleAccounts::row_of(AccountRef t_account) const -> std::optional<u32>
+{
+	const std::span<const AccountRef> shown = view();
+	const auto                        found = std::ranges::find(shown, t_account);
+	if (found == shown.end()) return std::nullopt;
+
+	return static_cast<u32>(found - shown.begin());
+}
+
 auto Library::add_account(u32 t_game, const Account& t_account) -> std::optional<AccountRef>
 {
 	Game* game = &games[t_game];
@@ -53,10 +75,9 @@ auto Library::insert_account(AccountRef t_where, const Account& t_account) -> st
 	Game* game = &games[t_where.game];
 	if (game->account_count >= K_MAX_ACCOUNTS_PER_GAME) return std::nullopt;
 
-	const u32 index = std::min(t_where.index, game->account_count);
-	for (u32 i = game->account_count; i > index; i -= 1) {
-		game->accounts[i] = game->accounts[i - 1];
-	}
+	const u32                index = std::min(t_where.index, game->account_count);
+	const std::span<Account> grown{game->accounts, game->account_count + 1};
+	std::shift_right(grown.begin() + index, grown.end(), 1);
 
 	game->accounts[index] = t_account;
 	game->account_count += 1;
@@ -69,9 +90,8 @@ auto Library::remove_account(AccountRef t_ref) -> void
 	Game* game = &games[t_ref.game];
 	assert(t_ref.index < game->account_count);
 
-	for (u32 i = t_ref.index; i + 1 < game->account_count; i += 1) {
-		game->accounts[i] = game->accounts[i + 1];
-	}
+	const std::span<Account> accounts{game->accounts, game->account_count};
+	std::shift_left(accounts.begin() + t_ref.index, accounts.end(), 1);
 
 	game->account_count -= 1;
 	sodium_memzero(&game->accounts[game->account_count], sizeof(Account));
@@ -93,22 +113,18 @@ auto Library::move_visible_accounts(u32 t_game, std::span<const u32> t_rows, u32
 	std::vector<AccountRef> block;
 	std::vector<AccountRef> sequence;
 
-	for (u32 i = 0; i < visible.count; i += 1) {
+	for (const u32 i : std::views::iota(0u, visible.count)) {
 		(taken[i] ? block : sequence).push_back(visible.refs[i]);
 	}
 
 	const auto insert = static_cast<std::ptrdiff_t>(std::min<usize>(t_insert, sequence.size()));
 	sequence.insert(sequence.begin() + insert, block.begin(), block.end());
 
-	std::vector<u32> orders;
-	orders.reserve(sequence.size());
-	for (const AccountRef ref : sequence) {
-		orders.push_back(account(ref)->order);
-	}
-
+	std::vector<u32> orders(sequence.size());
+	std::ranges::transform(sequence, orders.begin(), [this](AccountRef t_ref) { return account(t_ref)->order; });
 	std::ranges::sort(orders);
 
-	for (usize i = 0; i < sequence.size(); i += 1) {
+	for (const usize i : std::views::iota(usize{0}, sequence.size())) {
 		account(sequence[i])->order = orders[i];
 	}
 }
@@ -117,7 +133,7 @@ auto Library::number_unordered_accounts() -> void
 {
 	u32 highest = 0;
 	for (const Game& game : std::span{games, game_count}) {
-		for (u32 i = 0; i < game.account_count; i += 1) {
+		for (const u32 i : std::views::iota(0u, game.account_count)) {
 			highest = std::max(highest, game.accounts[i].order);
 		}
 	}
@@ -125,7 +141,7 @@ auto Library::number_unordered_accounts() -> void
 	next_order = highest + 1;
 
 	for (Game& game : std::span{games, game_count}) {
-		for (u32 i = 0; i < game.account_count; i += 1) {
+		for (const u32 i : std::views::iota(0u, game.account_count)) {
 			if (game.accounts[i].order == 0) {
 				game.accounts[i].order = next_order;
 				next_order += 1;
@@ -152,8 +168,8 @@ auto Library::visible_accounts(u32 t_game) const -> VisibleAccounts
 
 	const u16 target_bit = static_cast<u16>(1u << t_game);
 
-	for (u32 game = 0; game < game_count; game += 1) {
-		for (u32 i = 0; i < games[game].account_count; i += 1) {
+	for (const u32 game : std::views::iota(0u, game_count)) {
+		for (const u32 i : std::views::iota(0u, games[game].account_count)) {
 			if ((games[game].accounts[i].visible_games(game) & target_bit) == 0) continue;
 
 			visible.refs[visible.count] = AccountRef{game, i};
@@ -161,7 +177,7 @@ auto Library::visible_accounts(u32 t_game) const -> VisibleAccounts
 		}
 	}
 
-	std::sort(visible.refs, visible.refs + visible.count, [this](AccountRef t_a, AccountRef t_b) {
+	const auto list_order = [this](AccountRef t_a, AccountRef t_b) {
 		const Account* a = account(t_a);
 		const Account* b = account(t_b);
 
@@ -170,9 +186,52 @@ auto Library::visible_accounts(u32 t_game) const -> VisibleAccounts
 		if (t_a.game != t_b.game) return t_a.game < t_b.game;
 
 		return t_a.index < t_b.index;
-	});
+	};
+
+	std::ranges::sort(std::span{visible.refs, visible.count}, list_order);
 
 	return visible;
+}
+
+auto Library::visible_accounts(u32 t_game, std::string_view t_query) const -> VisibleAccounts
+{
+	VisibleAccounts visible = visible_accounts(t_game);
+	if (t_query.empty()) return visible;
+
+	const auto misses_query = [this, t_query](AccountRef t_account) { return !account(t_account)->matches(t_query); };
+	const auto removed      = std::ranges::remove_if(std::span{visible.refs, visible.count}, misses_query);
+	visible.count -= static_cast<u32>(removed.size());
+
+	return visible;
+}
+
+auto Library::visible_account_count(u32 t_game) const -> u32
+{
+	const u16 bit   = static_cast<u16>(1u << t_game);
+	u32       count = 0;
+
+	for (const u32 game : std::views::iota(0u, game_count)) {
+		const std::span<const Account> accounts{games[game].accounts, games[game].account_count};
+		const auto                     shows_here = [bit, game](const Account& t_account) { return (t_account.visible_games(game) & bit) != 0; };
+
+		count += static_cast<u32>(std::ranges::count_if(accounts, shows_here));
+	}
+
+	return count;
+}
+
+auto Library::find_account(AccountRef t_ref) -> Account*
+{
+	if (t_ref.game >= game_count || t_ref.index >= games[t_ref.game].account_count) return nullptr;
+
+	return account(t_ref);
+}
+
+auto Library::find_account(AccountRef t_ref) const -> const Account*
+{
+	if (t_ref.game >= game_count || t_ref.index >= games[t_ref.game].account_count) return nullptr;
+
+	return account(t_ref);
 }
 
 auto Library::visible_account(u32 t_game, u32 t_row) const -> std::optional<AccountRef>

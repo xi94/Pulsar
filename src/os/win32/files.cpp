@@ -34,8 +34,7 @@ auto write_file_durably(const std::string& t_path, std::string_view t_contents) 
 	if (file == INVALID_HANDLE_VALUE) return false;
 
 	DWORD      written = 0;
-	const bool ok =
-		WriteFile(file, t_contents.data(), static_cast<DWORD>(t_contents.size()), &written, nullptr) && written == t_contents.size() && FlushFileBuffers(file);
+	const bool ok      = WriteFile(file, t_contents.data(), static_cast<DWORD>(t_contents.size()), &written, nullptr) && written == t_contents.size() && FlushFileBuffers(file);
 	CloseHandle(file);
 
 	return ok;

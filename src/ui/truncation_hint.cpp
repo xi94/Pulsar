@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 #include <optional>
+#include <ranges>
 
 #include "core/animation.h"
 #include "core/str.h"
@@ -104,7 +105,7 @@ auto TruncationHint::draw(DrawList* t_draw_list, Rect t_bounds) const -> void
 	const u32        line_count = std::max(1u, layout_lines(font, std::string_view{m_text, m_length}, wrap_width, lines));
 
 	float widest = 0.0f;
-	for (u32 i = 0; i < line_count; i += 1) {
+	for (const u32 i : std::views::iota(0u, line_count)) {
 		widest = std::max(widest, text_width(font, lines[i]));
 	}
 
@@ -119,14 +120,16 @@ auto TruncationHint::draw(DrawList* t_draw_list, Rect t_bounds) const -> void
 
 	const float min_x = t_bounds.x + K_EDGE_MARGIN;
 	const float max_x = std::max(min_x, t_bounds.right() - K_EDGE_MARGIN - width);
-	const Rect  card{snapped_to_pixel(std::clamp(m_anchor.x - K_PADDING_X, min_x, max_x)), snapped_to_pixel(y), width, height};
+	const float x     = std::clamp(m_anchor.x - K_PADDING_X, min_x, max_x);
+	const Rect  card{snapped_to_pixel(x), snapped_to_pixel(y), width, height};
 	const auto  alpha = to_alpha(m_visible_amount);
+	const Color ink   = faded(g_theme.text, alpha);
 
 	controls::draw_popup_shadow(t_draw_list, card, K_CORNER_RADIUS, m_visible_amount);
 	controls::draw_glass(t_draw_list, card, rounded(K_CORNER_RADIUS), controls::GlassSurface::SOFT, alpha);
 
-	for (u32 i = 0; i < line_count; i += 1) {
-		draw_text(t_draw_list, font, Vec2{card.x + K_PADDING_X, card.y + K_PADDING_Y + font.ascent + i * font.line_height()}, lines[i],
-		          faded(g_theme.text, alpha));
+	for (const u32 i : std::views::iota(0u, line_count)) {
+		const float baseline = card.y + K_PADDING_Y + font.ascent + i * font.line_height();
+		draw_text(t_draw_list, font, Vec2{card.x + K_PADDING_X, baseline}, lines[i], ink);
 	}
 }

@@ -110,16 +110,6 @@ class DrawList {
 	auto set_probe(Vec2 t_point) -> void;
 	[[nodiscard]] auto visible_rect(Rect t_rect) const -> Rect;
 
-	[[nodiscard]] auto has_animated_effects() const -> bool
-	{
-		return m_has_animated_effects;
-	}
-
-	[[nodiscard]] auto probe_cover_count() const -> u32
-	{
-		return m_probe_cover_count;
-	}
-
 	auto push_scale(Vec2 t_origin, float t_factor) -> void;
 	auto pop_scale() -> void;
 
@@ -165,6 +155,9 @@ class DrawList {
 	// Dashes just inside the edge of a rounded rectangle. They stretch a little so a whole number of them goes round evenly.
 	auto add_dashed_outline(Rect t_rect, float t_radius, float t_thickness, float t_dash, float t_gap, Color t_color) -> void;
 
+	u32  m_probe_cover_count    = 0;
+	bool m_has_animated_effects = false;
+
   private:
 	auto note_cover(Rect t_rect, Color t_color) -> void;
 
@@ -199,8 +192,6 @@ class DrawList {
 	u32  m_clip_depth = 0;
 
 	Vec2 m_probe{-1.0f, -1.0f};
-	u32  m_probe_cover_count    = 0;
-	bool m_has_animated_effects = false;
 
 	// Scales nest: each one maps a point to point * factor + offset, already combined with the scales around it.
 	struct Transform {

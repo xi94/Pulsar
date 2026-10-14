@@ -58,64 +58,64 @@ using GLsizeiptr = std::ptrdiff_t;
 #define GL_MAX_SAMPLES          0x8D57
 #define GL_INVALID_INDEX        0xFFFFFFFFu
 
-#define PULSAR_GL_FUNCTIONS(X)                                                                                                                                 \
-	X(void, attach_shader, glAttachShader, GLuint, GLuint)                                                                                                     \
-	X(void, bind_buffer, glBindBuffer, GLenum, GLuint)                                                                                                         \
-	X(void, bind_buffer_base, glBindBufferBase, GLenum, GLuint, GLuint)                                                                                        \
-	X(void, bind_framebuffer, glBindFramebuffer, GLenum, GLuint)                                                                                               \
-	X(void, bind_renderbuffer, glBindRenderbuffer, GLenum, GLuint)                                                                                             \
-	X(void, bind_sampler, glBindSampler, GLuint, GLuint)                                                                                                       \
-	X(void, bind_texture, glBindTexture, GLenum, GLuint)                                                                                                       \
-	X(void, bind_vertex_array, glBindVertexArray, GLuint)                                                                                                      \
-	X(void, blend_func_separate, glBlendFuncSeparate, GLenum, GLenum, GLenum, GLenum)                                                                          \
-	X(void, blit_framebuffer, glBlitFramebuffer, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum)                                   \
-	X(void, buffer_data, glBufferData, GLenum, GLsizeiptr, const void*, GLenum)                                                                                \
-	X(void, buffer_sub_data, glBufferSubData, GLenum, GLintptr, GLsizeiptr, const void*)                                                                       \
-	X(GLenum, check_framebuffer_status, glCheckFramebufferStatus, GLenum)                                                                                      \
-	X(void, clear, glClear, GLbitfield)                                                                                                                        \
-	X(void, clear_color, glClearColor, GLfloat, GLfloat, GLfloat, GLfloat)                                                                                     \
-	X(void, compile_shader, glCompileShader, GLuint)                                                                                                           \
-	X(GLuint, create_program, glCreateProgram)                                                                                                                 \
-	X(GLuint, create_shader, glCreateShader, GLenum)                                                                                                           \
-	X(void, delete_buffers, glDeleteBuffers, GLsizei, const GLuint*)                                                                                           \
-	X(void, delete_framebuffers, glDeleteFramebuffers, GLsizei, const GLuint*)                                                                                 \
-	X(void, delete_program, glDeleteProgram, GLuint)                                                                                                           \
-	X(void, delete_renderbuffers, glDeleteRenderbuffers, GLsizei, const GLuint*)                                                                               \
-	X(void, delete_samplers, glDeleteSamplers, GLsizei, const GLuint*)                                                                                         \
-	X(void, delete_shader, glDeleteShader, GLuint)                                                                                                             \
-	X(void, delete_textures, glDeleteTextures, GLsizei, const GLuint*)                                                                                         \
-	X(void, delete_vertex_arrays, glDeleteVertexArrays, GLsizei, const GLuint*)                                                                                \
-	X(void, disable, glDisable, GLenum)                                                                                                                        \
-	X(void, draw_arrays, glDrawArrays, GLenum, GLint, GLsizei)                                                                                                 \
-	X(void, draw_elements, glDrawElements, GLenum, GLsizei, GLenum, const void*)                                                                               \
-	X(void, enable, glEnable, GLenum)                                                                                                                          \
-	X(void, enable_vertex_attrib_array, glEnableVertexAttribArray, GLuint)                                                                                     \
-	X(void, framebuffer_renderbuffer, glFramebufferRenderbuffer, GLenum, GLenum, GLenum, GLuint)                                                               \
-	X(void, framebuffer_texture_2d, glFramebufferTexture2D, GLenum, GLenum, GLenum, GLuint, GLint)                                                             \
-	X(void, gen_buffers, glGenBuffers, GLsizei, GLuint*)                                                                                                       \
-	X(void, gen_framebuffers, glGenFramebuffers, GLsizei, GLuint*)                                                                                             \
-	X(void, gen_renderbuffers, glGenRenderbuffers, GLsizei, GLuint*)                                                                                           \
-	X(void, gen_samplers, glGenSamplers, GLsizei, GLuint*)                                                                                                     \
-	X(void, gen_textures, glGenTextures, GLsizei, GLuint*)                                                                                                     \
-	X(void, gen_vertex_arrays, glGenVertexArrays, GLsizei, GLuint*)                                                                                            \
-	X(void, get_integerv, glGetIntegerv, GLenum, GLint*)                                                                                                       \
-	X(void, get_program_info_log, glGetProgramInfoLog, GLuint, GLsizei, GLsizei*, GLchar*)                                                                     \
-	X(void, get_programiv, glGetProgramiv, GLuint, GLenum, GLint*)                                                                                             \
-	X(void, get_shader_info_log, glGetShaderInfoLog, GLuint, GLsizei, GLsizei*, GLchar*)                                                                       \
-	X(void, get_shaderiv, glGetShaderiv, GLuint, GLenum, GLint*)                                                                                               \
-	X(const GLubyte*, get_string, glGetString, GLenum)                                                                                                         \
-	X(GLuint, get_uniform_block_index, glGetUniformBlockIndex, GLuint, const GLchar*)                                                                          \
-	X(void, link_program, glLinkProgram, GLuint)                                                                                                               \
-	X(void, renderbuffer_storage_multisample, glRenderbufferStorageMultisample, GLenum, GLsizei, GLenum, GLsizei, GLsizei)                                     \
-	X(void, sampler_parameteri, glSamplerParameteri, GLuint, GLenum, GLint)                                                                                    \
-	X(void, scissor, glScissor, GLint, GLint, GLsizei, GLsizei)                                                                                                \
-	X(void, shader_source, glShaderSource, GLuint, GLsizei, const GLchar* const*, const GLint*)                                                                \
-	X(void, tex_image_2d, glTexImage2D, GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*)                                            \
-	X(void, tex_parameteri, glTexParameteri, GLenum, GLenum, GLint)                                                                                            \
-	X(void, tex_sub_image_2d, glTexSubImage2D, GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const void*)                                     \
-	X(void, uniform_block_binding, glUniformBlockBinding, GLuint, GLuint, GLuint)                                                                              \
-	X(void, use_program, glUseProgram, GLuint)                                                                                                                 \
-	X(void, vertex_attrib_pointer, glVertexAttribPointer, GLuint, GLint, GLenum, GLboolean, GLsizei, const void*)                                              \
+#define PULSAR_GL_FUNCTIONS(X)                                                                                               \
+	X(void, attach_shader, glAttachShader, GLuint, GLuint)                                                                   \
+	X(void, bind_buffer, glBindBuffer, GLenum, GLuint)                                                                       \
+	X(void, bind_buffer_base, glBindBufferBase, GLenum, GLuint, GLuint)                                                      \
+	X(void, bind_framebuffer, glBindFramebuffer, GLenum, GLuint)                                                             \
+	X(void, bind_renderbuffer, glBindRenderbuffer, GLenum, GLuint)                                                           \
+	X(void, bind_sampler, glBindSampler, GLuint, GLuint)                                                                     \
+	X(void, bind_texture, glBindTexture, GLenum, GLuint)                                                                     \
+	X(void, bind_vertex_array, glBindVertexArray, GLuint)                                                                    \
+	X(void, blend_func_separate, glBlendFuncSeparate, GLenum, GLenum, GLenum, GLenum)                                        \
+	X(void, blit_framebuffer, glBlitFramebuffer, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum) \
+	X(void, buffer_data, glBufferData, GLenum, GLsizeiptr, const void*, GLenum)                                              \
+	X(void, buffer_sub_data, glBufferSubData, GLenum, GLintptr, GLsizeiptr, const void*)                                     \
+	X(GLenum, check_framebuffer_status, glCheckFramebufferStatus, GLenum)                                                    \
+	X(void, clear, glClear, GLbitfield)                                                                                      \
+	X(void, clear_color, glClearColor, GLfloat, GLfloat, GLfloat, GLfloat)                                                   \
+	X(void, compile_shader, glCompileShader, GLuint)                                                                         \
+	X(GLuint, create_program, glCreateProgram)                                                                               \
+	X(GLuint, create_shader, glCreateShader, GLenum)                                                                         \
+	X(void, delete_buffers, glDeleteBuffers, GLsizei, const GLuint*)                                                         \
+	X(void, delete_framebuffers, glDeleteFramebuffers, GLsizei, const GLuint*)                                               \
+	X(void, delete_program, glDeleteProgram, GLuint)                                                                         \
+	X(void, delete_renderbuffers, glDeleteRenderbuffers, GLsizei, const GLuint*)                                             \
+	X(void, delete_samplers, glDeleteSamplers, GLsizei, const GLuint*)                                                       \
+	X(void, delete_shader, glDeleteShader, GLuint)                                                                           \
+	X(void, delete_textures, glDeleteTextures, GLsizei, const GLuint*)                                                       \
+	X(void, delete_vertex_arrays, glDeleteVertexArrays, GLsizei, const GLuint*)                                              \
+	X(void, disable, glDisable, GLenum)                                                                                      \
+	X(void, draw_arrays, glDrawArrays, GLenum, GLint, GLsizei)                                                               \
+	X(void, draw_elements, glDrawElements, GLenum, GLsizei, GLenum, const void*)                                             \
+	X(void, enable, glEnable, GLenum)                                                                                        \
+	X(void, enable_vertex_attrib_array, glEnableVertexAttribArray, GLuint)                                                   \
+	X(void, framebuffer_renderbuffer, glFramebufferRenderbuffer, GLenum, GLenum, GLenum, GLuint)                             \
+	X(void, framebuffer_texture_2d, glFramebufferTexture2D, GLenum, GLenum, GLenum, GLuint, GLint)                           \
+	X(void, gen_buffers, glGenBuffers, GLsizei, GLuint*)                                                                     \
+	X(void, gen_framebuffers, glGenFramebuffers, GLsizei, GLuint*)                                                           \
+	X(void, gen_renderbuffers, glGenRenderbuffers, GLsizei, GLuint*)                                                         \
+	X(void, gen_samplers, glGenSamplers, GLsizei, GLuint*)                                                                   \
+	X(void, gen_textures, glGenTextures, GLsizei, GLuint*)                                                                   \
+	X(void, gen_vertex_arrays, glGenVertexArrays, GLsizei, GLuint*)                                                          \
+	X(void, get_integerv, glGetIntegerv, GLenum, GLint*)                                                                     \
+	X(void, get_program_info_log, glGetProgramInfoLog, GLuint, GLsizei, GLsizei*, GLchar*)                                   \
+	X(void, get_programiv, glGetProgramiv, GLuint, GLenum, GLint*)                                                           \
+	X(void, get_shader_info_log, glGetShaderInfoLog, GLuint, GLsizei, GLsizei*, GLchar*)                                     \
+	X(void, get_shaderiv, glGetShaderiv, GLuint, GLenum, GLint*)                                                             \
+	X(const GLubyte*, get_string, glGetString, GLenum)                                                                       \
+	X(GLuint, get_uniform_block_index, glGetUniformBlockIndex, GLuint, const GLchar*)                                        \
+	X(void, link_program, glLinkProgram, GLuint)                                                                             \
+	X(void, renderbuffer_storage_multisample, glRenderbufferStorageMultisample, GLenum, GLsizei, GLenum, GLsizei, GLsizei)   \
+	X(void, sampler_parameteri, glSamplerParameteri, GLuint, GLenum, GLint)                                                  \
+	X(void, scissor, glScissor, GLint, GLint, GLsizei, GLsizei)                                                              \
+	X(void, shader_source, glShaderSource, GLuint, GLsizei, const GLchar* const*, const GLint*)                              \
+	X(void, tex_image_2d, glTexImage2D, GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*)          \
+	X(void, tex_parameteri, glTexParameteri, GLenum, GLenum, GLint)                                                          \
+	X(void, tex_sub_image_2d, glTexSubImage2D, GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const void*)   \
+	X(void, uniform_block_binding, glUniformBlockBinding, GLuint, GLuint, GLuint)                                            \
+	X(void, use_program, glUseProgram, GLuint)                                                                               \
+	X(void, vertex_attrib_pointer, glVertexAttribPointer, GLuint, GLint, GLenum, GLboolean, GLsizei, const void*)            \
 	X(void, viewport, glViewport, GLint, GLint, GLsizei, GLsizei)
 
 struct Gl {

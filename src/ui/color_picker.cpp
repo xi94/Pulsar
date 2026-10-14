@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
-#include <cstdio>
+#include <ranges>
 #include <span>
 #include <utility>
 
@@ -44,7 +44,13 @@ constexpr u32   K_CHANNEL_MAX_LENGTH = 3;
 constexpr Color K_COLOR_MARKER{255, 255, 255, 255};
 
 constexpr Color K_HUE_STOPS[]{
-	{255, 0, 0, 255}, {255, 255, 0, 255}, {0, 255, 0, 255}, {0, 255, 255, 255}, {0, 0, 255, 255}, {255, 0, 255, 255}, {255, 0, 0, 255},
+	{255, 0, 0, 255},
+	{255, 255, 0, 255},
+	{0, 255, 0, 255},
+	{0, 255, 255, 255},
+	{0, 0, 255, 255},
+	{255, 0, 255, 255},
+	{255, 0, 0, 255},
 };
 
 struct Hsv {
@@ -145,7 +151,7 @@ struct Hsv {
 	if (t_digits.size() != 3 && t_digits.size() != 6 && t_digits.size() != 8) return std::nullopt;
 
 	u8 nibbles[8]{};
-	for (usize i = 0; i < t_digits.size(); i += 1) {
+	for (const usize i : std::views::iota(usize{0}, t_digits.size())) {
 		const auto digit = static_cast<unsigned char>(t_digits[i]);
 		if (!std::isxdigit(digit)) return std::nullopt;
 
@@ -213,20 +219,19 @@ struct Hsv {
 
 [[nodiscard]] auto format_hex(Color t_color, char (&t_buffer)[12]) -> std::string_view
 {
-	const int written = t_color.a == 255 ? std::snprintf(t_buffer, sizeof(t_buffer), "%02X%02X%02X", t_color.r, t_color.g, t_color.b)
-	                                     : std::snprintf(t_buffer, sizeof(t_buffer), "%02X%02X%02X%02X", t_color.r, t_color.g, t_color.b, t_color.a);
+	if (t_color.a == 255) return format_into(t_buffer, "{:02X}{:02X}{:02X}", t_color.r, t_color.g, t_color.b);
 
-	return std::string_view{t_buffer, static_cast<usize>(std::max(written, 0))};
+	return format_into(t_buffer, "{:02X}{:02X}{:02X}{:02X}", t_color.r, t_color.g, t_color.b, t_color.a);
 }
 
 auto draw_handle(DrawList* t_draw_list, Vec2 t_center, Color t_fill) -> void
 {
 	const float inner_radius = K_HANDLE_RADIUS - 2.5f;
+	const Rect  ring{t_center.x - K_HANDLE_RADIUS, t_center.y - K_HANDLE_RADIUS, K_HANDLE_RADIUS * 2.0f, K_HANDLE_RADIUS * 2.0f};
+	const Rect  dot{t_center.x - inner_radius, t_center.y - inner_radius, inner_radius * 2.0f, inner_radius * 2.0f};
 
-	t_draw_list->add_rounded_rect(Rect{t_center.x - K_HANDLE_RADIUS, t_center.y - K_HANDLE_RADIUS, K_HANDLE_RADIUS * 2.0f, K_HANDLE_RADIUS * 2.0f},
-	                              rounded(K_HANDLE_RADIUS), foreground_on(t_fill));
-	t_draw_list->add_rounded_rect(Rect{t_center.x - inner_radius, t_center.y - inner_radius, inner_radius * 2.0f, inner_radius * 2.0f}, rounded(inner_radius),
-	                              t_fill);
+	t_draw_list->add_rounded_rect(ring, rounded(K_HANDLE_RADIUS), contrasting_text(t_fill));
+	t_draw_list->add_rounded_rect(dot, rounded(inner_radius), t_fill);
 }
 
 auto draw_copy_glyph(DrawList* t_draw_list, Rect t_rect, Color t_backdrop, Color t_color) -> void
@@ -339,7 +344,7 @@ auto ColorPicker::field_at(const Layout& t_layout, Vec2 t_point) const -> std::o
 auto ColorPicker::focused_field() const -> std::optional<ColorPicker::ColorField>
 {
 	for (const ColorField field : each<ColorField>()) {
-		if (m_fields[field].is_focused()) return field;
+		if (m_fields[field].m_focused) return field;
 	}
 
 	return std::nullopt;
@@ -388,8 +393,7 @@ auto ColorPicker::sync_fields(std::optional<ColorField> t_skipped_field) -> void
 		if (field == ColorField::HEX) {
 			text = format_hex(m_color, hex);
 		} else {
-			const int written = std::snprintf(channel, sizeof(channel), "%u", m_color.*K_CHANNELS[field]);
-			text              = std::string_view{channel, static_cast<usize>(std::max(written, 0))};
+			text = format_into(channel, "{}", m_color.*K_CHANNELS[field]);
 		}
 
 		m_fields[field].set_value(text);
@@ -412,8 +416,7 @@ auto ColorPicker::read_field(ColorField t_field) -> void
 		return;
 	}
 
-	if (text.empty() || text.size() > K_CHANNEL_MAX_LENGTH ||
-	    !std::ranges::all_of(text, [](char t_c) { return std::isdigit(static_cast<unsigned char>(t_c)) != 0; })) {
+	if (text.empty() || text.size() > K_CHANNEL_MAX_LENGTH || !std::ranges::all_of(text, [](char t_c) { return std::isdigit(static_cast<unsigned char>(t_c)) != 0; })) {
 		return;
 	}
 
@@ -455,10 +458,9 @@ auto ColorPicker::copy_hex() -> void
 {
 	char                   hex[12];
 	char                   text[16];
-	const std::string_view digits  = format_hex(m_color, hex);
-	const int              written = std::snprintf(text, sizeof(text), "#%.*s", static_cast<int>(digits.size()), digits.data());
+	const std::string_view digits = format_hex(m_color, hex);
 
-	os::set_clipboard_text(std::string_view{text, static_cast<usize>(std::max(written, 0))});
+	os::set_clipboard_text(format_into(text, "#{}", digits));
 	m_copied_seconds       = K_FEEDBACK_SECONDS;
 	m_paste_failed_seconds = 0.0f;
 }
@@ -579,25 +581,25 @@ auto ColorPicker::on_pointer_move(Vec2 t_point) -> void
 	const Layout current = layout();
 
 	for (const ColorField field : each<ColorField>()) {
-		if (m_fields[field].is_selecting()) {
+		if (m_fields[field].m_selecting) {
 			m_fields[field].on_pointer_move(m_fonts->secondary, field_text_rect(current, field), t_point.x);
 		}
 	}
 
-	if (m_saturation_value_drag.is_pressed()) {
+	if (m_saturation_value_drag.m_pressed) {
 		m_saturation_value_drag.update(t_point);
 		m_saturation = fraction_along(t_point.x, current.square.x, current.square.w);
 		m_value      = 1.0f - fraction_along(t_point.y, current.square.y, current.square.h);
 		apply_hsv();
 	}
 
-	if (m_hue_drag.is_pressed()) {
+	if (m_hue_drag.m_pressed) {
 		m_hue_drag.update(t_point);
 		m_hue = fraction_along(t_point.x, current.hue.x, current.hue.w) * 359.9f;
 		apply_hsv();
 	}
 
-	if (m_alpha_drag.is_pressed()) {
+	if (m_alpha_drag.m_pressed) {
 		m_alpha_drag.update(t_point);
 		m_color.a = static_cast<u8>((1.0f - fraction_along(t_point.y, current.alpha.y, current.alpha.h)) * 255.0f);
 		m_changed = true;
@@ -756,15 +758,13 @@ auto ColorPicker::cursor(Vec2 t_mouse) const -> CursorKind
 	if (is_dragging()) return CursorKind::DRAG;
 
 	for (const TextInput& field : m_fields) {
-		if (field.is_selecting()) return CursorKind::I_BEAM;
+		if (field.m_selecting) return CursorKind::I_BEAM;
 	}
 
 	const Layout current = layout();
 	if (field_at(current, t_mouse)) return CursorKind::I_BEAM;
 
-	const bool over_control = current.square.contains(t_mouse) || current.hue.contains(t_mouse) || current.alpha.contains(t_mouse) ||
-	                          current.copy.contains(t_mouse) || current.paste.contains(t_mouse) ||
-	                          (current.swatch.contains(t_mouse) && t_mouse.x < current.swatch.center().x);
+	const bool over_control = current.square.contains(t_mouse) || current.hue.contains(t_mouse) || current.alpha.contains(t_mouse) || current.copy.contains(t_mouse) || current.paste.contains(t_mouse) || (current.swatch.contains(t_mouse) && t_mouse.x < current.swatch.center().x);
 
 	return over_control ? CursorKind::HAND : CursorKind::ARROW;
 }
@@ -785,41 +785,52 @@ auto ColorPicker::draw(DrawList* t_draw_list, Vec2 t_mouse) -> void
 		controls::draw_glass(t_draw_list, popup.inset(-1.0f), rounded(K_POPUP_RADIUS), controls::GlassSurface::MENU, 255);
 	}
 
+	const Vec2 handle{current.square.x + m_saturation * current.square.w, current.square.y + (1.0f - m_value) * current.square.h};
+
 	t_draw_list->add_color_picker_square(current.square, m_hue);
-	draw_handle(t_draw_list, Vec2{current.square.x + m_saturation * current.square.w, current.square.y + (1.0f - m_value) * current.square.h}, picked);
+	draw_handle(t_draw_list, handle, picked);
 
 	const std::span<const Color> stops         = K_HUE_STOPS;
 	const float                  segment_width = current.hue.w / static_cast<float>(stops.size() - 1);
 
-	for (usize i = 0; i + 1 < stops.size(); i += 1) {
+	for (const usize i : std::views::iota(usize{0}, stops.size() - 1)) {
 		const Rect segment{current.hue.x + i * segment_width, current.hue.y, segment_width, current.hue.h};
 		t_draw_list->add_gradient(segment, stops[i], stops[i + 1], stops[i], stops[i + 1]);
 	}
 
 	const float hue_marker_x = current.hue.x + m_hue / 360.0f * current.hue.w;
-	t_draw_list->add_rect(Rect{hue_marker_x - 1.5f, current.hue.y - 2.0f, 3.0f, current.hue.h + 4.0f}, K_COLOR_MARKER);
+	const Rect  hue_marker{hue_marker_x - 1.5f, current.hue.y - 2.0f, 3.0f, current.hue.h + 4.0f};
+	const Color clear = with_alpha(picked, 0);
 
-	t_draw_list->add_gradient(current.alpha, picked, picked, with_alpha(picked, 0), with_alpha(picked, 0));
+	t_draw_list->add_rect(hue_marker, K_COLOR_MARKER);
+	t_draw_list->add_gradient(current.alpha, picked, picked, clear, clear);
 
 	const float alpha_marker_y = current.alpha.y + (1.0f - m_color.a / 255.0f) * current.alpha.h;
-	t_draw_list->add_rect(Rect{current.alpha.x - 2.0f, alpha_marker_y - 1.5f, current.alpha.w + 4.0f, 3.0f}, K_COLOR_MARKER);
+	const Rect  alpha_marker{current.alpha.x - 2.0f, alpha_marker_y - 1.5f, current.alpha.w + 4.0f, 3.0f};
+	const Rect  section_line{current.square.x, current.swatch.y - K_SECTION_GAP * 0.5f, current.alpha.right() - current.square.x, 1.0f};
 
-	t_draw_list->add_rect(Rect{current.square.x, current.swatch.y - K_SECTION_GAP * 0.5f, current.alpha.right() - current.square.x, 1.0f}, g_theme.separator);
+	t_draw_list->add_rect(alpha_marker, K_COLOR_MARKER);
+	t_draw_list->add_rect(section_line, g_theme.separator);
 
 	const Rect  swatch        = current.swatch;
 	const float half          = swatch.w * 0.5f;
 	const float swatch_radius = K_CONTROL_RADIUS;
+	const Rect  before{swatch.x, swatch.y, half, swatch.h};
+	const Rect  after{swatch.x + half, swatch.y, half, swatch.h};
+
 	t_draw_list->add_rounded_rect(swatch.inset(-1.0f), rounded(swatch_radius + 1.0f), g_theme.border);
-	t_draw_list->add_rounded_rect(Rect{swatch.x, swatch.y, half, swatch.h}, rounded(swatch_radius, 0.0f, 0.0f, swatch_radius), with_alpha(m_initial, 255));
-	t_draw_list->add_rounded_rect(Rect{swatch.x + half, swatch.y, half, swatch.h}, rounded(0.0f, swatch_radius, swatch_radius, 0.0f), picked);
+	t_draw_list->add_rounded_rect(before, rounded(swatch_radius, 0.0f, 0.0f, swatch_radius), with_alpha(m_initial, 255));
+	t_draw_list->add_rounded_rect(after, rounded(0.0f, swatch_radius, swatch_radius, 0.0f), picked);
 
 	for (const ColorField edit : each<ColorField>()) {
-		const Rect field   = current.fields[edit];
-		const bool focused = m_fields[edit].is_focused();
+		const Rect  field   = current.fields[edit];
+		const bool  focused = m_fields[edit].m_focused;
+		const Color border  = focused ? g_theme.text_dim : g_theme.control;
+		const Color fill    = focused ? g_theme.row_hover : g_theme.field;
+		const Vec2  label_baseline{field.x + K_LABEL_INSET, font.centered_baseline(field)};
 
-		controls::draw_field(t_draw_list, field, K_CONTROL_RADIUS, focused ? g_theme.text_dim : g_theme.control, focused ? g_theme.row_hover : g_theme.field,
-		                     255);
-		draw_text(t_draw_list, font, Vec2{field.x + K_LABEL_INSET, font.centered_baseline(field)}, K_FIELD_LABELS[edit], g_theme.text_faint);
+		controls::draw_field(t_draw_list, field, K_CONTROL_RADIUS, border, fill, 255);
+		draw_text(t_draw_list, font, label_baseline, K_FIELD_LABELS[edit], g_theme.text_faint);
 		m_fields[edit].draw(t_draw_list, font, field_text_rect(current, edit), g_theme.text, g_theme.text);
 	}
 
@@ -830,15 +841,23 @@ auto ColorPicker::draw(DrawList* t_draw_list, Vec2 t_mouse) -> void
 		}
 	}
 
-	const Color copy_color = current.copy.contains(t_mouse) ? g_theme.text : g_theme.text_dim;
-	const Rect  copy_glyph = current.copy.centered(K_GLYPH_SIZE, K_GLYPH_SIZE);
+	const bool  copy_hovered  = current.copy.contains(t_mouse);
+	const Color copy_color    = copy_hovered ? g_theme.text : g_theme.text_dim;
+	const Color copy_backdrop = copy_hovered ? g_theme.control_hover : g_theme.popup;
+	const Rect  copy_glyph    = current.copy.centered(K_GLYPH_SIZE, K_GLYPH_SIZE);
 	if (m_copied_seconds > 0.0f) {
 		controls::draw_check(t_draw_list, m_assets, copy_glyph, g_theme.success);
 	} else {
-		draw_copy_glyph(t_draw_list, copy_glyph, current.copy.contains(t_mouse) ? g_theme.control_hover : g_theme.popup, copy_color);
+		draw_copy_glyph(t_draw_list, copy_glyph, copy_backdrop, copy_color);
 	}
 
-	const Color paste_color = m_paste_failed_seconds > 0.0f ? g_theme.error : current.paste.contains(t_mouse) ? g_theme.text : g_theme.text_dim;
-	draw_paste_glyph(t_draw_list, current.paste.centered(K_GLYPH_SIZE, K_GLYPH_SIZE), current.paste.contains(t_mouse) ? g_theme.control_hover : g_theme.popup,
-	                 paste_color);
+	const bool paste_hovered = current.paste.contains(t_mouse);
+	Color      paste_color   = paste_hovered ? g_theme.text : g_theme.text_dim;
+	if (m_paste_failed_seconds > 0.0f) {
+		paste_color = g_theme.error;
+	}
+
+	const Rect  paste_glyph    = current.paste.centered(K_GLYPH_SIZE, K_GLYPH_SIZE);
+	const Color paste_backdrop = paste_hovered ? g_theme.control_hover : g_theme.popup;
+	draw_paste_glyph(t_draw_list, paste_glyph, paste_backdrop, paste_color);
 }

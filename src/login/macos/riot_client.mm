@@ -1,9 +1,11 @@
 #include "login/riot_client.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <concepts>
 #include <optional>
+#include <ranges>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -18,7 +20,7 @@
 namespace {
 constexpr const char* K_LOG_CATEGORY = "riot";
 
-constexpr const char*      K_INSTALLS_JSON_PATH = "/Users/Shared/Riot Games/RiotClientInstalls.json";
+constexpr const char*      K_INSTALLS_JSON_PATH        = "/Users/Shared/Riot Games/RiotClientInstalls.json";
 constexpr const char*      K_DEFAULT_INSTALL_FOLDER    = "/Users/Shared/Riot Games";
 constexpr const char*      K_CLIENT_BUNDLE_NAME        = "Riot Client.app";
 constexpr const char*      K_CLIENT_BUNDLE_IDENTIFIER  = "com.riotgames.RiotGames.RiotClient";
@@ -29,9 +31,8 @@ constexpr std::string_view K_LEAGUE_CLIENT_PREFIX      = "LeagueClient";
 constexpr std::string_view K_GAME_PROCESS_NAME         = "LeagueofLegends";
 constexpr u32              K_CHOSEN_PATH_SEARCH_LEVELS = 3;
 
-constexpr const char* K_AUTOMATION_FAILED_MESSAGE = "Couldn't connect to the Riot Client - try again.";
-constexpr const char* K_PERMISSION_MISSING_MESSAGE =
-	"Pulsar needs the Accessibility permission to sign in. If it's already on in System Settings, remove Pulsar from the list and add it again.";
+constexpr const char* K_AUTOMATION_FAILED_MESSAGE  = "Couldn't connect to the Riot Client - try again.";
+constexpr const char* K_PERMISSION_MISSING_MESSAGE = "Pulsar needs the Accessibility permission to sign in. If it's already on in System Settings, remove Pulsar from the list and add it again.";
 constexpr const char* K_ACCESSIBILITY_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
 constexpr const char* K_USERNAME_FIELD_NAME        = "USERNAME";
 constexpr const char* K_PASSWORD_FIELD_NAME        = "PASSWORD";
@@ -91,10 +92,10 @@ struct AxNode {
 auto for_each_process(std::invocable<pid_t, std::string_view> auto t_visitor) -> void
 {
 	std::vector<pid_t> pids(static_cast<usize>(std::max(proc_listallpids(nullptr, 0), 0)) + 64);
-	const int          count = proc_listallpids(pids.data(), static_cast<int>(pids.size() * sizeof(pid_t)));
+	const int          count = std::max(proc_listallpids(pids.data(), static_cast<int>(pids.size() * sizeof(pid_t))), 0);
 
 	char path[PROC_PIDPATHINFO_MAXSIZE];
-	for (int i = 0; i < count; i += 1) {
+	for (const int i : std::views::iota(0, count)) {
 		if (proc_pidpath(pids[static_cast<usize>(i)], path, sizeof(path)) > 0) {
 			t_visitor(pids[static_cast<usize>(i)], std::string_view{path});
 		}
@@ -120,8 +121,7 @@ auto for_each_process(std::invocable<pid_t, std::string_view> auto t_visitor) ->
 
 [[nodiscard]] auto has_visible_window(pid_t t_pid) -> bool
 {
-	NSArray<NSDictionary*>* windows =
-		CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID));
+	NSArray<NSDictionary*>* windows = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID));
 
 	for (NSDictionary* window in windows) {
 		const bool owned   = [window[(__bridge NSString*)kCGWindowOwnerPID] intValue] == t_pid;
@@ -327,8 +327,7 @@ auto fill_field(pid_t t_pid, id t_field, NSString* t_value) -> void
 
 [[nodiscard]] auto find_login_fields(id t_window, const std::atomic<bool>* t_cancel, id* t_username, id* t_password, bool* t_by_name) -> bool
 {
-	*t_username =
-		find_element(t_window, t_cancel, [](const AxNode& t_node) { return is_text_field(t_node, false) && is_named(t_node, K_USERNAME_FIELD_NAME); });
+	*t_username = find_element(t_window, t_cancel, [](const AxNode& t_node) { return is_text_field(t_node, false) && is_named(t_node, K_USERNAME_FIELD_NAME); });
 	*t_password = find_element(t_window, t_cancel, [](const AxNode& t_node) { return is_text_field(t_node, true) && is_named(t_node, K_PASSWORD_FIELD_NAME); });
 	*t_by_name  = true;
 	if (*t_username != nil && *t_password != nil) return true;
@@ -345,8 +344,7 @@ auto fill_field(pid_t t_pid, id t_field, NSString* t_value) -> void
 {
 	if (!t_by_name) return find_element(t_window, t_cancel, [](const AxNode& t_node) { return is_text_field(t_node, true); }) != nil;
 
-	return find_element(t_window, t_cancel,
-	                    [](const AxNode& t_node) { return is_named(t_node, K_USERNAME_FIELD_NAME) || is_named(t_node, K_PASSWORD_FIELD_NAME); }) != nil;
+	return find_element(t_window, t_cancel, [](const AxNode& t_node) { return is_named(t_node, K_USERNAME_FIELD_NAME) || is_named(t_node, K_PASSWORD_FIELD_NAME); }) != nil;
 }
 
 [[nodiscard]] auto shown_login_error(id t_window, const std::atomic<bool>* t_cancel, bool t_by_name) -> std::optional<std::string>
@@ -418,8 +416,7 @@ auto RiotClient::Native::wait_for_interface_window(const std::atomic<bool>* t_ca
 		if (polls >= next_progress_report) {
 			next_progress_report = polls + 50;
 			const auto waited    = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started);
-			debug_log::write(K_LOG_CATEGORY, "still waiting for the client window after %lldms (%s)", static_cast<long long>(waited.count()),
-			                 pid == 0 ? "no interface process yet" : "no window yet");
+			debug_log::write(K_LOG_CATEGORY, "still waiting for the client window after %lldms (%s)", static_cast<long long>(waited.count()), pid == 0 ? "no interface process yet" : "no window yet");
 		}
 
 		if (is_cancelled(t_cancel)) {
@@ -481,8 +478,7 @@ auto RiotClient::automation_failure_message() -> const char*
 	return K_AUTOMATION_FAILED_MESSAGE;
 }
 
-// macOS remembers the permission for this exact build, so an update shows Pulsar as allowed while it is not. The prompt also adds Pulsar
-// to the list in System Settings, which saves the user from adding it by hand.
+// macOS remembers the permission for this exact build, so an update shows Pulsar as allowed while it is not. The prompt also adds Pulsar to the list in System Settings, which saves the user from adding it by hand.
 auto RiotClient::request_automation_permission() -> bool
 {
 	NSDictionary* options = @{(__bridge NSString*)kAXTrustedCheckOptionPrompt : @YES};
@@ -685,8 +681,8 @@ auto RiotClient::submit_login(std::string_view t_username, std::string_view t_pa
 	focus(password_field);
 	wait_for_keyboard_focus(password_field);
 
-	debug_log::write(K_LOG_CATEGORY, "submitting the login form (password field %s keyboard focus)",
-	                 has_keyboard_focus(password_field) ? "has" : "does NOT have");
+	const char* focus_state = has_keyboard_focus(password_field) ? "has" : "does NOT have";
+	debug_log::write(K_LOG_CATEGORY, "submitting the login form (password field %s keyboard focus)", focus_state);
 	post_key(pid, kVK_Return, nullptr, 0);
 
 	return true;

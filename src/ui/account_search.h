@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <ranges>
 #include <string>
 #include <vector>
 
@@ -18,20 +19,10 @@ class Window;
 
 class AccountSearch : public Widget {
   public:
-	AccountSearch(const Library*    t_library,
-	              const Settings*   t_settings,
-	              const Fonts*      t_fonts,
-	              const Assets*     t_assets,
-	              const os::Window* t_window,
-	              CommandQueue*     t_commands);
+	AccountSearch(const Library* t_library, const Settings* t_settings, const Fonts* t_fonts, const Assets* t_assets, const os::Window* t_window, CommandQueue* t_commands);
 
 	auto open() -> void;
 	auto close() -> void;
-
-	[[nodiscard]] auto is_open() const -> bool
-	{
-		return m_open;
-	}
 
 	auto update(float t_delta_seconds) -> void override;
 	auto draw(DrawList* t_draw_list) -> void override;
@@ -50,6 +41,8 @@ class AccountSearch : public Widget {
 	}
 
 	[[nodiscard]] auto cursor() const -> CursorKind override;
+
+	bool m_open = false;
 
   private:
 	enum class ActionKind : u8 {
@@ -84,6 +77,7 @@ class AccountSearch : public Widget {
 	[[nodiscard]] auto row_count() const -> u32;
 	[[nodiscard]] auto has_group_gap() const -> bool;
 	[[nodiscard]] auto shown_rows() const -> u32;
+	[[nodiscard]] auto rows_in_view() const -> std::ranges::iota_view<u32, u32>;
 	[[nodiscard]] auto row_height() const -> float;
 	[[nodiscard]] auto layout() const -> Layout;
 	[[nodiscard]] auto query_text_rect(const Layout& t_layout) const -> Rect;
@@ -103,7 +97,6 @@ class AccountSearch : public Widget {
 	const os::Window* m_window;
 	CommandQueue*     m_commands;
 
-	bool                      m_open        = false;
 	float                     m_open_amount = 0.0f;
 	TextInput                 m_query;
 	std::vector<AccountRef>   m_results;

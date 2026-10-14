@@ -36,32 +36,7 @@ class TextInput {
 	auto set_value(std::string_view t_value) -> void;
 	auto set_max_length(u32 t_max_length) -> void;
 
-	auto set_placeholder(std::string_view t_placeholder) -> void
-	{
-		m_placeholder = t_placeholder;
-	}
-
-	[[nodiscard]] auto is_focused() const -> bool
-	{
-		return m_focused;
-	}
-
 	auto set_focused(bool t_focused) -> void;
-
-	[[nodiscard]] auto is_masked() const -> bool
-	{
-		return m_masked;
-	}
-
-	auto set_masked(bool t_masked) -> void
-	{
-		m_masked = t_masked;
-	}
-
-	[[nodiscard]] auto is_selecting() const -> bool
-	{
-		return m_selecting;
-	}
 
 	[[nodiscard]] auto can_apply(TextEdit t_edit) const -> bool;
 	auto apply(TextEdit t_edit) -> void;
@@ -75,9 +50,12 @@ class TextInput {
 	auto on_right_click(const Font& t_font, Rect t_field, float t_x) -> void;
 
 	auto update(float t_delta_seconds) -> void;
-	auto
-	draw(DrawList* t_draw_list, const Font& t_font, Rect t_field, Color t_text_color, Color t_caret_color, std::optional<Rect> t_placeholder_box = std::nullopt)
-		-> void;
+	auto draw(DrawList* t_draw_list, const Font& t_font, Rect t_field, Color t_text_color, Color t_caret_color, std::optional<Rect> t_placeholder_box = std::nullopt) -> void;
+
+	bool             m_focused   = false;
+	bool             m_masked    = false;
+	bool             m_selecting = false;
+	std::string_view m_placeholder;
 
   private:
 	[[nodiscard]] auto has_selection() const -> bool
@@ -98,17 +76,12 @@ class TextInput {
 	auto move_caret(Vec2 t_target, Vec2 t_origin, float t_line_height) -> void;
 	auto draw_caret(DrawList* t_draw_list, Vec2 t_origin, Vec2 t_size, Color t_color) const -> void;
 
-	char             m_text[K_TEXT_INPUT_CAPACITY]{};
-	u32              m_length     = 0;
-	u32              m_max_length = K_DEFAULT_TEXT_INPUT_LENGTH;
-	std::string_view m_placeholder;
+	char m_text[K_TEXT_INPUT_CAPACITY]{};
+	u32  m_length     = 0;
+	u32  m_max_length = K_DEFAULT_TEXT_INPUT_LENGTH;
 
 	u32 m_cursor = 0;
 	u32 m_anchor = 0;
-
-	bool m_focused   = false;
-	bool m_masked    = false;
-	bool m_selecting = false;
 
 	u32   m_click_count   = 0;
 	u64   m_last_click_ms = 0;

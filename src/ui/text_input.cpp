@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstring>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <utility>
 
@@ -60,13 +61,9 @@ CaretMark  g_last_caret{};
 // The outline around a set of points (Andrew's monotone chain), so the trail is one shape however the caret moves.
 [[nodiscard]] auto convex_hull(std::span<TrailPoint> t_points, std::span<TrailPoint> t_out) -> u32
 {
-	std::ranges::sort(t_points, [](const TrailPoint& t_a, const TrailPoint& t_b) {
-		return t_a.position.x < t_b.position.x || (t_a.position.x == t_b.position.x && t_a.position.y < t_b.position.y);
-	});
+	std::ranges::sort(t_points, [](const TrailPoint& t_a, const TrailPoint& t_b) { return t_a.position.x < t_b.position.x || (t_a.position.x == t_b.position.x && t_a.position.y < t_b.position.y); });
 
-	const auto turn = [](Vec2 t_origin, Vec2 t_a, Vec2 t_b) {
-		return (t_a.x - t_origin.x) * (t_b.y - t_origin.y) - (t_a.y - t_origin.y) * (t_b.x - t_origin.x);
-	};
+	const auto turn = [](Vec2 t_origin, Vec2 t_a, Vec2 t_b) { return (t_a.x - t_origin.x) * (t_b.y - t_origin.y) - (t_a.y - t_origin.y) * (t_b.x - t_origin.x); };
 
 	u32        count = 0;
 	const auto add   = [&](const TrailPoint& t_point, u32 t_floor) {
@@ -83,8 +80,8 @@ CaretMark  g_last_caret{};
 	}
 
 	const u32 lower_end = count + 1;
-	for (usize i = t_points.size() - 1; i > 0; i -= 1) {
-		add(t_points[i - 1], lower_end);
+	for (const TrailPoint& point : t_points.first(t_points.size() - 1) | std::views::reverse) {
+		add(point, lower_end);
 	}
 
 	return count - 1;
@@ -303,22 +300,26 @@ auto TextInput::on_key_down(os::Key t_key, os::Modifiers t_held) -> void
 		using enum os::Key;
 
 		case BACKSPACE: {
-			erase(has_selection() ? range : TextRange{previous, m_cursor});
+			const TextRange erased = has_selection() ? range : TextRange{previous, m_cursor};
+			erase(erased);
 			break;
 		}
 
 		case FORWARD_DELETE: {
-			erase(has_selection() ? range : TextRange{m_cursor, next});
+			const TextRange erased = has_selection() ? range : TextRange{m_cursor, next};
+			erase(erased);
 			break;
 		}
 
 		case LEFT: {
-			move_cursor(collapse_selection ? range.start : previous, t_held.shift);
+			const u32 target = collapse_selection ? range.start : previous;
+			move_cursor(target, t_held.shift);
 			break;
 		}
 
 		case RIGHT: {
-			move_cursor(collapse_selection ? range.end : next, t_held.shift);
+			const u32 target = collapse_selection ? range.end : next;
+			move_cursor(target, t_held.shift);
 			break;
 		}
 
@@ -426,8 +427,7 @@ auto TextInput::update(float t_delta_seconds) -> void
 	}
 }
 
-auto TextInput::draw(DrawList* t_draw_list, const Font& t_font, Rect t_field, Color t_text_color, Color t_caret_color, std::optional<Rect> t_placeholder_box)
-	-> void
+auto TextInput::draw(DrawList* t_draw_list, const Font& t_font, Rect t_field, Color t_text_color, Color t_caret_color, std::optional<Rect> t_placeholder_box) -> void
 {
 	char                   mask[K_TEXT_INPUT_CAPACITY];
 	const std::string_view shown = shown_text(mask);
@@ -446,8 +446,10 @@ auto TextInput::draw(DrawList* t_draw_list, const Font& t_font, Rect t_field, Co
 	const float highlight_height = std::max(0.0f, highlight_bottom - highlight_y);
 	const Vec2  caret_origin{content.x, highlight_y};
 	const Vec2  caret_extent = caret_size(t_font, shown, highlight_height);
+	const Vec2  caret_target{caret_offset - m_scroll_x, highlight_height - caret_extent.y};
+	const Vec2  text_origin{origin_x, baseline};
 
-	move_caret(Vec2{caret_offset - m_scroll_x, highlight_height - caret_extent.y}, caret_origin, highlight_height);
+	move_caret(caret_target, caret_origin, highlight_height);
 
 	t_draw_list->push_clip(content);
 
@@ -455,8 +457,9 @@ auto TextInput::draw(DrawList* t_draw_list, const Font& t_font, Rect t_field, Co
 		const TextRange range   = selection();
 		const float     start_x = origin_x + text_width(t_font, shown.substr(0, range.start));
 		const float     end_x   = origin_x + text_width(t_font, shown.substr(0, range.end));
+		const Rect      highlight{start_x, highlight_y, end_x - start_x, highlight_height};
 
-		t_draw_list->add_rect(Rect{start_x, highlight_y, end_x - start_x, highlight_height}, faded(t_caret_color, K_SELECTION_ALPHA));
+		t_draw_list->add_rect(highlight, faded(t_caret_color, K_SELECTION_ALPHA));
 	}
 
 	if (m_length == 0) {
@@ -473,12 +476,13 @@ auto TextInput::draw(DrawList* t_draw_list, const Font& t_font, Rect t_field, Co
 	}
 
 	t_draw_list->push_clip(content);
-	draw_text(t_draw_list, t_font, Vec2{origin_x, baseline}, shown, t_text_color);
+	draw_text(t_draw_list, t_font, text_origin, shown, t_text_color);
 
 	// A block caret shows the character under it in a contrasting colour, as a terminal does.
 	if (caret_shown && g_caret_style == CaretStyle::BLOCK) {
-		t_draw_list->push_clip(Rect{caret_origin.x + m_caret_head.x, caret_origin.y + m_caret_head.y, caret_extent.x, caret_extent.y});
-		draw_text(t_draw_list, t_font, Vec2{origin_x, baseline}, shown, controls::ink_on(t_caret_color));
+		const Rect under_caret{caret_origin.x + m_caret_head.x, caret_origin.y + m_caret_head.y, caret_extent.x, caret_extent.y};
+		t_draw_list->push_clip(under_caret);
+		draw_text(t_draw_list, t_font, text_origin, shown, controls::contrasting_theme_text(t_caret_color));
 		t_draw_list->pop_clip();
 	}
 
@@ -541,14 +545,15 @@ auto TextInput::insert(std::string_view t_text) -> void
 	u32  accepted_count = 0;
 
 	for (usize index = 0; index < t_text.size();) {
-		const Utf8Codepoint codepoint = decode_utf8(t_text, index);
-		const bool          invalid   = codepoint.length == 1 && static_cast<u8>(t_text[index]) >= 0x80;
+		const Utf8Codepoint    codepoint = decode_utf8(t_text, index);
+		const std::string_view bytes     = t_text.substr(index, codepoint.length);
+		const bool             invalid   = codepoint.length == 1 && static_cast<u8>(bytes[0]) >= 0x80;
 		index += codepoint.length;
 
 		if (invalid || !is_printable(codepoint.value)) continue;
 		if (m_length + accepted_count + codepoint.length > m_max_length) break;
 
-		std::memcpy(accepted + accepted_count, t_text.data() + index - codepoint.length, codepoint.length);
+		std::ranges::copy(bytes, accepted + accepted_count);
 		accepted_count += codepoint.length;
 	}
 
@@ -569,9 +574,7 @@ auto TextInput::caret_size(const Font& t_font, std::string_view t_shown, float t
 	return Vec2{std::max(width, K_CARET_WIDTH), g_caret_style == CaretStyle::BLOCK ? t_height : K_UNDERLINE_HEIGHT};
 }
 
-// The caret glides to its new spot: quickly for a move the size of typing, so it keeps up with the text, and more slowly for longer jumps.
-// Its tail follows behind, and the stretch between them is drawn as a fading ribbon, the smear kitty and Neovide leave behind their
-// cursors. A field that just took focus starts at the caret of the field that let go of focus, so the caret flies over.
+// The caret glides to its new spot: quickly for a move the size of typing, so it keeps up with the text, and more slowly for longer jumps. Its tail follows behind, and the stretch between them is drawn as a fading ribbon, the smear kitty and Neovide leave behind their cursors. A field that just took focus starts at the caret of the field that let go of focus, so the caret flies over.
 auto TextInput::move_caret(Vec2 t_target, Vec2 t_origin, float t_line_height) -> void
 {
 	const float seconds = std::min(std::exchange(m_trail_seconds, 0.0f), K_TRAIL_MAX_STEP);
@@ -608,8 +611,7 @@ auto TextInput::move_caret(Vec2 t_target, Vec2 t_origin, float t_line_height) ->
 	}
 }
 
-// The trail is the outline around the caret and a shrunken copy of it where the tail is: the area the caret sweeps through. The caret is
-// that outline's front edge, so nothing pokes out of it whichever way the caret moves.
+// The trail is the outline around the caret and a shrunken copy of it where the tail is: the area the caret sweeps through. The caret is that outline's front edge, so nothing pokes out of it whichever way the caret moves.
 auto TextInput::draw_caret(DrawList* t_draw_list, Vec2 t_origin, Vec2 t_size, Color t_color) const -> void
 {
 	const Rect head{t_origin.x + m_caret_head.x, t_origin.y + m_caret_head.y, t_size.x, t_size.y};
@@ -636,7 +638,7 @@ auto TextInput::draw_caret(DrawList* t_draw_list, Vec2 t_origin, Vec2 t_size, Co
 
 		Vec2  points[16]{};
 		Color colors[16]{};
-		for (u32 i = 0; i < count; i += 1) {
+		for (const u32 i : std::views::iota(0u, count)) {
 			points[i] = outline[i].position;
 			colors[i] = outline[i].color;
 		}

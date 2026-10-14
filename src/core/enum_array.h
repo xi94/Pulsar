@@ -2,8 +2,7 @@
 
 #include "core/types.h"
 
-// Arrays indexed by an enum and loops over every value of one, so code never casts between enums and integers. The enum's last value is
-// COUNT, which counts the others.
+// Arrays indexed by an enum and loops over every value of one, so code never casts between enums and integers. The enum's last value is COUNT, which counts the others.
 template <typename E>
 constexpr usize K_ENUM_COUNT = static_cast<usize>(E::COUNT);
 
@@ -72,15 +71,13 @@ struct EnumValues {
 	}
 };
 
-// Every value of E in order: for (const ThemeKind theme : each<ThemeKind>()).
 template <typename E>
 [[nodiscard]] constexpr auto each() -> EnumValues<E>
 {
 	return EnumValues<E>{};
 }
 
-// Where t_value falls among E's values, and the value at a place, for controls that list every value in order and for data handed to the GPU.
-// These are the only conversions between an enum and its position.
+// Where t_value falls among E's values, and the value at a place, for controls that list every value in order and for data handed to the GPU. These are the only conversions between an enum and its position.
 template <typename E>
 [[nodiscard]] constexpr auto enum_index(E t_value) -> u32
 {
@@ -93,7 +90,6 @@ template <typename E>
 	return static_cast<E>(t_index);
 }
 
-// The value t_step places from t_value, wrapping round past either end.
 template <typename E>
 [[nodiscard]] constexpr auto stepped(E t_value, i32 t_step) -> E
 {

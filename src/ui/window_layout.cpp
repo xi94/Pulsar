@@ -80,7 +80,12 @@ auto TitleBarLayout::button_rect(TitleBarButton t_button) const -> Rect
 auto TitleBarLayout::button_at(Vec2 t_point) const -> TitleBarButton
 {
 	constexpr TitleBarButton BUTTONS[]{
-		TitleBarButton::MENU, TitleBarButton::SEARCH, TitleBarButton::UPDATE, TitleBarButton::MINIMIZE, TitleBarButton::MAXIMIZE, TitleBarButton::CLOSE,
+		TitleBarButton::MENU,
+		TitleBarButton::SEARCH,
+		TitleBarButton::UPDATE,
+		TitleBarButton::MINIMIZE,
+		TitleBarButton::MAXIMIZE,
+		TitleBarButton::CLOSE,
 	};
 
 	for (const TitleBarButton button : BUTTONS) {

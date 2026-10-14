@@ -1,11 +1,11 @@
 #include "ui/title_bar.h"
 
 #include <cmath>
-#include <cstdio>
 #include <numbers>
 
 #include "core/animation.h"
 #include "core/app_identity.h"
+#include "core/str.h"
 #include "core/updater.h"
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
@@ -97,12 +97,11 @@ struct StatusLook {
 		}
 
 		case DOWNLOADING: {
-			const u64 total   = t_updater->total_bytes();
-			const u64 percent = total > 0 ? t_updater->bytes_downloaded() * 100 / total : 0;
-			const int written = std::snprintf(t_percent, sizeof(t_percent), "%u%%", static_cast<unsigned>(std::min<u64>(percent, 100)));
+			const u64              total   = t_updater->total_bytes();
+			const u64              percent = total > 0 ? t_updater->bytes_downloaded() * 100 / total : 0;
+			const std::string_view label   = format_into(t_percent, "{}%", std::min<u64>(percent, 100));
 
-			return StatusLook{std::string_view{t_percent, static_cast<usize>(std::max(written, 0))}, "100%", Asset::ICON_DOWNLOAD, g_theme.text_dim,
-			                  g_theme.text};
+			return StatusLook{label, "100%", Asset::ICON_DOWNLOAD, g_theme.text_dim, g_theme.text};
 		}
 
 		case VERIFYING: {
@@ -130,12 +129,7 @@ struct StatusLook {
 }
 }
 
-TitleBar::TitleBar(os::Window*          t_window,
-                   const Updater*       t_updater,
-                   const UpdateOverlay* t_update_overlay,
-                   const Fonts*         t_fonts,
-                   const Assets*        t_assets,
-                   CommandQueue*        t_commands)
+TitleBar::TitleBar(os::Window* t_window, const Updater* t_updater, const UpdateOverlay* t_update_overlay, const Fonts* t_fonts, const Assets* t_assets, CommandQueue* t_commands)
 	: m_window(t_window)
 	, m_updater(t_updater)
 	, m_update_overlay(t_update_overlay)
@@ -147,23 +141,20 @@ TitleBar::TitleBar(os::Window*          t_window,
 
 auto TitleBar::update(float t_delta_seconds) -> void
 {
-	const bool visible =
-		is_update_worth_showing(m_updater->stage()) || m_update_overlay->is_open() || m_update_overlay->is_shown() || m_update_overlay->wants_status();
-	m_update_visible = visible;
-	m_update_reveal  = animation::ease_toward(m_update_reveal, visible ? 1.0f : 0.0f, K_STATUS_REVEAL_RATE, t_delta_seconds);
+	const bool visible = is_update_worth_showing(m_updater->stage()) || m_update_overlay->m_open || m_update_overlay->is_shown() || m_update_overlay->wants_status();
+	m_update_visible   = visible;
+	m_update_reveal    = animation::ease_toward(m_update_reveal, visible ? 1.0f : 0.0f, K_STATUS_REVEAL_RATE, t_delta_seconds);
 
-	const bool emphasized = visible && (m_update_overlay->is_open() || layout().button_rect(TitleBarButton::UPDATE).contains(m_mouse));
+	const bool emphasized = visible && (m_update_overlay->m_open || layout().button_rect(TitleBarButton::UPDATE).contains(m_mouse));
 	m_status_emphasis     = animation::ease_toward(m_status_emphasis, emphasized ? 1.0f : 0.0f, K_STATUS_EMPHASIS_RATE, t_delta_seconds);
 
 	if (!visible && m_update_reveal <= 0.0f) return;
 
 	char             percent[8];
-	const StatusLook look = status_look(m_updater, m_update_overlay->shown_stage(), m_update_overlay->is_showing_release_notes(), percent);
-	const float      target =
-		K_IDENTITY_GAP * 0.5f + K_ICON_SIZE + K_STATUS_ICON_GAP + std::ceil(text_width(m_fonts->secondary, look.sizing_label)) + K_STATUS_PADDING_OUTER;
+	const StatusLook look   = status_look(m_updater, m_update_overlay->m_shown_stage, m_update_overlay->m_showing_release_notes, percent);
+	const float      target = K_IDENTITY_GAP * 0.5f + K_ICON_SIZE + K_STATUS_ICON_GAP + std::ceil(text_width(m_fonts->secondary, look.sizing_label)) + K_STATUS_PADDING_OUTER;
 
-	m_status_width =
-		m_status_width <= 0.0f ? target : animation::ease_toward(m_status_width, target, K_STATUS_WIDTH_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS);
+	m_status_width = m_status_width <= 0.0f ? target : animation::ease_toward(m_status_width, target, K_STATUS_WIDTH_RATE, t_delta_seconds, animation::K_SETTLED_PIXELS);
 
 	if (look.spinning) {
 		constexpr float FULL_TURN = std::numbers::pi_v<float> * 2.0f;
@@ -176,8 +167,8 @@ auto TitleBar::update(float t_delta_seconds) -> void
 auto TitleBar::layout() const -> TitleBarLayout
 {
 	return TitleBarLayout{
-		.width                 = static_cast<float>(m_window->width()),
-		.native_controls_width = m_window->native_controls_width(),
+		.width                 = static_cast<float>(m_window->m_width),
+		.native_controls_width = m_window->m_native_controls_width,
 		.update_visible        = m_update_visible,
 		.update_width          = m_status_width > 0.0f ? m_status_width : K_UPDATE_BUTTON_WIDTH,
 		.search_visible        = m_search_visible,
@@ -185,7 +176,6 @@ auto TitleBar::layout() const -> TitleBarLayout
 	};
 }
 
-// The mark and name, with the half gap that leads into them.
 auto TitleBar::identity_width() const -> float
 {
 	return K_IDENTITY_GAP * 0.5f + K_IDENTITY_MARK_SIZE + K_IDENTITY_GAP + std::ceil(text_width(m_fonts->secondary, K_APP_NAME));
@@ -248,8 +238,8 @@ auto TitleBar::draw_hover(DrawList* t_draw_list, TitleBarButton t_button, TitleB
 {
 	if (t_button != t_hovered) return;
 
-	t_draw_list->add_rect(layout().button_rect(t_button),
-	                      t_button == TitleBarButton::CLOSE ? K_TITLE_BAR_CLOSE_HOVER : with_alpha(g_theme.text, K_TITLE_BAR_HOVER_ALPHA));
+	const Color hover = t_button == TitleBarButton::CLOSE ? K_TITLE_BAR_CLOSE_HOVER : with_alpha(g_theme.text, K_TITLE_BAR_HOVER_ALPHA);
+	t_draw_list->add_rect(layout().button_rect(t_button), hover);
 }
 
 auto TitleBar::draw_identity(DrawList* t_draw_list, float t_amount) const -> void
@@ -261,16 +251,17 @@ auto TitleBar::draw_identity(DrawList* t_draw_list, float t_amount) const -> voi
 	const float          left      = start + K_IDENTITY_GAP * 0.5f;
 	const float          shift     = -K_STATUS_SHIFT * (1.0f - t_amount);
 	const Rect           mark{left, (K_TITLE_BAR_HEIGHT - K_IDENTITY_MARK_SIZE) * 0.5f + shift, K_IDENTITY_MARK_SIZE, K_IDENTITY_MARK_SIZE};
+	const Vec2           name_baseline{mark.right() + K_IDENTITY_GAP, font.centered_baseline(menu) + shift};
 	const auto           alpha = to_alpha(t_amount);
 
-	t_draw_list->add_image(mark, m_assets->get(Asset::ICON_APP), faded(g_theme.text_dim, alpha));
-	draw_text(t_draw_list, font, Vec2{mark.right() + K_IDENTITY_GAP, font.centered_baseline(menu) + shift}, K_APP_NAME, faded(g_theme.text_dim, alpha));
+	t_draw_list->add_image(mark, m_assets->texture(Asset::ICON_APP), faded(g_theme.text_dim, alpha));
+	draw_text(t_draw_list, font, name_baseline, K_APP_NAME, faded(g_theme.text_dim, alpha));
 }
 
 auto TitleBar::draw_update_status(DrawList* t_draw_list, float t_amount) const -> void
 {
 	char                 percent[8];
-	const StatusLook     look      = status_look(m_updater, m_update_overlay->shown_stage(), m_update_overlay->is_showing_release_notes(), percent);
+	const StatusLook     look      = status_look(m_updater, m_update_overlay->m_shown_stage, m_update_overlay->m_showing_release_notes, percent);
 	const TitleBarLayout title_bar = layout();
 	const Rect           area      = title_bar.button_rect(TitleBarButton::UPDATE);
 	const auto           alpha     = to_alpha(t_amount);
@@ -283,16 +274,17 @@ auto TitleBar::draw_update_status(DrawList* t_draw_list, float t_amount) const -
 	const Color icon_color = faded(look.icon_color, alpha);
 
 	if (look.spinning) {
-		t_draw_list->add_rotated_image(icon, m_status_spin, m_assets->get(look.icon), icon_color);
+		t_draw_list->add_rotated_image(icon, m_status_spin, m_assets->texture(look.icon), icon_color);
 	} else if (look.check) {
 		controls::draw_check(t_draw_list, m_assets, icon, icon_color);
 	} else {
-		t_draw_list->add_image(icon, m_assets->get(look.icon), icon_color);
+		t_draw_list->add_image(icon, m_assets->texture(look.icon), icon_color);
 	}
 
-	draw_text(t_draw_list, font, Vec2{icon.right() + K_STATUS_ICON_GAP, font.centered_baseline(area) + shift}, look.label,
-	          faded(mix(look.text_color, g_theme.text, K_STATUS_EMPHASIS_STRENGTH * m_status_emphasis), alpha));
+	const Vec2  label_baseline{icon.right() + K_STATUS_ICON_GAP, font.centered_baseline(area) + shift};
+	const Color label_color = faded(mix(look.text_color, g_theme.text, K_STATUS_EMPHASIS_STRENGTH * m_status_emphasis), alpha);
 
+	draw_text(t_draw_list, font, label_baseline, look.label, label_color);
 	t_draw_list->pop_clip();
 }
 
@@ -306,10 +298,12 @@ auto TitleBar::draw_search_pill(DrawList* t_draw_list, TitleBarButton t_hovered)
 	const bool  is_hovered = t_hovered == TitleBarButton::SEARCH;
 	const Rect  pill       = area.inset(0.0f, (area.h - K_SEARCH_PILL_HEIGHT) * 0.5f);
 	const Color fill       = is_hovered ? hovered(g_theme.field) : g_theme.field;
+	const Color border     = is_hovered ? g_theme.border : g_theme.separator;
+	const Color label      = is_hovered ? g_theme.text_dim : g_theme.text_faint;
 	const Font& font       = m_fonts->secondary;
 	const Font& key_font   = m_fonts->caption;
 
-	t_draw_list->add_bordered_rect(pill, rounded(K_SEARCH_PILL_RADIUS), fill, is_hovered ? g_theme.border : g_theme.separator, 1.0f);
+	t_draw_list->add_bordered_rect(pill, rounded(K_SEARCH_PILL_RADIUS), fill, border, 1.0f);
 
 	const Rect  icon{pill.x + K_SEARCH_PILL_PADDING, pill.center().y - K_SEARCH_PILL_ICON_SIZE * 0.5f, K_SEARCH_PILL_ICON_SIZE, K_SEARCH_PILL_ICON_SIZE};
 	const float keys_right  = pill.right() - std::floor((pill.h - controls::keycap_height(key_font)) * 0.5f);
@@ -317,11 +311,12 @@ auto TitleBar::draw_search_pill(DrawList* t_draw_list, TitleBarButton t_hovered)
 	const float text_left   = icon.right() + K_SEARCH_PILL_ICON_GAP;
 	const float room        = std::max(0.0f, keys_left - K_SEARCH_PILL_ICON_GAP - text_left);
 	const float label_width = std::min(text_width(font, K_SEARCH_PILL_TEXT), room);
+	const Vec2  label_baseline{snapped_to_pixel(text_left + (room - label_width) * 0.5f), font.centered_baseline(pill)};
+	const Vec2  keys_right_center{keys_right, pill.center().y};
 
 	controls::draw_magnifier(t_draw_list, icon, g_theme.text_faint);
-	draw_text_truncated(t_draw_list, font, Vec2{snapped_to_pixel(text_left + (room - label_width) * 0.5f), font.centered_baseline(pill)}, K_SEARCH_PILL_TEXT,
-	                    room, is_hovered ? g_theme.text_dim : g_theme.text_faint);
-	controls::draw_shortcut(t_draw_list, key_font, Vec2{keys_right, pill.center().y}, K_SEARCH_PILL_SHORTCUT, fill, 255);
+	draw_text_truncated(t_draw_list, font, label_baseline, K_SEARCH_PILL_TEXT, room, label);
+	controls::draw_shortcut(t_draw_list, key_font, keys_right_center, K_SEARCH_PILL_SHORTCUT, fill, 255);
 }
 
 auto TitleBar::draw_maximize_glyph(DrawList* t_draw_list, Color t_color) const -> void
@@ -330,28 +325,34 @@ auto TitleBar::draw_maximize_glyph(DrawList* t_draw_list, Color t_color) const -
 
 	if (!m_window->is_maximized()) {
 		constexpr float SQUARE_SIZE = 10.0f;
-		t_draw_list->add_rect_outline(Rect{center.x - SQUARE_SIZE * 0.5f, center.y - SQUARE_SIZE * 0.5f, SQUARE_SIZE, SQUARE_SIZE}, K_GLYPH_THICKNESS, t_color);
+
+		const Rect square{center.x - SQUARE_SIZE * 0.5f, center.y - SQUARE_SIZE * 0.5f, SQUARE_SIZE, SQUARE_SIZE};
+		t_draw_list->add_rect_outline(square, K_GLYPH_THICKNESS, t_color);
 		return;
 	}
 
 	constexpr float SQUARE_SIZE   = 8.0f;
 	constexpr float SQUARE_OFFSET = 3.0f;
-	t_draw_list->add_rect_outline(Rect{center.x - SQUARE_SIZE * 0.5f + SQUARE_OFFSET, center.y - SQUARE_SIZE * 0.5f - SQUARE_OFFSET, SQUARE_SIZE, SQUARE_SIZE},
-	                              K_GLYPH_THICKNESS, t_color);
-	t_draw_list->add_rect_outline(Rect{center.x - SQUARE_SIZE * 0.5f - SQUARE_OFFSET, center.y - SQUARE_SIZE * 0.5f + SQUARE_OFFSET, SQUARE_SIZE, SQUARE_SIZE},
-	                              K_GLYPH_THICKNESS, t_color);
+
+	const Rect middle{center.x - SQUARE_SIZE * 0.5f, center.y - SQUARE_SIZE * 0.5f, SQUARE_SIZE, SQUARE_SIZE};
+	const Rect back  = middle.moved(Vec2{SQUARE_OFFSET, -SQUARE_OFFSET});
+	const Rect front = middle.moved(Vec2{-SQUARE_OFFSET, SQUARE_OFFSET});
+
+	t_draw_list->add_rect_outline(back, K_GLYPH_THICKNESS, t_color);
+	t_draw_list->add_rect_outline(front, K_GLYPH_THICKNESS, t_color);
 }
 
 auto TitleBar::draw(DrawList* t_draw_list) -> void
 {
-	t_draw_list->add_rect(Rect{0.0f, 0.0f, static_cast<float>(m_window->width()), K_TITLE_BAR_HEIGHT}, g_theme.chrome);
+	const Rect bar{0.0f, 0.0f, static_cast<float>(m_window->m_width), K_TITLE_BAR_HEIGHT};
+	t_draw_list->add_rect(bar, g_theme.chrome);
 
 	const TitleBarButton hovered     = layout().button_at(m_mouse);
 	const auto           icon_rect   = [this](TitleBarButton t_button) { return layout().button_rect(t_button).centered(K_ICON_SIZE, K_ICON_SIZE); };
 	const auto           glyph_color = [hovered](TitleBarButton t_button) { return hovered == t_button ? g_theme.text : g_theme.text_dim; };
 
 	draw_hover(t_draw_list, TitleBarButton::MENU, hovered);
-	t_draw_list->add_image(icon_rect(TitleBarButton::MENU), m_assets->get(Asset::ICON_MENU), g_theme.text);
+	t_draw_list->add_image(icon_rect(TitleBarButton::MENU), m_assets->texture(Asset::ICON_MENU), g_theme.text);
 
 	// On Windows the update status takes the name's place beside the menu. On macOS they sit at opposite ends, so the name stays.
 	const float identity = layout().menu_on_right() ? 1.0f : 1.0f - m_update_reveal;
@@ -365,15 +366,16 @@ auto TitleBar::draw(DrawList* t_draw_list) -> void
 
 	draw_search_pill(t_draw_list, hovered);
 
-	if (m_window->native_controls_width() > 0.0f) return;
+	if (m_window->m_native_controls_width > 0.0f) return;
 
 	draw_hover(t_draw_list, TitleBarButton::MINIMIZE, hovered);
-	t_draw_list->add_image(icon_rect(TitleBarButton::MINIMIZE), m_assets->get(Asset::ICON_MINIMIZE), glyph_color(TitleBarButton::MINIMIZE));
+	t_draw_list->add_image(icon_rect(TitleBarButton::MINIMIZE), m_assets->texture(Asset::ICON_MINIMIZE), glyph_color(TitleBarButton::MINIMIZE));
 
 	draw_hover(t_draw_list, TitleBarButton::MAXIMIZE, hovered);
 	draw_maximize_glyph(t_draw_list, glyph_color(TitleBarButton::MAXIMIZE));
 
+	const Color close_glyph = hovered == TitleBarButton::CLOSE ? K_TITLE_BAR_CLOSE_GLYPH_HOVER : g_theme.text;
+
 	draw_hover(t_draw_list, TitleBarButton::CLOSE, hovered);
-	t_draw_list->add_image(icon_rect(TitleBarButton::CLOSE), m_assets->get(Asset::ICON_CLOSE),
-	                       hovered == TitleBarButton::CLOSE ? K_TITLE_BAR_CLOSE_GLYPH_HOVER : g_theme.text);
+	t_draw_list->add_image(icon_rect(TitleBarButton::CLOSE), m_assets->texture(Asset::ICON_CLOSE), close_glyph);
 }

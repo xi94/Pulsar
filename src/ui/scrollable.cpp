@@ -94,13 +94,16 @@ auto Scrollable::draw(DrawList* t_draw_list, const ScrollGeometry& t_geometry, V
 	const Rect  track         = t_geometry.track.inset(inset, 0.0f);
 	const Rect  thumb         = thumb_rect(m_offset, t_geometry).inset(inset, 0.0f);
 	const bool  hovered       = m_dragging || thumb_grab_rect(m_offset, t_geometry).contains(t_mouse);
-	const Color hovered_thumb = with_alpha(mix(g_theme.scroll_thumb, g_theme.text, K_THUMB_HOVER_STRENGTH), g_theme.scroll_thumb.a);
+	const Color hover_tint    = mix(g_theme.scroll_thumb, g_theme.text, K_THUMB_HOVER_STRENGTH);
+	const Color hovered_thumb = with_alpha(hover_tint, g_theme.scroll_thumb.a);
+	const Color thumb_color   = hovered ? hovered_thumb : g_theme.scroll_thumb;
 
 	if (m_thickness > 0.001f) {
-		t_draw_list->add_rounded_rect(track, rounded(track.w * 0.5f), faded(g_theme.separator, static_cast<u8>(static_cast<float>(t_alpha) * m_thickness)));
+		const auto track_alpha = static_cast<u8>(static_cast<float>(t_alpha) * m_thickness);
+		t_draw_list->add_rounded_rect(track, rounded(track.w * 0.5f), faded(g_theme.separator, track_alpha));
 	}
 
-	t_draw_list->add_rounded_rect(thumb, rounded(thumb.w * 0.5f), faded(hovered ? hovered_thumb : g_theme.scroll_thumb, t_alpha));
+	t_draw_list->add_rounded_rect(thumb, rounded(thumb.w * 0.5f), faded(thumb_color, t_alpha));
 }
 
 auto Scrollable::edge_fades(Rect t_area, const ScrollGeometry& t_geometry) const -> Scrollable::EdgeFades

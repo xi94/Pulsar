@@ -54,8 +54,7 @@ struct ArtSource {
 };
 
 struct Command {
-	CommandType type;
-	// The game a command is about, and the account popup row it came from, when it has them.
+	CommandType        type;
 	std::optional<u32> game;
 	std::optional<u32> row;
 	Vec2               position{};

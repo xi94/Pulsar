@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <optional>
+#include <ranges>
 #include <string>
 
 #include "core/debug_log.h"
@@ -29,8 +30,8 @@ constexpr const char* K_EFFECT_BLOCK_NAMES[]{"BannerGlowConstants", "ShadowConst
 {
 	bool complete = true;
 
-#define PULSAR_GL_LOAD(return_type, name, symbol, ...)                                                                                                         \
-	t_gl->name = reinterpret_cast<return_type (*)(__VA_ARGS__)>(t_context.proc_address(#symbol));                                                              \
+#define PULSAR_GL_LOAD(return_type, name, symbol, ...)                                            \
+	t_gl->name = reinterpret_cast<return_type (*)(__VA_ARGS__)>(t_context.proc_address(#symbol)); \
 	complete   = complete && t_gl->name != nullptr;
 	PULSAR_GL_FUNCTIONS(PULSAR_GL_LOAD)
 #undef PULSAR_GL_LOAD
@@ -149,11 +150,10 @@ auto OpenGlBackend::init(const os::Window* t_window) -> bool
 		return false;
 	}
 
-	debug_log::write(K_LOG_CATEGORY, "OpenGL %s on %s", reinterpret_cast<const char*>(gl.get_string(GL_VERSION)),
-	                 reinterpret_cast<const char*>(gl.get_string(GL_RENDERER)));
+	debug_log::write(K_LOG_CATEGORY, "OpenGL %s on %s", reinterpret_cast<const char*>(gl.get_string(GL_VERSION)), reinterpret_cast<const char*>(gl.get_string(GL_RENDERER)));
 
-	width  = static_cast<GLsizei>(t_window->physical_width());
-	height = static_cast<GLsizei>(t_window->physical_height());
+	width  = static_cast<GLsizei>(t_window->m_physical_width);
+	height = static_cast<GLsizei>(t_window->m_physical_height);
 
 	if (!create_programs() || !create_buffers()) return false;
 
@@ -168,8 +168,7 @@ auto OpenGlBackend::init(const os::Window* t_window) -> bool
 	gl.enable(GL_BLEND);
 	gl.blend_func_separate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
-	debug_log::write(K_LOG_CATEGORY, "OpenGL ready in %.1f ms (%d samples)",
-	                 std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - started).count(), msaa_framebuffer != 0 ? msaa_samples : 1);
+	debug_log::write(K_LOG_CATEGORY, "OpenGL ready in %.1f ms (%d samples)", std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - started).count(), msaa_framebuffer != 0 ? msaa_samples : 1);
 
 	return true;
 }
@@ -250,10 +249,9 @@ auto OpenGlBackend::create_texture(u32 t_slot, std::span<const TextureLevel> t_l
 	gl.bind_texture(GL_TEXTURE_2D, texture);
 	gl.tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(t_levels.size()) - 1);
 
-	for (usize level = 0; level < t_levels.size(); level += 1) {
+	for (const usize level : std::views::iota(usize{0}, t_levels.size())) {
 		const TextureLevel& pixels = t_levels[level];
-		gl.tex_image_2d(GL_TEXTURE_2D, static_cast<GLint>(level), GL_RGBA8, static_cast<GLsizei>(pixels.width), static_cast<GLsizei>(pixels.height), 0, GL_RGBA,
-		                GL_UNSIGNED_BYTE, pixels.rgba_pixels);
+		gl.tex_image_2d(GL_TEXTURE_2D, static_cast<GLint>(level), GL_RGBA8, static_cast<GLsizei>(pixels.width), static_cast<GLsizei>(pixels.height), 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.rgba_pixels);
 	}
 
 	textures[t_slot] = texture;
@@ -264,8 +262,7 @@ auto OpenGlBackend::create_texture(u32 t_slot, std::span<const TextureLevel> t_l
 auto OpenGlBackend::update_texture(u32 t_slot, u32 t_x, u32 t_y, u32 t_width, u32 t_height, const u8* t_rgba_pixels) -> void
 {
 	gl.bind_texture(GL_TEXTURE_2D, textures[t_slot]);
-	gl.tex_sub_image_2d(GL_TEXTURE_2D, 0, static_cast<GLint>(t_x), static_cast<GLint>(t_y), static_cast<GLsizei>(t_width), static_cast<GLsizei>(t_height),
-	                    GL_RGBA, GL_UNSIGNED_BYTE, t_rgba_pixels);
+	gl.tex_sub_image_2d(GL_TEXTURE_2D, 0, static_cast<GLint>(t_x), static_cast<GLint>(t_y), static_cast<GLsizei>(t_width), static_cast<GLsizei>(t_height), GL_RGBA, GL_UNSIGNED_BYTE, t_rgba_pixels);
 }
 
 auto OpenGlBackend::destroy_texture(u32 t_slot) -> void
@@ -487,7 +484,7 @@ auto OpenGlBackend::size_blur_targets() -> void
 
 	blur_ready = size_blur_target(width, height, &capture);
 
-	for (u32 level = 0; level < K_BLUR_LEVEL_COUNT; level += 1) {
+	for (const u32 level : std::views::iota(0u, K_BLUR_LEVEL_COUNT)) {
 		const auto level_width  = static_cast<GLsizei>(blur_level_extent(static_cast<u32>(width), level));
 		const auto level_height = static_cast<GLsizei>(blur_level_extent(static_cast<u32>(height), level));
 
@@ -501,8 +498,6 @@ auto OpenGlBackend::size_blur_targets() -> void
 	}
 }
 
-// Copies what is drawn so far out of the frame, halves it down to the plan's level and blurs it there, then puts the frame's own
-// state back.
 auto OpenGlBackend::blur_frame(BlurPlan t_plan) -> void
 {
 	PULSAR_PROFILE_SCOPE("Render.Blur");
@@ -529,8 +524,10 @@ auto OpenGlBackend::blur_frame(BlurPlan t_plan) -> void
 
 	const BlurTarget* source = &capture;
 
-	for (u32 level = 0; level <= t_plan.level; level += 1) {
-		pass(levels[level][0], *source, downsample_program, 1.0f / static_cast<float>(source->width), 1.0f / static_cast<float>(source->height));
+	for (const u32 level : std::views::iota(0u, t_plan.level + 1)) {
+		const float texel_width  = 1.0f / static_cast<float>(source->width);
+		const float texel_height = 1.0f / static_cast<float>(source->height);
+		pass(levels[level][0], *source, downsample_program, texel_width, texel_height);
 		source = &levels[level][0];
 	}
 
@@ -538,7 +535,7 @@ auto OpenGlBackend::blur_frame(BlurPlan t_plan) -> void
 	const float       step_x  = t_plan.step / static_cast<float>(blurred[0].width);
 	const float       step_y  = t_plan.step / static_cast<float>(blurred[0].height);
 
-	for (u32 i = 0; i < t_plan.iterations; i += 1) {
+	for (u32 iteration = 0; iteration < t_plan.iterations; iteration += 1) {
 		pass(blurred[1], blurred[0], blur_program, step_x, 0.0f);
 		pass(blurred[0], blurred[1], blur_program, 0.0f, step_y);
 	}
@@ -556,7 +553,7 @@ auto OpenGlBackend::draw_command(const RenderFrame& t_frame, const DrawCommand& 
 	if (t_command.shader == ShaderKind::TEXTURED) {
 		if (!t_command.texture->is_valid()) return;
 
-		image = textures[t_command.texture->slot()];
+		image = textures[t_command.texture->m_slot];
 	} else if (t_command.shader == ShaderKind::BACKDROP_BLUR) {
 		image = levels[blur_plan(t_frame, t_command).level][0].texture;
 	}

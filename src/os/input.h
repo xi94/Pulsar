@@ -69,8 +69,7 @@ static_assert(enum_index(Key::Z) - enum_index(Key::A) == 'z' - 'a');
 	return static_cast<char>('a' + (enum_index(t_key) - enum_index(Key::A)));
 }
 
-// shortcut is Ctrl on Windows and Command on macOS; word_step is the key that moves the caret a word at a time (Ctrl or Option);
-// control is the physical Ctrl key on both.
+// shortcut is Ctrl on Windows and Command on macOS; word_step is the key that moves the caret a word at a time (Ctrl or Option); control is the physical Ctrl key on both.
 struct Modifiers {
 	bool shift     = false;
 	bool shortcut  = false;

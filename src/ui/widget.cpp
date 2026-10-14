@@ -1,6 +1,7 @@
 #include "ui/widget.h"
 
 #include <cassert>
+#include <ranges>
 #include <span>
 
 #include "os/input.h"
@@ -64,12 +65,12 @@ auto WidgetStack::push_overlay(Widget* t_widget) -> void
 
 auto WidgetStack::visit_top_down(std::predicate<Widget*> auto&& t_visitor) const -> bool
 {
-	for (u32 i = m_overlay_count; i > 0; i -= 1) {
-		if (t_visitor(m_overlays[i - 1])) return true;
+	for (Widget* overlay : std::span{m_overlays, m_overlay_count} | std::views::reverse) {
+		if (t_visitor(overlay)) return true;
 	}
 
-	for (u32 i = m_widget_count; i > 0; i -= 1) {
-		if (t_visitor(m_widgets[i - 1])) return true;
+	for (Widget* widget : std::span{m_widgets, m_widget_count} | std::views::reverse) {
+		if (t_visitor(widget)) return true;
 	}
 
 	return false;
@@ -80,9 +81,9 @@ auto WidgetStack::update(Vec2 t_mouse, float t_delta_seconds) -> void
 	bool covered_by_blocker = false;
 
 	visit_top_down([&](Widget* t_widget) {
-		t_widget->set_mouse(covered_by_blocker ? K_MOUSE_OUTSIDE_WINDOW : t_mouse);
+		t_widget->m_mouse = covered_by_blocker ? K_MOUSE_OUTSIDE_WINDOW : t_mouse;
 		t_widget->update(t_delta_seconds);
-		covered_by_blocker = covered_by_blocker || (t_widget->is_visible() && t_widget->is_blocking());
+		covered_by_blocker = covered_by_blocker || (t_widget->m_visible && t_widget->is_blocking());
 
 		return false;
 	});
@@ -91,13 +92,13 @@ auto WidgetStack::update(Vec2 t_mouse, float t_delta_seconds) -> void
 auto WidgetStack::draw(DrawList* t_draw_list) -> void
 {
 	for (Widget* widget : std::span{m_widgets, m_widget_count}) {
-		if (widget->is_visible()) {
+		if (widget->m_visible) {
 			widget->draw(t_draw_list);
 		}
 	}
 
 	for (Widget* widget : std::span{m_overlays, m_overlay_count}) {
-		if (widget->is_visible()) {
+		if (widget->m_visible) {
 			widget->draw(t_draw_list);
 		}
 	}
@@ -105,7 +106,7 @@ auto WidgetStack::draw(DrawList* t_draw_list) -> void
 
 auto WidgetStack::dispatch(const os::InputEvent& t_event) -> bool
 {
-	return visit_top_down([&](Widget* t_widget) { return t_widget->is_visible() && (deliver(t_widget, t_event) || t_widget->is_blocking()); });
+	return visit_top_down([&](Widget* t_widget) { return t_widget->m_visible && (deliver(t_widget, t_event) || t_widget->is_blocking()); });
 }
 
 auto WidgetStack::cursor() const -> CursorKind
@@ -113,7 +114,7 @@ auto WidgetStack::cursor() const -> CursorKind
 	CursorKind wanted = CursorKind::ARROW;
 
 	visit_top_down([&](Widget* t_widget) {
-		if (t_widget->is_visible()) {
+		if (t_widget->m_visible) {
 			wanted = t_widget->cursor();
 		}
 

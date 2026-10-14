@@ -148,8 +148,7 @@ class SettingsPanel : public Widget {
 		COUNT,
 	};
 
-	// A slider sits in a row of its own, or inline in a row with another control. Inline sliders in Appearance all end where the Pattern
-	// select starts, so they line up whatever their row's control is. The animation speed slider sits against its toggle.
+	// A slider sits in a row of its own, or inline in a row with another control. Inline sliders in Appearance all end where the Pattern select starts, so they line up whatever their row's control is. The animation speed slider sits against its toggle.
 	enum class SliderPlace : u8 {
 		OWN_ROW,
 		INLINE,
@@ -175,7 +174,6 @@ class SettingsPanel : public Widget {
 		COUNT,
 	};
 
-	// A row of segments for picking one of a few options, and how its segments map onto the settings.
 	struct ChoiceSpec {
 		Rect Rows::*                      row;
 		std::span<const std::string_view> labels;
@@ -235,7 +233,6 @@ class SettingsPanel : public Widget {
 		COUNT,
 	};
 
-	// The control a reset button sits beside.
 	enum class ResetAnchor : u8 {
 		DROPDOWN,
 		PATTERN_SELECT,
@@ -247,8 +244,6 @@ class SettingsPanel : public Widget {
 		BROWSE_BUTTON,
 	};
 
-	// Everything about a setting's reset button: the row and control it sits beside, whether the setting is at its default, and how to put
-	// it back.
 	struct ResetSpec {
 		Rect Rows::* row;
 		ResetAnchor  anchor;
@@ -344,13 +339,7 @@ class SettingsPanel : public Widget {
 	auto draw_rail(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void;
 	[[nodiscard]] auto renderer_note(char (&t_buffer)[96]) const -> const char*;
 	auto draw_label(DrawList* t_draw_list, const Rows& t_rows, Rect Rows::* t_row, Rect t_control, u8 t_alpha) const -> void;
-	auto draw_dropdown_row(DrawList*     t_draw_list,
-	                       const Layout& t_layout,
-	                       const Rows&   t_rows,
-	                       Rect Rows::*     t_row,
-	                       std::string_view t_value,
-	                       bool             t_open,
-	                       u8               t_alpha) const -> void;
+	auto draw_dropdown_row(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, Rect Rows::* t_row, std::string_view t_value, bool t_open, u8 t_alpha) const -> void;
 	auto draw_search(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) -> void;
 	auto draw_cards(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;
 	auto draw_captions(DrawList* t_draw_list, const Layout& t_layout, const Rows& t_rows, u8 t_alpha) const -> void;

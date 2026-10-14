@@ -38,10 +38,7 @@ struct Download {
 	return self;
 }
 
-- (void)URLSession:(NSURLSession*)t_session
-			  dataTask:(NSURLSessionDataTask*)t_task
-	didReceiveResponse:(NSURLResponse*)t_response
-	 completionHandler:(void (^)(NSURLSessionResponseDisposition))t_completion
+- (void)URLSession:(NSURLSession*)t_session dataTask:(NSURLSessionDataTask*)t_task didReceiveResponse:(NSURLResponse*)t_response completionHandler:(void (^)(NSURLSessionResponseDisposition))t_completion
 {
 	const NSInteger status   = [t_response isKindOfClass:NSHTTPURLResponse.class] ? static_cast<NSHTTPURLResponse*>(t_response).statusCode : 0;
 	const long long expected = t_response.expectedContentLength;
@@ -133,9 +130,7 @@ auto http_get(std::string_view t_url, usize t_max_bytes, std::vector<u8>* t_out_
 		NSOperationQueue* delegate_queue           = [[NSOperationQueue alloc] init];
 		delegate_queue.maxConcurrentOperationCount = 1;
 
-		NSURLSession*         session = [NSURLSession sessionWithConfiguration:configuration
-																	  delegate:[[PulsarDownloadDelegate alloc] initWithDownload:&download]
-																 delegateQueue:delegate_queue];
+		NSURLSession*         session = [NSURLSession sessionWithConfiguration:configuration delegate:[[PulsarDownloadDelegate alloc] initWithDownload:&download] delegateQueue:delegate_queue];
 		NSURLSessionDataTask* task    = [session dataTaskWithURL:url];
 		[task resume];
 

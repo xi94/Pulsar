@@ -114,8 +114,8 @@ auto fail(LoginWork* t_work, const char* t_message) -> void
 		return false;
 	}
 
-	if (t_work->riot_client.executable_path() != t_work->remembered_client_path) {
-		t_work->found_client_path = t_work->riot_client.executable_path();
+	if (t_work->riot_client.m_executable_path != t_work->remembered_client_path) {
+		t_work->found_client_path = t_work->riot_client.m_executable_path;
 	}
 
 	RiotClient::kill_all_client_processes(&t_work->cancel_requested);

@@ -2,9 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <ctime>
 #include <numbers>
+#include <ranges>
 #include <span>
 
 #include "core/library.h"
@@ -33,13 +33,15 @@ constexpr float K_KEYCAP_PADDING         = 5.0f;
 constexpr float K_KEYCAP_RADIUS          = 4.0f;
 constexpr float K_KEYCAP_LIP             = 1.0f;
 constexpr float K_KEYCAP_GAP             = 3.0f;
-constexpr float K_SEARCH_ICON_SIZE       = 13.0f;
-constexpr float K_SEARCH_ICON_GAP        = 7.0f;
-constexpr float K_SEARCH_CLEAR_MARGIN    = 8.0f;
-constexpr float K_REGION_CHIP_PADDING    = 6.0f;
-constexpr u8    K_REGION_CHIP_ALPHA      = 22;
-constexpr float K_DETAIL_DOT_SIZE        = 3.0f;
-constexpr float K_DETAIL_DOT_GAP         = 7.0f;
+constexpr float K_ARROW_KEYS_GAP         = 3.0f;
+constexpr Vec2  K_ARROW_SIZE{7.0f, 4.0f};
+constexpr float K_SEARCH_ICON_SIZE    = 13.0f;
+constexpr float K_SEARCH_ICON_GAP     = 7.0f;
+constexpr float K_SEARCH_CLEAR_MARGIN = 8.0f;
+constexpr float K_REGION_CHIP_PADDING = 6.0f;
+constexpr u8    K_REGION_CHIP_ALPHA   = 22;
+constexpr float K_DETAIL_DOT_SIZE     = 3.0f;
+constexpr float K_DETAIL_DOT_GAP      = 7.0f;
 
 constexpr float K_DASH_THICKNESS     = 1.5f;
 constexpr float K_MARQUEE_RADIUS     = 6.0f;
@@ -96,12 +98,11 @@ struct ButtonLook {
 		}
 
 		case ACCENT: {
-			return ButtonLook{t_accent, lightened(t_accent, 20), foreground_on(t_accent)};
+			return ButtonLook{t_accent, lightened(t_accent, 20), contrasting_text(t_accent)};
 		}
 
 		case DANGER: {
-			return ButtonLook{mix(g_theme.control, g_theme.error, K_DANGER_FILL_STRENGTH), mix(g_theme.control, g_theme.error, K_DANGER_HOVER_STRENGTH),
-			                  mix(g_theme.error, g_theme.text, K_DANGER_LABEL_SOFTENING)};
+			return ButtonLook{mix(g_theme.control, g_theme.error, K_DANGER_FILL_STRENGTH), mix(g_theme.control, g_theme.error, K_DANGER_HOVER_STRENGTH), mix(g_theme.error, g_theme.text, K_DANGER_LABEL_SOFTENING)};
 		}
 
 		case GHOST: {
@@ -109,7 +110,7 @@ struct ButtonLook {
 		}
 
 		case DANGER_CONFIRM: {
-			return ButtonLook{g_theme.error, lightened(g_theme.error, 15), foreground_on(g_theme.error)};
+			return ButtonLook{g_theme.error, lightened(g_theme.error, 15), contrasting_text(g_theme.error)};
 		}
 	}
 
@@ -119,21 +120,25 @@ struct ButtonLook {
 // Strokes are stretched by half their thickness at both ends so the corners of an outline close up.
 auto stroke_closed(DrawList* t_draw_list, std::span<const Vec2> t_points, float t_thickness, Color t_color) -> void
 {
-	for (usize i = 0; i < t_points.size(); i += 1) {
+	for (const usize i : std::views::iota(usize{0}, t_points.size())) {
 		const Vec2  from   = t_points[i];
 		const Vec2  to     = t_points[(i + 1) % t_points.size()];
 		const float length = std::hypot(to.x - from.x, to.y - from.y);
 		if (length <= 0.0f) continue;
 
-		const Vec2 reach{(to.x - from.x) / length * t_thickness * 0.5f, (to.y - from.y) / length * t_thickness * 0.5f};
-		t_draw_list->add_line(Vec2{from.x - reach.x, from.y - reach.y}, Vec2{to.x + reach.x, to.y + reach.y}, t_thickness, t_color);
+		const float half_thickness = t_thickness * 0.5f;
+		const Vec2  reach{(to.x - from.x) / length * half_thickness, (to.y - from.y) / length * half_thickness};
+		const Vec2  start{from.x - reach.x, from.y - reach.y};
+		const Vec2  end{to.x + reach.x, to.y + reach.y};
+		t_draw_list->add_line(start, end, t_thickness, t_color);
 	}
 }
 
-// Like mix, but the alpha moves along with the colour.
-[[nodiscard]] auto blended(Color t_from, Color t_to, float t_amount) -> Color
+[[nodiscard]] auto mix_with_alpha(Color t_from, Color t_to, float t_amount) -> Color
 {
-	return with_alpha(mix(t_from, t_to, t_amount), static_cast<u8>(lerp(static_cast<float>(t_from.a), static_cast<float>(t_to.a), t_amount)));
+	const float alpha = lerp(static_cast<float>(t_from.a), static_cast<float>(t_to.a), t_amount);
+
+	return with_alpha(mix(t_from, t_to, t_amount), static_cast<u8>(alpha));
 }
 
 [[nodiscard]] auto disabled_button_look() -> ButtonLook
@@ -159,8 +164,7 @@ auto draw_outline_countdown(DrawList* t_draw_list, Rect t_shape, float t_shape_r
 	return glass_look(t_surface).spread * g_glass_blur_scale;
 }
 
-// The Tint setting scales how much of each surface is see-through from its default, so every surface keeps its place against the
-// others and 100% is solid everywhere.
+// The Tint setting scales how much of each surface is see-through from its default, so every surface keeps its place against the others and 100% is solid everywhere.
 [[nodiscard]] auto glass_tint(controls::GlassSurface t_surface) -> u8
 {
 	const float clear = (1.0f - glass_look(t_surface).tint) * (1.0f - g_glass_tint) / (1.0f - K_GLASS_TINT_DEFAULT);
@@ -182,9 +186,13 @@ auto controls::draw_x(DrawList* t_draw_list, Rect t_rect, Color t_color) -> void
 	const Vec2  center    = t_rect.center();
 	const float arm       = std::min(t_rect.w, t_rect.h) * 0.24f;
 	const float thickness = std::max(2.0f, t_rect.h * 0.09f);
+	const Vec2  top_left{center.x - arm, center.y - arm};
+	const Vec2  top_right{center.x + arm, center.y - arm};
+	const Vec2  bottom_left{center.x - arm, center.y + arm};
+	const Vec2  bottom_right{center.x + arm, center.y + arm};
 
-	t_draw_list->add_line({center.x - arm, center.y - arm}, {center.x + arm, center.y + arm}, thickness, t_color);
-	t_draw_list->add_line({center.x - arm, center.y + arm}, {center.x + arm, center.y - arm}, thickness, t_color);
+	t_draw_list->add_line(top_left, bottom_right, thickness, t_color);
+	t_draw_list->add_line(bottom_left, top_right, thickness, t_color);
 }
 
 auto controls::draw_check(DrawList* t_draw_list, const Assets* t_assets, Rect t_rect, Color t_color) -> void
@@ -193,7 +201,7 @@ auto controls::draw_check(DrawList* t_draw_list, const Assets* t_assets, Rect t_
 	constexpr float ICON_SCALE = 1.4f;
 
 	const float size = std::min(t_rect.w, t_rect.h) * ICON_SCALE;
-	t_draw_list->add_image(t_rect.centered(size, size), t_assets->get(Asset::ICON_CHECK), t_color);
+	t_draw_list->add_image(t_rect.centered(size, size), t_assets->texture(Asset::ICON_CHECK), t_color);
 }
 
 auto controls::draw_chevron(DrawList* t_draw_list, Rect t_rect, bool t_points_up, Color t_color) -> void
@@ -202,9 +210,11 @@ auto controls::draw_chevron(DrawList* t_draw_list, Rect t_rect, bool t_points_up
 	const float half_width  = t_rect.w * 0.5f;
 	const float half_height = t_points_up ? -t_rect.h * 0.5f : t_rect.h * 0.5f;
 	const Vec2  tip{center.x, center.y + half_height};
+	const Vec2  left{center.x - half_width, center.y - half_height};
+	const Vec2  right{center.x + half_width, center.y - half_height};
 
-	t_draw_list->add_line({center.x - half_width, center.y - half_height}, tip, 1.5f, t_color);
-	t_draw_list->add_line(tip, {center.x + half_width, center.y - half_height}, 1.5f, t_color);
+	t_draw_list->add_line(left, tip, 1.5f, t_color);
+	t_draw_list->add_line(tip, right, 1.5f, t_color);
 }
 
 auto controls::draw_lock(DrawList* t_draw_list, Rect t_rect, Color t_color, Color t_backdrop, bool t_open) -> void
@@ -223,7 +233,8 @@ auto controls::draw_lock(DrawList* t_draw_list, Rect t_rect, Color t_color, Colo
 
 	if (t_open) {
 		const float gap_top = shackle.y + shackle_radius;
-		t_draw_list->add_rect(Rect{shackle.right() - stroke - 0.5f, gap_top, stroke + 1.0f, shackle.bottom() - gap_top}, t_backdrop);
+		const Rect  gap{shackle.right() - stroke - 0.5f, gap_top, stroke + 1.0f, shackle.bottom() - gap_top};
+		t_draw_list->add_rect(gap, t_backdrop);
 	}
 
 	t_draw_list->add_rounded_rect(body, radii(body_radius), t_color);
@@ -253,14 +264,18 @@ auto controls::draw_mouse_keycap(DrawList* t_draw_list, Rect t_cap, Color t_back
 {
 	draw_keycap_frame(t_draw_list, t_cap, t_backdrop, t_alpha);
 
-	const float height = std::round((t_cap.h - K_KEYCAP_LIP) * 0.6f);
-	const float width  = std::round(height * 0.7f);
-	const Rect  mouse{snapped_to_pixel(t_cap.center().x - width * 0.5f), snapped_to_pixel(t_cap.y + (t_cap.h - K_KEYCAP_LIP - height) * 0.5f), width, height};
+	const float height  = std::round((t_cap.h - K_KEYCAP_LIP) * 0.6f);
+	const float width   = std::round(height * 0.7f);
+	const float mouse_x = snapped_to_pixel(t_cap.center().x - width * 0.5f);
+	const float mouse_y = snapped_to_pixel(t_cap.y + (t_cap.h - K_KEYCAP_LIP - height) * 0.5f);
+	const Rect  mouse{mouse_x, mouse_y, width, height};
+	const Rect  hollow = mouse.inset(1.0f);
+	const Rect  wheel{mouse.center().x - 0.5f, mouse.y + 2.0f, 1.0f, std::round(height * 0.25f)};
 	const Color color = faded(keycap_label_color(), t_alpha);
 
 	t_draw_list->add_rounded_rect(mouse, rounded(width * 0.5f), color);
-	t_draw_list->add_rounded_rect(mouse.inset(1.0f), rounded(width * 0.5f - 1.0f), faded(t_backdrop, t_alpha));
-	t_draw_list->add_rect(Rect{mouse.center().x - 0.5f, mouse.y + 2.0f, 1.0f, std::round(height * 0.25f)}, color);
+	t_draw_list->add_rounded_rect(hollow, rounded(hollow.w * 0.5f), faded(t_backdrop, t_alpha));
+	t_draw_list->add_rect(wheel, color);
 }
 
 auto controls::keycap_label_color() -> Color
@@ -270,8 +285,33 @@ auto controls::keycap_label_color() -> Color
 
 auto controls::draw_keycap(DrawList* t_draw_list, const Font& t_font, Rect t_cap, std::string_view t_label, Color t_backdrop, u8 t_alpha) -> void
 {
+	const Rect  face{t_cap.x, t_cap.y, t_cap.w, t_cap.h - K_KEYCAP_LIP};
+	const Color label = faded(keycap_label_color(), t_alpha);
+
 	draw_keycap_frame(t_draw_list, t_cap, t_backdrop, t_alpha);
-	draw_text_centered(t_draw_list, t_font, Rect{t_cap.x, t_cap.y, t_cap.w, t_cap.h - K_KEYCAP_LIP}, t_label, faded(keycap_label_color(), t_alpha));
+	draw_text_centered(t_draw_list, t_font, face, t_label, label);
+}
+
+auto controls::arrow_keys_width(float t_cap) -> float
+{
+	return t_cap * 2.0f + K_ARROW_KEYS_GAP;
+}
+
+auto controls::draw_arrow_keys(DrawList* t_draw_list, Vec2 t_top_left, float t_cap, u8 t_alpha) -> float
+{
+	const Color ink = faded(keycap_label_color(), t_alpha);
+	float       x   = t_top_left.x;
+
+	for (const bool up : {true, false}) {
+		const Rect key{snapped_to_pixel(x), snapped_to_pixel(t_top_left.y), t_cap, t_cap};
+		const Rect chevron{key.center().x - K_ARROW_SIZE.x * 0.5f, key.center().y - K_ARROW_SIZE.y * 0.5f - 0.5f, K_ARROW_SIZE.x, K_ARROW_SIZE.y};
+
+		draw_keycap_frame(t_draw_list, key, g_theme.field, t_alpha);
+		draw_chevron(t_draw_list, chevron, up, ink);
+		x += t_cap + K_ARROW_KEYS_GAP;
+	}
+
+	return arrow_keys_width(t_cap);
 }
 
 auto controls::shortcut_width(const Font& t_font, std::string_view t_combo) -> float
@@ -290,15 +330,16 @@ auto controls::shortcut_width(const Font& t_font, std::string_view t_combo) -> f
 auto controls::draw_shortcut(DrawList* t_draw_list, const Font& t_font, Vec2 t_right_center, std::string_view t_combo, Color t_backdrop, u8 t_alpha) -> void
 {
 	const float height = keycap_height(t_font);
+	const float top    = snapped_to_pixel(t_right_center.y - height * 0.5f);
 	float       x      = t_right_center.x - shortcut_width(t_font, t_combo);
 
 	for (usize start = 0; start < t_combo.size();) {
 		const usize            end   = std::min(t_combo.find('+', start + 1), t_combo.size());
 		const std::string_view key   = t_combo.substr(start, end - start);
 		const float            width = keycap_width(t_font, key);
+		const Rect             cap{snapped_to_pixel(x), top, width, height};
 
-		draw_keycap(t_draw_list, t_font, Rect{snapped_to_pixel(x), snapped_to_pixel(t_right_center.y - height * 0.5f), width, height}, key, t_backdrop,
-		            t_alpha);
+		draw_keycap(t_draw_list, t_font, cap, key, t_backdrop, t_alpha);
 		x += width + K_KEYCAP_GAP;
 		start = end + 1;
 	}
@@ -314,7 +355,7 @@ auto controls::draw_magnifier(DrawList* t_draw_list, Rect t_rect, Color t_color)
 	const Vec2  center{t_rect.x + radius + thickness * 0.5f, t_rect.y + radius + thickness * 0.5f};
 
 	Vec2 previous{center.x + radius, center.y};
-	for (u32 i = 1; i <= LENS_SEGMENTS; i += 1) {
+	for (const u32 i : std::views::iota(1u, LENS_SEGMENTS + 1)) {
 		const float angle = static_cast<float>(i) / LENS_SEGMENTS * 2.0f * std::numbers::pi_v<float>;
 		const Vec2  point{center.x + radius * std::cos(angle), center.y + radius * std::sin(angle)};
 
@@ -323,7 +364,9 @@ auto controls::draw_magnifier(DrawList* t_draw_list, Rect t_rect, Color t_color)
 	}
 
 	const float handle_start = radius * std::numbers::sqrt2_v<float> * 0.5f;
-	t_draw_list->add_line({center.x + handle_start, center.y + handle_start}, {t_rect.x + size, t_rect.y + size}, thickness, t_color);
+	const Vec2  handle_from{center.x + handle_start, center.y + handle_start};
+	const Vec2  handle_to{t_rect.x + size, t_rect.y + size};
+	t_draw_list->add_line(handle_from, handle_to, thickness, t_color);
 }
 
 auto controls::caution_color() -> Color
@@ -331,8 +374,7 @@ auto controls::caution_color() -> Color
 	return luminance(g_theme.surface) > 0.3f ? Color{176, 112, 16, 255} : Color{240, 190, 90, 255};
 }
 
-// The theme's window or text colour, whichever reads on the background: the darker one on a light colour, the lighter one on a dark one.
-auto controls::ink_on(Color t_background) -> Color
+auto controls::contrasting_theme_text(Color t_background) -> Color
 {
 	const bool window_is_darker = luminance(g_theme.window) < luminance(g_theme.text);
 	const bool light_background = luminance(t_background) > 0.35f;
@@ -340,7 +382,6 @@ auto controls::ink_on(Color t_background) -> Color
 	return light_background == window_is_darker ? g_theme.window : g_theme.text;
 }
 
-// An outlined arrow standing on a bar: the symbol keyboards print on Caps Lock. Drawn on a 24-unit grid.
 auto controls::draw_caps_lock(DrawList* t_draw_list, Rect t_rect, Color t_color) -> void
 {
 	const float size      = std::min(t_rect.w, t_rect.h);
@@ -348,9 +389,13 @@ auto controls::draw_caps_lock(DrawList* t_draw_list, Rect t_rect, Color t_color)
 	const float thickness = std::max(1.25f, size * 0.09f);
 	const auto  at        = [&](float t_x, float t_y) { return Vec2{t_rect.x + t_x * unit, t_rect.y + t_y * unit}; };
 
-	const Vec2 arrow[]{at(9.0f, 11.5f), at(5.0f, 11.5f), at(12.0f, 4.0f), at(19.0f, 11.5f), at(15.0f, 11.5f), at(15.0f, 16.0f), at(9.0f, 16.0f)};
+	const Vec2  arrow[]{at(9.0f, 11.5f), at(5.0f, 11.5f), at(12.0f, 4.0f), at(19.0f, 11.5f), at(15.0f, 11.5f), at(15.0f, 16.0f), at(9.0f, 16.0f)};
+	const float bar_overhang = thickness * 0.5f / unit;
+	const Vec2  bar_left     = at(9.0f - bar_overhang, 20.0f);
+	const Vec2  bar_right    = at(15.0f + bar_overhang, 20.0f);
+
 	stroke_closed(t_draw_list, arrow, thickness, t_color);
-	t_draw_list->add_line(at(9.0f - thickness * 0.5f / unit, 20.0f), at(15.0f + thickness * 0.5f / unit, 20.0f), thickness, t_color);
+	t_draw_list->add_line(bar_left, bar_right, thickness, t_color);
 }
 
 auto controls::draw_alert(DrawList* t_draw_list, Rect t_rect, Color t_color) -> void
@@ -363,14 +408,18 @@ auto controls::draw_alert(DrawList* t_draw_list, Rect t_rect, Color t_color) -> 
 	const Vec2  center    = t_rect.center();
 
 	Vec2 ring[RING_SEGMENTS]{};
-	for (u32 i = 0; i < RING_SEGMENTS; i += 1) {
+	for (const u32 i : std::views::iota(0u, RING_SEGMENTS)) {
 		const float angle = static_cast<float>(i) / RING_SEGMENTS * 2.0f * std::numbers::pi_v<float>;
 		ring[i]           = Vec2{center.x + radius * std::cos(angle), center.y + radius * std::sin(angle)};
 	}
 
+	const Vec2 stem_top{center.x, center.y - radius * 0.5f};
+	const Vec2 stem_bottom{center.x, center.y + radius * 0.12f};
+	const Rect dot{center.x - thickness * 0.5f, center.y + radius * 0.38f, thickness, thickness};
+
 	stroke_closed(t_draw_list, ring, thickness, t_color);
-	t_draw_list->add_line(Vec2{center.x, center.y - radius * 0.5f}, Vec2{center.x, center.y + radius * 0.12f}, thickness, t_color);
-	t_draw_list->add_rect(Rect{center.x - thickness * 0.5f, center.y + radius * 0.38f, thickness, thickness}, t_color);
+	t_draw_list->add_line(stem_top, stem_bottom, thickness, t_color);
+	t_draw_list->add_rect(dot, t_color);
 }
 
 auto controls::notice_width(const Font& t_font, std::string_view t_text) -> float
@@ -378,7 +427,6 @@ auto controls::notice_width(const Font& t_font, std::string_view t_text) -> floa
 	return std::round(t_font.line_height() * 0.9f) + 6.0f + text_width(t_font, t_text);
 }
 
-// An icon and a line of text: the Caps Lock warning and error lines under password fields.
 auto controls::draw_notice(DrawList* t_draw_list, const Font& t_font, Vec2 t_top_left, NoticeKind t_kind, std::string_view t_text, Color t_color) -> void
 {
 	const float line = t_font.line_height();
@@ -391,12 +439,14 @@ auto controls::draw_notice(DrawList* t_draw_list, const Font& t_font, Vec2 t_top
 		draw_alert(t_draw_list, icon.inset(size * 0.06f), t_color);
 	}
 
-	draw_text(t_draw_list, t_font, Vec2{icon.right() + 6.0f, t_top_left.y + t_font.ascent}, t_text, t_color);
+	const Vec2 text_baseline{icon.right() + 6.0f, t_top_left.y + t_font.ascent};
+	draw_text(t_draw_list, t_font, text_baseline, t_text, t_color);
 }
 
 auto controls::draw_eye(DrawList* t_draw_list, const Assets* t_assets, Rect t_rect, bool t_revealed, Color t_color) -> void
 {
-	t_draw_list->add_image(t_rect, t_assets->get(t_revealed ? Asset::ICON_EYE_VISIBLE : Asset::ICON_EYE_HIDDEN), t_color);
+	const Asset eye = t_revealed ? Asset::ICON_EYE_VISIBLE : Asset::ICON_EYE_HIDDEN;
+	t_draw_list->add_image(t_rect, t_assets->texture(eye), t_color);
 }
 
 auto controls::draw_favorite(DrawList* t_draw_list, const Assets* t_assets, Rect t_rect, bool t_filled, Color t_color) -> void
@@ -418,12 +468,12 @@ auto controls::draw_favorite(DrawList* t_draw_list, const Assets* t_assets, Rect
 			return Vec2{center.x + radius * std::cos(angle), center.y + radius * std::sin(angle)};
 		};
 
-		for (u32 i = 0; i < STAR_POINTS * 2; i += 1) {
+		for (const u32 i : std::views::iota(0u, STAR_POINTS * 2)) {
 			t_draw_list->add_triangle(center, corner(i), corner(i + 1), t_color);
 		}
 	}
 
-	t_draw_list->add_image(t_rect, t_assets->get(Asset::ICON_FAVORITE), t_color);
+	t_draw_list->add_image(t_rect, t_assets->texture(Asset::ICON_FAVORITE), t_color);
 }
 
 auto controls::draw_lift(DrawList* t_draw_list, Rect t_rect, float t_radius, Color t_glow, u8 t_alpha) -> void
@@ -431,10 +481,10 @@ auto controls::draw_lift(DrawList* t_draw_list, Rect t_rect, float t_radius, Col
 	constexpr float SPREAD   = 9.0f;
 	constexpr float STRENGTH = 70.0f;
 
-	t_draw_list->add_shadow(t_rect, t_radius, SPREAD, with_alpha(t_glow, static_cast<u8>(STRENGTH * t_alpha / 255.0f)));
+	const Color glow = with_alpha(t_glow, static_cast<u8>(STRENGTH * t_alpha / 255.0f));
+	t_draw_list->add_shadow(t_rect, t_radius, SPREAD, glow);
 }
 
-// Round buttons stay circles at any Corner roundness.
 auto controls::draw_circular_hover(DrawList* t_draw_list, Rect t_rect, Color t_glow, Color t_fill, u8 t_alpha) -> void
 {
 	const RoundnessScope circle{K_CIRCLE_ROUNDNESS};
@@ -483,7 +533,6 @@ auto controls::set_glass(bool t_supported, bool t_enabled, float t_tint, float t
 	g_glass_blur_scale = t_blur / K_GLASS_BLUR_REFERENCE;
 }
 
-// Rows on glass are lit with a thin wash of the text colour, so the glass still shows through them.
 auto controls::glass_highlight(float t_amount) -> Color
 {
 	return with_alpha(g_theme.text, static_cast<u8>(K_GLASS_ROW_ALPHA * std::clamp(t_amount, 0.0f, 1.0f)));
@@ -496,7 +545,8 @@ auto controls::draw_popup_backdrop(DrawList* t_draw_list, Rect t_rect, float t_a
 	}
 
 	const float share = g_glass_blurs ? K_BLURRED_SCRIM_SHARE : 1.0f;
-	t_draw_list->add_rect(t_rect, faded(g_theme.scrim, to_alpha(t_amount * share)));
+	const Color scrim = faded(g_theme.scrim, to_alpha(t_amount * share));
+	t_draw_list->add_rect(t_rect, scrim);
 }
 
 auto controls::draw_glass(DrawList* t_draw_list, Rect t_rect, CornerRadii t_radii, GlassSurface t_surface, u8 t_alpha, bool t_framed) -> void
@@ -506,7 +556,8 @@ auto controls::draw_glass(DrawList* t_draw_list, Rect t_rect, CornerRadii t_radi
 			t_draw_list->add_blurred_backdrop(t_rect, t_radii, glass_spread(t_surface), t_alpha);
 		}
 
-		t_draw_list->add_rounded_rect(t_rect, t_radii, faded(with_alpha(g_theme.popup, glass_tint(t_surface)), t_alpha));
+		const Color tint = faded(with_alpha(g_theme.popup, glass_tint(t_surface)), t_alpha);
+		t_draw_list->add_rounded_rect(t_rect, t_radii, tint);
 	} else {
 		t_draw_list->add_rounded_rect(t_rect, t_radii, faded(g_theme.popup, t_alpha));
 	}
@@ -514,20 +565,14 @@ auto controls::draw_glass(DrawList* t_draw_list, Rect t_rect, CornerRadii t_radi
 	if (!t_framed) return;
 
 	const float inset = std::max(t_radii.top_left, t_radii.top_right);
-	t_draw_list->add_rect(Rect{t_rect.x + inset, t_rect.y + 1.0f, std::max(0.0f, t_rect.w - inset * 2.0f), 1.0f},
-	                      faded(Color{255, 255, 255, K_GLASS_HIGHLIGHT_ALPHA}, t_alpha));
+	const Rect  highlight{t_rect.x + inset, t_rect.y + 1.0f, std::max(0.0f, t_rect.w - inset * 2.0f), 1.0f};
+	const Color shine = faded(Color{255, 255, 255, K_GLASS_HIGHLIGHT_ALPHA}, t_alpha);
+
+	t_draw_list->add_rect(highlight, shine);
 	t_draw_list->add_rounded_outline(t_rect, t_radii, 1.0f, faded(g_theme.border, t_alpha));
 }
 
-auto controls::draw_button(DrawList*        t_draw_list,
-                           const Font&      t_font,
-                           Rect             t_rect,
-                           std::string_view t_label,
-                           ButtonStyle      t_style,
-                           Color            t_accent,
-                           bool             t_enabled,
-                           bool             t_hovered,
-                           u8               t_alpha) -> void
+auto controls::draw_button(DrawList* t_draw_list, const Font& t_font, Rect t_rect, std::string_view t_label, ButtonStyle t_style, Color t_accent, bool t_enabled, bool t_hovered, u8 t_alpha) -> void
 {
 	const RoundnessScope corners{user_roundness()};
 
@@ -540,8 +585,9 @@ auto controls::draw_button(DrawList*        t_draw_list,
 	}
 
 	const Color label = ghost && lifted ? g_theme.text : look.label;
+	const Color fill  = lifted ? look.hover_fill : look.fill;
 
-	t_draw_list->add_rounded_rect(t_rect, rounded(K_BUTTON_RADIUS), faded(lifted ? look.hover_fill : look.fill, t_alpha));
+	t_draw_list->add_rounded_rect(t_rect, rounded(K_BUTTON_RADIUS), faded(fill, t_alpha));
 	draw_text_centered(t_draw_list, t_font, t_rect, t_label, faded(label, t_alpha));
 }
 
@@ -555,32 +601,31 @@ auto controls::search_text_rect(Rect t_search, float t_inset) -> Rect
 
 auto controls::search_clear_rect(Rect t_search) -> Rect
 {
-	return Rect{t_search.right() - K_SEARCH_CLEAR_MARGIN - K_SEARCH_ICON_SIZE, t_search.center().y - K_SEARCH_ICON_SIZE * 0.5f, K_SEARCH_ICON_SIZE,
-	            K_SEARCH_ICON_SIZE};
+	const float x = t_search.right() - K_SEARCH_CLEAR_MARGIN - K_SEARCH_ICON_SIZE;
+	const float y = t_search.center().y - K_SEARCH_ICON_SIZE * 0.5f;
+
+	return Rect{x, y, K_SEARCH_ICON_SIZE, K_SEARCH_ICON_SIZE};
 }
 
-auto controls::draw_search_field(DrawList*   t_draw_list,
-                                 const Font& t_font,
-                                 Rect        t_search,
-                                 float       t_inset,
-                                 TextInput*  t_input,
-                                 Vec2        t_mouse,
-                                 Color       t_accent,
-                                 u8          t_alpha) -> void
+auto controls::draw_search_field(DrawList* t_draw_list, const Font& t_font, Rect t_search, float t_inset, TextInput* t_input, Vec2 t_mouse, Color t_accent, u8 t_alpha) -> void
 {
-	const bool focused   = t_input->is_focused();
-	const bool has_query = !t_input->value().empty();
+	const bool  focused   = t_input->m_focused;
+	const bool  has_query = !t_input->value().empty();
+	const Color border    = focused ? g_theme.text_dim : g_theme.control;
+	const Color fill      = focused ? g_theme.row_hover : g_theme.field;
+	const Color lens      = focused || has_query ? g_theme.text_dim : g_theme.text_faint;
+	const float icon_y    = t_search.center().y - K_SEARCH_ICON_SIZE * 0.5f;
+	const Rect  icon{t_search.x + t_inset, icon_y, K_SEARCH_ICON_SIZE, K_SEARCH_ICON_SIZE};
 
-	draw_field(t_draw_list, t_search, t_search.h * 0.5f, focused ? g_theme.text_dim : g_theme.control, focused ? g_theme.row_hover : g_theme.field, t_alpha);
-
-	const Rect icon{t_search.x + t_inset, t_search.center().y - K_SEARCH_ICON_SIZE * 0.5f, K_SEARCH_ICON_SIZE, K_SEARCH_ICON_SIZE};
-	draw_magnifier(t_draw_list, icon, faded(focused || has_query ? g_theme.text_dim : g_theme.text_faint, t_alpha));
+	draw_field(t_draw_list, t_search, t_search.h * 0.5f, border, fill, t_alpha);
+	draw_magnifier(t_draw_list, icon, faded(lens, t_alpha));
 	t_input->draw(t_draw_list, t_font, search_text_rect(t_search, t_inset), faded(g_theme.text, t_alpha), faded(t_accent, t_alpha), t_search);
 
 	if (!has_query) return;
 
-	const Rect clear = search_clear_rect(t_search);
-	draw_x(t_draw_list, clear.inset(1.5f), faded(clear.contains(t_mouse) ? g_theme.text : g_theme.text_faint, t_alpha));
+	const Rect  clear = search_clear_rect(t_search);
+	const Color cross = clear.contains(t_mouse) ? g_theme.text : g_theme.text_faint;
+	draw_x(t_draw_list, clear.inset(1.5f), faded(cross, t_alpha));
 }
 
 auto controls::draw_marquee(DrawList* t_draw_list, Rect t_box, Color t_accent, u8 t_alpha) -> void
@@ -589,25 +634,20 @@ auto controls::draw_marquee(DrawList* t_draw_list, Rect t_box, Color t_accent, u
 	const float top  = snapped_to_pixel(t_box.y);
 	const Rect  box{left, top, snapped_to_pixel(t_box.right()) - left, snapped_to_pixel(t_box.bottom()) - top};
 
-	t_draw_list->add_rounded_rect(box, rounded(K_MARQUEE_RADIUS), with_alpha(t_accent, static_cast<u8>(K_MARQUEE_FILL_ALPHA * t_alpha / 255)));
-	t_draw_list->add_dashed_outline(box, K_MARQUEE_RADIUS, K_DASH_THICKNESS, K_MARQUEE_DASH, K_MARQUEE_GAP,
-	                                with_alpha(t_accent, static_cast<u8>(K_MARQUEE_EDGE_ALPHA * t_alpha / 255)));
+	const Color fill = with_alpha(t_accent, static_cast<u8>(K_MARQUEE_FILL_ALPHA * t_alpha / 255));
+	const Color edge = with_alpha(t_accent, static_cast<u8>(K_MARQUEE_EDGE_ALPHA * t_alpha / 255));
+
+	t_draw_list->add_rounded_rect(box, rounded(K_MARQUEE_RADIUS), fill);
+	t_draw_list->add_dashed_outline(box, K_MARQUEE_RADIUS, K_DASH_THICKNESS, K_MARQUEE_DASH, K_MARQUEE_GAP, edge);
 }
 
-auto controls::draw_drop_zone(DrawList*        t_draw_list,
-                              const Assets*    t_assets,
-                              const Font&      t_title_font,
-                              const Font&      t_hint_font,
-                              Rect             t_zone,
-                              std::string_view t_title,
-                              std::string_view t_hint,
-                              Color            t_accent,
-                              float            t_hover,
-                              u8               t_alpha) -> void
+auto controls::draw_drop_zone(DrawList* t_draw_list, const Assets* t_assets, const Font& t_title_font, const Font& t_hint_font, Rect t_zone, std::string_view t_title, std::string_view t_hint, Color t_accent, float t_hover, u8 t_alpha) -> void
 {
-	const float hover = std::clamp(t_hover, 0.0f, 1.0f);
-	const Color fill  = blended(with_alpha(g_theme.text, K_ZONE_REST_ALPHA), with_alpha(t_accent, K_ZONE_HOVER_ALPHA), hover);
-	const Color edge  = mix(g_theme.border, t_accent, hover);
+	const float hover      = std::clamp(t_hover, 0.0f, 1.0f);
+	const Color rest_fill  = with_alpha(g_theme.text, K_ZONE_REST_ALPHA);
+	const Color hover_fill = with_alpha(t_accent, K_ZONE_HOVER_ALPHA);
+	const Color fill       = mix_with_alpha(rest_fill, hover_fill, hover);
+	const Color edge       = mix(g_theme.border, t_accent, hover);
 
 	t_draw_list->add_rounded_rect(t_zone, rounded(K_ZONE_RADIUS), faded(fill, t_alpha));
 	t_draw_list->add_dashed_outline(t_zone, K_ZONE_RADIUS, K_DASH_THICKNESS, K_ZONE_DASH, K_ZONE_GAP, faded(edge, t_alpha));
@@ -621,26 +661,29 @@ auto controls::draw_drop_zone(DrawList*        t_draw_list,
 
 	{
 		const RoundnessScope circle{K_CIRCLE_ROUNDNESS};
-		const Color          disc = blended(with_alpha(g_theme.text, K_ZONE_DISC_ALPHA), t_accent, hover);
+		const Color          rest_disc  = with_alpha(g_theme.text, K_ZONE_DISC_ALPHA);
+		const Color          disc       = mix_with_alpha(rest_disc, t_accent, hover);
+		const auto           lift_alpha = static_cast<u8>(t_alpha * hover);
 
 		if (hover > 0.0f) {
-			draw_lift(t_draw_list, plus, plus.w * 0.5f, t_accent, static_cast<u8>(t_alpha * hover));
+			draw_lift(t_draw_list, plus, plus.w * 0.5f, t_accent, lift_alpha);
 		}
 
 		t_draw_list->add_rounded_rect(plus, rounded(plus.w * 0.5f), faded(disc, t_alpha));
 	}
 
-	t_draw_list->add_image(icon, t_assets->get(Asset::ICON_ADD), faded(mix(g_theme.text_dim, ink_on(t_accent), hover), t_alpha));
+	const Color plus_ink = faded(mix(g_theme.text_dim, contrasting_theme_text(t_accent), hover), t_alpha);
+	t_draw_list->add_image(icon, t_assets->texture(Asset::ICON_ADD), plus_ink);
 
 	const float title_width = std::min(text_width(t_title_font, t_title), max_width);
 	const float hint_width  = std::min(text_width(t_hint_font, t_hint), max_width);
 	const float title_y     = plus.bottom() + K_ZONE_TEXT_GAP + t_title_font.ascent;
 	const float hint_y      = plus.bottom() + K_ZONE_TEXT_GAP + t_title_font.line_height() + K_ZONE_LINE_GAP + t_hint_font.ascent;
+	const Vec2  title_baseline{snapped_to_pixel(center_x - title_width * 0.5f), title_y};
+	const Vec2  hint_baseline{snapped_to_pixel(center_x - hint_width * 0.5f), hint_y};
 
-	draw_text_truncated(t_draw_list, t_title_font, Vec2{snapped_to_pixel(center_x - title_width * 0.5f), title_y}, t_title, max_width,
-	                    faded(g_theme.text, t_alpha));
-	draw_text_truncated(t_draw_list, t_hint_font, Vec2{snapped_to_pixel(center_x - hint_width * 0.5f), hint_y}, t_hint, max_width,
-	                    faded(g_theme.text_dim, t_alpha));
+	draw_text_truncated(t_draw_list, t_title_font, title_baseline, t_title, max_width, faded(g_theme.text, t_alpha));
+	draw_text_truncated(t_draw_list, t_hint_font, hint_baseline, t_hint, max_width, faded(g_theme.text_dim, t_alpha));
 }
 
 auto controls::region_chip_width(const Font& t_font, std::string_view t_region) -> float
@@ -653,7 +696,9 @@ auto controls::draw_region_chip(DrawList* t_draw_list, const Font& t_font, float
 	const float height = t_font.line_height() + 2.0f;
 	const Rect  chip{t_x, t_center_y - height * 0.5f, region_chip_width(t_font, t_region), height};
 
-	t_draw_list->add_rounded_rect(chip, rounded(height * 0.5f), faded(with_alpha(g_theme.text, K_REGION_CHIP_ALPHA), t_alpha));
+	const Color fill = faded(with_alpha(g_theme.text, K_REGION_CHIP_ALPHA), t_alpha);
+
+	t_draw_list->add_rounded_rect(chip, rounded(height * 0.5f), fill);
 	draw_text_centered(t_draw_list, t_font, chip, t_region, faded(g_theme.text_dim, t_alpha));
 }
 
@@ -669,8 +714,7 @@ auto controls::draw_account_details(DrawList* t_draw_list, const Font& t_font, V
 		when = relative_time(t_account.last_used, std::time(nullptr), relative);
 
 		if (note.empty()) {
-			const int written = std::snprintf(last_used, sizeof(last_used), "Last used %.*s", static_cast<int>(when.size()), when.data());
-			when              = std::string_view{last_used, static_cast<usize>(std::max(written, 0))};
+			when = format_into(last_used, "Last used {}", when);
 		}
 	}
 
@@ -686,11 +730,13 @@ auto controls::draw_account_details(DrawList* t_draw_list, const Font& t_font, V
 
 	if (when.empty()) return;
 
-	const float dot_x  = t_baseline.x + note_width + K_DETAIL_DOT_GAP;
-	const float dot_y  = t_baseline.y - t_font.ascent * 0.33f - K_DETAIL_DOT_SIZE * 0.5f;
-	const float when_x = dot_x + K_DETAIL_DOT_SIZE + K_DETAIL_DOT_GAP;
+	const float dot_x     = t_baseline.x + note_width + K_DETAIL_DOT_GAP;
+	const float dot_y     = t_baseline.y - t_font.ascent * 0.33f - K_DETAIL_DOT_SIZE * 0.5f;
+	const float when_x    = dot_x + K_DETAIL_DOT_SIZE + K_DETAIL_DOT_GAP;
+	const float when_room = t_baseline.x + t_max_width - when_x;
+	const Rect  dot{dot_x, dot_y, K_DETAIL_DOT_SIZE, K_DETAIL_DOT_SIZE};
+	const Vec2  when_baseline{when_x, t_baseline.y};
 
-	t_draw_list->add_rounded_rect(Rect{dot_x, dot_y, K_DETAIL_DOT_SIZE, K_DETAIL_DOT_SIZE}, rounded(K_DETAIL_DOT_SIZE * 0.5f),
-	                              faded(g_theme.text_faint, t_alpha));
-	draw_text_truncated(t_draw_list, t_font, Vec2{when_x, t_baseline.y}, when, t_baseline.x + t_max_width - when_x, faded(g_theme.text_faint, t_alpha));
+	t_draw_list->add_rounded_rect(dot, rounded(K_DETAIL_DOT_SIZE * 0.5f), faded(g_theme.text_faint, t_alpha));
+	draw_text_truncated(t_draw_list, t_font, when_baseline, when, when_room, faded(g_theme.text_faint, t_alpha));
 }

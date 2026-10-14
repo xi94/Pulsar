@@ -172,8 +172,9 @@ auto draw_text(DrawList* t_draw_list, const Font& t_font, Vec2 t_baseline, std::
 auto draw_text_centered(DrawList* t_draw_list, const Font& t_font, Rect t_box, std::string_view t_text, Color t_color) -> void
 {
 	const float x = t_box.x + (t_box.w - text_width(t_font, t_text)) * 0.5f;
+	const Vec2  baseline{x, t_font.centered_baseline(t_box)};
 
-	draw_text(t_draw_list, t_font, Vec2{x, t_font.centered_baseline(t_box)}, t_text, t_color);
+	draw_text(t_draw_list, t_font, baseline, t_text, t_color);
 }
 
 auto draw_text_truncated(DrawList* t_draw_list, const Font& t_font, Vec2 t_baseline, std::string_view t_text, float t_max_width, Color t_color) -> void
@@ -202,8 +203,9 @@ auto draw_text_truncated(DrawList* t_draw_list, const Font& t_font, Vec2 t_basel
 
 	const std::string_view head       = t_text.substr(0, kept);
 	const float            head_width = text_width(t_font, head);
+	const Vec2             ellipsis_baseline{t_baseline.x + head_width, t_baseline.y};
 	draw_text(t_draw_list, t_font, t_baseline, head, t_color);
-	draw_text(t_draw_list, t_font, Vec2{t_baseline.x + head_width, t_baseline.y}, K_ELLIPSIS, t_color);
+	draw_text(t_draw_list, t_font, ellipsis_baseline, K_ELLIPSIS, t_color);
 
 	TruncationProbe* probe = &g_truncation_probe;
 	const Rect       shown{t_baseline.x, t_baseline.y - t_font.ascent, head_width + ellipsis_width, t_font.line_height()};
@@ -212,7 +214,7 @@ auto draw_text_truncated(DrawList* t_draw_list, const Font& t_font, Vec2 t_basel
 
 	probe->found       = true;
 	probe->bounds      = visible;
-	probe->cover_count = t_draw_list->probe_cover_count();
+	probe->cover_count = t_draw_list->m_probe_cover_count;
 	probe->length      = std::min(t_text.size(), sizeof(probe->text));
 	std::memcpy(probe->text, t_text.data(), probe->length);
 }
@@ -227,7 +229,7 @@ auto begin_truncation_probe(DrawList* t_draw_list, Vec2 t_point) -> void
 [[nodiscard]] auto hovered_truncated_text(const DrawList* t_draw_list) -> std::optional<TruncatedText>
 {
 	const TruncationProbe* probe = &g_truncation_probe;
-	if (!probe->found || probe->cover_count != t_draw_list->probe_cover_count()) return std::nullopt;
+	if (!probe->found || probe->cover_count != t_draw_list->m_probe_cover_count) return std::nullopt;
 
 	return TruncatedText{probe->bounds, std::string_view{probe->text, probe->length}};
 }
@@ -248,13 +250,7 @@ auto begin_truncation_probe(DrawList* t_draw_list, Vec2 t_point) -> void
 	return line_count;
 }
 
-auto draw_wrapped_text(DrawList*        t_draw_list,
-                       const Font&      t_font,
-                       Vec2             t_first_baseline,
-                       float            t_max_width,
-                       std::string_view t_text,
-                       Color            t_color,
-                       u32              t_max_lines) -> float
+auto draw_wrapped_text(DrawList* t_draw_list, const Font& t_font, Vec2 t_first_baseline, float t_max_width, std::string_view t_text, Color t_color, u32 t_max_lines) -> float
 {
 	constexpr u32 MAX_DRAWN_LINES = 8;
 

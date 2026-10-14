@@ -1,7 +1,7 @@
 #include "core/str.h"
 
 #include <algorithm>
-#include <cstdio>
+#include <ranges>
 
 #include "os/system.h"
 
@@ -14,8 +14,16 @@ struct CodepointRange {
 };
 
 constexpr CodepointRange K_BLOCKED_SCRIPTS[]{
-	{0x0590, 0x06FF}, {0x0750, 0x077F}, {0x0870, 0x08FF}, {0x0900, 0x0D7F},   {0x1CD0, 0x1CFF},
-	{0xA8E0, 0xA8FF}, {0xFB1D, 0xFDFF}, {0xFE70, 0xFEFF}, {0x11B00, 0x11B5F}, {0x1EE00, 0x1EEFF},
+	{0x0590, 0x06FF},
+	{0x0750, 0x077F},
+	{0x0870, 0x08FF},
+	{0x0900, 0x0D7F},
+	{0x1CD0, 0x1CFF},
+	{0xA8E0, 0xA8FF},
+	{0xFB1D, 0xFDFF},
+	{0xFE70, 0xFEFF},
+	{0x11B00, 0x11B5F},
+	{0x1EE00, 0x1EEFF},
 };
 
 [[nodiscard]] auto lowered(char t_character) -> char
@@ -75,7 +83,7 @@ constexpr TimeUnit K_TIME_UNITS[]{
 		return INVALID;
 	}
 
-	for (u32 i = 1; i < length; i += 1) {
+	for (const u32 i : std::views::iota(1u, length)) {
 		const char next = t_text[t_index + i];
 		if (!is_utf8_continuation(next)) return INVALID;
 
@@ -143,8 +151,7 @@ constexpr TimeUnit K_TIME_UNITS[]{
 		return false;
 	}
 
-	return std::ranges::any_of(K_BLOCKED_SCRIPTS,
-	                           [t_codepoint](CodepointRange t_range) { return t_codepoint >= t_range.first && t_codepoint <= t_range.last; });
+	return std::ranges::any_of(K_BLOCKED_SCRIPTS, [t_codepoint](CodepointRange t_range) { return t_codepoint >= t_range.first && t_codepoint <= t_range.last; });
 }
 
 [[nodiscard]] auto find_ignoring_case(std::string_view t_text, std::string_view t_query) -> usize
@@ -153,8 +160,7 @@ constexpr TimeUnit K_TIME_UNITS[]{
 	if (t_query.size() > t_text.size()) return std::string_view::npos;
 
 	for (usize start = 0; start + t_query.size() <= t_text.size(); start += 1) {
-		const bool matches =
-			std::equal(t_query.begin(), t_query.end(), t_text.begin() + start, [](char t_a, char t_b) { return lowered(t_a) == lowered(t_b); });
+		const bool matches = std::equal(t_query.begin(), t_query.end(), t_text.begin() + start, [](char t_a, char t_b) { return lowered(t_a) == lowered(t_b); });
 		if (matches) return start;
 	}
 
@@ -180,9 +186,9 @@ constexpr TimeUnit K_TIME_UNITS[]{
 		if (count == 0) continue;
 		if (unit.seconds == K_SECONDS_PER_DAY && count == 1) return "yesterday";
 
-		const int written = std::snprintf(t_buffer, sizeof(t_buffer), "%lld %s%s ago", static_cast<long long>(count), unit.name, count == 1 ? "" : "s");
+		const std::string_view plural = count == 1 ? "" : "s";
 
-		return std::string_view{t_buffer, static_cast<usize>(std::max(written, 0))};
+		return format_into(t_buffer, "{} {}{} ago", count, unit.name, plural);
 	}
 
 	return "just now";

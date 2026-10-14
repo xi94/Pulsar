@@ -39,7 +39,6 @@ std::atomic<bool> g_handling_crash{false};
 	return buffer;
 }
 
-// Names the module the address is in. A crash often happens inside a system or driver DLL rather than in Pulsar itself.
 [[nodiscard]] auto module_relative_address(void* t_address) -> std::wstring
 {
 	constexpr DWORD FLAGS = GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT;
@@ -79,8 +78,7 @@ std::atomic<bool> g_handling_crash{false};
 		.ClientPointers    = FALSE,
 	};
 
-	const BOOL written =
-		MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file, t_type, t_exception != nullptr ? &exception_info : nullptr, nullptr, nullptr);
+	const BOOL written = MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file, t_type, t_exception != nullptr ? &exception_info : nullptr, nullptr, nullptr);
 	CloseHandle(file);
 
 	return written ? path : std::wstring{};
@@ -98,8 +96,7 @@ auto CALLBACK crash_dialog_callback(HWND t_window, UINT t_notification, WPARAM t
 	return S_FALSE;
 }
 
-auto show_crash_dialog(const std::wstring& t_reason, const std::wstring& t_location, const std::wstring& t_dump_path, const std::wstring& t_dump_directory)
-	-> void
+auto show_crash_dialog(const std::wstring& t_reason, const std::wstring& t_location, const std::wstring& t_dump_path, const std::wstring& t_dump_directory) -> void
 {
 	std::wstring content = L"An unexpected error occurred and the app needs to close. A crash report has been saved "
 	                       L"locally.\n\nError: " +

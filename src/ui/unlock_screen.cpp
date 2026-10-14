@@ -68,12 +68,7 @@ constexpr std::string_view K_ERASE_LABEL   = "Delete everything";
 constexpr std::string_view K_CONFIRM_LABEL = "Confirm";
 }
 
-UnlockScreen::UnlockScreen(Settings*         t_settings,
-                           MasterKey*        t_master_key,
-                           const Fonts*      t_fonts,
-                           const Assets*     t_assets,
-                           const os::Window* t_window,
-                           CommandQueue*     t_commands)
+UnlockScreen::UnlockScreen(Settings* t_settings, MasterKey* t_master_key, const Fonts* t_fonts, const Assets* t_assets, const os::Window* t_window, CommandQueue* t_commands)
 	: m_settings(t_settings)
 	, m_master_key(t_master_key)
 	, m_fonts(t_fonts)
@@ -81,15 +76,15 @@ UnlockScreen::UnlockScreen(Settings*         t_settings,
 	, m_window(t_window)
 	, m_commands(t_commands)
 {
-	m_fields[PasswordField::PASSWORD].set_placeholder("Master password");
-	m_fields[PasswordField::CONFIRMATION].set_placeholder("Type it again");
+	m_fields[PasswordField::PASSWORD].m_placeholder     = "Master password";
+	m_fields[PasswordField::CONFIRMATION].m_placeholder = "Type it again";
 }
 
 auto UnlockScreen::reset_fields() -> void
 {
 	for (TextInput& field : m_fields) {
 		field.set_value("");
-		field.set_masked(true);
+		field.m_masked = true;
 	}
 
 	focus_field(PasswordField::PASSWORD);
@@ -132,8 +127,7 @@ auto UnlockScreen::hide() -> void
 	}
 }
 
-// Locking brings the backdrop in first and then settles the form into place; unlocking lets the form fly toward the viewer and fade,
-// then lifts the backdrop off the app underneath.
+// Locking brings the backdrop in first and then settles the form into place; unlocking lets the form fly toward the viewer and fade, then lifts the backdrop off the app underneath.
 auto UnlockScreen::animate_presence(float t_delta_seconds) -> void
 {
 	if (m_active) {
@@ -158,8 +152,7 @@ auto UnlockScreen::layout() const -> Layout
 	const Font& secondary = m_fonts->secondary;
 	const auto  fields    = static_cast<float>(shown_fields().size());
 	const float forgot    = offers_reset() ? K_FORGOT_GAP + secondary.line_height() : 0.0f;
-	const float height    = K_ICON_SIZE + K_ICON_GAP + title.line_height() + K_TITLE_GAP + secondary.line_height() * static_cast<float>(subtitle_lines()) +
-	                        K_FIELDS_GAP + fields * K_FIELD_HEIGHT + (fields - 1.0f) * K_FIELD_SPACING + K_NOTICE_GAP + secondary.line_height() + forgot;
+	const float height    = K_ICON_SIZE + K_ICON_GAP + title.line_height() + K_TITLE_GAP + secondary.line_height() * static_cast<float>(subtitle_lines()) + K_FIELDS_GAP + fields * K_FIELD_HEIGHT + (fields - 1.0f) * K_FIELD_SPACING + K_NOTICE_GAP + secondary.line_height() + forgot;
 
 	const Rect  area   = content_rect(m_window->size());
 	const float center = area.center().x;
@@ -229,7 +222,6 @@ auto UnlockScreen::close_reset() -> void
 	focus_field(PasswordField::PASSWORD);
 }
 
-// Deleting everything takes a second click while the button still asks for it, so one stray click can't empty the vault.
 auto UnlockScreen::press_erase() -> void
 {
 	if (m_armed_seconds <= 0.0f) {
@@ -241,7 +233,6 @@ auto UnlockScreen::press_erase() -> void
 	m_commands->push(Command{.type = CommandType::RESET_EVERYTHING});
 }
 
-// A wrong password nudges the fields side to side, fading out.
 auto UnlockScreen::shake_offset() const -> float
 {
 	if (m_shake_seconds <= 0.0f || !animation::is_enabled()) return 0.0f;
@@ -372,7 +363,6 @@ auto UnlockScreen::finish_derivation(std::unique_ptr<DerivedKey> t_derived) -> v
 	}
 }
 
-// Switching between unlocking and resetting fades the form out, swaps it, and fades the other one in.
 auto UnlockScreen::animate_view(float t_delta_seconds) -> void
 {
 	if (m_reset != m_reset_wanted) {
@@ -450,7 +440,8 @@ auto UnlockScreen::on_key_down(os::Key t_key) -> bool
 	if (t_key == os::Key::ENTER) {
 		submit();
 	} else if (m_setup && t_key == os::Key::TAB) {
-		focus_field(m_fields[PasswordField::PASSWORD].is_focused() ? PasswordField::CONFIRMATION : PasswordField::PASSWORD);
+		const PasswordField other = m_fields[PasswordField::PASSWORD].m_focused ? PasswordField::CONFIRMATION : PasswordField::PASSWORD;
+		focus_field(other);
 	} else {
 		for (const PasswordField field : shown_fields()) {
 			m_fields[field].on_key_down(t_key);
@@ -481,7 +472,7 @@ auto UnlockScreen::on_pointer_move(Vec2 t_point) -> bool
 	const Layout current = layout();
 
 	for (const PasswordField field : shown_fields()) {
-		if (m_fields[field].is_selecting()) {
+		if (m_fields[field].m_selecting) {
 			m_fields[field].on_pointer_move(m_fonts->body, field_text_rect(current, field), t_point.x);
 		}
 	}
@@ -496,7 +487,7 @@ auto UnlockScreen::on_pointer_up(Vec2 t_point) -> bool
 
 	bool ended_text_selection = false;
 	for (TextInput& field : m_fields) {
-		ended_text_selection = ended_text_selection || field.is_selecting();
+		ended_text_selection = ended_text_selection || field.m_selecting;
 		field.on_pointer_up();
 	}
 
@@ -517,10 +508,10 @@ auto UnlockScreen::on_pointer_up(Vec2 t_point) -> bool
 	if (offers_reset() && forgot_rect(current).contains(t_point)) {
 		open_reset();
 	} else if (is_reveal_hit(current, t_point)) {
-		const bool reveal = m_fields[PasswordField::PASSWORD].is_masked();
+		const bool reveal = m_fields[PasswordField::PASSWORD].m_masked;
 
 		for (TextInput& field : m_fields) {
-			field.set_masked(!reveal);
+			field.m_masked = !reveal;
 		}
 	} else if (submit_rect(current).contains(t_point)) {
 		submit();
@@ -549,7 +540,7 @@ auto UnlockScreen::cursor() const -> CursorKind
 	if (!m_active) return CursorKind::ARROW;
 
 	for (const TextInput& field : m_fields) {
-		if (field.is_selecting()) return CursorKind::I_BEAM;
+		if (field.m_selecting) return CursorKind::I_BEAM;
 	}
 
 	const Layout current = layout();
@@ -575,14 +566,23 @@ auto UnlockScreen::error_message() const -> std::string_view
 
 auto UnlockScreen::draw_field(DrawList* t_draw_list, const Layout& t_layout, PasswordField t_field, u8 t_alpha) -> void
 {
-	TextInput*  field  = &m_fields[t_field];
-	const Rect  reveal = reveal_rect(t_layout, t_field);
-	const bool  failed = !error_message().empty() && (m_wrong_password || t_field == PasswordField::CONFIRMATION);
-	const Color border = failed ? g_theme.error : field->is_focused() ? m_settings->accent : g_theme.control;
+	TextInput* field  = &m_fields[t_field];
+	const Rect reveal = reveal_rect(t_layout, t_field);
+	const bool failed = !error_message().empty() && (m_wrong_password || t_field == PasswordField::CONFIRMATION);
+	Color      border = field->m_focused ? m_settings->accent : g_theme.control;
+	if (failed) {
+		border = g_theme.error;
+	}
+
+	const Rect  text_area = field_text_rect(t_layout, t_field);
+	const Color ink       = faded(g_theme.text, t_alpha);
+	const Color caret     = faded(m_settings->accent, t_alpha);
+	const Color eye       = reveal.contains(m_mouse) ? g_theme.text : g_theme.text_dim;
+	const bool  revealed  = !field->m_masked;
 
 	controls::draw_field(t_draw_list, t_layout.fields[t_field], K_FIELD_RADIUS, border, g_theme.field, t_alpha);
-	field->draw(t_draw_list, m_fonts->body, field_text_rect(t_layout, t_field), faded(g_theme.text, t_alpha), faded(m_settings->accent, t_alpha));
-	controls::draw_eye(t_draw_list, m_assets, reveal, !field->is_masked(), faded(reveal.contains(m_mouse) ? g_theme.text : g_theme.text_dim, t_alpha));
+	field->draw(t_draw_list, m_fonts->body, text_area, ink, caret);
+	controls::draw_eye(t_draw_list, m_assets, reveal, revealed, faded(eye, t_alpha));
 }
 
 auto UnlockScreen::draw_submit_button(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void
@@ -590,22 +590,22 @@ auto UnlockScreen::draw_submit_button(DrawList* t_draw_list, const Layout& t_lay
 	const Color accent = m_settings->accent;
 	const Rect  button = submit_rect(t_layout);
 	const Rect  arrow  = button.centered(K_SUBMIT_ICON_SIZE, K_SUBMIT_ICON_SIZE);
+	const Color fill   = button.contains(m_mouse) ? hovered(accent) : accent;
+	const Color ink    = faded(controls::contrasting_theme_text(accent), t_alpha);
 
-	t_draw_list->add_rounded_rect(button, rounded(K_SUBMIT_RADIUS), faded(button.contains(m_mouse) ? hovered(accent) : accent, t_alpha));
-	const Color ink = faded(controls::ink_on(accent), t_alpha);
+	t_draw_list->add_rounded_rect(button, rounded(K_SUBMIT_RADIUS), faded(fill, t_alpha));
 	if (is_deriving()) {
-		t_draw_list->add_rotated_image(arrow, m_spin, m_assets->get(Asset::ICON_UPDATE), ink);
+		t_draw_list->add_rotated_image(arrow, m_spin, m_assets->texture(Asset::ICON_UPDATE), ink);
 	} else {
-		t_draw_list->add_rotated_image(arrow, std::numbers::pi_v<float>, m_assets->get(Asset::ICON_ARROW_BACK), ink);
+		t_draw_list->add_rotated_image(arrow, std::numbers::pi_v<float>, m_assets->texture(Asset::ICON_ARROW_BACK), ink);
 	}
 }
 
-// One line under the fields: what went wrong, or else a Caps Lock warning while typing.
 auto UnlockScreen::draw_notice(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void
 {
 	const Font&            font   = m_fonts->secondary;
 	const std::string_view error  = error_message();
-	const bool             typing = m_fields[PasswordField::PASSWORD].is_focused() || m_fields[PasswordField::CONFIRMATION].is_focused();
+	const bool             typing = m_fields[PasswordField::PASSWORD].m_focused || m_fields[PasswordField::CONFIRMATION].m_focused;
 
 	controls::NoticeKind kind  = controls::NoticeKind::ALERT;
 	std::string_view     text  = error;
@@ -619,8 +619,10 @@ auto UnlockScreen::draw_notice(DrawList* t_draw_list, const Layout& t_layout, u8
 		color = controls::caution_color();
 	}
 
-	const float left = snapped_to_pixel(content_rect(m_window->size()).center().x - controls::notice_width(font, text) * 0.5f);
-	controls::draw_notice(t_draw_list, font, Vec2{left, t_layout.notice_top}, kind, text, faded(color, t_alpha));
+	const float center = content_rect(m_window->size()).center().x;
+	const float left   = snapped_to_pixel(center - controls::notice_width(font, text) * 0.5f);
+	const Vec2  top_left{left, t_layout.notice_top};
+	controls::draw_notice(t_draw_list, font, top_left, kind, text, faded(color, t_alpha));
 }
 
 auto UnlockScreen::draw_forgot(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void
@@ -628,11 +630,11 @@ auto UnlockScreen::draw_forgot(DrawList* t_draw_list, const Layout& t_layout, u8
 	const Font& font  = m_fonts->secondary;
 	const Rect  area  = forgot_rect(t_layout);
 	const Color color = area.contains(m_mouse) && !is_deriving() ? g_theme.text_dim : g_theme.text_faint;
+	const Vec2  baseline{area.x + K_FORGOT_PAD, t_layout.forgot_top + font.ascent};
 
-	draw_text(t_draw_list, font, Vec2{area.x + K_FORGOT_PAD, t_layout.forgot_top + font.ascent}, K_FORGOT_LABEL, faded(color, t_alpha));
+	draw_text(t_draw_list, font, baseline, K_FORGOT_LABEL, faded(color, t_alpha));
 }
 
-// Once armed, a fuse along the bottom of Delete everything burns down while the second click still counts.
 auto UnlockScreen::draw_reset_buttons(DrawList* t_draw_list, const Layout& t_layout, u8 t_alpha) const -> void
 {
 	const Font& font   = m_fonts->body;
@@ -640,16 +642,19 @@ auto UnlockScreen::draw_reset_buttons(DrawList* t_draw_list, const Layout& t_lay
 	const Rect  erase  = erase_rect(t_layout);
 	const bool  armed  = m_armed_seconds > 0.0f;
 	const auto  style  = armed ? controls::ButtonStyle::DANGER_CONFIRM : controls::ButtonStyle::DANGER;
+	const auto  label  = armed ? K_CONFIRM_LABEL : K_ERASE_LABEL;
+	const Color accent = m_settings->accent;
 
-	controls::draw_button(t_draw_list, font, cancel, K_CANCEL_LABEL, controls::ButtonStyle::NEUTRAL, m_settings->accent, true, cancel.contains(m_mouse),
-	                      t_alpha);
-	controls::draw_button(t_draw_list, font, erase, armed ? K_CONFIRM_LABEL : K_ERASE_LABEL, style, m_settings->accent, true, erase.contains(m_mouse), t_alpha);
+	controls::draw_button(t_draw_list, font, cancel, K_CANCEL_LABEL, controls::ButtonStyle::NEUTRAL, accent, true, cancel.contains(m_mouse), t_alpha);
+	controls::draw_button(t_draw_list, font, erase, label, style, accent, true, erase.contains(m_mouse), t_alpha);
 
 	if (armed) {
-		const float left = m_armed_seconds / K_ARMED_SECONDS;
-		const Rect  fuse{erase.x + K_FUSE_INSET, erase.bottom() - K_FUSE_BOTTOM, (erase.w - K_FUSE_INSET * 2.0f) * left, K_FUSE_HEIGHT};
+		const float left       = m_armed_seconds / K_ARMED_SECONDS;
+		const float full_width = erase.w - K_FUSE_INSET * 2.0f;
+		const Rect  fuse{erase.x + K_FUSE_INSET, erase.bottom() - K_FUSE_BOTTOM, full_width * left, K_FUSE_HEIGHT};
+		const Color fuse_color = controls::contrasting_theme_text(g_theme.error);
 
-		t_draw_list->add_rounded_rect(fuse, rounded(K_FUSE_HEIGHT * 0.5f), faded(controls::ink_on(g_theme.error), t_alpha));
+		t_draw_list->add_rounded_rect(fuse, rounded(K_FUSE_HEIGHT * 0.5f), faded(fuse_color, t_alpha));
 	}
 }
 
@@ -664,17 +669,21 @@ auto UnlockScreen::draw(DrawList* t_draw_list) -> void
 	const float  center    = content_rect(window).center().x;
 
 	const Color backdrop = faded(g_theme.window, to_alpha(m_backdrop));
-	t_draw_list->add_backdrop(Rect{0.0f, 0.0f, window.x, window.y - K_STATUS_BAR_HEIGHT}, backdrop, backdrop, backdrop, backdrop);
+	const Rect  above_status_bar{0.0f, 0.0f, window.x, window.y - K_STATUS_BAR_HEIGHT};
+	t_draw_list->add_backdrop(above_status_bar, backdrop, backdrop, backdrop, backdrop);
 
 	if (m_content <= 0.0f) return;
 
-	const u8    alpha      = to_alpha(m_content);
-	const u8    view_alpha = to_alpha(m_content * m_view);
-	const float scale      = m_active ? K_ARRIVE_SCALE + (1.0f - K_ARRIVE_SCALE) * m_content : K_LEAVE_SCALE + (1.0f - K_LEAVE_SCALE) * m_content;
-	t_draw_list->push_scale(Vec2{center, (current.icon.y + current.notice_top) * 0.5f}, scale);
+	const u8    alpha       = to_alpha(m_content);
+	const u8    view_alpha  = to_alpha(m_content * m_view);
+	const float start_scale = m_active ? K_ARRIVE_SCALE : K_LEAVE_SCALE;
+	const float scale       = std::lerp(start_scale, 1.0f, m_content);
+	const Vec2  scale_origin{center, (current.icon.y + current.notice_top) * 0.5f};
+	t_draw_list->push_scale(scale_origin, scale);
 
 	const auto draw_centered = [&](const Font& t_font, float t_baseline, std::string_view t_text, Color t_color) {
-		draw_text(t_draw_list, t_font, Vec2{snapped_to_pixel(center - text_width(t_font, t_text) * 0.5f), t_baseline}, t_text, faded(t_color, view_alpha));
+		const float left = snapped_to_pixel(center - text_width(t_font, t_text) * 0.5f);
+		draw_text(t_draw_list, t_font, Vec2{left, t_baseline}, t_text, faded(t_color, view_alpha));
 	};
 
 	if (m_app_icon != nullptr) {

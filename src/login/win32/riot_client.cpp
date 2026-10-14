@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iterator>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <thread>
 #include <vector>
@@ -47,7 +48,13 @@ constexpr const wchar_t* K_UNRECOGNIZED_ERROR_REASON  = L"";
 constexpr const wchar_t* K_TROUBLE_SIGNING_IN_REASON  = L"Sorry, we're having trouble signing you in right now. Please try again later.";
 
 constexpr const wchar_t* K_CLIENT_PROCESS_NAMES[]{
-	L"Riot Client.exe", L"RiotClientServices.exe", L"RiotClientUx.exe", L"RiotClientUxRender.exe", L"LeagueClient.exe", L"LeagueClientUx.exe", L"LoR.exe",
+	L"Riot Client.exe",
+	L"RiotClientServices.exe",
+	L"RiotClientUx.exe",
+	L"RiotClientUxRender.exe",
+	L"LeagueClient.exe",
+	L"LeagueClientUx.exe",
+	L"LoR.exe",
 };
 
 constexpr const wchar_t* K_GAME_PROCESS_NAMES[]{
@@ -371,8 +378,7 @@ auto fill_field(const UiAutomation& t_automation, const UiElement& t_field, cons
 	return K_LOGIN_ERROR_TOOLTIP_NAME;
 }
 
-[[nodiscard]] auto find_login_fields(const UiAutomation& t_automation, const UiElement& t_window, UiElement* t_username, UiElement* t_password, bool* t_by_name)
-	-> bool
+[[nodiscard]] auto find_login_fields(const UiAutomation& t_automation, const UiElement& t_window, UiElement* t_username, UiElement* t_password, bool* t_by_name) -> bool
 {
 	*t_username = t_automation.find_descendant(t_window, K_USERNAME_FIELD_NAME, UIA_EditControlTypeId);
 	*t_password = t_automation.find_descendant(t_window, K_PASSWORD_FIELD_NAME, UIA_EditControlTypeId);
@@ -391,8 +397,7 @@ auto fill_field(const UiAutomation& t_automation, const UiElement& t_field, cons
 {
 	if (!t_by_name) return t_automation.find_edit(t_window, true).is_valid();
 
-	return t_automation.find_descendant(t_window, K_USERNAME_FIELD_NAME, UIA_EditControlTypeId).is_valid() ||
-	       t_automation.find_descendant(t_window, K_PASSWORD_FIELD_NAME, UIA_EditControlTypeId).is_valid();
+	return t_automation.find_descendant(t_window, K_USERNAME_FIELD_NAME, UIA_EditControlTypeId).is_valid() || t_automation.find_descendant(t_window, K_PASSWORD_FIELD_NAME, UIA_EditControlTypeId).is_valid();
 }
 
 [[nodiscard]] auto shown_login_error(const UiAutomation& t_automation, const UiElement& t_window, bool t_by_name) -> std::optional<std::wstring>
@@ -465,8 +470,7 @@ auto RiotClient::Native::wait_for_responsive_window(const std::atomic<bool>* t_c
 			next_progress_report = polls + 50;
 			const auto waited    = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started);
 
-			debug_log::write(K_LOG_CATEGORY, "still waiting for a responsive client window after %lldms (%s)", waited.count(),
-			                 window == nullptr ? "no window yet" : "window is not pumping messages");
+			debug_log::write(K_LOG_CATEGORY, "still waiting for a responsive client window after %lldms (%s)", waited.count(), window == nullptr ? "no window yet" : "window is not pumping messages");
 		}
 
 		if (is_cancelled(t_cancel)) {
@@ -564,8 +568,7 @@ auto RiotClient::executable_near(std::string_view t_chosen_path) -> std::string
 
 		folder.resize(slash);
 
-		for (const std::wstring& candidate :
-		     {folder + L"\\" + K_CLIENT_EXECUTABLE_NAME, folder + L"\\" + K_CLIENT_FOLDER_NAME + L"\\" + K_CLIENT_EXECUTABLE_NAME}) {
+		for (const std::wstring& candidate : {folder + L"\\" + K_CLIENT_EXECUTABLE_NAME, folder + L"\\" + K_CLIENT_FOLDER_NAME + L"\\" + K_CLIENT_EXECUTABLE_NAME}) {
 			if (is_file(candidate)) return to_utf8(candidate);
 		}
 	}
@@ -691,8 +694,7 @@ auto RiotClient::submit_login(std::string_view t_username, std::string_view t_pa
 		polls += 1;
 
 		if (is_cancelled(m_cancel)) {
-			debug_log::write(K_LOG_CATEGORY, "login form NOT found after %u poll(s) (cancelled; window %s, username %s, password %s)", polls,
-			                 window.is_valid() ? "yes" : "no", username_field.is_valid() ? "yes" : "no", password_field.is_valid() ? "yes" : "no");
+			debug_log::write(K_LOG_CATEGORY, "login form NOT found after %u poll(s) (cancelled; window %s, username %s, password %s)", polls, window.is_valid() ? "yes" : "no", username_field.is_valid() ? "yes" : "no", password_field.is_valid() ? "yes" : "no");
 			return false;
 		}
 
@@ -705,8 +707,8 @@ auto RiotClient::submit_login(std::string_view t_username, std::string_view t_pa
 	password_field.focus();
 	wait_for_keyboard_focus(password_field);
 
-	debug_log::write(K_LOG_CATEGORY, "submitting the login form (password field %s real keyboard focus)",
-	                 password_field.has_keyboard_focus() ? "has" : "does NOT have");
+	const char* focus_state = password_field.has_keyboard_focus() ? "has" : "does NOT have";
+	debug_log::write(K_LOG_CATEGORY, "submitting the login form (password field %s real keyboard focus)", focus_state);
 	automation->press_key(VK_RETURN);
 
 	return true;

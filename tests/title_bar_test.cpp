@@ -5,7 +5,12 @@ namespace {
 constexpr float K_TRAFFIC_LIGHTS_WIDTH = 72.0f;
 
 constexpr TitleBarButton K_BUTTONS[]{
-	TitleBarButton::MENU, TitleBarButton::SEARCH, TitleBarButton::UPDATE, TitleBarButton::MINIMIZE, TitleBarButton::MAXIMIZE, TitleBarButton::CLOSE,
+	TitleBarButton::MENU,
+	TitleBarButton::SEARCH,
+	TitleBarButton::UPDATE,
+	TitleBarButton::MINIMIZE,
+	TitleBarButton::MAXIMIZE,
+	TitleBarButton::CLOSE,
 };
 
 [[nodiscard]] auto overlaps(Rect t_a, Rect t_b) -> bool

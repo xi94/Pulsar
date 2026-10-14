@@ -35,11 +35,6 @@ class Scrollable {
 	auto jump_to(float t_offset, const ScrollGeometry& t_geometry) -> void;
 	auto reveal(float t_top, float t_bottom, float t_view_top, float t_view_bottom, const ScrollGeometry& t_geometry) -> void;
 
-	[[nodiscard]] auto is_dragging() const -> bool
-	{
-		return m_dragging;
-	}
-
 	[[nodiscard]] auto is_over_track(Vec2 t_point, const ScrollGeometry& t_geometry) const -> bool
 	{
 		return is_needed(t_geometry) && t_geometry.track.contains(t_point);
@@ -47,10 +42,11 @@ class Scrollable {
 
 	[[nodiscard]] auto offset() const -> float;
 
+	bool m_dragging = false;
+
   private:
 	float        m_offset            = 0.0f;
 	float        m_target            = 0.0f;
-	bool         m_dragging          = false;
 	float        m_drag_start_y      = 0.0f;
 	float        m_drag_start_target = 0.0f;
 	float        m_thickness         = 0.0f;

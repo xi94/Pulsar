@@ -7,7 +7,15 @@ constexpr const wchar_t* K_REGISTERED_FONTS_KEY = L"SOFTWARE\\Microsoft\\Windows
 
 // Tried in order when the chosen font lacks a character. Japanese comes before Korean because Malgun Gothic also carries kana and kanji.
 constexpr const char* K_FALLBACK_FONT_FILES[]{
-	"segoeui.ttf", "LeelawUI.ttf", "YuGothM.ttc", "meiryo.ttc", "malgun.ttf", "msjh.ttc", "msyh.ttc", "seguisym.ttf", "seguiemj.ttf",
+	"segoeui.ttf",
+	"LeelawUI.ttf",
+	"YuGothM.ttc",
+	"meiryo.ttc",
+	"malgun.ttf",
+	"msjh.ttc",
+	"msyh.ttc",
+	"seguisym.ttf",
+	"seguiemj.ttf",
 };
 
 [[nodiscard]] auto fonts_folder() -> std::string

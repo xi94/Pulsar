@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <ranges>
 #include <span>
 
 #include "core/debug_log.h"
@@ -100,23 +101,19 @@ auto MetalBackend::init(const os::Window* t_window) -> bool
 
 	create_sampler();
 	attach_layer(t_window);
-	resize(t_window->physical_width(), t_window->physical_height());
+	resize(t_window->m_physical_width, t_window->m_physical_height);
 
-	debug_log::write(K_LOG_CATEGORY, "Metal on %s ready in %.1f ms", device.name.UTF8String,
-	                 std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - started).count());
+	debug_log::write(K_LOG_CATEGORY, "Metal on %s ready in %.1f ms", device.name.UTF8String, std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - started).count());
 
 	return true;
 }
 
 auto MetalBackend::resize(u32 t_physical_width, u32 t_physical_height) -> void
 {
-	layer.contentsScale = window->dpi_scale();
+	layer.contentsScale = window->m_dpi_scale;
 	layer.drawableSize  = CGSizeMake(t_physical_width, t_physical_height);
 
-	MTLTextureDescriptor* descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:K_PIXEL_FORMAT
-																						  width:t_physical_width
-																						 height:t_physical_height
-																					  mipmapped:NO];
+	MTLTextureDescriptor* descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:K_PIXEL_FORMAT width:t_physical_width height:t_physical_height mipmapped:NO];
 	descriptor.textureType           = MTLTextureType2DMultisample;
 	descriptor.sampleCount           = K_MSAA_SAMPLE_COUNT;
 	descriptor.usage                 = MTLTextureUsageRenderTarget;
@@ -155,9 +152,7 @@ auto MetalBackend::render(const RenderFrame& t_frame) -> void
 			upload_geometry(geometry, draw_list);
 		}
 
-		// Each pass runs up to the next glass that needs a fresh blur of what is drawn before it, or that blurs unlike the glass before it.
-		// That pass resolves into the capture instead of the screen, the blur runs, and the next pass carries on from the multisampled
-		// frame it left behind.
+		// Each pass runs up to the next glass that needs a fresh blur of what is drawn before it, or that blurs unlike the glass before it. That pass resolves into the capture instead of the screen, the blur runs, and the next pass carries on from the multisampled frame it left behind.
 		usize first       = 0;
 		bool  first_clear = true;
 
@@ -190,7 +185,7 @@ auto MetalBackend::render(const RenderFrame& t_frame) -> void
 				[encoder setVertexBytes:&viewport length:sizeof(viewport) atIndex:K_CONSTANTS_BUFFER_INDEX];
 				[encoder setFragmentSamplerState:sampler atIndex:0];
 
-				for (usize i = first; i < end; i += 1) {
+				for (const usize i : std::views::iota(first, end)) {
 					if (list[i].shader == ShaderKind::BACKDROP_BLUR && !blur_ready) continue;
 
 					draw_command(encoder, t_frame, list[i], geometry->indices);
@@ -221,10 +216,7 @@ auto MetalBackend::render(const RenderFrame& t_frame) -> void
 auto MetalBackend::size_blur_targets(u32 t_width, u32 t_height) -> void
 {
 	const auto target = [this](u32 t_target_width, u32 t_target_height) {
-		MTLTextureDescriptor* descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:K_PIXEL_FORMAT
-																							  width:std::max<u32>(t_target_width, 1)
-																							 height:std::max<u32>(t_target_height, 1)
-																						  mipmapped:NO];
+		MTLTextureDescriptor* descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:K_PIXEL_FORMAT width:std::max<u32>(t_target_width, 1) height:std::max<u32>(t_target_height, 1) mipmapped:NO];
 		descriptor.usage                 = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
 		descriptor.storageMode           = MTLStorageModePrivate;
 
@@ -234,15 +226,14 @@ auto MetalBackend::size_blur_targets(u32 t_width, u32 t_height) -> void
 	capture    = target(t_width, t_height);
 	blur_ready = downsample_pipeline != nil && blur_pipeline != nil && capture != nil;
 
-	for (u32 level = 0; level < K_BLUR_LEVEL_COUNT; level += 1) {
-		for (u32 i = 0; i < std::size(levels[level]); i += 1) {
+	for (const u32 level : std::views::iota(0u, K_BLUR_LEVEL_COUNT)) {
+		for (const u32 i : std::views::iota(0u, std::size(levels[level]))) {
 			levels[level][i] = target(blur_level_extent(t_width, level), blur_level_extent(t_height, level));
 			blur_ready       = blur_ready && levels[level][i] != nil;
 		}
 	}
 }
 
-// Halves the captured frame down to the plan's level and blurs it there for glass to sample.
 auto MetalBackend::encode_blur(id<MTLCommandBuffer> t_commands, BlurPlan t_plan) const -> void
 {
 	const auto pass = [&](id<MTLTexture> t_target, id<MTLTexture> t_source, id<MTLRenderPipelineState> t_pipeline, float t_step_x, float t_step_y) {
@@ -264,8 +255,10 @@ auto MetalBackend::encode_blur(id<MTLCommandBuffer> t_commands, BlurPlan t_plan)
 
 	id<MTLTexture> source = capture;
 
-	for (u32 level = 0; level <= t_plan.level; level += 1) {
-		pass(levels[level][0], source, downsample_pipeline, 1.0f / static_cast<float>(source.width), 1.0f / static_cast<float>(source.height));
+	for (const u32 level : std::views::iota(0u, t_plan.level + 1)) {
+		const float texel_width  = 1.0f / static_cast<float>(source.width);
+		const float texel_height = 1.0f / static_cast<float>(source.height);
+		pass(levels[level][0], source, downsample_pipeline, texel_width, texel_height);
 		source = levels[level][0];
 	}
 
@@ -274,7 +267,7 @@ auto MetalBackend::encode_blur(id<MTLCommandBuffer> t_commands, BlurPlan t_plan)
 	const float    step_x  = t_plan.step / static_cast<float>(blurred.width);
 	const float    step_y  = t_plan.step / static_cast<float>(blurred.height);
 
-	for (u32 i = 0; i < t_plan.iterations; i += 1) {
+	for (u32 iteration = 0; iteration < t_plan.iterations; iteration += 1) {
 		pass(scratch, blurred, blur_pipeline, step_x, 0.0f);
 		pass(blurred, scratch, blur_pipeline, 0.0f, step_y);
 	}
@@ -283,17 +276,14 @@ auto MetalBackend::encode_blur(id<MTLCommandBuffer> t_commands, BlurPlan t_plan)
 auto MetalBackend::create_texture(u32 t_slot, std::span<const TextureLevel> t_levels, bool) -> bool
 {
 	const TextureLevel&   base       = t_levels.front();
-	MTLTextureDescriptor* descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
-																						  width:base.width
-																						 height:base.height
-																					  mipmapped:t_levels.size() > 1];
+	MTLTextureDescriptor* descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:base.width height:base.height mipmapped:t_levels.size() > 1];
 	descriptor.mipmapLevelCount      = t_levels.size();
 	descriptor.usage                 = MTLTextureUsageShaderRead;
 
 	id<MTLTexture> texture = [device newTextureWithDescriptor:descriptor];
 	if (texture == nil) return false;
 
-	for (usize level = 0; level < t_levels.size(); level += 1) {
+	for (const usize level : std::views::iota(usize{0}, t_levels.size())) {
 		const TextureLevel& pixels = t_levels[level];
 		[texture replaceRegion:MTLRegionMake2D(0, 0, pixels.width, pixels.height) mipmapLevel:level withBytes:pixels.rgba_pixels bytesPerRow:pixels.width * 4];
 	}
@@ -316,15 +306,7 @@ auto MetalBackend::update_texture(u32 t_slot, u32 t_x, u32 t_y, u32 t_width, u32
 		id<MTLCommandBuffer>      commands = [queue commandBuffer];
 		id<MTLBlitCommandEncoder> blit     = [commands blitCommandEncoder];
 
-		[blit copyFromBuffer:staging
-				   sourceOffset:0
-			  sourceBytesPerRow:row_bytes
-			sourceBytesPerImage:bytes
-					 sourceSize:MTLSizeMake(t_width, t_height, 1)
-					  toTexture:textures[t_slot]
-			   destinationSlice:0
-			   destinationLevel:0
-			  destinationOrigin:MTLOriginMake(t_x, t_y, 0)];
+		[blit copyFromBuffer:staging sourceOffset:0 sourceBytesPerRow:row_bytes sourceBytesPerImage:bytes sourceSize:MTLSizeMake(t_width, t_height, 1) toTexture:textures[t_slot] destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(t_x, t_y, 0)];
 		[blit endEncoding];
 		[commands commit];
 	}
@@ -429,11 +411,11 @@ auto MetalBackend::attach_layer(const os::Window* t_window) -> void
 
 auto MetalBackend::wait_for_gpu() const -> void
 {
-	for (u32 i = 0; i < K_FRAMES_IN_FLIGHT; i += 1) {
+	for (const u32 i : std::views::iota(0u, K_FRAMES_IN_FLIGHT)) {
 		dispatch_semaphore_wait(frames_available, DISPATCH_TIME_FOREVER);
 	}
 
-	for (u32 i = 0; i < K_FRAMES_IN_FLIGHT; i += 1) {
+	for (const u32 i : std::views::iota(0u, K_FRAMES_IN_FLIGHT)) {
 		dispatch_semaphore_signal(frames_available);
 	}
 }
@@ -455,15 +437,14 @@ auto MetalBackend::upload_geometry(FrameGeometry* t_geometry, const DrawList* t_
 	std::memcpy(t_geometry->indices.contents, indices.data(), indices.size_bytes());
 }
 
-auto MetalBackend::draw_command(id<MTLRenderCommandEncoder> t_encoder, const RenderFrame& t_frame, const DrawCommand& t_command, id<MTLBuffer> t_indices) const
-	-> void
+auto MetalBackend::draw_command(id<MTLRenderCommandEncoder> t_encoder, const RenderFrame& t_frame, const DrawCommand& t_command, id<MTLBuffer> t_indices) const -> void
 {
 	id<MTLTexture> image = nil;
 
 	if (t_command.shader == ShaderKind::TEXTURED) {
 		if (!t_command.texture->is_valid()) return;
 
-		image = textures[t_command.texture->slot()];
+		image = textures[t_command.texture->m_slot];
 	} else if (t_command.shader == ShaderKind::BACKDROP_BLUR) {
 		image = levels[blur_plan(t_frame, t_command).level][0];
 	}
@@ -485,11 +466,7 @@ auto MetalBackend::draw_command(id<MTLRenderCommandEncoder> t_encoder, const Ren
 
 	[t_encoder setRenderPipelineState:pipelines[t_command.shader]];
 	[t_encoder setFragmentTexture:image atIndex:0];
-	[t_encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
-						  indexCount:t_command.index_count
-						   indexType:MTLIndexTypeUInt32
-						 indexBuffer:t_indices
-				   indexBufferOffset:t_command.index_offset * sizeof(u32)];
+	[t_encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle indexCount:t_command.index_count indexType:MTLIndexTypeUInt32 indexBuffer:t_indices indexBufferOffset:t_command.index_offset * sizeof(u32)];
 }
 }
 

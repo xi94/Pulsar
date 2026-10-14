@@ -42,8 +42,7 @@ auto find_ignoring_case(std::string_view t_text, std::string_view t_query) -> us
 	const std::wstring query = win32::to_wide(t_query);
 	if (query.empty()) return 0;
 
-	const int found = FindNLSStringEx(LOCALE_NAME_USER_DEFAULT, FIND_FROMSTART | LINGUISTIC_IGNORECASE, text.c_str(), static_cast<int>(text.size()),
-	                                  query.c_str(), static_cast<int>(query.size()), nullptr, nullptr, nullptr, 0);
+	const int found = FindNLSStringEx(LOCALE_NAME_USER_DEFAULT, FIND_FROMSTART | LINGUISTIC_IGNORECASE, text.c_str(), static_cast<int>(text.size()), query.c_str(), static_cast<int>(query.size()), nullptr, nullptr, nullptr, 0);
 	if (found < 0) return std::string_view::npos;
 
 	return win32::to_utf8(std::wstring_view{text}.substr(0, static_cast<usize>(found))).size();

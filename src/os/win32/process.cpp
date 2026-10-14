@@ -9,7 +9,11 @@
 
 namespace {
 constexpr const wchar_t* K_KNOWN_OVERLAY_MODULES[]{
-	L"DiscordHook64.dll", L"DiscordHook32.dll", L"GameOverlayRenderer64.dll", L"GameOverlayRenderer.dll", L"RTSSHooks64.dll",
+	L"DiscordHook64.dll",
+	L"DiscordHook32.dll",
+	L"GameOverlayRenderer64.dll",
+	L"GameOverlayRenderer.dll",
+	L"RTSSHooks64.dll",
 };
 
 auto shell_open(std::string_view t_target) -> void
@@ -55,11 +59,11 @@ auto launch_process(std::string_view t_executable, std::string_view t_arguments)
 	const usize        slash  = executable.find_last_of(L"\\/");
 	const std::wstring folder = slash == std::wstring::npos ? std::wstring{} : executable.substr(0, slash);
 
+	const wchar_t*      working_folder = folder.empty() ? nullptr : folder.c_str();
 	STARTUPINFOW        startup{.cb = sizeof(startup)};
 	PROCESS_INFORMATION process{};
 
-	if (CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE, 0, nullptr, folder.empty() ? nullptr : folder.c_str(), &startup,
-	                   &process)) {
+	if (CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE, 0, nullptr, working_folder, &startup, &process)) {
 		CloseHandle(process.hProcess);
 		CloseHandle(process.hThread);
 	}

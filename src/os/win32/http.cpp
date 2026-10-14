@@ -43,8 +43,7 @@ class InternetHandle {
 
 [[nodiscard]] auto open_request(HINTERNET t_connection, const std::wstring& t_path, bool t_https) -> HINTERNET
 {
-	const HINTERNET request =
-		WinHttpOpenRequest(t_connection, L"GET", t_path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, t_https ? WINHTTP_FLAG_SECURE : 0);
+	const HINTERNET request = WinHttpOpenRequest(t_connection, L"GET", t_path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, t_https ? WINHTTP_FLAG_SECURE : 0);
 
 	if (request != nullptr) {
 		// The github.com to CDN redirect crosses hosts, which WinHTTP's default policy refuses.
@@ -62,8 +61,7 @@ auto query_number_header(HINTERNET t_request, DWORD t_header, DWORD* t_out_value
 	return WinHttpQueryHeaders(t_request, WINHTTP_QUERY_FLAG_NUMBER | t_header, WINHTTP_HEADER_NAME_BY_INDEX, t_out_value, &size, WINHTTP_NO_HEADER_INDEX) != 0;
 }
 
-[[nodiscard]] auto read_body(HINTERNET t_request, usize t_max_bytes, std::vector<u8>* t_out_body, const os::HttpProgress& t_progress, std::string* t_out_error)
-	-> os::HttpResult
+[[nodiscard]] auto read_body(HINTERNET t_request, usize t_max_bytes, std::vector<u8>* t_out_body, const os::HttpProgress& t_progress, std::string* t_out_error) -> os::HttpResult
 {
 	DWORD content_length = 0;
 	if (query_number_header(t_request, WINHTTP_QUERY_CONTENT_LENGTH, &content_length)) {

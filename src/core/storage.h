@@ -23,7 +23,7 @@ auto save_settings(const Settings* t_settings) -> bool;
 auto load_accounts(Library* t_library, const MasterKey* t_master_key) -> LoadResult;
 auto save_accounts(const Library* t_library, const MasterKey* t_master_key) -> bool;
 
-// Deletes the saved accounts and settings for good. Both files can be written again afterwards, even if they failed to load.
+// Both files can be written again afterwards, even if they failed to load.
 auto delete_all_data() -> bool;
 
 [[nodiscard]] auto can_save_settings() -> bool;

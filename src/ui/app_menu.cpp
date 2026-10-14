@@ -1,10 +1,11 @@
 #include "ui/app_menu.h"
 
 #include <algorithm>
-#include <cstdio>
+#include <ranges>
 
 #include "core/animation.h"
 #include "core/app_identity.h"
+#include "core/str.h"
 #include "gfx/assets.h"
 #include "gfx/draw_list.h"
 #include "gfx/font.h"
@@ -75,8 +76,7 @@ constexpr u32 K_ITEM_COUNT = static_cast<u32>(std::size(K_MENU_ITEMS));
 
 [[nodiscard]] auto item_rect(const Fonts* t_fonts, std::span<const u32> t_items, Rect t_menu, u32 t_slot) -> Rect
 {
-	return Rect{t_menu.x + K_MENU_PADDING, t_menu.y + K_MENU_PADDING + item_offset(t_fonts, t_items, t_slot), t_menu.w - K_MENU_PADDING * 2.0f,
-	            item_height(t_fonts)};
+	return Rect{t_menu.x + K_MENU_PADDING, t_menu.y + K_MENU_PADDING + item_offset(t_fonts, t_items, t_slot), t_menu.w - K_MENU_PADDING * 2.0f, item_height(t_fonts)};
 }
 }
 
@@ -88,7 +88,7 @@ AppMenu::AppMenu(const os::Window* t_window, const Fonts* t_fonts, const Assets*
 {
 	static_assert(K_ITEM_COUNT <= K_MAX_ITEMS);
 
-	for (u32 item = 0; item < K_ITEM_COUNT; item += 1) {
+	for (const u32 item : std::views::iota(0u, K_ITEM_COUNT)) {
 		if (K_MENU_ITEMS[item].needs_installer && !os::installation::is_supported()) continue;
 
 		m_items[m_item_count] = item;
@@ -115,7 +115,7 @@ auto AppMenu::items() const -> std::span<const u32>
 
 auto AppMenu::menu() const -> Rect
 {
-	const TitleBarLayout title_bar{.width = static_cast<float>(m_window->width()), .native_controls_width = m_window->native_controls_width()};
+	const TitleBarLayout title_bar{.width = static_cast<float>(m_window->m_width), .native_controls_width = m_window->m_native_controls_width};
 	const Rect           button  = title_bar.button_rect(TitleBarButton::MENU);
 	const float          x       = title_bar.menu_on_right() ? button.right() - K_MENU_X - K_MENU_WIDTH : button.x + K_MENU_X;
 	const float          content = item_offset(m_fonts, items(), m_item_count - 1) + item_height(m_fonts);
@@ -136,7 +136,7 @@ auto AppMenu::update(float t_delta_seconds) -> void
 
 	const Rect menu_area = menu();
 
-	for (u32 slot = 0; slot < m_item_count; slot += 1) {
+	for (const u32 slot : std::views::iota(0u, m_item_count)) {
 		const bool hovered = is_blocking() && is_enabled(m_items[slot]) && item_rect(m_fonts, items(), menu_area, slot).contains(m_mouse);
 		m_item_hover[slot] = animation::ease_toward(m_item_hover[slot], hovered ? 1.0f : 0.0f, K_HOVER_EASE_RATE, t_delta_seconds);
 	}
@@ -148,7 +148,7 @@ auto AppMenu::on_pointer_up(Vec2 t_point) -> bool
 
 	const Rect menu_area = menu();
 
-	for (u32 slot = 0; slot < m_item_count; slot += 1) {
+	for (const u32 slot : std::views::iota(0u, m_item_count)) {
 		if (is_enabled(m_items[slot]) && item_rect(m_fonts, items(), menu_area, slot).contains(t_point)) {
 			m_commands->push(Command{.type = K_MENU_ITEMS[m_items[slot]].command});
 			break;
@@ -166,7 +166,7 @@ auto AppMenu::cursor() const -> CursorKind
 
 	const Rect menu_area = menu();
 
-	for (u32 slot = 0; slot < m_item_count; slot += 1) {
+	for (const u32 slot : std::views::iota(0u, m_item_count)) {
 		if (is_enabled(m_items[slot]) && item_rect(m_fonts, items(), menu_area, slot).contains(m_mouse)) return CursorKind::HAND;
 	}
 
@@ -187,11 +187,9 @@ auto AppMenu::draw(DrawList* t_draw_list) -> void
 	controls::draw_popup_shadow(t_draw_list, menu_area, K_MENU_RADIUS, m_open_amount);
 	controls::draw_glass(t_draw_list, menu_area, rounded(K_MENU_RADIUS), controls::GlassSurface::MENU, alpha);
 
-	const auto separator_above = [&](float t_y) {
-		t_draw_list->add_rect(Rect{menu_area.x + 1.0f, t_y - K_SEPARATOR_GAP - 1.0f, menu_area.w - 2.0f, 1.0f}, faded(g_theme.separator, alpha));
-	};
+	const auto separator_above = [&](float t_y) { t_draw_list->add_rect(Rect{menu_area.x + 1.0f, t_y - K_SEPARATOR_GAP - 1.0f, menu_area.w - 2.0f, 1.0f}, faded(g_theme.separator, alpha)); };
 
-	for (u32 slot = 0; slot < m_item_count; slot += 1) {
+	for (const u32 slot : std::views::iota(0u, m_item_count)) {
 		const MenuItem& entry    = K_MENU_ITEMS[m_items[slot]];
 		const Rect      item     = item_rect(m_fonts, items(), menu_area, slot);
 		const bool      enabled  = is_enabled(m_items[slot]);
@@ -202,20 +200,23 @@ auto AppMenu::draw(DrawList* t_draw_list) -> void
 		}
 
 		if (m_item_hover[slot] > 0.001f) {
-			t_draw_list->add_rounded_rect(item, rounded(K_ITEM_RADIUS), faded(controls::glass_highlight(m_item_hover[slot]), alpha));
+			const Color highlight = faded(controls::glass_highlight(m_item_hover[slot]), alpha);
+			t_draw_list->add_rounded_rect(item, rounded(K_ITEM_RADIUS), highlight);
 		}
 
 		const Color label      = faded(enabled ? g_theme.text : g_theme.text_faint, alpha);
 		const Color icon_color = faded(enabled ? g_theme.text_dim : g_theme.text_faint, alpha);
 		const Rect  icon{item.x + K_CONTENT_X, item.y + (item.h - K_ICON_SIZE) * 0.5f, K_ICON_SIZE, K_ICON_SIZE};
 
-		t_draw_list->add_image(icon, m_assets->get(entry.icon), icon_color);
+		const Vec2 label_baseline{icon.right() + K_ICON_TEXT_GAP, font.centered_baseline(item)};
 
-		draw_text(t_draw_list, font, Vec2{icon.right() + K_ICON_TEXT_GAP, font.centered_baseline(item)}, entry.label, label);
+		t_draw_list->add_image(icon, m_assets->texture(entry.icon), icon_color);
+		draw_text(t_draw_list, font, label_baseline, entry.label, label);
 
 		if (*entry.shortcut != '\0') {
-			controls::draw_shortcut(t_draw_list, hint_font, Vec2{item.right() - K_CONTENT_X, item.center().y}, entry.shortcut, faded(backdrop, alpha),
-			                        static_cast<u8>(alpha * (enabled ? 1.0f : 0.5f)));
+			const Vec2 keys_right_center{item.right() - K_CONTENT_X, item.center().y};
+			const u8   keys_alpha = static_cast<u8>(alpha * (enabled ? 1.0f : 0.5f));
+			controls::draw_shortcut(t_draw_list, hint_font, keys_right_center, entry.shortcut, faded(backdrop, alpha), keys_alpha);
 		}
 	}
 
@@ -223,13 +224,13 @@ auto AppMenu::draw(DrawList* t_draw_list) -> void
 	const Rect footer{menu_area.x, last.bottom() + K_SEPARATOR_BLOCK, menu_area.w, footer_height(m_fonts)};
 	separator_above(footer.y);
 
-	char        version[48];
-	const int   written  = std::snprintf(version, sizeof(version), "%s %s", K_APP_NAME, K_APP_VERSION);
-	const float baseline = hint_font.centered_baseline(footer);
-	const float inset    = K_MENU_PADDING + K_CONTENT_X;
+	char                   version[48];
+	const std::string_view version_text = format_into(version, "{} {}", K_APP_NAME, K_APP_VERSION);
+	const float            inset        = K_MENU_PADDING + K_CONTENT_X;
+	const float            baseline     = hint_font.centered_baseline(footer);
+	const Vec2             version_baseline{footer.x + inset, baseline};
+	const Vec2             status_baseline{footer.right() - inset - text_width(hint_font, m_update_status), baseline};
 
-	draw_text(t_draw_list, hint_font, Vec2{footer.x + inset, baseline}, std::string_view{version, static_cast<usize>(std::max(written, 0))},
-	          faded(g_theme.text_faint, alpha));
-	draw_text(t_draw_list, hint_font, Vec2{footer.right() - inset - text_width(hint_font, m_update_status), baseline}, m_update_status,
-	          faded(g_theme.text_faint, alpha));
+	draw_text(t_draw_list, hint_font, version_baseline, version_text, faded(g_theme.text_faint, alpha));
+	draw_text(t_draw_list, hint_font, status_baseline, m_update_status, faded(g_theme.text_faint, alpha));
 }

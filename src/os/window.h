@@ -59,44 +59,9 @@ class Window {
 
 	[[nodiscard]] auto native_handle() const -> void*;
 
-	[[nodiscard]] auto width() const -> u32
-	{
-		return m_width;
-	}
-
-	[[nodiscard]] auto height() const -> u32
-	{
-		return m_height;
-	}
-
 	[[nodiscard]] auto size() const -> Vec2
 	{
 		return Vec2{static_cast<float>(m_width), static_cast<float>(m_height)};
-	}
-
-	[[nodiscard]] auto physical_width() const -> u32
-	{
-		return m_physical_width;
-	}
-
-	[[nodiscard]] auto physical_height() const -> u32
-	{
-		return m_physical_height;
-	}
-
-	[[nodiscard]] auto dpi_scale() const -> float
-	{
-		return m_dpi_scale;
-	}
-
-	[[nodiscard]] auto native_controls_width() const -> float
-	{
-		return m_native_controls_width;
-	}
-
-	[[nodiscard]] auto should_quit() const -> bool
-	{
-		return m_should_quit;
 	}
 
 	auto request_quit() -> void
@@ -109,18 +74,18 @@ class Window {
 	[[nodiscard]] auto is_minimized() const -> bool;
 	[[nodiscard]] auto is_maximized() const -> bool;
 
-	[[nodiscard]] auto is_mouse_over_resize_border() const -> bool
-	{
-		return m_mouse_over_resize_border;
-	}
-
-	auto set_close_to_tray(bool t_close_to_tray) -> void
-	{
-		m_close_to_tray = t_close_to_tray;
-	}
-
 	auto set_cursor(CursorKind t_cursor) -> void;
 	auto set_excluded_from_capture(bool t_excluded) -> void;
+
+	u32   m_width                    = 0;
+	u32   m_height                   = 0;
+	u32   m_physical_width           = 0;
+	u32   m_physical_height          = 0;
+	float m_dpi_scale                = 1.0f;
+	float m_native_controls_width    = 0.0f;
+	bool  m_should_quit              = false;
+	bool  m_mouse_over_resize_border = false;
+	bool  m_close_to_tray            = false;
 
   private:
 	struct Native;
@@ -133,22 +98,13 @@ class Window {
 	std::unique_ptr<Native> m_native;
 	WindowKind              m_kind = WindowKind::MAIN;
 
-	u32   m_width           = 0;
-	u32   m_height          = 0;
-	u32   m_physical_width  = 0;
-	u32   m_physical_height = 0;
-	float m_dpi_scale       = 1.0f;
-	Vec2  m_min_size{};
+	Vec2 m_min_size{};
 
-	float                     m_title_bar_height      = 0.0f;
-	float                     m_native_controls_width = 0.0f;
+	float                     m_title_bar_height = 0.0f;
 	std::function<bool(Vec2)> m_is_title_bar_button;
 
-	bool       m_should_quit              = false;
-	bool       m_close_to_tray            = false;
-	bool       m_excluded_from_capture    = false;
-	bool       m_mouse_over_resize_border = false;
-	CursorKind m_cursor                   = CursorKind::ARROW;
+	bool       m_excluded_from_capture = false;
+	CursorKind m_cursor                = CursorKind::ARROW;
 
 	std::function<void()> m_redraw;
 	std::function<void()> m_dpi_changed;

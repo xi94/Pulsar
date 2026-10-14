@@ -65,8 +65,7 @@ auto build_main_menu() -> void
 
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)t_sender
 {
-	// Cancel hands a quit to Pulsar's own loop, which saves and returns from main. At logout or shutdown Cancel would stop the logout,
-	// so Pulsar saves right here and ends the process itself, skipping exit()'s teardown of threads that are still running.
+	// Cancel hands a quit to Pulsar's own loop, which saves and returns from main. At logout or shutdown Cancel would stop the logout, so Pulsar saves right here and ends the process itself, skipping exit()'s teardown of threads that are still running.
 	if (is_session_ending()) {
 		if (g_session_end) {
 			g_session_end();
@@ -134,15 +133,7 @@ auto activate_application() -> void
 
 auto wake_event_loop() -> void
 {
-	NSEvent* wake = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
-									   location:NSZeroPoint
-								  modifierFlags:0
-									  timestamp:0
-								   windowNumber:0
-										context:nil
-										subtype:0
-										  data1:0
-										  data2:0];
+	NSEvent* wake = [NSEvent otherEventWithType:NSEventTypeApplicationDefined location:NSZeroPoint modifierFlags:0 timestamp:0 windowNumber:0 context:nil subtype:0 data1:0 data2:0];
 	[NSApp postEvent:wake atStart:NO];
 }
 
