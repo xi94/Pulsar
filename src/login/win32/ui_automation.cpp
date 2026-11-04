@@ -4,6 +4,8 @@
 #include <chrono>
 #include <concepts>
 #include <memory>
+#include <ranges>
+#include <string>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -211,6 +213,13 @@ auto UiElement::has_keyboard_focus() const -> bool
 	return is_valid() && SUCCEEDED(m_element->get_CurrentHasKeyboardFocus(&focused)) && focused;
 }
 
+auto UiElement::is_enabled() const -> bool
+{
+	BOOL enabled = FALSE;
+
+	return is_valid() && SUCCEEDED(m_element->get_CurrentIsEnabled(&enabled)) && enabled;
+}
+
 UiAutomation::UiAutomation(const std::atomic<bool>* t_cancel)
 	: m_cancel(t_cancel)
 {
@@ -288,10 +297,8 @@ auto UiAutomation::find_descendant(const UiElement& t_root, const wchar_t* t_nam
 {
 	if (!can_search(t_root)) return {};
 
-	const VariantString name(t_name);
-
-	ComPtr<IUIAutomationCondition> condition;
-	if (FAILED(m_automation->CreatePropertyCondition(UIA_NamePropertyId, name.m_value, &condition))) return {};
+	const ComPtr<IUIAutomationCondition> condition = name_condition(t_name);
+	if (condition == nullptr) return {};
 
 	char label[192];
 	_snprintf_s(label, _TRUNCATE, "FindFirst(Name=%ls)", t_name);
@@ -303,13 +310,12 @@ auto UiAutomation::find_descendant(const UiElement& t_root, const wchar_t* t_nam
 {
 	if (!can_search(t_root)) return {};
 
-	const VariantString name(t_name);
+	const ComPtr<IUIAutomationCondition> name = name_condition(t_name);
 
-	ComPtr<IUIAutomationCondition> name_condition;
 	ComPtr<IUIAutomationCondition> type_condition;
 	ComPtr<IUIAutomationCondition> both;
 
-	if (FAILED(m_automation->CreatePropertyCondition(UIA_NamePropertyId, name.m_value, &name_condition)) || FAILED(m_automation->CreatePropertyCondition(UIA_ControlTypePropertyId, variant_from_control_type(t_control_type), &type_condition)) || FAILED(m_automation->CreateAndCondition(name_condition.Get(), type_condition.Get(), &both))) {
+	if (name == nullptr || FAILED(m_automation->CreatePropertyCondition(UIA_ControlTypePropertyId, variant_from_control_type(t_control_type), &type_condition)) || FAILED(m_automation->CreateAndCondition(name.Get(), type_condition.Get(), &both))) {
 		return {};
 	}
 
@@ -350,6 +356,60 @@ auto UiAutomation::find_of_type(const UiElement& t_root, CONTROLTYPEID t_control
 	_snprintf_s(label, _TRUNCATE, "FindFirst(ControlType=%d)", static_cast<int>(t_control_type));
 
 	return find_first(t_root, condition, label);
+}
+
+auto UiAutomation::text_inside(const UiElement& t_root, const wchar_t* t_ignored_text) const -> std::wstring
+{
+	if (!can_search(t_root)) return {};
+
+	ComPtr<IUIAutomationCondition> condition;
+	if (FAILED(m_automation->CreatePropertyCondition(UIA_ControlTypePropertyId, variant_from_control_type(UIA_TextControlTypeId), &condition))) return {};
+
+	auto                   text = std::make_shared<std::wstring>();
+	const debug_log::Scope scope(K_LOG_CATEGORY, "FindAll(ControlType=Text)");
+
+	const auto read_text = [root = t_root.m_element, condition, text, ignored = std::wstring{t_ignored_text}]() {
+		const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+
+		const auto append = [&](const ComPtr<IUIAutomationElement>& t_element) {
+			BSTR name = nullptr;
+			if (FAILED(t_element->get_CurrentName(&name)) || name == nullptr) return;
+
+			const std::wstring_view shown{name, SysStringLen(name)};
+			if (!shown.empty() && shown != ignored && text->find(shown) == std::wstring::npos) {
+				text->append(text->empty() ? L"" : L" ").append(shown);
+			}
+
+			SysFreeString(name);
+		};
+
+		ComPtr<IUIAutomationElementArray> found;
+		int                               count = 0;
+
+		if (SUCCEEDED(root->FindAll(TreeScope_Descendants, condition.Get(), &found)) && found != nullptr && SUCCEEDED(found->get_Length(&count))) {
+			for (const int index : std::views::iota(0, count)) {
+				ComPtr<IUIAutomationElement> element;
+				if (SUCCEEDED(found->GetElement(index, &element)) && element != nullptr) {
+					append(element);
+				}
+			}
+		}
+
+		if (text->empty()) {
+			append(root);
+		}
+
+		if (com_result == S_OK || com_result == S_FALSE) {
+			CoUninitialize();
+		}
+	};
+
+	if (!run_unless_cancelled(read_text, m_cancel)) {
+		debug_log::write(K_LOG_CATEGORY, "ABANDONED FindAll(ControlType=Text) - cancelled while the provider was still answering");
+		return {};
+	}
+
+	return std::move(*text);
 }
 
 auto UiAutomation::type_text(const wchar_t* t_text) const -> void
@@ -396,6 +456,16 @@ auto UiAutomation::is_cancelled() const -> bool
 auto UiAutomation::can_search(const UiElement& t_root) const -> bool
 {
 	return m_automation != nullptr && t_root.is_valid() && !is_cancelled();
+}
+
+auto UiAutomation::name_condition(const wchar_t* t_name) const -> ComPtr<IUIAutomationCondition>
+{
+	const VariantString name(t_name);
+
+	ComPtr<IUIAutomationCondition> condition;
+	if (FAILED(m_automation->CreatePropertyConditionEx(UIA_NamePropertyId, name.m_value, PropertyConditionFlags_IgnoreCase, &condition))) return nullptr;
+
+	return condition;
 }
 
 auto UiAutomation::find_first(const UiElement& t_root, const ComPtr<IUIAutomationCondition>& t_condition, const char* t_label) const -> UiElement

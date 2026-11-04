@@ -20,6 +20,8 @@ enum class LoginStage : u8 {
 	CANCELLED,
 };
 
+constexpr usize K_LOGIN_MESSAGE_CAPACITY = 160;
+
 struct LoginWork {
 	std::atomic<LoginStage> stage{LoginStage::IDLE};
 	std::atomic<bool>       cancel_requested{false};
@@ -28,7 +30,8 @@ struct LoginWork {
 	char username[64]{};
 	char password[128]{};
 	char launch_product[32]{};
-	char message[160]{};
+	char message[K_LOGIN_MESSAGE_CAPACITY]{};
+	bool launch_game = true;
 
 	std::string remembered_client_path;
 	std::string found_client_path;
@@ -38,8 +41,15 @@ struct LoginWork {
 	RiotClient riot_client{&cancel_requested};
 };
 
-// What to tell the user about an error the Riot Client showed. The client's wording is Riot's to change, so this only looks for a word.
-[[nodiscard]] auto login_failure_message(std::string_view t_riot_error) -> const char*;
+enum class LoginFailure : u8 {
+	INVALID_CREDENTIALS,
+	RIOT_BUSY,
+	UNRECOGNIZED,
+};
+
+// The client's wording is Riot's to change, so this only looks for a few words, and anything else is shown in Riot's own words.
+[[nodiscard]] auto classify_login_failure(std::string_view t_riot_error) -> LoginFailure;
+[[nodiscard]] auto login_failure_message(std::string_view t_riot_error, char (&t_buffer)[K_LOGIN_MESSAGE_CAPACITY]) -> std::string_view;
 
 class LoginAttempt {
   public:
@@ -49,7 +59,7 @@ class LoginAttempt {
 	LoginAttempt(const LoginAttempt&)                    = delete;
 	auto operator=(const LoginAttempt&) -> LoginAttempt& = delete;
 
-	auto start(std::string_view t_username, std::string_view t_password, std::string_view t_launch_product, std::string_view t_client_path) -> void;
+	auto start(std::string_view t_username, std::string_view t_password, std::string_view t_launch_product, std::string_view t_client_path, bool t_launch_game) -> void;
 	auto cancel() -> void;
 	auto update() -> void;
 

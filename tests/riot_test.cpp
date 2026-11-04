@@ -138,7 +138,18 @@ TEST_CASE("a remembered client path that's gone isn't used")
 
 TEST_CASE("errors the Riot Client shows become the right message")
 {
-	CHECK(std::string_view{login_failure_message("Your login credentials don't match an account in our system.")} == "Wrong username or password.");
-	CHECK(std::string_view{login_failure_message("Sorry, we're having trouble signing you in right now. Please try again later.")}.starts_with("Riot's servers are busy"));
-	CHECK(std::string_view{login_failure_message("")}.starts_with("Sign-in failed"));
+	char message[K_LOGIN_MESSAGE_CAPACITY];
+
+	CHECK(login_failure_message("Your login credentials don't match an account in our system.", message) == "Wrong username or password.");
+	CHECK(login_failure_message("Sorry, we're having trouble signing you in right now. Please try again later.", message).starts_with("Riot's servers are busy"));
+	CHECK(login_failure_message("", message).starts_with("Sign-in failed"));
+	CHECK(login_failure_message("Your account has been locked.", message) == "Riot Client: Your account has been locked.");
+}
+
+TEST_CASE("only some errors are worth signing in again for")
+{
+	CHECK(classify_login_failure("Your login credentials don't match an account in our system.") == LoginFailure::INVALID_CREDENTIALS);
+	CHECK(classify_login_failure("Sorry, we're having trouble signing you in right now. Please try again later.") == LoginFailure::RIOT_BUSY);
+	CHECK(classify_login_failure("") == LoginFailure::UNRECOGNIZED);
+	CHECK(classify_login_failure("Something else entirely") == LoginFailure::UNRECOGNIZED);
 }

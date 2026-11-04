@@ -18,6 +18,7 @@ add_library (pulsar_portable OBJECT
   "gfx/draw_list.cpp"
   "gfx/font.cpp"
 
+  "login/client_watch.cpp"
   "login/login_attempt.cpp"
   "login/riot_client.cpp"
 

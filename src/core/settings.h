@@ -112,6 +112,7 @@ struct Settings {
 	bool        start_minimized         = true;
 	GraphicsApi renderer                = GraphicsApi::NATIVE;
 	u32         auto_lock_minutes       = 0;
+	bool        launch_game_after_login = true;
 	char        riot_client_path[K_PATH_CAPACITY]{};
 
 	i32  zoom_stop     = 0;

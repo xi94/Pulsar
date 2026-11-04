@@ -27,6 +27,7 @@ class UnlockScreen : public Widget {
 	auto show_unlock(bool t_animated) -> void;
 	auto show_setup(bool t_animated) -> void;
 	auto hide() -> void;
+	auto unlock_with(std::string_view t_password) -> void;
 
 	[[nodiscard]] auto covers_window() const -> bool
 	{

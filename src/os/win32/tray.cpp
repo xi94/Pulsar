@@ -5,9 +5,12 @@
 #include <cmath>
 #include <cwchar>
 #include <iterator>
+#include <numbers>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -39,6 +42,7 @@ constexpr UINT_PTR K_ANIMATION_TIMER   = 1;
 constexpr UINT_PTR K_AIM_TIMER         = 2;
 constexpr UINT_PTR K_WATCH_TIMER       = 3;
 constexpr UINT_PTR K_TOAST_TIMER       = 4;
+constexpr UINT_PTR K_CARET_TIMER       = 5;
 constexpr UINT     K_ANIMATION_TICK_MS = 10;
 constexpr UINT     K_AIM_DELAY_MS      = 250;
 constexpr UINT     K_WATCH_INTERVAL_MS = 50;
@@ -103,6 +107,24 @@ constexpr float K_UPDATE_FILL_ALPHA = 0.16f;
 constexpr float K_UPDATE_FROM_SCALE = 0.85f;
 constexpr float K_UPDATE_IN_SECONDS = 0.16f;
 constexpr float K_SPIN_SECONDS      = 0.9f;
+
+constexpr float   K_FIELD_ROW_HEIGHT    = 40.0f;
+constexpr float   K_FIELD_INSET_Y       = 5.0f;
+constexpr float   K_FIELD_RADIUS        = 7.0f;
+constexpr float   K_FIELD_PADDING       = 9.0f;
+constexpr float   K_FIELD_FILL_ALPHA    = 0.06f;
+constexpr float   K_FIELD_BORDER_ALPHA  = 0.7f;
+constexpr float   K_FIELD_SUBMIT_SIZE   = 22.0f;
+constexpr float   K_FIELD_SUBMIT_RADIUS = 5.0f;
+constexpr float   K_FIELD_IDLE_SUBMIT   = 0.35f;
+constexpr float   K_FIELD_MIN_WIDTH     = 210.0f;
+constexpr float   K_CARET_WIDTH         = 1.5f;
+constexpr float   K_CARET_HEIGHT        = 14.0f;
+constexpr float   K_CARET_BLINK_SECONDS = 0.53f;
+constexpr float   K_SHAKE_SECONDS       = 0.4f;
+constexpr float   K_SHAKE_DISTANCE      = 6.0f;
+constexpr float   K_SHAKE_TURNS         = 3.0f;
+constexpr wchar_t K_BULLET              = 0x2022;
 
 constexpr u32   K_MAX_SHOWN_ROWS        = 10;
 constexpr float K_SCROLL_GUTTER         = 6.0f;
@@ -171,6 +193,9 @@ constexpr const wchar_t* K_RETRY_LABEL    = L"Retry";
 constexpr const wchar_t* K_UPDATE_LABEL   = L"Update";
 constexpr const wchar_t* K_UPDATING_LABEL = L"Updating";
 
+constexpr std::wstring_view K_PASSWORD_PLACEHOLDER = L"Master password";
+constexpr std::wstring_view K_WRONG_PASSWORD_LABEL = L"Wrong password";
+
 constexpr wchar_t K_ELLIPSIS = 0x2026;
 
 enum class RowKind : u8 {
@@ -179,6 +204,7 @@ enum class RowKind : u8 {
 	ACCOUNT,
 	ACTION,
 	NOTE,
+	PASSWORD,
 	SEPARATOR,
 };
 
@@ -363,8 +389,18 @@ struct ToastCard {
 	D2D1_RECT_F open;
 };
 
+struct PasswordField {
+	u32   length    = 0;
+	bool  unlocking = false;
+	bool  wrong     = false;
+	bool  caret     = false;
+	float shift     = 0.0f;
+	float spin      = 0.0f;
+};
+
 struct Painter {
 	ID2D1Factory*      factory;
+	IDWriteFactory*    writer;
 	const TextFormats* formats;
 	ID2D1StrokeStyle*  stroke;
 	os::TrayColors     colors;
@@ -372,6 +408,7 @@ struct Painter {
 	float              login_width;
 	float              update_width;
 	float              updating_width;
+	PasswordField      password;
 };
 
 [[nodiscard]] auto taskbar_created_message() -> UINT
@@ -1106,6 +1143,80 @@ auto paint_update(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1So
 	t_target->SetTransform(base);
 }
 
+[[nodiscard]] auto password_submit_rect(const D2D1_RECT_F& t_field) -> D2D1_RECT_F
+{
+	const float middle = (t_field.top + t_field.bottom) * 0.5f;
+	const float inset  = (t_field.bottom - t_field.top - K_FIELD_SUBMIT_SIZE) * 0.5f;
+
+	return D2D1::RectF(t_field.right - inset - K_FIELD_SUBMIT_SIZE, middle - K_FIELD_SUBMIT_SIZE * 0.5f, t_field.right - inset, middle + K_FIELD_SUBMIT_SIZE * 0.5f);
+}
+
+[[nodiscard]] auto password_field_rect(const D2D1_RECT_F& t_row) -> D2D1_RECT_F
+{
+	return D2D1::RectF(t_row.left, t_row.top + K_FIELD_INSET_Y, t_row.right, t_row.bottom - K_FIELD_INSET_Y);
+}
+
+auto paint_password_field(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1SolidColorBrush* t_brush, const D2D1_RECT_F& t_row) -> void
+{
+	const os::TrayColors& colors  = t_painter.colors;
+	const TextFormats&    formats = *t_painter.formats;
+	const PasswordField&  field   = t_painter.password;
+	const float           scale   = t_painter.scale;
+
+	const auto paint = [&](Color t_color, float t_opacity = 1.0f) {
+		t_brush->SetColor(to_d2d(t_color, t_opacity));
+		return t_brush;
+	};
+
+	const D2D1_RECT_F       frame  = password_field_rect(D2D1::RectF(t_row.left + field.shift, t_row.top, t_row.right + field.shift, t_row.bottom));
+	const D2D1_ROUNDED_RECT shape  = {frame, K_FIELD_RADIUS, K_FIELD_RADIUS};
+	const float             middle = (frame.top + frame.bottom) * 0.5f;
+	const D2D1_RECT_F       submit = password_submit_rect(frame);
+	const D2D1_RECT_F       lock   = centered_box(frame.left + K_FIELD_PADDING, middle, K_GLYPH_SIZE, scale);
+	const float             left   = lock.right + K_ICON_GAP;
+	const float             right  = submit.left - K_ICON_GAP;
+
+	t_target->FillRoundedRectangle(shape, paint(colors.text, K_FIELD_FILL_ALPHA));
+	t_target->DrawRoundedRectangle(shape, paint(field.wrong ? colors.error : colors.accent, K_FIELD_BORDER_ALPHA), 1.0f);
+	draw_glyph(t_target, t_painter, Glyph::LOCK, lock, paint(colors.text_dim));
+
+	float caret_x = left;
+
+	if (field.length == 0) {
+		const std::wstring_view hint = field.wrong ? K_WRONG_PASSWORD_LABEL : K_PASSWORD_PLACEHOLDER;
+		draw_label(t_target, formats.body.Get(), hint, left, right, frame, paint(field.wrong ? colors.error : colors.text_disabled));
+	} else {
+		const float        bullet_width = std::max(text_width(t_painter.writer, formats.body.Get(), std::wstring_view{&K_BULLET, 1}), 1.0f);
+		const auto         fitting      = static_cast<u32>(std::max(1.0f, (right - left - K_CARET_WIDTH * 2.0f) / bullet_width));
+		const std::wstring bullets(std::min(field.length, fitting), K_BULLET);
+
+		draw_label(t_target, formats.body.Get(), bullets, left, right, frame, paint(colors.text));
+		caret_x = left + text_width(t_painter.writer, formats.body.Get(), bullets) + 1.0f;
+	}
+
+	if (field.caret) {
+		const float       x = snapped(caret_x, scale);
+		const D2D1_RECT_F caret{x, middle - K_CARET_HEIGHT * 0.5f, x + K_CARET_WIDTH, middle + K_CARET_HEIGHT * 0.5f};
+		t_target->FillRectangle(caret, paint(colors.accent));
+	}
+
+	const D2D1_POINT_2F center = D2D1::Point2F((submit.left + submit.right) * 0.5f, middle);
+
+	if (field.unlocking) {
+		D2D1::Matrix3x2F upright;
+		t_target->GetTransform(&upright);
+
+		t_target->SetTransform(D2D1::Matrix3x2F::Rotation(field.spin * 360.0f, center) * upright);
+		draw_glyph(t_target, t_painter, Glyph::REFRESH, centered_box(center.x - K_GLYPH_SIZE * 0.5f, middle, K_GLYPH_SIZE, scale), paint(colors.accent));
+		t_target->SetTransform(upright);
+		return;
+	}
+
+	const D2D1_ROUNDED_RECT button{submit, K_FIELD_SUBMIT_RADIUS, K_FIELD_SUBMIT_RADIUS};
+	t_target->FillRoundedRectangle(button, paint(colors.accent, field.length > 0 ? 1.0f : K_FIELD_IDLE_SUBMIT));
+	draw_glyph(t_target, t_painter, Glyph::CHEVRON, centered_box(center.x - K_CHEVRON_SIZE * 0.5f, middle, K_CHEVRON_SIZE, scale), paint(colors.accent_ink));
+}
+
 auto paint_panel(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1SolidColorBrush* t_brush, const Panel& t_panel, const MenuImages& t_images, const UpdateBadge* t_badge, const D2D1::Matrix3x2F& t_base) -> void
 {
 	const os::TrayColors& colors  = t_painter.colors;
@@ -1241,6 +1352,11 @@ auto paint_panel(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1Sol
 				}
 
 				draw_label(t_target, formats.body.Get(), row.label, row.label_x, right, box, paint(colors.text_disabled));
+				break;
+			}
+
+			case PASSWORD: {
+				paint_password_field(t_target, t_painter, t_brush, box);
 				break;
 			}
 
@@ -1466,6 +1582,15 @@ struct Tray::Native {
 
 	LoginToast toast;
 
+	POINT             menu_anchor{};
+	wchar_t           password[K_TRAY_PASSWORD_LENGTH]{};
+	u32               password_length = 0;
+	bool              unlocking       = false;
+	bool              wrong_password  = false;
+	float             shake_seconds   = 0.0f;
+	float             spin_seconds    = 0.0f;
+	Clock::time_point caret_epoch;
+
 	static auto CALLBACK window_proc(HWND t_window, UINT t_message, WPARAM t_wparam, LPARAM t_lparam) -> LRESULT;
 	static auto CALLBACK popup_proc(HWND t_window, UINT t_message, WPARAM t_wparam, LPARAM t_lparam) -> LRESULT;
 
@@ -1482,7 +1607,7 @@ struct Tray::Native {
 	[[nodiscard]] auto ensure_popup() -> bool;
 	[[nodiscard]] auto popup_window(DWORD t_extra_style) -> HWND;
 	[[nodiscard]] auto painter(float t_scale) const -> Painter;
-	auto show_menu() -> void;
+	auto show_menu_at(POINT t_anchor) -> void;
 	auto close_menu() -> void;
 	auto choose(const Row& t_row) -> void;
 	auto build_games(Panel* t_panel) -> void;
@@ -1519,6 +1644,17 @@ struct Tray::Native {
 	[[nodiscard]] auto step_badge(float t_seconds, float t_blend) -> bool;
 	auto on_key(WPARAM t_key) -> void;
 	auto step_hot(Panel* t_panel, i32 t_step) -> void;
+
+	[[nodiscard]] auto shows_password_field() const -> bool;
+	[[nodiscard]] auto caret_shown() const -> bool;
+	[[nodiscard]] auto shake_offset() const -> float;
+	[[nodiscard]] auto over_password_submit(const Row& t_row, float t_x, float t_y) const -> bool;
+	[[nodiscard]] auto edit_password(WPARAM t_key) -> bool;
+	auto on_char(wchar_t t_character) -> void;
+	auto type_into_password(std::wstring_view t_text) -> void;
+	auto paste_into_password() -> void;
+	auto clear_password() -> void;
+	auto submit_password() -> void;
 	auto watch() -> void;
 	auto start_animation() -> void;
 	auto animate() -> void;
@@ -1611,7 +1747,12 @@ auto Tray::set_locked(bool t_locked) -> void
 	Native* native = m_native.get();
 	if (t_locked == native->locked) return;
 
-	native->locked = t_locked;
+	const bool reopen = native->open && !t_locked;
+
+	native->locked         = t_locked;
+	native->unlocking      = false;
+	native->wrong_password = false;
+	native->clear_password();
 	native->close_menu();
 
 	if (native->locked && native->locked_icon == nullptr) {
@@ -1619,6 +1760,35 @@ auto Tray::set_locked(bool t_locked) -> void
 	}
 
 	native->update_icon();
+
+	if (reopen) {
+		native->show_menu_at(native->menu_anchor);
+	}
+}
+
+auto Tray::take_unlock_password(std::span<char> t_out) -> std::string_view
+{
+	Native* native = m_native.get();
+	if (t_out.empty()) return {};
+
+	const int written = WideCharToMultiByte(CP_UTF8, 0, native->password, static_cast<int>(native->password_length), t_out.data(), static_cast<int>(t_out.size() - 1), nullptr, nullptr);
+	SecureZeroMemory(native->password, sizeof(native->password));
+
+	const usize length = static_cast<usize>(std::max(written, 0));
+	t_out[length]      = '\0';
+
+	return std::string_view{t_out.data(), length};
+}
+
+auto Tray::show_unlock_failure() -> void
+{
+	Native* native = m_native.get();
+
+	native->unlocking      = false;
+	native->wrong_password = native->open;
+	native->shake_seconds  = native->open ? K_SHAKE_SECONDS : 0.0f;
+	native->clear_password();
+	native->start_animation();
 }
 
 auto Tray::show_login(const TrayLogin& t_login) -> void
@@ -1768,6 +1938,7 @@ auto Tray::Native::painter(float t_scale) const -> Painter
 {
 	return Painter{
 		.factory        = factory.Get(),
+		.writer         = writer.Get(),
 		.formats        = &formats,
 		.stroke         = stroke.Get(),
 		.colors         = colors,
@@ -1775,7 +1946,15 @@ auto Tray::Native::painter(float t_scale) const -> Painter
 		.login_width    = login_width,
 		.update_width   = update_width,
 		.updating_width = updating_width,
-
+		.password =
+			PasswordField{
+				.length    = password_length,
+				.unlocking = unlocking,
+				.wrong     = wrong_password,
+				.caret     = caret_shown(),
+				.shift     = shake_offset(),
+				.spin      = spin_seconds / K_SPIN_SECONDS,
+			},
 	};
 }
 
@@ -1786,7 +1965,9 @@ auto Tray::Native::build_games(Panel* t_panel) -> void
 	rows->push_back(Row{.kind = RowKind::BRAND, .label = win32::K_APP_NAME_WIDE});
 	rows->push_back(Row{.kind = RowKind::SEPARATOR});
 
-	if (menu.locked) {
+	if (menu.locked && menu.can_unlock) {
+		rows->push_back(Row{.kind = RowKind::PASSWORD});
+	} else if (menu.locked) {
 		rows->push_back(Row{.kind = RowKind::NOTE, .label = L"Vault locked", .glyph = Glyph::LOCK});
 	} else if (menu.game_count == 0) {
 		rows->push_back(Row{.kind = RowKind::NOTE, .label = L"No games"});
@@ -1851,9 +2032,14 @@ auto Tray::Native::lay_out(Panel* t_panel, float t_min_width, bool t_icon_column
 
 	for (Row& row : t_panel->rows) {
 		row.top     = y;
-		row.height  = row.kind == RowKind::SEPARATOR ? K_SEPARATOR_HEIGHT : K_ROW_HEIGHT;
+		row.height  = row.kind == RowKind::SEPARATOR ? K_SEPARATOR_HEIGHT : (row.kind == RowKind::PASSWORD ? K_FIELD_ROW_HEIGHT : K_ROW_HEIGHT);
 		row.label_x = K_PANEL_PADDING + K_ROW_INSET + (t_icon_column ? K_ICON_SIZE + K_ICON_GAP : 0.0f);
 		y += row.height;
+
+		if (row.kind == RowKind::PASSWORD) {
+			widest = std::max(widest, K_FIELD_MIN_WIDTH + K_PANEL_PADDING * 2.0f);
+			continue;
+		}
 
 		const float label = text_width(writer.Get(), (row.kind == RowKind::BRAND ? formats.strong : formats.body).Get(), row.label);
 		float       need  = row.label_x + label + K_ROW_INSET + K_PANEL_PADDING;
@@ -1903,22 +2089,20 @@ auto Tray::Native::to_menu_space(const RECT& t_screen) const -> D2D1_RECT_F
 }
 
 // The menu is one window holding the games and room for any game's accounts beside them, which open on the side with space for them.
-auto Tray::Native::show_menu() -> void
+auto Tray::Native::show_menu_at(POINT t_anchor) -> void
 {
 	if (!ensure_popup()) return;
 
 	close_menu();
 
-	POINT cursor;
-	GetCursorPos(&cursor);
-
+	menu_anchor = t_anchor;
 	menu        = TrayMenu{};
 	menu.locked = locked;
 	if (fill_menu) {
 		fill_menu(&menu);
 	}
 
-	const HMONITOR monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
+	const HMONITOR monitor = MonitorFromPoint(t_anchor, MONITOR_DEFAULTTONEAREST);
 	MONITORINFO    info{.cbSize = sizeof(MONITORINFO)};
 	GetMonitorInfoW(monitor, &info);
 	work = info.rcWork;
@@ -1933,7 +2117,7 @@ auto Tray::Native::show_menu() -> void
 	lay_out(&games, K_GAMES_MIN_WIDTH, true);
 
 	SIZE games_size = pixel_size(games);
-	CalculatePopupWindowPosition(&cursor, &games_size, TPM_LEFTALIGN | TPM_BOTTOMALIGN | TPM_WORKAREA, nullptr, &games_screen);
+	CalculatePopupWindowPosition(&t_anchor, &games_size, TPM_LEFTALIGN | TPM_BOTTOMALIGN | TPM_WORKAREA, nullptr, &games_screen);
 
 	Panel sizing;
 	LONG  widest = 0;
@@ -1978,8 +2162,9 @@ auto Tray::Native::show_menu() -> void
 	accounts_focused = false;
 	open_row.reset();
 	shown_row.reset();
-	appear = 0.0f;
-	reveal = 0.0f;
+	appear      = 0.0f;
+	reveal      = 0.0f;
+	caret_epoch = Clock::now();
 
 	render_menu();
 	ShowWindow(menu_window, SW_SHOW);
@@ -1999,10 +2184,17 @@ auto Tray::Native::close_menu() -> void
 	accounts_focused = false;
 	games.hot.reset();
 	accounts.hot.reset();
+	wrong_password = false;
+	shake_seconds  = 0.0f;
+
+	if (!unlocking) {
+		clear_password();
+	}
 
 	KillTimer(menu_window, K_ANIMATION_TIMER);
 	KillTimer(menu_window, K_AIM_TIMER);
 	KillTimer(menu_window, K_WATCH_TIMER);
+	KillTimer(menu_window, K_CARET_TIMER);
 	ShowWindow(menu_window, SW_HIDE);
 }
 
@@ -2304,6 +2496,8 @@ auto Tray::Native::on_click(LPARAM t_lparam) -> void
 
 	if (panel == &games && clicked.kind == RowKind::BRAND && over_update(x, y)) {
 		press_update();
+	} else if (clicked.kind == RowKind::PASSWORD && over_password_submit(clicked, x, y)) {
+		submit_password();
 	} else if (clicked.kind == RowKind::GAME) {
 		KillTimer(menu_window, K_AIM_TIMER);
 		point_at_game(row);
@@ -2388,6 +2582,8 @@ auto Tray::Native::step_badge(float t_seconds, float t_blend) -> bool
 
 auto Tray::Native::on_key(WPARAM t_key) -> void
 {
+	if (shows_password_field() && edit_password(t_key)) return;
+
 	Panel* panel = accounts_focused ? &accounts : &games;
 
 	switch (t_key) {
@@ -2558,12 +2754,152 @@ auto Tray::Native::animate() -> void
 
 	ease(&games, open_row);
 	ease(&accounts, std::nullopt);
+
+	spin_seconds += unlocking ? seconds : 0.0f;
+	shake_seconds = std::max(0.0f, shake_seconds - seconds);
+	moving        = moving || unlocking || shake_seconds > 0.0f;
+
 	render_menu();
 
 	if (!moving) {
 		animating = false;
 		KillTimer(menu_window, K_ANIMATION_TIMER);
 	}
+
+	if (shows_password_field()) {
+		SetTimer(menu_window, K_CARET_TIMER, static_cast<UINT>(K_CARET_BLINK_SECONDS * 1000.0f), nullptr);
+	}
+}
+
+auto Tray::Native::shows_password_field() const -> bool
+{
+	return open && locked && menu.can_unlock;
+}
+
+auto Tray::Native::caret_shown() const -> bool
+{
+	if (!shows_password_field() || unlocking) return false;
+
+	const float since_typing = std::chrono::duration<float>(Clock::now() - caret_epoch).count();
+
+	return std::fmod(since_typing, K_CARET_BLINK_SECONDS * 2.0f) < K_CARET_BLINK_SECONDS;
+}
+
+auto Tray::Native::shake_offset() const -> float
+{
+	if (shake_seconds <= 0.0f) return 0.0f;
+
+	const float remaining = shake_seconds / K_SHAKE_SECONDS;
+
+	return std::sin((1.0f - remaining) * K_SHAKE_TURNS * 2.0f * std::numbers::pi_v<float>) * K_SHAKE_DISTANCE * remaining;
+}
+
+auto Tray::Native::over_password_submit(const Row& t_row, float t_x, float t_y) const -> bool
+{
+	const D2D1_RECT_F row{K_PANEL_PADDING, t_row.top, games.frame.right - games.frame.left - K_PANEL_PADDING, t_row.top + t_row.height};
+
+	return contains(password_submit_rect(password_field_rect(row)), t_x, t_y);
+}
+
+auto Tray::Native::edit_password(WPARAM t_key) -> bool
+{
+	const bool control = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+
+	switch (t_key) {
+		case VK_RETURN: {
+			if (unlocking) return true;
+			if (password_length == 0) return false;
+
+			submit_password();
+			return true;
+		}
+
+		case VK_BACK: {
+			if (unlocking) return true;
+
+			if (control) {
+				clear_password();
+			} else if (password_length > 0) {
+				password_length -= 1;
+				password[password_length] = L'\0';
+			}
+
+			wrong_password = false;
+			caret_epoch    = Clock::now();
+			start_animation();
+			return true;
+		}
+
+		case 'V': {
+			if (!control) return false;
+
+			paste_into_password();
+			return true;
+		}
+
+		default: {
+			return false;
+		}
+	}
+}
+
+auto Tray::Native::on_char(wchar_t t_character) -> void
+{
+	if (!shows_password_field()) return;
+
+	type_into_password(std::wstring_view{&t_character, 1});
+}
+
+auto Tray::Native::type_into_password(std::wstring_view t_text) -> void
+{
+	if (unlocking) return;
+
+	u32 typed = 0;
+
+	for (const wchar_t character : t_text) {
+		if (character < L' ' || character == 0x7F || password_length == K_TRAY_PASSWORD_LENGTH) continue;
+
+		password[password_length] = character;
+		password_length += 1;
+		typed += 1;
+	}
+
+	if (typed == 0) return;
+
+	wrong_password = false;
+	caret_epoch    = Clock::now();
+	start_animation();
+}
+
+auto Tray::Native::paste_into_password() -> void
+{
+	if (unlocking || !OpenClipboard(menu_window)) return;
+
+	if (const HANDLE data = GetClipboardData(CF_UNICODETEXT); data != nullptr) {
+		if (const auto* text = static_cast<const wchar_t*>(GlobalLock(data)); text != nullptr) {
+			type_into_password(std::wstring_view{text});
+			GlobalUnlock(data);
+		}
+	}
+
+	CloseClipboard();
+}
+
+auto Tray::Native::clear_password() -> void
+{
+	SecureZeroMemory(password, sizeof(password));
+	password_length = 0;
+}
+
+auto Tray::Native::submit_password() -> void
+{
+	if (unlocking || password_length == 0) return;
+
+	unlocking      = true;
+	wrong_password = false;
+	spin_seconds   = 0.0f;
+	pending_event  = TrayEvent{.type = TrayEventType::UNLOCK};
+	start_animation();
 }
 
 auto Tray::Native::add_icon() -> bool
@@ -2626,7 +2962,9 @@ auto Tray::Native::handle_message(UINT t_message, WPARAM t_wparam, LPARAM t_lpar
 				close_menu();
 				pending_event = TrayEvent{.type = TrayEventType::SHOW_WINDOW};
 			} else if (LOWORD(t_lparam) == WM_RBUTTONUP || LOWORD(t_lparam) == WM_CONTEXTMENU) {
-				show_menu();
+				POINT cursor;
+				GetCursorPos(&cursor);
+				show_menu_at(cursor);
 			}
 
 			return 0;
@@ -2712,9 +3050,16 @@ auto Tray::Native::handle_menu_message(UINT t_message, WPARAM t_wparam, LPARAM t
 			return 0;
 		}
 
+		case WM_CHAR: {
+			on_char(static_cast<wchar_t>(t_wparam));
+			return 0;
+		}
+
 		case WM_TIMER: {
 			if (t_wparam == K_ANIMATION_TIMER) {
 				animate();
+			} else if (t_wparam == K_CARET_TIMER) {
+				render_menu();
 			} else if (t_wparam == K_WATCH_TIMER) {
 				watch();
 			} else if (t_wparam == K_AIM_TIMER) {

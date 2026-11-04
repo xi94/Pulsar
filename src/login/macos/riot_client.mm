@@ -36,6 +36,7 @@ constexpr const char* K_PERMISSION_MISSING_MESSAGE = "Pulsar needs the Accessibi
 constexpr const char* K_ACCESSIBILITY_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
 constexpr const char* K_USERNAME_FIELD_NAME        = "USERNAME";
 constexpr const char* K_PASSWORD_FIELD_NAME        = "PASSWORD";
+constexpr const char* K_SIGN_IN_BUTTON_NAME        = "Sign in";
 constexpr const char* K_PLAY_BUTTON_NAME           = "Play";
 constexpr const char* K_LOGIN_ERROR_NAME           = "Login error";
 constexpr const char* K_INVALID_CREDENTIALS_REASON = "Your login credentials don't match an account in our system.";
@@ -46,8 +47,6 @@ constexpr auto  K_POLL_INTERVAL           = std::chrono::milliseconds(100);
 constexpr auto  K_LAUNCH_TIMEOUT          = std::chrono::seconds(15);
 constexpr float K_MESSAGING_TIMEOUT       = 0.75f;
 constexpr u32   K_FOCUS_SETTLE_MS         = 500;
-constexpr u32   K_FORM_GONE_POLLS         = 30;
-constexpr u32   K_FORM_STUCK_POLLS        = 150;
 constexpr usize K_MAX_SEARCH_NODES        = 6000;
 
 struct AxNode {
@@ -266,6 +265,14 @@ auto installs_json_paths(std::vector<std::string>* t_out) -> void
 	return [CFBridgingRelease(focused) boolValue];
 }
 
+[[nodiscard]] auto is_enabled(id t_element) -> bool
+{
+	CFTypeRef enabled = nullptr;
+	if (AXUIElementCopyAttributeValue((__bridge AXUIElementRef)t_element, kAXEnabledAttribute, &enabled) != kAXErrorSuccess) return true;
+
+	return [CFBridgingRelease(enabled) boolValue];
+}
+
 auto focus(id t_element) -> void
 {
 	AXUIElementSetAttributeValue((__bridge AXUIElementRef)t_element, kAXFocusedAttribute, kCFBooleanTrue);
@@ -316,13 +323,27 @@ auto fill_field(pid_t t_pid, id t_field, NSString* t_value) -> void
 	type_text(t_pid, t_value);
 }
 
-[[nodiscard]] auto login_error_reason(id t_window, const std::atomic<bool>* t_cancel) -> std::string
+[[nodiscard]] auto is_tooltip(const AxNode& t_node) -> bool
+{
+	return [t_node.role isEqualToString:(__bridge NSString*)kAXHelpTagRole];
+}
+
+[[nodiscard]] auto login_error_text(id t_window, const std::atomic<bool>* t_cancel) -> std::string
 {
 	for (const char* reason : {K_INVALID_CREDENTIALS_REASON, K_TROUBLE_SIGNING_IN_REASON}) {
 		if (find_element(t_window, t_cancel, [reason](const AxNode& t_node) { return shows_text(t_node, reason); }) != nil) return reason;
 	}
 
-	return K_LOGIN_ERROR_NAME;
+	const id tooltip = find_element(t_window, t_cancel, is_tooltip);
+	if (tooltip == nil) return {};
+
+	const AxNode node = read_node(tooltip);
+
+	for (NSString* text : {node.description, node.title, node.value}) {
+		if (text.length > 0 && ![text isEqualToString:@(K_LOGIN_ERROR_NAME)]) return os::macos::to_utf8(text);
+	}
+
+	return {};
 }
 
 [[nodiscard]] auto find_login_fields(id t_window, const std::atomic<bool>* t_cancel, id* t_username, id* t_password, bool* t_by_name) -> bool
@@ -340,23 +361,15 @@ auto fill_field(pid_t t_pid, id t_field, NSString* t_value) -> void
 	return *t_username != nil && *t_password != nil;
 }
 
-[[nodiscard]] auto is_login_form_shown(id t_window, const std::atomic<bool>* t_cancel, bool t_by_name) -> bool
-{
-	if (!t_by_name) return find_element(t_window, t_cancel, [](const AxNode& t_node) { return is_text_field(t_node, true); }) != nil;
-
-	return find_element(t_window, t_cancel, [](const AxNode& t_node) { return is_named(t_node, K_USERNAME_FIELD_NAME) || is_named(t_node, K_PASSWORD_FIELD_NAME); }) != nil;
-}
-
-[[nodiscard]] auto shown_login_error(id t_window, const std::atomic<bool>* t_cancel, bool t_by_name) -> std::optional<std::string>
+[[nodiscard]] auto shown_login_error(id t_window, const std::atomic<bool>* t_cancel, bool t_fields_found_by_name) -> std::optional<std::string>
 {
 	if (find_element(t_window, t_cancel, [](const AxNode& t_node) { return shows_text(t_node, K_LOGIN_ERROR_NAME); }) != nil) {
-		return login_error_reason(t_window, t_cancel);
+		return login_error_text(t_window, t_cancel);
 	}
 
-	const auto is_tooltip = [](const AxNode& t_node) { return [t_node.role isEqualToString:(__bridge NSString*)kAXHelpTagRole]; };
-	if (!t_by_name && find_element(t_window, t_cancel, is_tooltip) != nil) return std::string{};
+	if (t_fields_found_by_name || find_element(t_window, t_cancel, is_tooltip) == nil) return std::nullopt;
 
-	return std::nullopt;
+	return login_error_text(t_window, t_cancel);
 }
 
 [[nodiscard]] auto find_play_button(id t_window, const std::atomic<bool>* t_cancel) -> id
@@ -370,7 +383,6 @@ struct RiotClient::Native {
 	id                                    application   = nil;
 	id                                    cached_window = nil;
 	std::chrono::steady_clock::time_point cached_window_expiry;
-	bool                                  form_found_by_name = true;
 
 	[[nodiscard]] auto current_window() -> id;
 	auto wait_for_interface_window(const std::atomic<bool>* t_cancel) -> pid_t;
@@ -503,6 +515,11 @@ auto RiotClient::supports_product(std::string_view t_launch_product) -> bool
 	return t_launch_product == "league_of_legends";
 }
 
+auto RiotClient::forwards_launch_to_open_client() -> bool
+{
+	return false;
+}
+
 auto RiotClient::executable_name() -> const char*
 {
 	return K_CLIENT_BUNDLE_NAME;
@@ -600,22 +617,20 @@ auto RiotClient::launch(std::string_view t_launch_product) -> bool
 	return true;
 }
 
-auto RiotClient::wait_for_responsive_window() -> void
+auto RiotClient::has_open_window() const -> bool
 {
-	m_native->wait_for_interface_window(m_cancel);
+	const pid_t pid = interface_process();
+
+	return pid != 0 && has_visible_window(pid);
 }
 
-auto RiotClient::bring_to_foreground() -> bool
+auto RiotClient::bring_to_front() -> void
 {
 	const pid_t pid = m_native->wait_for_interface_window(m_cancel);
-	if (pid == 0) return false;
 
-	return [[NSRunningApplication runningApplicationWithProcessIdentifier:pid] activateWithOptions:NSApplicationActivateAllWindows];
-}
-
-auto RiotClient::take_keyboard_focus() -> bool
-{
-	return bring_to_foreground();
+	if (pid != 0) {
+		[[NSRunningApplication runningApplicationWithProcessIdentifier:pid] activateWithOptions:NSApplicationActivateAllWindows];
+	}
 }
 
 auto RiotClient::start_automation() -> bool
@@ -647,131 +662,77 @@ auto RiotClient::stop_automation() -> void
 	m_native->application   = nil;
 }
 
-auto RiotClient::submit_login(std::string_view t_username, std::string_view t_password) -> bool
+auto RiotClient::look() -> ClientView
+{
+	if (m_native->application == nil) return {};
+
+	const id window = m_native->current_window();
+	if (window == nil) return {};
+
+	ClientView view{.window_shown = true};
+
+	id   username_field = nil;
+	id   password_field = nil;
+	bool by_name        = true;
+
+	if (find_login_fields(window, m_cancel, &username_field, &password_field, &by_name)) {
+		view.login_form_shown = true;
+		view.login_error      = shown_login_error(window, m_cancel, by_name);
+		return view;
+	}
+
+	const id play     = find_play_button(window, m_cancel);
+	view.play_shown   = play != nil;
+	view.play_enabled = play != nil && is_enabled(play);
+
+	return view;
+}
+
+auto RiotClient::fill_and_submit(std::string_view t_username, std::string_view t_password, SubmitWith t_submit) -> bool
 {
 	if (m_native->application == nil) return false;
 
-	id  username_field = nil;
-	id  password_field = nil;
-	u32 polls          = 0;
+	const id window         = m_native->current_window();
+	id       username_field = nil;
+	id       password_field = nil;
+	bool     by_name        = true;
 
-	debug_log::write(K_LOG_CATEGORY, "looking for the login form (until cancelled)");
-
-	for (;;) {
-		const id window = m_native->current_window();
-		if (window != nil && find_login_fields(window, m_cancel, &username_field, &password_field, &m_native->form_found_by_name)) {
-			debug_log::write(K_LOG_CATEGORY, "login form found after %u poll(s) (%s)", polls, m_native->form_found_by_name ? "by name" : "by field type");
-			break;
-		}
-
-		polls += 1;
-
-		if (is_cancelled(m_cancel)) {
-			debug_log::write(K_LOG_CATEGORY, "login form NOT found after %u poll(s) (cancelled; window %s)", polls, window != nil ? "yes" : "no");
-			return false;
-		}
-
-		std::this_thread::sleep_for(K_POLL_INTERVAL);
+	if (window == nil || !find_login_fields(window, m_cancel, &username_field, &password_field, &by_name)) {
+		debug_log::write(K_LOG_CATEGORY, "the login form went away before it could be filled");
+		return false;
 	}
 
 	const pid_t pid = m_native->interface_pid;
 	fill_field(pid, username_field, os::macos::to_ns_string(t_username));
 	fill_field(pid, password_field, os::macos::to_ns_string(t_password));
 
+	if (t_submit == SubmitWith::SIGN_IN_BUTTON_OR_ENTER) {
+		const id sign_in = find_element(window, m_cancel, [](const AxNode& t_node) { return is_button_named(t_node, K_SIGN_IN_BUTTON_NAME); });
+
+		if (sign_in != nil && is_enabled(sign_in) && AXUIElementPerformAction((__bridge AXUIElementRef)sign_in, kAXPressAction) == kAXErrorSuccess) {
+			debug_log::write(K_LOG_CATEGORY, "submitted the login form with its Sign in button");
+			return true;
+		}
+	}
+
 	focus(password_field);
 	wait_for_keyboard_focus(password_field);
 
 	const char* focus_state = has_keyboard_focus(password_field) ? "has" : "does NOT have";
-	debug_log::write(K_LOG_CATEGORY, "submitting the login form (password field %s keyboard focus)", focus_state);
+	debug_log::write(K_LOG_CATEGORY, "submitting the login form with Return (password field %s keyboard focus)", focus_state);
 	post_key(pid, kVK_Return, nullptr, 0);
 
 	return true;
 }
 
-auto RiotClient::wait_for_login_result(std::string* t_out_error, const std::string* t_error_to_ignore) -> bool
+auto RiotClient::press_play() -> bool
 {
-	if (m_native->application == nil) {
-		t_out_error->clear();
-		return true;
-	}
+	if (m_native->application == nil) return false;
 
-	bool saw_no_error       = t_error_to_ignore == nullptr;
-	u32  polls_without_form = 0;
-	u32  polls_with_form    = 0;
+	const id window = m_native->current_window();
+	const id play   = window != nil ? find_play_button(window, m_cancel) : nil;
 
-	while (!is_cancelled(m_cancel)) {
-		const id window = m_native->current_window();
+	debug_log::write(K_LOG_CATEGORY, play != nil ? "pressing Play" : "Play went away before it could be pressed");
 
-		if (window != nil) {
-			if (std::optional<std::string> shown = shown_login_error(window, m_cancel, m_native->form_found_by_name)) {
-				if (saw_no_error || *shown != *t_error_to_ignore) {
-					debug_log::write(K_LOG_CATEGORY, "login error shown: \"%s\"", shown->c_str());
-					*t_out_error = std::move(*shown);
-					return true;
-				}
-
-				debug_log::write(K_LOG_CATEGORY, "ignoring the previous attempt's error, still on screen");
-			} else {
-				saw_no_error = true;
-			}
-
-			if (find_play_button(window, m_cancel) != nil) {
-				debug_log::write(K_LOG_CATEGORY, "the Play button is up - the client signed in");
-				return false;
-			}
-
-			const bool form_shown = is_login_form_shown(window, m_cancel, m_native->form_found_by_name);
-			polls_without_form    = form_shown ? 0 : polls_without_form + 1;
-			polls_with_form       = form_shown ? polls_with_form + 1 : 0;
-
-			// Without readable error text, a form that never went away after submitting is the only sign of a refused sign-in.
-			if (!m_native->form_found_by_name && polls_with_form >= K_FORM_STUCK_POLLS) {
-				debug_log::write(K_LOG_CATEGORY, "the login form never went away - treating it as a refused sign-in");
-				t_out_error->clear();
-				return true;
-			}
-
-			// The client hides the form while it talks to Riot, so only a long absence counts as signed in.
-			if (polls_without_form >= K_FORM_GONE_POLLS) {
-				debug_log::write(K_LOG_CATEGORY, "the login form stayed gone - the client signed in");
-				return false;
-			}
-		}
-
-		std::this_thread::sleep_for(K_POLL_INTERVAL);
-	}
-
-	debug_log::write(K_LOG_CATEGORY, "stopped waiting for the login result (cancelled)");
-
-	return false;
-}
-
-auto RiotClient::click_play_when_ready(u32 t_timeout_ms, std::string* t_out_error) -> PlayResult
-{
-	if (m_native->application == nil) return PlayResult::NOT_FOUND;
-
-	const auto deadline = deadline_after(t_timeout_ms);
-
-	for (;;) {
-		const id window = m_native->current_window();
-
-		if (std::optional<std::string> shown = window != nil ? shown_login_error(window, m_cancel, m_native->form_found_by_name) : std::nullopt) {
-			*t_out_error = std::move(*shown);
-			debug_log::write(K_LOG_CATEGORY, "login error shown while waiting for Play: \"%s\"", t_out_error->c_str());
-			return PlayResult::LOGIN_ERROR;
-		}
-
-		if (const id play_button = window != nil ? find_play_button(window, m_cancel) : nil; play_button != nil) {
-			debug_log::write(K_LOG_CATEGORY, "Play button found - pressing it");
-			AXUIElementPerformAction((__bridge AXUIElementRef)play_button, kAXPressAction);
-			return PlayResult::CLICKED;
-		}
-
-		if (is_cancelled(m_cancel) || is_past(deadline)) {
-			debug_log::write(K_LOG_CATEGORY, "Play button not found (%s) - leaving the game unlaunched", is_cancelled(m_cancel) ? "cancelled" : "timed out");
-			return PlayResult::NOT_FOUND;
-		}
-
-		std::this_thread::sleep_for(K_POLL_INTERVAL);
-	}
+	return play != nil && AXUIElementPerformAction((__bridge AXUIElementRef)play, kAXPressAction) == kAXErrorSuccess;
 }

@@ -10,6 +10,7 @@ add_executable (pulsar_tests
   "main.cpp"
   "enum_test.cpp"
   "library_test.cpp"
+  "login_test.cpp"
   "os_test.cpp"
   "riot_test.cpp"
   "text_input_test.cpp"

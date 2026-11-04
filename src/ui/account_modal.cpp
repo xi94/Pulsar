@@ -2064,7 +2064,7 @@ auto AccountModal::draw_login_progress(DrawList* t_draw_list, Rect t_main, u8 t_
 	if (step == 0) return;
 
 	char                   label[24];
-	const std::string_view step_text = format_into(label, "Step {} of {}", step, LoginSession::K_STEP_COUNT);
+	const std::string_view step_text = format_into(label, "Step {} of {}", step, m_session->step_count());
 	const Vec2             step_at{snapped_to_pixel(bar.center().x - text_width(secondary, step_text) * 0.5f), step_baseline};
 	const Color            step_color = faded(g_theme.text_faint, static_cast<u8>(t_alpha * (1.0f - m_session->m_outcome)));
 

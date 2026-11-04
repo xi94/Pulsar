@@ -47,6 +47,7 @@ constexpr BoolSetting K_BOOL_SETTINGS[]{
 	{"block_overlay_injection", &Settings::block_overlay_injection},
 	{"close_to_tray", &Settings::close_to_tray},
 	{"start_minimized", &Settings::start_minimized},
+	{"launch_game_after_login", &Settings::launch_game_after_login},
 };
 
 constexpr FloatSetting K_FLOAT_SETTINGS[]{

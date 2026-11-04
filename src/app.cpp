@@ -615,7 +615,7 @@ auto App::update_login_toast() -> void
 	os::TrayLogin login{
 		.state      = os::TrayLoginState::RUNNING,
 		.step       = m_login_session.step(),
-		.step_count = LoginSession::K_STEP_COUNT,
+		.step_count = m_login_session.step_count(),
 		.progress   = m_login_session.step_progress(),
 	};
 
@@ -640,7 +640,8 @@ auto App::clear_clipboard_secret() -> void
 auto App::fill_tray_menu(os::TrayMenu* t_menu) -> void
 {
 	m_updater.check_for_update();
-	t_menu->update = tray_update(m_updater.stage());
+	t_menu->update     = tray_update(m_updater.stage());
+	t_menu->can_unlock = m_locked && m_settings.master_password_enabled;
 
 	if (m_locked) return;
 
@@ -726,6 +727,20 @@ auto App::handle_tray_event() -> void
 
 		case LOCK: {
 			lock_vault();
+			break;
+		}
+
+		case UNLOCK: {
+			char                   password[os::K_TRAY_PASSWORD_BYTES];
+			const std::string_view typed = m_tray.take_unlock_password(password);
+
+			if (m_locked && m_settings.master_password_enabled && !typed.empty()) {
+				m_unlock_screen.unlock_with(typed);
+			} else if (m_locked) {
+				m_tray.show_unlock_failure();
+			}
+
+			sodium_memzero(password, sizeof(password));
 			break;
 		}
 
@@ -954,6 +969,11 @@ auto App::run_command(const Command& t_command) -> void
 		case VAULT_CREATED: {
 			commit_new_vault_key();
 			unlock();
+			break;
+		}
+
+		case VAULT_UNLOCK_FAILED: {
+			m_tray.show_unlock_failure();
 			break;
 		}
 

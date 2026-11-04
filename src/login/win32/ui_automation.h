@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <string>
 
 #include <Windows.h>
 #include <UIAutomation.h>
@@ -20,6 +21,7 @@ class UiElement {
 	auto invoke() const -> bool;
 	auto focus() const -> bool;
 	[[nodiscard]] auto has_keyboard_focus() const -> bool;
+	[[nodiscard]] auto is_enabled() const -> bool;
 
 	Microsoft::WRL::ComPtr<IUIAutomationElement> m_element;
 
@@ -46,6 +48,7 @@ class UiAutomation {
 	[[nodiscard]] auto find_descendant(const UiElement& t_root, const wchar_t* t_name, CONTROLTYPEID t_control_type) const -> UiElement;
 	[[nodiscard]] auto find_edit(const UiElement& t_root, bool t_password) const -> UiElement;
 	[[nodiscard]] auto find_of_type(const UiElement& t_root, CONTROLTYPEID t_control_type) const -> UiElement;
+	[[nodiscard]] auto text_inside(const UiElement& t_root, const wchar_t* t_ignored_text) const -> std::wstring;
 
 	auto type_text(const wchar_t* t_text) const -> void;
 	auto press_key(WORD t_virtual_key) const -> void;
@@ -54,6 +57,7 @@ class UiAutomation {
 	[[nodiscard]] auto is_cancelled() const -> bool;
 	[[nodiscard]] auto can_search(const UiElement& t_root) const -> bool;
 
+	[[nodiscard]] auto name_condition(const wchar_t* t_name) const -> Microsoft::WRL::ComPtr<IUIAutomationCondition>;
 	[[nodiscard]] auto find_first(const UiElement& t_root, const Microsoft::WRL::ComPtr<IUIAutomationCondition>& t_condition, const char* t_label) const -> UiElement;
 
 	const std::atomic<bool>*              m_cancel;

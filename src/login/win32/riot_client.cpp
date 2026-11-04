@@ -9,6 +9,7 @@
 #include <ranges>
 #include <span>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #include <Windows.h>
@@ -41,10 +42,10 @@ constexpr const char* K_AUTOMATION_FAILED_MESSAGE = "Couldn't start Windows UI A
 constexpr const wchar_t* K_CLIENT_WINDOW_TITLE        = L"Riot Client";
 constexpr const wchar_t* K_USERNAME_FIELD_NAME        = L"USERNAME";
 constexpr const wchar_t* K_PASSWORD_FIELD_NAME        = L"PASSWORD";
+constexpr const wchar_t* K_SIGN_IN_BUTTON_NAME        = L"Sign in";
 constexpr const wchar_t* K_PLAY_BUTTON_NAME           = L"Play";
 constexpr const wchar_t* K_LOGIN_ERROR_TOOLTIP_NAME   = L"Login error";
 constexpr const wchar_t* K_INVALID_CREDENTIALS_REASON = L"Your login credentials don't match an account in our system.";
-constexpr const wchar_t* K_UNRECOGNIZED_ERROR_REASON  = L"";
 constexpr const wchar_t* K_TROUBLE_SIGNING_IN_REASON  = L"Sorry, we're having trouble signing you in right now. Please try again later.";
 
 constexpr const wchar_t* K_CLIENT_PROCESS_NAMES[]{
@@ -66,8 +67,6 @@ constexpr auto K_WINDOW_ELEMENT_LIFETIME = std::chrono::milliseconds(2000);
 constexpr auto K_POLL_INTERVAL           = std::chrono::milliseconds(100);
 constexpr u32  K_RESPONSIVENESS_PROBE_MS = 750;
 constexpr u32  K_FOCUS_SETTLE_MS         = 500;
-constexpr u32  K_FORM_GONE_POLLS         = 30;
-constexpr u32  K_FORM_STUCK_POLLS        = 150;
 
 [[nodiscard]] auto is_cancelled(const std::atomic<bool>* t_cancel) -> bool
 {
@@ -360,52 +359,61 @@ auto wait_for_keyboard_focus(const UiElement& t_element) -> void
 	}
 }
 
-auto fill_field(const UiAutomation& t_automation, const UiElement& t_field, const std::wstring& t_value) -> void
+[[nodiscard]] auto is_in_front(HWND t_window) -> bool
 {
-	if (t_field.set_value(t_value.c_str())) return;
-
-	t_field.focus();
-	wait_for_keyboard_focus(t_field);
-	t_automation.type_text(t_value.c_str());
+	return GetAncestor(GetForegroundWindow(), GA_ROOT) == t_window;
 }
 
-[[nodiscard]] auto login_error_reason(const UiAutomation& t_automation, const UiElement& t_window) -> std::wstring
-{
-	for (const wchar_t* reason : {K_INVALID_CREDENTIALS_REASON, K_TROUBLE_SIGNING_IN_REASON}) {
-		if (t_automation.find_descendant(t_window, reason).is_valid()) return reason;
+struct LoginFields {
+	UiElement username;
+	UiElement password;
+	bool      by_name = false;
+
+	[[nodiscard]] auto found() const -> bool
+	{
+		return username.is_valid() && password.is_valid();
 	}
+};
 
-	return K_LOGIN_ERROR_TOOLTIP_NAME;
-}
-
-[[nodiscard]] auto find_login_fields(const UiAutomation& t_automation, const UiElement& t_window, UiElement* t_username, UiElement* t_password, bool* t_by_name) -> bool
+[[nodiscard]] auto find_login_fields(const UiAutomation& t_automation, const UiElement& t_window) -> LoginFields
 {
-	*t_username = t_automation.find_descendant(t_window, K_USERNAME_FIELD_NAME, UIA_EditControlTypeId);
-	*t_password = t_automation.find_descendant(t_window, K_PASSWORD_FIELD_NAME, UIA_EditControlTypeId);
-	*t_by_name  = true;
-	if (t_username->is_valid() && t_password->is_valid()) return true;
+	LoginFields by_name{
+		.username = t_automation.find_descendant(t_window, K_USERNAME_FIELD_NAME, UIA_EditControlTypeId),
+		.password = t_automation.find_descendant(t_window, K_PASSWORD_FIELD_NAME, UIA_EditControlTypeId),
+		.by_name  = true,
+	};
+	if (by_name.found()) return by_name;
 
 	// A client in another language names the fields differently, so fall back to the password box and the plain box beside it.
-	*t_password = t_automation.find_edit(t_window, true);
-	*t_username = t_password->is_valid() ? t_automation.find_edit(t_window, false) : UiElement{};
-	*t_by_name  = false;
+	const UiElement password = t_automation.find_edit(t_window, true);
+	if (!password.is_valid()) return {};
 
-	return t_username->is_valid() && t_password->is_valid();
+	return LoginFields{.username = t_automation.find_edit(t_window, false), .password = password, .by_name = false};
 }
 
-[[nodiscard]] auto is_login_form_shown(const UiAutomation& t_automation, const UiElement& t_window, bool t_by_name) -> bool
+[[nodiscard]] auto login_error_text(const UiAutomation& t_automation, const UiElement& t_window, const UiElement& t_tooltip) -> std::string
 {
-	if (!t_by_name) return t_automation.find_edit(t_window, true).is_valid();
+	for (const wchar_t* reason : {K_INVALID_CREDENTIALS_REASON, K_TROUBLE_SIGNING_IN_REASON}) {
+		if (t_automation.find_descendant(t_window, reason).is_valid()) return to_utf8(reason);
+	}
 
-	return t_automation.find_descendant(t_window, K_USERNAME_FIELD_NAME, UIA_EditControlTypeId).is_valid() || t_automation.find_descendant(t_window, K_PASSWORD_FIELD_NAME, UIA_EditControlTypeId).is_valid();
+	return to_utf8(t_automation.text_inside(t_tooltip, K_LOGIN_ERROR_TOOLTIP_NAME));
 }
 
-[[nodiscard]] auto shown_login_error(const UiAutomation& t_automation, const UiElement& t_window, bool t_by_name) -> std::optional<std::wstring>
+[[nodiscard]] auto shown_login_error(const UiAutomation& t_automation, const UiElement& t_window, bool t_fields_found_by_name) -> std::optional<std::string>
 {
-	if (t_automation.find_descendant(t_window, K_LOGIN_ERROR_TOOLTIP_NAME).is_valid()) return login_error_reason(t_automation, t_window);
-	if (!t_by_name && t_automation.find_of_type(t_window, UIA_ToolTipControlTypeId).is_valid()) return std::wstring{K_UNRECOGNIZED_ERROR_REASON};
+	const UiElement named_error = t_automation.find_descendant(t_window, K_LOGIN_ERROR_TOOLTIP_NAME);
+	if (named_error.is_valid()) {
+		const UiElement tooltip = t_automation.find_of_type(t_window, UIA_ToolTipControlTypeId);
+		return login_error_text(t_automation, t_window, tooltip.is_valid() ? tooltip : named_error);
+	}
 
-	return std::nullopt;
+	if (t_fields_found_by_name) return std::nullopt;
+
+	const UiElement tooltip = t_automation.find_of_type(t_window, UIA_ToolTipControlTypeId);
+	if (!tooltip.is_valid()) return std::nullopt;
+
+	return login_error_text(t_automation, t_window, tooltip);
 }
 }
 
@@ -415,12 +423,13 @@ struct RiotClient::Native {
 	HWND                                  cached_window = nullptr;
 	UiElement                             cached_window_element;
 	std::chrono::steady_clock::time_point cached_window_expiry;
-	bool                                  form_found_by_name = true;
 	std::optional<UiAutomation>           automation;
 
 	[[nodiscard]] auto find_client_window() const -> HWND;
 	[[nodiscard]] auto current_window_element(const UiAutomation* t_automation) -> UiElement;
 	auto wait_for_responsive_window(const std::atomic<bool>* t_cancel) const -> HWND;
+	[[nodiscard]] auto bring_client_in_front(const UiElement& t_field, const std::atomic<bool>* t_cancel) const -> bool;
+	[[nodiscard]] auto fill_field(const UiElement& t_field, const std::wstring& t_value, const std::atomic<bool>* t_cancel) const -> bool;
 };
 
 auto RiotClient::Native::find_client_window() const -> HWND
@@ -480,6 +489,34 @@ auto RiotClient::Native::wait_for_responsive_window(const std::atomic<bool>* t_c
 
 		std::this_thread::sleep_for(K_POLL_INTERVAL);
 	}
+}
+
+// Keystrokes go to whichever window is in front, so nothing is typed unless the client is that window.
+auto RiotClient::Native::bring_client_in_front(const UiElement& t_field, const std::atomic<bool>* t_cancel) const -> bool
+{
+	const HWND window = find_client_window();
+	if (window == nullptr) return false;
+
+	if (!is_in_front(window) || !t_field.has_keyboard_focus()) {
+		std::ignore = activate_window_unless_cancelled(window, true, t_cancel);
+		t_field.focus();
+		wait_for_keyboard_focus(t_field);
+	}
+
+	const bool in_front = is_in_front(window);
+	debug_log::write(K_LOG_CATEGORY, "client %s in front, field %s keyboard focus", in_front ? "is" : "is NOT", t_field.has_keyboard_focus() ? "has" : "does NOT have");
+
+	return in_front;
+}
+
+auto RiotClient::Native::fill_field(const UiElement& t_field, const std::wstring& t_value, const std::atomic<bool>* t_cancel) const -> bool
+{
+	if (t_field.set_value(t_value.c_str())) return true;
+	if (!bring_client_in_front(t_field, t_cancel)) return false;
+
+	automation->type_text(t_value.c_str());
+
+	return true;
 }
 
 RiotClient::RiotClient(const std::atomic<bool>* t_cancel)
@@ -544,6 +581,11 @@ auto RiotClient::permission_missing_message() -> const char*
 auto RiotClient::open_automation_permission_settings() -> void {}
 
 auto RiotClient::supports_product(std::string_view) -> bool
+{
+	return true;
+}
+
+auto RiotClient::forwards_launch_to_open_client() -> bool
 {
 	return true;
 }
@@ -638,29 +680,25 @@ auto RiotClient::launch(std::string_view t_launch_product) -> bool
 	return true;
 }
 
-auto RiotClient::wait_for_responsive_window() -> void
+auto RiotClient::has_open_window() const -> bool
 {
-	m_native->wait_for_responsive_window(m_cancel);
+	const HWND window = m_native->find_client_window();
+
+	return window != nullptr && is_window_responsive(window);
 }
 
-auto RiotClient::bring_to_foreground() -> bool
+auto RiotClient::bring_to_front() -> void
 {
 	const HWND window = m_native->wait_for_responsive_window(m_cancel);
 
-	return window != nullptr && activate_window_unless_cancelled(window, false, m_cancel);
-}
-
-auto RiotClient::take_keyboard_focus() -> bool
-{
-	const HWND window = m_native->wait_for_responsive_window(m_cancel);
-
-	return window != nullptr && activate_window_unless_cancelled(window, true, m_cancel);
+	if (window != nullptr) {
+		std::ignore = activate_window_unless_cancelled(window, false, m_cancel);
+	}
 }
 
 auto RiotClient::start_automation() -> bool
 {
 	m_native->automation.emplace(m_cancel);
-
 	return m_native->automation->init();
 }
 
@@ -671,139 +709,78 @@ auto RiotClient::stop_automation() -> void
 	m_native->automation.reset();
 }
 
-auto RiotClient::submit_login(std::string_view t_username, std::string_view t_password) -> bool
+auto RiotClient::look() -> ClientView
+{
+	if (!m_native->automation) return {};
+
+	const UiAutomation& automation = *m_native->automation;
+	const UiElement     window     = m_native->current_window_element(&automation);
+	if (!window.is_valid()) return {};
+
+	ClientView view{.window_shown = true};
+
+	const LoginFields fields = find_login_fields(automation, window);
+	if (fields.found()) {
+		view.login_form_shown = true;
+		view.login_error      = shown_login_error(automation, window, fields.by_name);
+		return view;
+	}
+
+	const UiElement play = automation.find_descendant(window, K_PLAY_BUTTON_NAME, UIA_ButtonControlTypeId);
+	view.play_shown      = play.is_valid();
+	view.play_enabled    = play.is_enabled();
+
+	return view;
+}
+
+auto RiotClient::fill_and_submit(std::string_view t_username, std::string_view t_password, SubmitWith t_submit) -> bool
 {
 	if (!m_native->automation) return false;
 
-	const UiAutomation* automation = &*m_native->automation;
-	UiElement           username_field;
-	UiElement           password_field;
-	u32                 polls = 0;
+	const UiAutomation& automation = *m_native->automation;
+	const UiElement     window     = m_native->current_window_element(&automation);
+	const LoginFields   fields     = window.is_valid() ? find_login_fields(automation, window) : LoginFields{};
 
-	debug_log::write(K_LOG_CATEGORY, "looking for the login form (until cancelled)");
-
-	for (;;) {
-		const UiElement window = m_native->current_window_element(automation);
-		if (window.is_valid()) {
-			if (find_login_fields(*automation, window, &username_field, &password_field, &m_native->form_found_by_name)) {
-				debug_log::write(K_LOG_CATEGORY, "login form found after %u poll(s) (%s)", polls, m_native->form_found_by_name ? "by name" : "by field type");
-				break;
-			}
-		}
-
-		polls += 1;
-
-		if (is_cancelled(m_cancel)) {
-			debug_log::write(K_LOG_CATEGORY, "login form NOT found after %u poll(s) (cancelled; window %s, username %s, password %s)", polls, window.is_valid() ? "yes" : "no", username_field.is_valid() ? "yes" : "no", password_field.is_valid() ? "yes" : "no");
-			return false;
-		}
-
-		std::this_thread::sleep_for(K_POLL_INTERVAL);
+	if (!fields.found()) {
+		debug_log::write(K_LOG_CATEGORY, "the login form went away before it could be filled");
+		return false;
 	}
 
-	fill_field(*automation, username_field, to_wide(t_username));
-	fill_field(*automation, password_field, to_wide(t_password));
+	const bool filled = m_native->fill_field(fields.username, to_wide(t_username), m_cancel) && m_native->fill_field(fields.password, to_wide(t_password), m_cancel);
+	if (!filled) {
+		debug_log::write(K_LOG_CATEGORY, "the login form could not be filled - the client never came in front");
+		return false;
+	}
 
-	password_field.focus();
-	wait_for_keyboard_focus(password_field);
+	if (t_submit == SubmitWith::SIGN_IN_BUTTON_OR_ENTER) {
+		const UiElement sign_in = automation.find_descendant(window, K_SIGN_IN_BUTTON_NAME, UIA_ButtonControlTypeId);
 
-	const char* focus_state = password_field.has_keyboard_focus() ? "has" : "does NOT have";
-	debug_log::write(K_LOG_CATEGORY, "submitting the login form (password field %s real keyboard focus)", focus_state);
-	automation->press_key(VK_RETURN);
+		if (sign_in.is_enabled() && sign_in.invoke()) {
+			debug_log::write(K_LOG_CATEGORY, "submitted the login form with its Sign in button");
+			return true;
+		}
+	}
+
+	if (!m_native->bring_client_in_front(fields.password, m_cancel)) {
+		debug_log::write(K_LOG_CATEGORY, "not pressing Enter - the client is not in front");
+		return false;
+	}
+
+	debug_log::write(K_LOG_CATEGORY, "submitting the login form with Enter");
+	automation.press_key(VK_RETURN);
 
 	return true;
 }
 
-auto RiotClient::wait_for_login_result(std::string* t_out_error, const std::string* t_error_to_ignore) -> bool
+auto RiotClient::press_play() -> bool
 {
-	if (!m_native->automation) {
-		t_out_error->clear();
-		return true;
-	}
+	if (!m_native->automation) return false;
 
-	const UiAutomation* automation         = &*m_native->automation;
-	bool                saw_no_tooltip     = t_error_to_ignore == nullptr;
-	u32                 polls_without_form = 0;
-	u32                 polls_with_form    = 0;
+	const UiAutomation& automation = *m_native->automation;
+	const UiElement     window     = m_native->current_window_element(&automation);
+	const UiElement     play       = window.is_valid() ? automation.find_descendant(window, K_PLAY_BUTTON_NAME, UIA_ButtonControlTypeId) : UiElement{};
 
-	while (!is_cancelled(m_cancel)) {
-		const UiElement window = m_native->current_window_element(automation);
+	debug_log::write(K_LOG_CATEGORY, play.is_valid() ? "pressing Play" : "Play went away before it could be pressed");
 
-		if (window.is_valid()) {
-			if (const std::optional<std::wstring> shown = shown_login_error(*automation, window, m_native->form_found_by_name)) {
-				std::string message = to_utf8(*shown);
-
-				if (saw_no_tooltip || message != *t_error_to_ignore) {
-					debug_log::write(K_LOG_CATEGORY, "login error shown: \"%s\"", message.c_str());
-					*t_out_error = std::move(message);
-					return true;
-				}
-
-				debug_log::write(K_LOG_CATEGORY, "ignoring the previous attempt's error tooltip, still on screen");
-			} else {
-				saw_no_tooltip = true;
-			}
-
-			if (automation->find_descendant(window, K_PLAY_BUTTON_NAME, UIA_ButtonControlTypeId).is_valid()) {
-				debug_log::write(K_LOG_CATEGORY, "the Play button is up - the client signed in");
-				return false;
-			}
-
-			const bool form_shown = is_login_form_shown(*automation, window, m_native->form_found_by_name);
-			polls_without_form    = form_shown ? 0 : polls_without_form + 1;
-			polls_with_form       = form_shown ? polls_with_form + 1 : 0;
-
-			// Without readable error text, a form that never went away after submitting is the only sign of a refused sign-in.
-			if (!m_native->form_found_by_name && polls_with_form >= K_FORM_STUCK_POLLS) {
-				debug_log::write(K_LOG_CATEGORY, "the login form never went away - treating it as a refused sign-in");
-				t_out_error->clear();
-				return true;
-			}
-
-			// The client hides the form while it talks to Riot, so only a long absence counts as signed in.
-			if (polls_without_form >= K_FORM_GONE_POLLS) {
-				debug_log::write(K_LOG_CATEGORY, "the login form stayed gone - the client signed in");
-				return false;
-			}
-		}
-
-		std::this_thread::sleep_for(K_POLL_INTERVAL);
-	}
-
-	debug_log::write(K_LOG_CATEGORY, "stopped waiting for the login result (cancelled)");
-
-	return false;
-}
-
-auto RiotClient::click_play_when_ready(u32 t_timeout_ms, std::string* t_out_error) -> PlayResult
-{
-	if (!m_native->automation) return PlayResult::NOT_FOUND;
-
-	const UiAutomation* automation = &*m_native->automation;
-	const auto          deadline   = deadline_after(t_timeout_ms);
-
-	for (;;) {
-		const UiElement window = m_native->current_window_element(automation);
-
-		if (const std::optional<std::wstring> shown = window.is_valid() ? shown_login_error(*automation, window, m_native->form_found_by_name) : std::nullopt) {
-			*t_out_error = to_utf8(*shown);
-			debug_log::write(K_LOG_CATEGORY, "login error shown while waiting for Play: \"%s\"", t_out_error->c_str());
-			return PlayResult::LOGIN_ERROR;
-		}
-
-		const UiElement play_button = window.is_valid() ? automation->find_descendant(window, K_PLAY_BUTTON_NAME, UIA_ButtonControlTypeId) : UiElement{};
-
-		if (play_button.is_valid()) {
-			debug_log::write(K_LOG_CATEGORY, "Play button found - invoking it");
-			play_button.invoke();
-			return PlayResult::CLICKED;
-		}
-
-		if (is_cancelled(m_cancel) || is_past(deadline)) {
-			debug_log::write(K_LOG_CATEGORY, "Play button not found (%s) - leaving the game unlaunched", is_cancelled(m_cancel) ? "cancelled" : "timed out");
-			return PlayResult::NOT_FOUND;
-		}
-
-		std::this_thread::sleep_for(K_POLL_INTERVAL);
-	}
+	return play.invoke();
 }

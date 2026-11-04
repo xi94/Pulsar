@@ -17,6 +17,7 @@ enum class TrayEventType : u8 {
 	QUICK_LOGIN,
 	RETRY_LOGIN,
 	SHOW_UPDATES,
+	UNLOCK,
 };
 
 // A quick login names its account by its game and its row among that game's accounts. Other events carry no account.
@@ -26,8 +27,10 @@ struct TrayEvent {
 	u32           row  = 0;
 };
 
-constexpr u32 K_TRAY_MAX_GAMES    = 16;
-constexpr u32 K_TRAY_MAX_ACCOUNTS = 256;
+constexpr u32 K_TRAY_MAX_GAMES       = 16;
+constexpr u32 K_TRAY_MAX_ACCOUNTS    = 256;
+constexpr u32 K_TRAY_PASSWORD_LENGTH = 128;
+constexpr u32 K_TRAY_PASSWORD_BYTES  = K_TRAY_PASSWORD_LENGTH * 4;
 
 struct TrayGame {
 	char title[64];
@@ -88,6 +91,7 @@ struct TrayMenu {
 	u32         account_count;
 	bool        locked;
 	bool        can_lock;
+	bool        can_unlock;
 	TrayUpdate  update;
 };
 
@@ -114,6 +118,10 @@ class Tray {
 
 	[[nodiscard]] auto is_icon_visible() const -> bool;
 	[[nodiscard]] auto take_event() -> TrayEvent;
+
+	// The master password typed into the tray menu, as UTF-8 in t_out. The tray forgets its own copy as it hands it over.
+	[[nodiscard]] auto take_unlock_password(std::span<char> t_out) -> std::string_view;
+	auto show_unlock_failure() -> void;
 
   private:
 	struct Native;

@@ -111,6 +111,7 @@ class SettingsPanel : public Widget {
 		Rect                           close_to_tray;
 		Rect                           renderer;
 		Rect                           riot_client;
+		Rect                           launch_game;
 		Rect                           auto_lock;
 		Rect                           master_password;
 		float                          content_height;
@@ -196,6 +197,7 @@ class SettingsPanel : public Widget {
 		{&Settings::background_light, &Rows::background_light},
 		{&Settings::background_grain, &Rows::background_grain},
 		{&Settings::snow, &Rows::snow},
+		{&Settings::launch_game_after_login, &Rows::launch_game},
 	};
 
 	static constexpr u32 K_TOGGLE_COUNT = static_cast<u32>(std::size(K_TOGGLES));
@@ -227,6 +229,7 @@ class SettingsPanel : public Widget {
 		CLOSE_TO_TRAY,
 		RENDERER,
 		RIOT_CLIENT,
+		LAUNCH_GAME,
 		HIDE_FROM_CAPTURE,
 		BLOCK_OVERLAY_INJECTION,
 		AUTO_LOCK,
@@ -239,7 +242,6 @@ class SettingsPanel : public Widget {
 		STEPPER,
 		SWATCH,
 		SLIDER,
-		CHOICE,
 		TOGGLE,
 		BROWSE_BUTTON,
 	};
@@ -292,16 +294,14 @@ class SettingsPanel : public Widget {
 	[[nodiscard]] auto slider_at(const Layout& t_layout, const Rows& t_rows, Vec2 t_point) const -> std::optional<SliderKind>;
 	auto apply_slider(SliderKind t_slider, float t_fraction) -> void;
 
-	[[nodiscard]] static auto choice_on(Rect Rows::* t_row) -> std::optional<ChoiceKind>;
-	[[nodiscard]] auto choice_rect(const Rows& t_rows, ChoiceKind t_choice) const -> Rect;
+	auto open_choice_list(ChoiceKind t_choice) -> void;
+	auto choose_option(u32 t_option) -> void;
 
 	[[nodiscard]] auto pattern_tile_size() const -> Vec2;
 	[[nodiscard]] auto pattern_popup_rect(const Rows& t_rows) const -> Rect;
 	[[nodiscard]] auto pattern_tile(Rect t_popup, BackgroundStyle t_style) const -> Rect;
 	[[nodiscard]] auto pattern_at(Rect t_popup, Vec2 t_point) const -> std::optional<BackgroundStyle>;
 
-	[[nodiscard]] auto segment_choice_rect(Rect t_row, std::span<const std::string_view> t_labels) const -> Rect;
-	[[nodiscard]] auto choice_segment(Rect t_choice, std::span<const std::string_view> t_labels, u32 t_index) const -> Rect;
 	[[nodiscard]] auto search_rect(const Layout& t_layout) const -> Rect;
 	auto refresh_search() -> void;
 	auto clear_search() -> void;
@@ -385,7 +385,8 @@ class SettingsPanel : public Widget {
 	EnumArray<SliderKind, float>      m_slider_shown{};
 	EnumArray<SliderKind, float>      m_slider_reveal{};
 	EnumArray<SliderKind, float>      m_slider_hover{};
-	EnumArray<ChoiceKind, float>      m_choice_shown{};
+	ListPopup                         m_choice_list;
+	std::optional<ChoiceKind>         m_open_choice;
 	EnumArray<BackgroundStyle, float> m_pattern_ring{};
 	float                             m_toggles_shown[K_TOGGLE_COUNT]{};
 	bool                              m_pattern_open        = false;

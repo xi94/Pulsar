@@ -176,13 +176,20 @@ auto Tray::take_event() -> TrayEvent
 	return std::exchange(m_native->pending_event, TrayEvent{});
 }
 
+auto Tray::take_unlock_password(std::span<char>) -> std::string_view
+{
+	return {};
+}
+
+auto Tray::show_unlock_failure() -> void {}
+
 auto Tray::Native::rebuild_menu() -> void
 {
 	[menu removeAllItems];
 
 	contents        = TrayMenu{};
 	contents.locked = locked;
-	if (fill_menu && !locked) {
+	if (fill_menu) {
 		fill_menu(&contents);
 	}
 
@@ -205,7 +212,9 @@ auto Tray::Native::rebuild_menu() -> void
 		}
 	}
 
-	if (contents.locked) {
+	if (contents.locked && contents.can_unlock) {
+		add_item(menu, @"Unlock Pulsar…", K_SHOW_TAG);
+	} else if (contents.locked) {
 		add_item(menu, @"Vault locked", 0).enabled = NO;
 	} else if (contents.game_count == 0) {
 		add_item(menu, @"No games", 0).enabled = NO;

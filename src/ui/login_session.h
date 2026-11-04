@@ -11,8 +11,6 @@ struct Settings;
 
 class LoginSession {
   public:
-	static constexpr u32 K_STEP_COUNT = 4;
-
 	LoginSession(Library* t_library, Settings* t_settings, CommandQueue* t_commands);
 
 	auto request(u32 t_game, AccountRef t_account) -> void;
@@ -29,6 +27,7 @@ class LoginSession {
 	[[nodiscard]] auto shows(u32 t_game, AccountRef t_account) const -> bool;
 	[[nodiscard]] auto stage() const -> LoginStage;
 	[[nodiscard]] auto step() const -> u32;
+	[[nodiscard]] auto step_count() const -> u32;
 	[[nodiscard]] auto step_progress() const -> float;
 	[[nodiscard]] auto asks_for_permission() const -> bool;
 
@@ -59,8 +58,9 @@ class LoginSession {
 	LoginAttempt                m_login;
 	std::optional<PendingLogin> m_queued;
 	std::optional<AccountRef>   m_login_account;
-	u32                         m_login_game = 0;
-	u32                         m_shown_game = 0;
+	u32                         m_login_game    = 0;
+	u32                         m_shown_game    = 0;
+	bool                        m_launches_game = true;
 
 	LoginStage m_progress_stage = LoginStage::IDLE;
 	float      m_stage_seconds  = 0.0f;

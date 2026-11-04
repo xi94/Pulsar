@@ -7,11 +7,11 @@
 #include <vector>
 
 #include "core/types.h"
+#include "login/client_watch.h"
 
-enum class PlayResult : u8 {
-	CLICKED,
-	NOT_FOUND,
-	LOGIN_ERROR,
+enum class SubmitWith : u8 {
+	SIGN_IN_BUTTON_OR_ENTER,
+	ENTER,
 };
 
 class RiotClient {
@@ -30,6 +30,7 @@ class RiotClient {
 	[[nodiscard]] static auto permission_missing_message() -> const char*;
 	static auto open_automation_permission_settings() -> void;
 	[[nodiscard]] static auto supports_product(std::string_view t_launch_product) -> bool;
+	[[nodiscard]] static auto forwards_launch_to_open_client() -> bool;
 
 	[[nodiscard]] static auto paths_in_installs_file(std::string_view t_json) -> std::vector<std::string>;
 	[[nodiscard]] static auto executable_name() -> const char*;
@@ -38,17 +39,15 @@ class RiotClient {
 
 	[[nodiscard]] auto resolve_executable_path(std::string_view t_remembered_path) -> bool;
 	[[nodiscard]] auto launch(std::string_view t_launch_product) -> bool;
-
-	auto wait_for_responsive_window() -> void;
-	auto bring_to_foreground() -> bool;
-	auto take_keyboard_focus() -> bool;
+	[[nodiscard]] auto has_open_window() const -> bool;
+	auto bring_to_front() -> void;
 
 	[[nodiscard]] auto start_automation() -> bool;
 	auto stop_automation() -> void;
 
-	[[nodiscard]] auto submit_login(std::string_view t_username, std::string_view t_password) -> bool;
-	[[nodiscard]] auto wait_for_login_result(std::string* t_out_error, const std::string* t_error_to_ignore) -> bool;
-	[[nodiscard]] auto click_play_when_ready(u32 t_timeout_ms, std::string* t_out_error) -> PlayResult;
+	[[nodiscard]] auto look() -> ClientView;
+	[[nodiscard]] auto fill_and_submit(std::string_view t_username, std::string_view t_password, SubmitWith t_submit) -> bool;
+	auto press_play() -> bool;
 
 	std::string m_executable_path;
 

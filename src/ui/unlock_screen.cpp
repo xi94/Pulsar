@@ -301,6 +301,14 @@ auto UnlockScreen::submit() -> void
 	}
 }
 
+auto UnlockScreen::unlock_with(std::string_view t_password) -> void
+{
+	if (m_setup || m_derivation.valid() || t_password.empty()) return;
+
+	clear_errors();
+	start_derivation(t_password, false);
+}
+
 auto UnlockScreen::attempt_unlock() -> void
 {
 	const std::string_view password = m_fields[PasswordField::PASSWORD].value();
@@ -349,6 +357,11 @@ auto UnlockScreen::finish_derivation(std::unique_ptr<DerivedKey> t_derived) -> v
 		m_setup_failed   = m_setup;
 		m_shake_seconds  = m_setup ? 0.0f : K_SHAKE_SECONDS;
 		focus_field(PasswordField::PASSWORD);
+
+		if (!m_setup) {
+			m_commands->push(Command{.type = CommandType::VAULT_UNLOCK_FAILED});
+		}
+
 		return;
 	}
 
