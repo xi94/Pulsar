@@ -58,9 +58,15 @@ constexpr const wchar_t* K_CLIENT_PROCESS_NAMES[]{
 	L"LoR.exe",
 };
 
-constexpr const wchar_t* K_GAME_PROCESS_NAMES[]{
-	L"VALORANT-Win64-Shipping.exe",
-	L"League of Legends.exe",
+struct GameProcess {
+	const wchar_t*   executable;
+	std::string_view launch_product;
+};
+
+constexpr GameProcess K_GAME_PROCESSES[]{
+	{L"VALORANT-Win64-Shipping.exe", "valorant"},
+	{L"League of Legends.exe", "league_of_legends"},
+	{L"TFTClient-Win64-Shipping.exe", "teamfighttactics"},
 };
 
 constexpr auto K_WINDOW_ELEMENT_LIFETIME = std::chrono::milliseconds(2000);
@@ -537,14 +543,23 @@ auto RiotClient::prepare_automation() -> void
 	UiAutomation::keep_process_mta_alive();
 }
 
-auto RiotClient::is_game_in_progress() -> bool
+auto RiotClient::running_game() -> std::optional<std::string_view>
 {
-	bool in_progress = false;
-	for_each_process([&in_progress](const PROCESSENTRY32W& t_entry) { in_progress = in_progress || matches_any(t_entry.szExeFile, K_GAME_PROCESS_NAMES); });
+	std::optional<std::string_view> running;
 
-	debug_log::write(K_LOG_CATEGORY, "is_game_in_progress -> %s", in_progress ? "yes" : "no");
+	for_each_process([&running](const PROCESSENTRY32W& t_entry) {
+		const auto is_this_game = [&t_entry](const GameProcess& t_game) { return CompareStringOrdinal(t_entry.szExeFile, -1, t_game.executable, -1, TRUE) == CSTR_EQUAL; };
+		const auto game         = std::ranges::find_if(K_GAME_PROCESSES, is_this_game);
 
-	return in_progress;
+		if (!running && game != std::end(K_GAME_PROCESSES)) {
+			running = game->launch_product;
+		}
+	});
+
+	const std::string_view logged = running.value_or("none");
+	debug_log::write(K_LOG_CATEGORY, "running game -> %.*s", static_cast<int>(logged.size()), logged.data());
+
+	return running;
 }
 
 auto RiotClient::kill_all_client_processes(const std::atomic<bool>* t_cancel) -> void

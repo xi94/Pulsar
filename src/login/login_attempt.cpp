@@ -1,5 +1,6 @@
 #include "login/login_attempt.h"
 
+#include <algorithm>
 #include <string>
 #include <thread>
 #include <tuple>
@@ -10,6 +11,7 @@
 #include "core/debug_log.h"
 #include "core/str.h"
 #include "core/thread_util.h"
+#include "games.h"
 
 namespace {
 constexpr const char* K_LOG_CATEGORY = "login";
@@ -28,7 +30,7 @@ constexpr const char* K_INVALID_CREDENTIALS_MESSAGE = "Wrong username or passwor
 constexpr const char* K_SERVER_ERROR_MESSAGE        = "Riot's servers are busy. Try again soon.";
 constexpr const char* K_UNRECOGNIZED_ERROR_MESSAGE  = "Sign-in failed. Unrecognized error.";
 constexpr const char* K_RIOT_ERROR_PREFIX           = "Riot Client: ";
-constexpr const char* K_GAME_IN_PROGRESS_MESSAGE    = "Close the running game first.";
+constexpr const char* K_UNKNOWN_GAME_TITLE          = "the running game";
 constexpr const char* K_NO_RIOT_CLIENT_MESSAGE      = "Riot Client not found. Set it in Settings.";
 constexpr const char* K_LAUNCH_FAILED_MESSAGE       = "The Riot Client wouldn't start.";
 constexpr const char* K_UNRESPONSIVE_CLIENT_MESSAGE = "The Riot Client stopped responding.";
@@ -165,6 +167,10 @@ auto fail_with_riot_error(LoginWork* t_work, std::string_view t_riot_error) -> v
 	RiotClient::kill_all_client_processes(&t_work->cancel_requested);
 	if (stop_if_cancelled(t_work)) return false;
 
+	if (RiotClient::forget_stored_sign_in()) {
+		debug_log::write(K_LOG_CATEGORY, "forgot the Riot Client's remembered sign-in so it opens at the sign-in form");
+	}
+
 	if (!client->launch(t_work->launch_product)) {
 		fail(t_work, K_LAUNCH_FAILED_MESSAGE);
 		return false;
@@ -182,10 +188,18 @@ auto fail_with_riot_error(LoginWork* t_work, std::string_view t_riot_error) -> v
 	return true;
 }
 
+[[nodiscard]] auto game_title(std::string_view t_launch_product) -> std::string_view
+{
+	const auto game = std::ranges::find(K_GAME_INFOS, t_launch_product, &GameInfo::launch_product);
+
+	return game != std::end(K_GAME_INFOS) ? game->short_title : K_UNKNOWN_GAME_TITLE;
+}
+
 [[nodiscard]] auto prepare_client(LoginWork* t_work) -> bool
 {
-	if (RiotClient::is_game_in_progress()) {
-		fail(t_work, K_GAME_IN_PROGRESS_MESSAGE);
+	if (const std::optional<std::string_view> running = RiotClient::running_game()) {
+		char message[K_LOGIN_MESSAGE_CAPACITY];
+		fail(t_work, format_into(message, "Close {} first to switch accounts.", game_title(*running)));
 		return false;
 	}
 

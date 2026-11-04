@@ -29,6 +29,7 @@ constexpr std::string_view K_INTERFACE_PATH_SUFFIX     = "/Riot Client.app/Conte
 constexpr std::string_view K_CLIENT_BUNDLE_MARKER      = "/Riot Client.app/";
 constexpr std::string_view K_LEAGUE_CLIENT_PREFIX      = "LeagueClient";
 constexpr std::string_view K_GAME_PROCESS_NAME         = "LeagueofLegends";
+constexpr std::string_view K_GAME_LAUNCH_PRODUCT       = "league_of_legends";
 constexpr u32              K_CHOSEN_PATH_SEARCH_LEVELS = 3;
 
 constexpr const char* K_AUTOMATION_FAILED_MESSAGE  = "Couldn't connect to the Riot Client - try again.";
@@ -450,14 +451,14 @@ RiotClient::~RiotClient() = default;
 
 auto RiotClient::prepare_automation() -> void {}
 
-auto RiotClient::is_game_in_progress() -> bool
+auto RiotClient::running_game() -> std::optional<std::string_view>
 {
 	bool in_progress = false;
 	for_each_process([&in_progress](pid_t, std::string_view t_path) { in_progress = in_progress || file_name_of(t_path) == K_GAME_PROCESS_NAME; });
 
-	debug_log::write(K_LOG_CATEGORY, "is_game_in_progress -> %s", in_progress ? "yes" : "no");
+	debug_log::write(K_LOG_CATEGORY, "running game -> %s", in_progress ? K_GAME_LAUNCH_PRODUCT.data() : "none");
 
-	return in_progress;
+	return in_progress ? std::optional{K_GAME_LAUNCH_PRODUCT} : std::nullopt;
 }
 
 auto RiotClient::kill_all_client_processes(const std::atomic<bool>* t_cancel) -> void

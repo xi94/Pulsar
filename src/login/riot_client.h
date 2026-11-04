@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -23,7 +24,7 @@ class RiotClient {
 	auto operator=(const RiotClient&) -> RiotClient& = delete;
 
 	static auto prepare_automation() -> void;
-	[[nodiscard]] static auto is_game_in_progress() -> bool;
+	[[nodiscard]] static auto running_game() -> std::optional<std::string_view>;
 	static auto kill_all_client_processes(const std::atomic<bool>* t_cancel) -> void;
 	[[nodiscard]] static auto automation_failure_message() -> const char*;
 	[[nodiscard]] static auto request_automation_permission() -> bool;
@@ -33,6 +34,8 @@ class RiotClient {
 	[[nodiscard]] static auto forwards_launch_to_open_client() -> bool;
 
 	[[nodiscard]] static auto paths_in_installs_file(std::string_view t_json) -> std::vector<std::string>;
+	[[nodiscard]] static auto without_stored_sign_in(std::string_view t_private_settings) -> std::string;
+	[[nodiscard]] static auto forget_stored_sign_in() -> bool;
 	[[nodiscard]] static auto executable_name() -> const char*;
 	[[nodiscard]] static auto default_install_folder() -> std::string;
 	[[nodiscard]] static auto executable_near(std::string_view t_chosen_path) -> std::string;

@@ -153,3 +153,59 @@ TEST_CASE("only some errors are worth signing in again for")
 	CHECK(classify_login_failure("") == LoginFailure::UNRECOGNIZED);
 	CHECK(classify_login_failure("Something else entirely") == LoginFailure::UNRECOGNIZED);
 }
+
+namespace {
+constexpr std::string_view K_REMEMBERED_SETTINGS = "psl:\n"
+												   "    authorization:\n"
+												   "        riot-client:\n"
+												   "            claims: []\n"
+												   "            id_token: \"fake-id-token\"\n"
+												   "            max_duration_between_restores: 5459788\n"
+												   "            refresh_token: \"fake-refresh-token\"\n"
+												   "            scopes:\n"
+												   "            - \"openid\"\n"
+												   "            - \"offline_access\"\n"
+												   "rso-authenticator:\n"
+												   "    tdid:\n"
+												   "        name: \"tdid\"\n"
+												   "        value: \"fake-device-id\"\n";
+
+constexpr std::string_view K_DEVICE_ONLY_SETTINGS = "rso-authenticator:\n"
+													"    tdid:\n"
+													"        name: \"tdid\"\n"
+													"        value: \"fake-device-id\"\n";
+
+[[nodiscard]] auto with_crlf(std::string_view t_text) -> std::string
+{
+	std::string converted;
+
+	for (const char character : t_text) {
+		converted += character == '\n' ? std::string_view{"\r\n"} : std::string_view{&character, 1};
+	}
+
+	return converted;
+}
+}
+
+TEST_CASE("a remembered Riot sign-in is forgotten and the trusted-device cookie kept")
+{
+	CHECK(RiotClient::without_stored_sign_in(K_REMEMBERED_SETTINGS) == K_DEVICE_ONLY_SETTINGS);
+	CHECK(RiotClient::without_stored_sign_in(with_crlf(K_REMEMBERED_SETTINGS)) == with_crlf(K_DEVICE_ONLY_SETTINGS));
+}
+
+TEST_CASE("other entries beside the stored sign-in stay")
+{
+	constexpr std::string_view SETTINGS = "psl:\n    authorization:\n        riot-client:\n            refresh_token: \"x\"\n    other:\n        kept: true\nrso-authenticator:\n    tdid: {}\n";
+	constexpr std::string_view KEPT     = "psl:\n    other:\n        kept: true\nrso-authenticator:\n    tdid: {}\n";
+
+	CHECK(RiotClient::without_stored_sign_in(SETTINGS) == KEPT);
+}
+
+TEST_CASE("Riot settings without a stored sign-in are left as they are")
+{
+	constexpr std::string_view LOOKALIKE = "pslx:\n    authorization:\n        riot-client: {}\n";
+
+	CHECK(RiotClient::without_stored_sign_in(K_DEVICE_ONLY_SETTINGS) == K_DEVICE_ONLY_SETTINGS);
+	CHECK(RiotClient::without_stored_sign_in(LOOKALIKE) == LOOKALIKE);
+	CHECK(RiotClient::without_stored_sign_in("").empty());
+}
