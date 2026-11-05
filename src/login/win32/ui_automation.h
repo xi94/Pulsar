@@ -1,7 +1,10 @@
 #pragma once
 
 #include <atomic>
+#include <optional>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include <Windows.h>
 #include <UIAutomation.h>
@@ -17,15 +20,24 @@ class UiElement {
 		return m_element != nullptr;
 	}
 
-	[[nodiscard]] auto set_value(const wchar_t* t_text) const -> bool;
+	[[nodiscard]] auto set_value(std::wstring_view t_text) const -> bool;
 	auto invoke() const -> bool;
 	auto focus() const -> bool;
 	[[nodiscard]] auto has_keyboard_focus() const -> bool;
 	[[nodiscard]] auto is_enabled() const -> bool;
+	[[nodiscard]] auto bounds() const -> std::optional<RECT>;
 
 	Microsoft::WRL::ComPtr<IUIAutomationElement> m_element;
 
   private:
+};
+
+struct UiButton {
+	UiElement element;
+	RECT      bounds{};
+	bool      named     = false;
+	bool      invokable = false;
+	bool      enabled   = false;
 };
 
 class UiAutomation {
@@ -48,6 +60,7 @@ class UiAutomation {
 	[[nodiscard]] auto find_descendant(const UiElement& t_root, const wchar_t* t_name, CONTROLTYPEID t_control_type) const -> UiElement;
 	[[nodiscard]] auto find_edit(const UiElement& t_root, bool t_password) const -> UiElement;
 	[[nodiscard]] auto find_of_type(const UiElement& t_root, CONTROLTYPEID t_control_type) const -> UiElement;
+	[[nodiscard]] auto find_buttons(const UiElement& t_root) const -> std::vector<UiButton>;
 	[[nodiscard]] auto text_inside(const UiElement& t_root, const wchar_t* t_ignored_text) const -> std::wstring;
 
 	auto type_text(const wchar_t* t_text) const -> void;

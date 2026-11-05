@@ -19,8 +19,11 @@
 using Microsoft::WRL::ComPtr;
 
 namespace {
-constexpr const char* K_LOG_CATEGORY          = "uia";
-constexpr LONG        K_MIN_REAL_WINDOW_WIDTH = 50;
+constexpr const char* K_LOG_CATEGORY           = "uia";
+constexpr LONG        K_MIN_REAL_WINDOW_WIDTH  = 50;
+constexpr u32         K_MAX_TEXT_WALK_DEPTH    = 4;
+constexpr u32         K_MAX_TEXT_WALK_ELEMENTS = 64;
+constexpr PROPERTYID  K_BUTTON_PROPERTIES[]{UIA_NamePropertyId, UIA_IsEnabledPropertyId, UIA_BoundingRectanglePropertyId, UIA_IsInvokePatternAvailablePropertyId};
 
 class VariantString {
   public:
@@ -144,6 +147,35 @@ template <typename Pattern>
 
 	return pattern;
 }
+
+[[nodiscard]] auto cached_button(const ComPtr<IUIAutomationElement>& t_element) -> UiButton
+{
+	UiButton button{.element = UiElement{t_element}};
+
+	BSTR name = nullptr;
+	if (SUCCEEDED(t_element->get_CachedName(&name)) && name != nullptr) {
+		button.named = SysStringLen(name) > 0;
+		SysFreeString(name);
+	}
+
+	BOOL enabled   = FALSE;
+	button.enabled = SUCCEEDED(t_element->get_CachedIsEnabled(&enabled)) && enabled;
+
+	if (RECT bounds{}; SUCCEEDED(t_element->get_CachedBoundingRectangle(&bounds))) {
+		button.bounds = bounds;
+	}
+
+	VARIANT invokable;
+	VariantInit(&invokable);
+
+	if (SUCCEEDED(t_element->GetCachedPropertyValue(UIA_IsInvokePatternAvailablePropertyId, &invokable))) {
+		button.invokable = invokable.vt == VT_BOOL && invokable.boolVal == VARIANT_TRUE;
+	}
+
+	VariantClear(&invokable);
+
+	return button;
+}
 }
 
 UiElement::UiElement(ComPtr<IUIAutomationElement> t_element)
@@ -151,7 +183,7 @@ UiElement::UiElement(ComPtr<IUIAutomationElement> t_element)
 {
 }
 
-auto UiElement::set_value(const wchar_t* t_text) const -> bool
+auto UiElement::set_value(std::wstring_view t_text) const -> bool
 {
 	if (!is_valid()) return false;
 
@@ -161,11 +193,12 @@ auto UiElement::set_value(const wchar_t* t_text) const -> bool
 		return false;
 	}
 
-	// Never log t_text: account passwords go through here.
+	// Never log t_text: account passwords go through here, and the copy is wiped before the string cache can hand it out again.
 	const debug_log::Scope scope(K_LOG_CATEGORY, "ValuePattern::SetValue");
 
-	BSTR          text   = SysAllocString(t_text);
+	BSTR          text   = SysAllocStringLen(t_text.data(), static_cast<UINT>(t_text.size()));
 	const HRESULT result = value_pattern->SetValue(text);
+	SecureZeroMemory(text, SysStringByteLen(text));
 	SysFreeString(text);
 
 	if (FAILED(result)) {
@@ -218,6 +251,14 @@ auto UiElement::is_enabled() const -> bool
 	BOOL enabled = FALSE;
 
 	return is_valid() && SUCCEEDED(m_element->get_CurrentIsEnabled(&enabled)) && enabled;
+}
+
+auto UiElement::bounds() const -> std::optional<RECT>
+{
+	RECT bounds{};
+	if (!is_valid() || FAILED(m_element->get_CurrentBoundingRectangle(&bounds))) return std::nullopt;
+
+	return bounds;
 }
 
 UiAutomation::UiAutomation(const std::atomic<bool>* t_cancel)
@@ -358,17 +399,61 @@ auto UiAutomation::find_of_type(const UiElement& t_root, CONTROLTYPEID t_control
 	return find_first(t_root, condition, label);
 }
 
+auto UiAutomation::find_buttons(const UiElement& t_root) const -> std::vector<UiButton>
+{
+	if (!can_search(t_root)) return {};
+
+	ComPtr<IUIAutomationCondition>    condition;
+	ComPtr<IUIAutomationCacheRequest> cache;
+	if (FAILED(m_automation->CreatePropertyCondition(UIA_ControlTypePropertyId, variant_from_control_type(UIA_ButtonControlTypeId), &condition)) || FAILED(m_automation->CreateCacheRequest(&cache))) return {};
+
+	for (const PROPERTYID property : K_BUTTON_PROPERTIES) {
+		cache->AddProperty(property);
+	}
+
+	auto                   buttons = std::make_shared<std::vector<UiButton>>();
+	const debug_log::Scope scope(K_LOG_CATEGORY, "FindAllBuildCache(ControlType=Button)");
+
+	const auto collect_buttons = [root = t_root.m_element, condition, cache, buttons]() {
+		const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+
+		ComPtr<IUIAutomationElementArray> found;
+		int                               count = 0;
+
+		if (SUCCEEDED(root->FindAllBuildCache(TreeScope_Descendants, condition.Get(), cache.Get(), &found)) && found != nullptr && SUCCEEDED(found->get_Length(&count))) {
+			for (const int index : std::views::iota(0, count)) {
+				ComPtr<IUIAutomationElement> element;
+				if (SUCCEEDED(found->GetElement(index, &element)) && element != nullptr) {
+					buttons->push_back(cached_button(element));
+				}
+			}
+		}
+
+		if (com_result == S_OK || com_result == S_FALSE) {
+			CoUninitialize();
+		}
+	};
+
+	if (!run_unless_cancelled(collect_buttons, m_cancel)) {
+		debug_log::write(K_LOG_CATEGORY, "ABANDONED FindAllBuildCache(ControlType=Button) - cancelled while the provider was still answering");
+		return {};
+	}
+
+	return std::move(*buttons);
+}
+
+// The client only puts some text, like a login error's reason, in the raw view, so this walks that view rather than searching the control view.
 auto UiAutomation::text_inside(const UiElement& t_root, const wchar_t* t_ignored_text) const -> std::wstring
 {
 	if (!can_search(t_root)) return {};
 
-	ComPtr<IUIAutomationCondition> condition;
-	if (FAILED(m_automation->CreatePropertyCondition(UIA_ControlTypePropertyId, variant_from_control_type(UIA_TextControlTypeId), &condition))) return {};
+	ComPtr<IUIAutomationTreeWalker> walker;
+	if (FAILED(m_automation->get_RawViewWalker(&walker)) || walker == nullptr) return {};
 
 	auto                   text = std::make_shared<std::wstring>();
-	const debug_log::Scope scope(K_LOG_CATEGORY, "FindAll(ControlType=Text)");
+	const debug_log::Scope scope(K_LOG_CATEGORY, "raw view walk for Text");
 
-	const auto read_text = [root = t_root.m_element, condition, text, ignored = std::wstring{t_ignored_text}]() {
+	const auto read_text = [root = t_root.m_element, walker, text, ignored = std::wstring{t_ignored_text}]() {
 		const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
 		const auto append = [&](const ComPtr<IUIAutomationElement>& t_element) {
@@ -383,17 +468,30 @@ auto UiAutomation::text_inside(const UiElement& t_root, const wchar_t* t_ignored
 			SysFreeString(name);
 		};
 
-		ComPtr<IUIAutomationElementArray> found;
-		int                               count = 0;
+		u32        visited = 0;
+		const auto visit   = [&](const auto& t_visit, const ComPtr<IUIAutomationElement>& t_parent, u32 t_depth) -> void {
+			if (t_depth > K_MAX_TEXT_WALK_DEPTH) return;
 
-		if (SUCCEEDED(root->FindAll(TreeScope_Descendants, condition.Get(), &found)) && found != nullptr && SUCCEEDED(found->get_Length(&count))) {
-			for (const int index : std::views::iota(0, count)) {
-				ComPtr<IUIAutomationElement> element;
-				if (SUCCEEDED(found->GetElement(index, &element)) && element != nullptr) {
-					append(element);
+			ComPtr<IUIAutomationElement> child;
+			walker->GetFirstChildElement(t_parent.Get(), &child);
+
+			while (child != nullptr && visited < K_MAX_TEXT_WALK_ELEMENTS) {
+				visited += 1;
+
+				CONTROLTYPEID control_type = 0;
+				if (SUCCEEDED(child->get_CurrentControlType(&control_type)) && control_type == UIA_TextControlTypeId) {
+					append(child);
 				}
+
+				t_visit(t_visit, child, t_depth + 1);
+
+				ComPtr<IUIAutomationElement> next;
+				walker->GetNextSiblingElement(child.Get(), &next);
+				child = std::move(next);
 			}
-		}
+		};
+
+		visit(visit, root, 0);
 
 		if (text->empty()) {
 			append(root);
@@ -405,7 +503,7 @@ auto UiAutomation::text_inside(const UiElement& t_root, const wchar_t* t_ignored
 	};
 
 	if (!run_unless_cancelled(read_text, m_cancel)) {
-		debug_log::write(K_LOG_CATEGORY, "ABANDONED FindAll(ControlType=Text) - cancelled while the provider was still answering");
+		debug_log::write(K_LOG_CATEGORY, "ABANDONED the raw view walk for Text - cancelled while the provider was still answering");
 		return {};
 	}
 

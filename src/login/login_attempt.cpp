@@ -19,6 +19,9 @@ constexpr const char* K_LOG_CATEGORY = "login";
 constexpr auto K_POLL_INTERVAL           = std::chrono::milliseconds(100);
 constexpr auto K_OPEN_FORM_GRACE         = std::chrono::milliseconds(1500);
 constexpr auto K_FORWARDED_LAUNCH_SETTLE = std::chrono::milliseconds(1000);
+constexpr auto K_HIDDEN_FORM_PATIENCE    = std::chrono::seconds(60);
+constexpr auto K_GAME_START_PATIENCE     = std::chrono::seconds(60);
+constexpr auto K_GAME_START_SETTLE       = std::chrono::milliseconds(1500);
 constexpr auto K_BUSY_RETRY_PAUSE        = std::chrono::milliseconds(3000);
 constexpr u32  K_MAX_BUSY_RETRIES        = 2;
 constexpr u32  K_MAX_UNANSWERED_RETRIES  = 2;
@@ -37,6 +40,8 @@ constexpr const char* K_UNRESPONSIVE_CLIENT_MESSAGE = "The Riot Client stopped r
 constexpr const char* K_ALREADY_SIGNED_IN_MESSAGE   = "The Riot Client is signed in to another account. Sign out there first.";
 constexpr const char* K_NO_RESPONSE_MESSAGE         = "The Riot Client didn't respond to the sign-in. Try again.";
 constexpr const char* K_PRESS_PLAY_MESSAGE          = "Logged in. Press Play in the Riot Client.";
+constexpr const char* K_GAME_NOT_STARTED_MESSAGE    = "Logged in, but the game didn't start. Check the Riot Client.";
+constexpr const char* K_USER_OPENED_CLIENT_MESSAGE  = "You opened the Riot Client, so Pulsar stopped logging in.";
 
 [[nodiscard]] auto stage_name(LoginStage t_stage) -> const char*
 {
@@ -79,9 +84,59 @@ constexpr const char* K_PRESS_PLAY_MESSAGE          = "Logged in. Press Play in 
 	return "?";
 }
 
+[[nodiscard]] auto progress_label(LoginStage t_stage) -> std::string_view
+{
+	switch (t_stage) {
+		using enum LoginStage;
+
+		case IDLE: {
+			return "";
+		}
+
+		case WAITING_FOR_PROCESS: {
+			return "Starting the Riot Client";
+		}
+
+		case CONNECTING: {
+			return "Waiting for the sign-in form";
+		}
+
+		case AUTHENTICATING: {
+			return "Signing in";
+		}
+
+		case LAUNCHING: {
+			return "Starting the game";
+		}
+
+		case SUCCESS: {
+			return "Done";
+		}
+
+		case FAILED: {
+			return "Failed";
+		}
+
+		case CANCELLED: {
+			return "Cancelled";
+		}
+	}
+
+	return "";
+}
+
+auto show_progress(LoginWork* t_work, LoginStage t_stage) -> void
+{
+	char                   progress[K_LOGIN_MESSAGE_CAPACITY + 32];
+	const std::string_view label = progress_label(t_stage);
+
+	t_work->riot_client.show_progress(t_work->message[0] != '\0' ? format_into(progress, "{}: {}", label, t_work->message) : label);
+}
+
 auto set_stage(LoginWork* t_work, LoginStage t_stage) -> void
 {
 	debug_log::write(K_LOG_CATEGORY, "stage -> %s%s", stage_name(t_stage), t_work->message[0] != '\0' ? " (with a message)" : "");
+	show_progress(t_work, t_stage);
 	t_work->stage.store(t_stage, std::memory_order_release);
 }
 
@@ -99,16 +154,22 @@ auto fail_with_riot_error(LoginWork* t_work, std::string_view t_riot_error) -> v
 
 [[nodiscard]] auto is_cancelled(const LoginWork* t_work) -> bool
 {
-	return t_work->cancel_requested.load(std::memory_order_relaxed);
+	return t_work->cancel_requested.load(std::memory_order_relaxed) || t_work->riot_client.was_opened_by_user();
 }
 
 [[nodiscard]] auto stop_if_cancelled(LoginWork* t_work) -> bool
 {
-	if (!is_cancelled(t_work)) return false;
+	if (t_work->cancel_requested.load(std::memory_order_relaxed)) {
+		set_stage(t_work, LoginStage::CANCELLED);
+		return true;
+	}
 
-	set_stage(t_work, LoginStage::CANCELLED);
+	if (t_work->riot_client.was_opened_by_user()) {
+		fail(t_work, K_USER_OPENED_CLIENT_MESSAGE);
+		return true;
+	}
 
-	return true;
+	return false;
 }
 
 [[nodiscard]] auto wait_unless_cancelled(const LoginWork* t_work, std::chrono::milliseconds t_duration) -> bool
@@ -139,6 +200,17 @@ auto fail_with_riot_error(LoginWork* t_work, std::string_view t_riot_error) -> v
 	return true;
 }
 
+auto hide_client_if_wanted(LoginWork* t_work) -> void
+{
+	if (!t_work->options.hide_client) return;
+
+	if (t_work->riot_client.start_hiding(t_work->options.show_live_view)) {
+		debug_log::write(K_LOG_CATEGORY, "keeping the Riot Client hidden while signing in");
+	} else {
+		debug_log::write(K_LOG_CATEGORY, "couldn't hide the Riot Client - signing in with it shown");
+	}
+}
+
 [[nodiscard]] auto take_over_open_client(LoginWork* t_work) -> bool
 {
 	RiotClient* client = &t_work->riot_client;
@@ -149,6 +221,7 @@ auto fail_with_riot_error(LoginWork* t_work, std::string_view t_riot_error) -> v
 	while (WatchClock::now() < deadline && !is_cancelled(t_work)) {
 		if (client->look().login_form_shown) {
 			debug_log::write(K_LOG_CATEGORY, "the open Riot Client is on its sign-in screen - signing in there instead of restarting it");
+			hide_client_if_wanted(t_work);
 			return client->launch(t_work->launch_product) && wait_unless_cancelled(t_work, K_FORWARDED_LAUNCH_SETTLE);
 		}
 
@@ -171,12 +244,17 @@ auto fail_with_riot_error(LoginWork* t_work, std::string_view t_riot_error) -> v
 		debug_log::write(K_LOG_CATEGORY, "forgot the Riot Client's remembered sign-in so it opens at the sign-in form");
 	}
 
+	hide_client_if_wanted(t_work);
+
 	if (!client->launch(t_work->launch_product)) {
 		fail(t_work, K_LAUNCH_FAILED_MESSAGE);
 		return false;
 	}
 
-	client->bring_to_front();
+	if (!client->is_hiding()) {
+		client->bring_to_front();
+	}
+
 	if (stop_if_cancelled(t_work)) return false;
 
 	if (!client->start_automation()) {
@@ -214,12 +292,17 @@ auto fail_with_riot_error(LoginWork* t_work, std::string_view t_riot_error) -> v
 	set_stage(t_work, LoginStage::CONNECTING);
 	debug_log::write(K_LOG_CATEGORY, "waiting for the sign-in form (until cancelled)");
 
-	FormWatch watch;
+	RiotClient* client = &t_work->riot_client;
+	FormWatch   watch;
+	const auto  started = WatchClock::now();
 
 	for (;;) {
-		const std::optional<FormWait> seen = watch.observe(t_work->riot_client.look(), WatchClock::now());
+		const std::optional<FormWait> seen = watch.observe(client->look(), WatchClock::now());
 
-		if (seen == FormWait::FORM_SHOWN) return true;
+		if (seen == FormWait::FORM_SHOWN) {
+			client->watch_for_user_opening();
+			return true;
+		}
 
 		if (seen == FormWait::ALREADY_SIGNED_IN) {
 			fail(t_work, K_ALREADY_SIGNED_IN_MESSAGE);
@@ -227,6 +310,12 @@ auto fail_with_riot_error(LoginWork* t_work, std::string_view t_riot_error) -> v
 		}
 
 		if (stop_if_cancelled(t_work)) return false;
+
+		// The client may be updating itself, which the user should be able to see.
+		if (client->is_hiding() && WatchClock::now() - started >= K_HIDDEN_FORM_PATIENCE) {
+			debug_log::write(K_LOG_CATEGORY, "the hidden client hasn't reached its sign-in form - showing it and still waiting");
+			client->hand_back(HandBack::SHOWN);
+		}
 
 		std::this_thread::sleep_for(K_POLL_INTERVAL);
 	}
@@ -253,9 +342,8 @@ auto fail_with_riot_error(LoginWork* t_work, std::string_view t_riot_error) -> v
 	for (;;) {
 		set_stage(t_work, LoginStage::AUTHENTICATING);
 
-		const SubmitWith   submit_with   = unanswered_retries == 0 ? SubmitWith::SIGN_IN_BUTTON_OR_ENTER : SubmitWith::ENTER;
 		const ClientView   before_submit = t_work->riot_client.look();
-		const bool         submitted     = t_work->riot_client.fill_and_submit(t_work->username, t_work->password, submit_with);
+		const bool         submitted     = t_work->riot_client.fill_and_submit(t_work->username, t_work->password);
 		const SignInResult result        = submitted ? watch_sign_in(t_work, before_submit) : SignInResult{SignInOutcome::NO_RESPONSE, {}};
 
 		if (stop_if_cancelled(t_work)) return false;
@@ -306,18 +394,34 @@ auto fail_with_riot_error(LoginWork* t_work, std::string_view t_riot_error) -> v
 	}
 }
 
+auto finish_once_game_started(LoginWork* t_work) -> void
+{
+	debug_log::write(K_LOG_CATEGORY, "the game has started");
+	std::ignore = wait_unless_cancelled(t_work, K_GAME_START_SETTLE);
+	set_stage(t_work, LoginStage::SUCCESS);
+}
+
 auto press_play(LoginWork* t_work) -> void
 {
 	set_stage(t_work, LoginStage::LAUNCHING);
 
-	PlayWatch watch(WatchClock::now());
+	RiotClient*                           client = &t_work->riot_client;
+	PlayWatch                             watch(WatchClock::now());
+	std::optional<WatchClock::time_point> waiting_for_game_since;
 
 	for (;;) {
 		if (stop_if_cancelled(t_work)) return;
 
-		const ClientView view = t_work->riot_client.look();
+		// A hidden client goes back minimized only once the game is really on its way, so it never freezes in the middle of launching it.
+		if (client->is_hiding() && client->has_game_started()) {
+			finish_once_game_started(t_work);
+			return;
+		}
 
-		switch (watch.observe(view, WatchClock::now())) {
+		const ClientView             view = client->look();
+		const WatchClock::time_point now  = WatchClock::now();
+
+		switch (watch.observe(view, now)) {
 			using enum PlayStep;
 
 			case WAIT: {
@@ -326,13 +430,28 @@ auto press_play(LoginWork* t_work) -> void
 
 			case PRESS: {
 				debug_log::write(K_LOG_CATEGORY, "Play has settled - pressing it (press %u)", watch.presses());
-				t_work->riot_client.press_play();
+				client->press_play();
 				break;
 			}
 
 			case PRESSED: {
-				set_stage(t_work, LoginStage::SUCCESS);
-				return;
+				if (!client->is_hiding()) {
+					set_stage(t_work, LoginStage::SUCCESS);
+					return;
+				}
+
+				if (!waiting_for_game_since) {
+					waiting_for_game_since = now;
+				}
+
+				if (now - *waiting_for_game_since >= K_GAME_START_PATIENCE) {
+					debug_log::write(K_LOG_CATEGORY, "Play was pressed but no game started");
+					copy_to(K_GAME_NOT_STARTED_MESSAGE, t_work->message);
+					set_stage(t_work, LoginStage::SUCCESS);
+					return;
+				}
+
+				break;
 			}
 
 			case NOT_FOUND: {
@@ -354,7 +473,7 @@ auto press_play(LoginWork* t_work) -> void
 
 auto finish_after_sign_in(LoginWork* t_work) -> void
 {
-	if (t_work->launch_game) {
+	if (t_work->options.launch_game) {
 		press_play(t_work);
 	} else {
 		set_stage(t_work, LoginStage::SUCCESS);
@@ -376,6 +495,7 @@ auto run_login(LoginWork* t_work) -> void
 		finish_after_sign_in(t_work);
 	}
 
+	t_work->riot_client.hand_back(hand_back_after(t_work->stage.load(std::memory_order_acquire), t_work->message));
 	t_work->riot_client.stop_automation();
 }
 
@@ -423,6 +543,11 @@ auto login_failure_message(std::string_view t_riot_error, char (&t_buffer)[K_LOG
 	return t_buffer;
 }
 
+auto hand_back_after(LoginStage t_final_stage, std::string_view t_message) -> HandBack
+{
+	return t_final_stage == LoginStage::SUCCESS && t_message.empty() ? HandBack::MINIMIZED : HandBack::SHOWN;
+}
+
 LoginAttempt::~LoginAttempt()
 {
 	if (m_work != nullptr) {
@@ -442,7 +567,7 @@ auto LoginAttempt::is_terminal(LoginStage t_stage) -> bool
 	return t_stage == LoginStage::SUCCESS || t_stage == LoginStage::FAILED || t_stage == LoginStage::CANCELLED;
 }
 
-auto LoginAttempt::start(std::string_view t_username, std::string_view t_password, std::string_view t_launch_product, std::string_view t_client_path, bool t_launch_game) -> void
+auto LoginAttempt::start(std::string_view t_username, std::string_view t_password, std::string_view t_launch_product, std::string_view t_client_path, LoginOptions t_options) -> void
 {
 	if (m_active && !is_terminal(stage())) {
 		debug_log::write(K_LOG_CATEGORY, "start refused - the previous attempt is still active (stage %s)", stage_name(stage()));
@@ -456,14 +581,14 @@ auto LoginAttempt::start(std::string_view t_username, std::string_view t_passwor
 	copy_to(t_password, work->password);
 	copy_to(t_launch_product, work->launch_product);
 	work->remembered_client_path = std::string{t_client_path};
-	work->launch_game            = t_launch_game;
+	work->options                = t_options;
 	work->stage.store(LoginStage::WAITING_FOR_PROCESS, std::memory_order_relaxed);
 
 	m_work   = work;
 	m_worker = std::thread(worker_main, std::move(work));
 	m_active = true;
 
-	debug_log::write(K_LOG_CATEGORY, "attempt started for \"%s\" (%s)", m_work->launch_product, t_launch_game ? "pressing Play after signing in" : "only signing in");
+	debug_log::write(K_LOG_CATEGORY, "attempt started for \"%s\" (%s, %s)", m_work->launch_product, t_options.launch_game ? "pressing Play after signing in" : "only signing in", t_options.hide_client ? "client hidden" : "client shown");
 }
 
 auto LoginAttempt::cancel() -> void

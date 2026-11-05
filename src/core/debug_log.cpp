@@ -51,7 +51,8 @@ struct StuckReport {
 
 std::atomic<bool> g_enabled{false};
 std::atomic<bool> g_initialized{false};
-u64               g_start_ms = 0;
+bool              g_forced_by_environment = false;
+u64               g_start_ms              = 0;
 
 std::mutex  g_write_lock;
 FILE*       g_file = nullptr;
@@ -224,6 +225,13 @@ auto open_log_file() -> void
 
 auto start_watchdog() -> void
 {
+	{
+		const std::lock_guard lock(g_watchdog_lock);
+		g_watchdog_stopping = false;
+	}
+
+	g_watchdog_finished.store(false, std::memory_order_release);
+
 	try {
 		g_watchdog = std::thread(watchdog_main);
 	} catch (const std::system_error&) {
@@ -241,30 +249,19 @@ auto stop_watchdog() -> void
 	g_watchdog_wake.notify_all();
 	join_or_abandon(&g_watchdog, &g_watchdog_finished, K_WATCHDOG_SHUTDOWN_WAIT);
 }
-}
 
-auto debug_log::init() -> void
+auto start_logging(const char* t_reason) -> void
 {
-	bool already_initialized = false;
-	if (!g_initialized.compare_exchange_strong(already_initialized, true)) return;
-
-	g_start_ms = now_ms();
-
-	const bool forced_on = os::environment_variable(K_DEBUG_LOG_ENVIRONMENT_VARIABLE).has_value();
-	if (!K_IS_DEBUG_BUILD && !forced_on) return;
-
 	open_log_file();
 	g_enabled.store(true, std::memory_order_release);
 
-	write_unchecked("app", "%s %s%s - diagnostic log started", K_APP_NAME, K_APP_VERSION, K_IS_DEBUG_BUILD ? " [debug]" : " [release]");
+	write_unchecked("app", "%s %s%s - diagnostic log started%s", K_APP_NAME, K_APP_VERSION, K_IS_DEBUG_BUILD ? " [debug]" : " [release]", t_reason);
 	start_watchdog();
 }
 
-auto debug_log::shutdown() -> void
+auto stop_logging(const char* t_reason) -> void
 {
-	if (!is_enabled()) return;
-
-	write_line("app", "diagnostic log stopped");
+	write_unchecked("app", "diagnostic log stopped%s", t_reason);
 	stop_watchdog();
 
 	g_enabled.store(false, std::memory_order_release);
@@ -274,6 +271,39 @@ auto debug_log::shutdown() -> void
 	if (g_file != nullptr) {
 		std::fclose(g_file);
 		g_file = nullptr;
+	}
+}
+}
+
+auto debug_log::init() -> void
+{
+	bool already_initialized = false;
+	if (!g_initialized.compare_exchange_strong(already_initialized, true)) return;
+
+	g_start_ms              = now_ms();
+	g_forced_by_environment = os::environment_variable(K_DEBUG_LOG_ENVIRONMENT_VARIABLE).has_value();
+
+	if (K_IS_DEBUG_BUILD || g_forced_by_environment) {
+		start_logging("");
+	}
+}
+
+auto debug_log::shutdown() -> void
+{
+	if (is_enabled()) {
+		stop_logging("");
+	}
+}
+
+auto debug_log::set_enabled(bool t_enabled) -> void
+{
+	if (!g_initialized.load() || t_enabled == is_enabled()) return;
+	if (!t_enabled && g_forced_by_environment) return;
+
+	if (t_enabled) {
+		start_logging(" from Settings");
+	} else {
+		stop_logging(" from Settings");
 	}
 }
 

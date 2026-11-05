@@ -534,7 +534,7 @@ auto draw_theme_preview(DrawList* t_draw_list, Rect t_preview, ThemeKind t_kind,
 }
 }
 
-const EnumArray<SettingsPanel::SettingsTab, std::string_view> SettingsPanel::K_TAB_NAMES{{"Appearance", "Behavior", "Privacy", "Security"}};
+const EnumArray<SettingsPanel::SettingsTab, std::string_view> SettingsPanel::K_TAB_NAMES{{"Appearance", "Behavior", "Privacy", "Security", "Debug"}};
 
 const EnumArray<SettingsPanel::SettingsGroup, SettingsPanel::GroupSpec> SettingsPanel::K_GROUPS{{
 	{SettingsTab::APPEARANCE, "Look"},
@@ -547,6 +547,7 @@ const EnumArray<SettingsPanel::SettingsGroup, SettingsPanel::GroupSpec> Settings
 	{SettingsTab::BEHAVIOR, "Riot Client"},
 	{SettingsTab::PRIVACY, "Protection"},
 	{SettingsTab::SECURITY, "Vault"},
+	{SettingsTab::DEBUG, "Diagnostics"},
 }};
 
 const SettingsPanel::RowSpec SettingsPanel::K_ROW_SPECS[]{
@@ -573,10 +574,13 @@ const SettingsPanel::RowSpec SettingsPanel::K_ROW_SPECS[]{
 	{&Rows::renderer, SettingsGroup::GENERAL, "Renderer", "Restart Pulsar to switch.", "graphics gpu direct3d directx metal opengl driver"},
 	{&Rows::riot_client, SettingsGroup::RIOT_CLIENT, "Location", "Found automatically when you log in.", "riot client path folder install location exe riotclientservices browse locate find launcher"},
 	{&Rows::launch_game, SettingsGroup::RIOT_CLIENT, "Launch game after login", "Presses Play once you're signed in.", "auto play autoplay start game launch automatically play button"},
+	{&Rows::hide_riot_client, SettingsGroup::RIOT_CLIENT, "Hide Riot Client during login", "Signs in out of sight. Shows the client if it needs you.", "invisible background stealth focus steal hidden window minimized quiet"},
 	{&Rows::hide_from_capture, SettingsGroup::PROTECTION, "Hide from screen capture", "Hide Pulsar from screenshares, recordings and screenshots.", "stream record share obs discord"},
 	{&Rows::block_overlay_injection, SettingsGroup::PROTECTION, "Block overlay injection", "Block overlays and keyloggers. Restart to apply.", "security inject dll"},
 	{&Rows::auto_lock, SettingsGroup::VAULT, "Auto-lock", "Lock the vault after being idle.", "timeout idle inactive away"},
 	{&Rows::master_password, SettingsGroup::VAULT, "Master password", "Encrypts saved passwords.", "change reset vault encryption"},
+	{&Rows::live_view, SettingsGroup::DIAGNOSTICS, "Live view of hidden client", "Mirrors the hidden Riot Client in a corner while logging in.", "debug preview mirror watch see hidden riot client login window"},
+	{&Rows::diagnostic_log, SettingsGroup::DIAGNOSTICS, "Diagnostic log", "Writes what Pulsar does to its logs folder, for bug reports.", "debug logging log file trace troubleshoot report bug"},
 };
 
 const EnumArray<SettingsPanel::SliderKind, SettingsPanel::SliderSpec> SettingsPanel::K_SLIDERS{{
@@ -743,9 +747,12 @@ const EnumArray<SettingsPanel::ResettableSetting, SettingsPanel::ResetSpec> Sett
 		 t_panel->m_commands->push(Command{.type = CommandType::SAVE_CHANGES});
 	 }},
 	{&Rows::launch_game, ResetAnchor::TOGGLE, at_default<&Settings::launch_game_after_login>, restore_default<&Settings::launch_game_after_login>},
+	{&Rows::hide_riot_client, ResetAnchor::TOGGLE, at_default<&Settings::hide_riot_client_during_login>, restore_default<&Settings::hide_riot_client_during_login>},
 	{&Rows::hide_from_capture, ResetAnchor::TOGGLE, at_default<&Settings::hide_from_capture>, restore_default<&Settings::hide_from_capture>},
 	{&Rows::block_overlay_injection, ResetAnchor::TOGGLE, at_default<&Settings::block_overlay_injection>, restore_default<&Settings::block_overlay_injection>},
 	{&Rows::auto_lock, ResetAnchor::SLIDER, at_default<&Settings::auto_lock_minutes>, restore_default<&Settings::auto_lock_minutes>},
+	{&Rows::live_view, ResetAnchor::TOGGLE, at_default<&Settings::show_live_view_of_hidden_client>, restore_default<&Settings::show_live_view_of_hidden_client>},
+	{&Rows::diagnostic_log, ResetAnchor::TOGGLE, at_default<&Settings::write_diagnostic_log>, restore_default<&Settings::write_diagnostic_log>},
 }};
 
 SettingsPanel::SettingsPanel(Settings* t_settings, Fonts* t_fonts, Renderer* t_renderer, const os::Window* t_window, const Assets* t_assets, CommandQueue* t_commands)

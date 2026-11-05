@@ -451,6 +451,10 @@ RiotClient::~RiotClient() = default;
 
 auto RiotClient::prepare_automation() -> void {}
 
+auto RiotClient::show_windows_left_hidden() -> void {}
+
+auto RiotClient::show_hidden_windows_after_crash() -> void {}
+
 auto RiotClient::running_game() -> std::optional<std::string_view>
 {
 	bool in_progress = false;
@@ -663,6 +667,32 @@ auto RiotClient::stop_automation() -> void
 	m_native->application   = nil;
 }
 
+auto RiotClient::start_hiding(bool) -> bool
+{
+	return false;
+}
+
+auto RiotClient::is_hiding() const -> bool
+{
+	return false;
+}
+
+auto RiotClient::watch_for_user_opening() -> void {}
+
+auto RiotClient::was_opened_by_user() const -> bool
+{
+	return false;
+}
+
+auto RiotClient::has_game_started() const -> bool
+{
+	return false;
+}
+
+auto RiotClient::show_progress(std::string_view) -> void {}
+
+auto RiotClient::hand_back(HandBack) -> void {}
+
 auto RiotClient::look() -> ClientView
 {
 	if (m_native->application == nil) return {};
@@ -689,7 +719,7 @@ auto RiotClient::look() -> ClientView
 	return view;
 }
 
-auto RiotClient::fill_and_submit(std::string_view t_username, std::string_view t_password, SubmitWith t_submit) -> bool
+auto RiotClient::fill_and_submit(std::string_view t_username, std::string_view t_password) -> bool
 {
 	if (m_native->application == nil) return false;
 
@@ -707,13 +737,11 @@ auto RiotClient::fill_and_submit(std::string_view t_username, std::string_view t
 	fill_field(pid, username_field, os::macos::to_ns_string(t_username));
 	fill_field(pid, password_field, os::macos::to_ns_string(t_password));
 
-	if (t_submit == SubmitWith::SIGN_IN_BUTTON_OR_ENTER) {
-		const id sign_in = find_element(window, m_cancel, [](const AxNode& t_node) { return is_button_named(t_node, K_SIGN_IN_BUTTON_NAME); });
+	const id sign_in = find_element(window, m_cancel, [](const AxNode& t_node) { return is_button_named(t_node, K_SIGN_IN_BUTTON_NAME); });
 
-		if (sign_in != nil && is_enabled(sign_in) && AXUIElementPerformAction((__bridge AXUIElementRef)sign_in, kAXPressAction) == kAXErrorSuccess) {
-			debug_log::write(K_LOG_CATEGORY, "submitted the login form with its Sign in button");
-			return true;
-		}
+	if (sign_in != nil && is_enabled(sign_in) && AXUIElementPerformAction((__bridge AXUIElementRef)sign_in, kAXPressAction) == kAXErrorSuccess) {
+		debug_log::write(K_LOG_CATEGORY, "submitted the login form with its Sign in button");
+		return true;
 	}
 
 	focus(password_field);

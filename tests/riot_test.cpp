@@ -154,6 +154,14 @@ TEST_CASE("only some errors are worth signing in again for")
 	CHECK(classify_login_failure("Something else entirely") == LoginFailure::UNRECOGNIZED);
 }
 
+TEST_CASE("a hidden client goes back minimized only when nothing is left for the user to do in it")
+{
+	CHECK(hand_back_after(LoginStage::SUCCESS, "") == HandBack::MINIMIZED);
+	CHECK(hand_back_after(LoginStage::SUCCESS, "Logged in. Press Play in the Riot Client.") == HandBack::SHOWN);
+	CHECK(hand_back_after(LoginStage::FAILED, "Wrong username or password.") == HandBack::SHOWN);
+	CHECK(hand_back_after(LoginStage::CANCELLED, "") == HandBack::SHOWN);
+}
+
 namespace {
 constexpr std::string_view K_REMEMBERED_SETTINGS = "psl:\n"
 												   "    authorization:\n"

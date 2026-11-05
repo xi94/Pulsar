@@ -48,6 +48,9 @@ constexpr BoolSetting K_BOOL_SETTINGS[]{
 	{"close_to_tray", &Settings::close_to_tray},
 	{"start_minimized", &Settings::start_minimized},
 	{"launch_game_after_login", &Settings::launch_game_after_login},
+	{"hide_riot_client_during_login", &Settings::hide_riot_client_during_login},
+	{K_IS_DEBUG_BUILD ? "debug_build_show_live_view_of_hidden_client" : "show_live_view_of_hidden_client", &Settings::show_live_view_of_hidden_client},
+	{K_IS_DEBUG_BUILD ? "debug_build_write_diagnostic_log" : "write_diagnostic_log", &Settings::write_diagnostic_log},
 };
 
 constexpr FloatSetting K_FLOAT_SETTINGS[]{

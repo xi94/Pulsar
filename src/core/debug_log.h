@@ -4,6 +4,7 @@ namespace debug_log {
 
 auto init() -> void;
 auto shutdown() -> void;
+auto set_enabled(bool t_enabled) -> void;
 
 [[nodiscard]] auto is_enabled() -> bool;
 [[nodiscard]] auto file_path() -> const char*;

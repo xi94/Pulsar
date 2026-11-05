@@ -177,7 +177,13 @@ auto LoginSession::start(PendingLogin t_login) -> void
 	m_login_account        = t_login.account;
 	m_login_game           = t_login.game;
 	m_launches_game        = m_settings->launch_game_after_login;
-	m_login.start(account->username, account->password, m_library->games[t_login.game].launch_product, m_settings->riot_client_path, m_launches_game);
+
+	const LoginOptions options{
+		.launch_game    = m_launches_game,
+		.hide_client    = m_settings->hide_riot_client_during_login,
+		.show_live_view = m_settings->show_live_view_of_hidden_client,
+	};
+	m_login.start(account->username, account->password, m_library->games[t_login.game].launch_product, m_settings->riot_client_path, options);
 }
 
 auto LoginSession::retry() -> void

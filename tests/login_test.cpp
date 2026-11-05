@@ -1,6 +1,7 @@
 #include <chrono>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "login/client_watch.h"
 #include "test.h"
@@ -32,6 +33,59 @@ const WatchClock::time_point K_START{};
 {
 	return t_result ? std::optional{t_result->outcome} : std::nullopt;
 }
+
+constexpr ElementBounds K_PASSWORD_FIELD{.left = 570, .top = 592, .right = 854, .bottom = 636};
+constexpr usize         K_ARROW_INDEX = 6;
+
+[[nodiscard]] auto button_at(i32 t_left, i32 t_top, i32 t_size, bool t_named, bool t_enabled) -> FormButton
+{
+	return FormButton{.bounds = {.left = t_left, .top = t_top, .right = t_left + t_size, .bottom = t_top + t_size}, .named = t_named, .invokable = true, .enabled = t_enabled};
+}
+
+// The buttons the Riot Client's sign-in form shows: window controls, five social sign-in buttons under the password box, the unnamed arrow, and the version label.
+[[nodiscard]] auto sign_in_form_buttons(bool t_arrow_enabled) -> std::vector<FormButton>
+{
+	return {
+		button_at(1984, 288, 32, true, true),
+		button_at(568, 666, 52, false, true),
+		button_at(627, 666, 52, false, true),
+		button_at(686, 666, 52, false, true),
+		button_at(745, 666, 52, false, true),
+		button_at(804, 666, 52, false, true),
+		button_at(680, 938, 64, false, t_arrow_enabled),
+		button_at(806, 1084, 50, true, true),
+	};
+}
+}
+
+TEST_CASE("the sign-in arrow is the button that turned enabled when the form was filled in")
+{
+	CHECK(find_sign_in_arrow(sign_in_form_buttons(false), sign_in_form_buttons(true), K_PASSWORD_FIELD) == K_ARROW_INDEX);
+}
+
+TEST_CASE("without a list from before filling, the arrow is the lowest unnamed button under the password box")
+{
+	CHECK(find_sign_in_arrow({}, sign_in_form_buttons(true), K_PASSWORD_FIELD) == K_ARROW_INDEX);
+}
+
+TEST_CASE("an arrow that never turned enabled is not pressed")
+{
+	CHECK(!find_sign_in_arrow(sign_in_form_buttons(false), sign_in_form_buttons(false), K_PASSWORD_FIELD));
+}
+
+TEST_CASE("when several buttons turn enabled, the arrow is told apart by where it sits")
+{
+	std::vector<FormButton> before = sign_in_form_buttons(false);
+	before[1].enabled              = false;
+
+	CHECK(find_sign_in_arrow(before, sign_in_form_buttons(true), K_PASSWORD_FIELD) == K_ARROW_INDEX);
+}
+
+TEST_CASE("buttons outside the password box's column are never taken for the arrow")
+{
+	const std::vector<FormButton> after{button_at(1200, 938, 64, false, true)};
+
+	CHECK(!find_sign_in_arrow({}, after, K_PASSWORD_FIELD));
 }
 
 TEST_CASE("the sign-in form showing ends the wait for it")

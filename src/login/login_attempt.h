@@ -22,16 +22,22 @@ enum class LoginStage : u8 {
 
 constexpr usize K_LOGIN_MESSAGE_CAPACITY = 160;
 
+struct LoginOptions {
+	bool launch_game    = true;
+	bool hide_client    = true;
+	bool show_live_view = false;
+};
+
 struct LoginWork {
 	std::atomic<LoginStage> stage{LoginStage::IDLE};
 	std::atomic<bool>       cancel_requested{false};
 	std::atomic<bool>       worker_finished{false};
 
-	char username[64]{};
-	char password[128]{};
-	char launch_product[32]{};
-	char message[K_LOGIN_MESSAGE_CAPACITY]{};
-	bool launch_game = true;
+	char         username[64]{};
+	char         password[128]{};
+	char         launch_product[32]{};
+	char         message[K_LOGIN_MESSAGE_CAPACITY]{};
+	LoginOptions options;
 
 	std::string remembered_client_path;
 	std::string found_client_path;
@@ -51,6 +57,9 @@ enum class LoginFailure : u8 {
 [[nodiscard]] auto classify_login_failure(std::string_view t_riot_error) -> LoginFailure;
 [[nodiscard]] auto login_failure_message(std::string_view t_riot_error, char (&t_buffer)[K_LOGIN_MESSAGE_CAPACITY]) -> std::string_view;
 
+// A hidden client goes back minimized only when the login finished with nothing left for the user to do in it.
+[[nodiscard]] auto hand_back_after(LoginStage t_final_stage, std::string_view t_message) -> HandBack;
+
 class LoginAttempt {
   public:
 	LoginAttempt() = default;
@@ -59,7 +68,7 @@ class LoginAttempt {
 	LoginAttempt(const LoginAttempt&)                    = delete;
 	auto operator=(const LoginAttempt&) -> LoginAttempt& = delete;
 
-	auto start(std::string_view t_username, std::string_view t_password, std::string_view t_launch_product, std::string_view t_client_path, bool t_launch_game) -> void;
+	auto start(std::string_view t_username, std::string_view t_password, std::string_view t_launch_product, std::string_view t_client_path, LoginOptions t_options) -> void;
 	auto cancel() -> void;
 	auto update() -> void;
 

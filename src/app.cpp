@@ -18,6 +18,7 @@
 #include "games.h"
 #include "login/riot_client.h"
 #include "os/clipboard.h"
+#include "os/crash_handler.h"
 #include "os/installation.h"
 #include "ui/controls.h"
 #include "ui/text.h"
@@ -212,9 +213,13 @@ auto App::start(bool t_from_startup) -> App::StartResult
 	m_settings.start_with_system              = os::installation::starts_with_system();
 	m_start_with_system                       = m_settings.start_with_system;
 
+	debug_log::set_enabled(m_settings.write_diagnostic_log);
+
 	log_startup_phase("GuardAgainstOverlays");
 	guard_against_overlays(m_settings.block_overlay_injection);
 	RiotClient::prepare_automation();
+	RiotClient::show_windows_left_hidden();
+	os::set_crash_cleanup(RiotClient::show_hidden_windows_after_crash);
 
 	if (sodium_init() < 0) {
 		std::println("Failed to initialize libsodium.");
@@ -1483,6 +1488,7 @@ auto App::run() -> void
 		}
 
 		m_window.set_excluded_from_capture(m_settings.hide_from_capture);
+		debug_log::set_enabled(m_settings.write_diagnostic_log);
 
 		if (m_settings.start_with_system != m_start_with_system) {
 			m_start_with_system = m_settings.start_with_system;

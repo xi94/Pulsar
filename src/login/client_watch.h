@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <optional>
+#include <span>
 #include <string>
 
 #include "core/types.h"
@@ -15,6 +16,23 @@ struct ClientView {
 	std::optional<std::string> login_error;
 	bool                       play_shown   = false;
 	bool                       play_enabled = false;
+};
+
+struct ElementBounds {
+	i32 left   = 0;
+	i32 top    = 0;
+	i32 right  = 0;
+	i32 bottom = 0;
+
+	auto operator==(const ElementBounds&) const -> bool = default;
+};
+
+// The sign-in arrow has no name, so it is told apart from the other buttons on the form by what it does and where it sits.
+struct FormButton {
+	ElementBounds bounds;
+	bool          named     = false;
+	bool          invokable = false;
+	bool          enabled   = false;
 };
 
 enum class FormWait : u8 {
@@ -82,3 +100,6 @@ class PlayWatch {
 	std::optional<WatchClock::time_point> m_last_press;
 	u32                                   m_presses = 0;
 };
+
+// The arrow is the one button that turned enabled when the form was filled in. Failing that, it is the lowest unnamed button under the password box, inside its column.
+[[nodiscard]] auto find_sign_in_arrow(std::span<const FormButton> t_before_filling, std::span<const FormButton> t_after_filling, ElementBounds t_password_field) -> std::optional<usize>;

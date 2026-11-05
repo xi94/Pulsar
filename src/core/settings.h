@@ -2,6 +2,7 @@
 
 #include <string_view>
 
+#include "core/app_identity.h"
 #include "core/crypto.h"
 #include "core/enum_array.h"
 #include "core/types.h"
@@ -104,16 +105,20 @@ struct Settings {
 	ThemeKind theme = ThemeKind::DARK;
 	Color     accent{203, 166, 247, 255};
 
-	bool        show_notifications      = true;
-	bool        hide_from_capture       = true;
-	bool        block_overlay_injection = true;
-	bool        close_to_tray           = false;
-	bool        start_with_system       = false;
-	bool        start_minimized         = true;
-	GraphicsApi renderer                = GraphicsApi::NATIVE;
-	u32         auto_lock_minutes       = 0;
-	bool        launch_game_after_login = true;
+	bool        show_notifications            = true;
+	bool        hide_from_capture             = true;
+	bool        block_overlay_injection       = true;
+	bool        close_to_tray                 = false;
+	bool        start_with_system             = false;
+	bool        start_minimized               = true;
+	GraphicsApi renderer                      = GraphicsApi::NATIVE;
+	u32         auto_lock_minutes             = 0;
+	bool        launch_game_after_login       = true;
+	bool        hide_riot_client_during_login = true;
 	char        riot_client_path[K_PATH_CAPACITY]{};
+
+	bool show_live_view_of_hidden_client = K_IS_DEBUG_BUILD;
+	bool write_diagnostic_log            = K_IS_DEBUG_BUILD;
 
 	i32  zoom_stop     = 0;
 	u32  selected_game = 0;

@@ -11,6 +11,8 @@ auto install_crash_handler() -> void
 	setrlimit(RLIMIT_CORE, &no_core_dumps);
 }
 
+auto set_crash_cleanup(void (*)()) -> void {}
+
 auto write_diagnostic_dump(const char*) -> std::string
 {
 	return {};

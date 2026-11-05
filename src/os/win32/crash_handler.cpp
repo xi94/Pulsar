@@ -21,7 +21,8 @@ constexpr int K_CLOSE_BUTTON_ID       = 1002;
 // Never MiniDumpWithFullMemory: it would write the vault key and every decrypted password to disk.
 constexpr auto K_DUMP_TYPE = static_cast<MINIDUMP_TYPE>(MiniDumpWithThreadInfo | MiniDumpWithHandleData | MiniDumpWithUnloadedModules);
 
-std::atomic<bool> g_handling_crash{false};
+std::atomic<bool>       g_handling_crash{false};
+std::atomic<void (*)()> g_crash_cleanup{nullptr};
 
 [[nodiscard]] auto crash_dump_directory() -> std::wstring
 {
@@ -177,6 +178,10 @@ auto report_crash(EXCEPTION_POINTERS* t_exception, const wchar_t* t_reason) -> v
 	const std::wstring dump_directory = crash_dump_directory();
 	const std::wstring dump_path      = write_minidump(t_exception, dump_directory, L"crash", K_DUMP_TYPE);
 
+	if (void (*cleanup)() = g_crash_cleanup.load(); cleanup != nullptr) {
+		cleanup();
+	}
+
 	show_crash_dialog(t_reason, location, dump_path, dump_directory);
 }
 
@@ -247,6 +252,11 @@ auto install_crash_handler() -> void
 	std::set_terminate(on_terminate);
 	_set_purecall_handler(on_pure_call);
 	_set_invalid_parameter_handler(on_invalid_parameter);
+}
+
+auto set_crash_cleanup(void (*t_cleanup)()) -> void
+{
+	g_crash_cleanup.store(t_cleanup);
 }
 
 auto write_diagnostic_dump(const char* t_tag) -> std::string

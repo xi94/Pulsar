@@ -93,6 +93,9 @@ if (WIN32)
     "render/opengl/renderer.cpp"
     "render/opengl/win32/context.cpp"
 
+    "login/win32/client_windows.cpp"
+    "login/win32/hidden_client.cpp"
+    "login/win32/live_view.cpp"
     "login/win32/riot_client.cpp"
     "login/win32/ui_automation.cpp"
   )

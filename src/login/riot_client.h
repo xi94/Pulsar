@@ -10,9 +10,9 @@
 #include "core/types.h"
 #include "login/client_watch.h"
 
-enum class SubmitWith : u8 {
-	SIGN_IN_BUTTON_OR_ENTER,
-	ENTER,
+enum class HandBack : u8 {
+	MINIMIZED,
+	SHOWN,
 };
 
 class RiotClient {
@@ -24,6 +24,8 @@ class RiotClient {
 	auto operator=(const RiotClient&) -> RiotClient& = delete;
 
 	static auto prepare_automation() -> void;
+	static auto show_windows_left_hidden() -> void;
+	static auto show_hidden_windows_after_crash() -> void;
 	[[nodiscard]] static auto running_game() -> std::optional<std::string_view>;
 	static auto kill_all_client_processes(const std::atomic<bool>* t_cancel) -> void;
 	[[nodiscard]] static auto automation_failure_message() -> const char*;
@@ -48,8 +50,16 @@ class RiotClient {
 	[[nodiscard]] auto start_automation() -> bool;
 	auto stop_automation() -> void;
 
+	[[nodiscard]] auto start_hiding(bool t_show_live_view) -> bool;
+	[[nodiscard]] auto is_hiding() const -> bool;
+	auto watch_for_user_opening() -> void;
+	[[nodiscard]] auto was_opened_by_user() const -> bool;
+	[[nodiscard]] auto has_game_started() const -> bool;
+	auto show_progress(std::string_view t_progress) -> void;
+	auto hand_back(HandBack t_mode) -> void;
+
 	[[nodiscard]] auto look() -> ClientView;
-	[[nodiscard]] auto fill_and_submit(std::string_view t_username, std::string_view t_password, SubmitWith t_submit) -> bool;
+	[[nodiscard]] auto fill_and_submit(std::string_view t_username, std::string_view t_password) -> bool;
 	auto press_play() -> bool;
 
 	std::string m_executable_path;

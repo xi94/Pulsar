@@ -1,5 +1,8 @@
 #include "login/client_watch.h"
 
+#include <algorithm>
+#include <ranges>
+
 namespace {
 constexpr auto K_SIGNED_IN_CONFIRMATION = std::chrono::seconds(3);
 constexpr auto K_UNANSWERED_SUBMIT      = std::chrono::seconds(10);
@@ -8,6 +11,18 @@ constexpr auto K_PLAY_SETTLE            = std::chrono::milliseconds(1500);
 constexpr auto K_PRESS_CONFIRMATION     = std::chrono::seconds(5);
 constexpr auto K_PLAY_TIMEOUT           = std::chrono::seconds(30);
 constexpr u32  K_MAX_PLAY_PRESSES       = 2;
+
+[[nodiscard]] auto was_disabled_before_filling(std::span<const FormButton> t_before_filling, const FormButton& t_button) -> bool
+{
+	return std::ranges::any_of(t_before_filling, [&t_button](const FormButton& t_earlier) { return t_earlier.bounds == t_button.bounds && !t_earlier.enabled; });
+}
+
+[[nodiscard]] auto is_under_password_field(const FormButton& t_button, ElementBounds t_password_field) -> bool
+{
+	const i32 center = (t_button.bounds.left + t_button.bounds.right) / 2;
+
+	return t_button.bounds.top >= t_password_field.bottom && center >= t_password_field.left && center <= t_password_field.right;
+}
 }
 
 auto FormWatch::observe(const ClientView& t_view, WatchClock::time_point t_now) -> std::optional<FormWait>
@@ -96,4 +111,31 @@ auto PlayWatch::press_now(WatchClock::time_point t_now) -> PlayStep
 	m_presses += 1;
 
 	return PlayStep::PRESS;
+}
+
+auto find_sign_in_arrow(std::span<const FormButton> t_before_filling, std::span<const FormButton> t_after_filling, ElementBounds t_password_field) -> std::optional<usize>
+{
+	std::optional<usize> turned_enabled;
+	u32                  turned_enabled_count = 0;
+	std::optional<usize> lowest_under_password;
+
+	for (const usize index : std::views::iota(usize{0}, t_after_filling.size())) {
+		const FormButton& button = t_after_filling[index];
+		if (!button.invokable) continue;
+
+		if (button.enabled && was_disabled_before_filling(t_before_filling, button)) {
+			turned_enabled = index;
+			turned_enabled_count += 1;
+		}
+
+		const bool is_lowest_so_far = !lowest_under_password || button.bounds.top > t_after_filling[*lowest_under_password].bounds.top;
+		if (!button.named && is_under_password_field(button, t_password_field) && is_lowest_so_far) {
+			lowest_under_password = index;
+		}
+	}
+
+	if (turned_enabled_count == 1) return turned_enabled;
+	if (lowest_under_password && t_after_filling[*lowest_under_password].enabled) return lowest_under_password;
+
+	return std::nullopt;
 }

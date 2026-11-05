@@ -57,6 +57,7 @@ class SettingsPanel : public Widget {
 		BEHAVIOR,
 		PRIVACY,
 		SECURITY,
+		DEBUG,
 		COUNT,
 	};
 
@@ -71,6 +72,7 @@ class SettingsPanel : public Widget {
 		RIOT_CLIENT,
 		PROTECTION,
 		VAULT,
+		DIAGNOSTICS,
 		COUNT,
 	};
 
@@ -112,8 +114,11 @@ class SettingsPanel : public Widget {
 		Rect                           renderer;
 		Rect                           riot_client;
 		Rect                           launch_game;
+		Rect                           hide_riot_client;
 		Rect                           auto_lock;
 		Rect                           master_password;
+		Rect                           live_view;
+		Rect                           diagnostic_log;
 		float                          content_height;
 		float                          row_width;
 		EnumArray<SettingsGroup, Rect> cards;
@@ -198,6 +203,9 @@ class SettingsPanel : public Widget {
 		{&Settings::background_grain, &Rows::background_grain},
 		{&Settings::snow, &Rows::snow},
 		{&Settings::launch_game_after_login, &Rows::launch_game},
+		{&Settings::hide_riot_client_during_login, &Rows::hide_riot_client},
+		{&Settings::show_live_view_of_hidden_client, &Rows::live_view},
+		{&Settings::write_diagnostic_log, &Rows::diagnostic_log},
 	};
 
 	static constexpr u32 K_TOGGLE_COUNT = static_cast<u32>(std::size(K_TOGGLES));
@@ -230,9 +238,12 @@ class SettingsPanel : public Widget {
 		RENDERER,
 		RIOT_CLIENT,
 		LAUNCH_GAME,
+		HIDE_RIOT_CLIENT,
 		HIDE_FROM_CAPTURE,
 		BLOCK_OVERLAY_INJECTION,
 		AUTO_LOCK,
+		LIVE_VIEW,
+		DIAGNOSTIC_LOG,
 		COUNT,
 	};
 
