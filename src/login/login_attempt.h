@@ -3,10 +3,12 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <thread>
 
+#include "login/login_timeline.h"
 #include "login/riot_client.h"
 
 enum class LoginStage : u8 {
@@ -38,6 +40,9 @@ struct LoginWork {
 	char         launch_product[32]{};
 	char         message[K_LOGIN_MESSAGE_CAPACITY]{};
 	LoginOptions options;
+
+	std::mutex    timeline_lock;
+	LoginTimeline timeline;
 
 	std::string remembered_client_path;
 	std::string found_client_path;
@@ -74,6 +79,7 @@ class LoginAttempt {
 
 	[[nodiscard]] auto stage() const -> LoginStage;
 	[[nodiscard]] auto terminal_message() const -> std::string_view;
+	[[nodiscard]] auto timeline() const -> LoginTimeline;
 	[[nodiscard]] auto found_client_path() const -> std::string;
 	[[nodiscard]] auto is_client_missing() const -> bool;
 	[[nodiscard]] auto is_permission_missing() const -> bool;

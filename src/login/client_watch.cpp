@@ -29,7 +29,7 @@ auto FormWatch::observe(const ClientView& t_view, WatchClock::time_point t_now) 
 {
 	if (t_view.login_form_shown) return FormWait::FORM_SHOWN;
 
-	if (!t_view.play_shown) {
+	if (!t_view.play_shown && !t_view.update_shown) {
 		m_signed_in_since.reset();
 		return std::nullopt;
 	}
@@ -85,6 +85,14 @@ auto PlayWatch::observe(const ClientView& t_view, WatchClock::time_point t_now) 
 	if (t_view.login_form_shown && t_view.login_error) return PlayStep::LOGIN_ERROR;
 
 	const bool ready = t_view.play_shown && t_view.play_enabled;
+
+	if (!t_view.update_shown) {
+		m_update_shown_since.reset();
+	} else if (!m_update_shown_since) {
+		m_update_shown_since = t_now;
+	}
+
+	if (!ready && m_update_shown_since && t_now - *m_update_shown_since >= K_PLAY_SETTLE) return PlayStep::UPDATE_NEEDED;
 
 	if (m_last_press) {
 		if (!ready) return PlayStep::PRESSED;

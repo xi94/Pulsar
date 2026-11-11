@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "login/client_watch.h"
+#include "login/login_timeline.h"
 #include "test.h"
 
 namespace {
@@ -244,4 +245,76 @@ TEST_CASE("an error on the sign-in form stops the wait for Play")
 	PlayWatch watch(at(0.0));
 
 	CHECK(watch.observe(login_form("Session expired"), at(1.0)) == PlayStep::LOGIN_ERROR);
+}
+
+TEST_CASE("an Update button where Play would be ends the wait once it has settled")
+{
+	PlayWatch        watch(at(0.0));
+	const ClientView update_page{.window_shown = true, .update_shown = true};
+
+	CHECK(watch.observe(update_page, at(1.0)) == PlayStep::WAIT);
+	CHECK(watch.observe(update_page, at(2.5)) == PlayStep::UPDATE_NEEDED);
+}
+
+TEST_CASE("a client signed in on a page that needs an update still counts as signed in")
+{
+	FormWatch        watch;
+	const ClientView update_page{.window_shown = true, .update_shown = true};
+
+	CHECK(!watch.observe(update_page, at(0.0)));
+	CHECK(watch.observe(update_page, at(3.0)) == FormWait::ALREADY_SIGNED_IN);
+}
+
+TEST_CASE("a finished step keeps the time it took while the running one counts up")
+{
+	LoginTimeline timeline(at(0.0), true);
+	timeline.begin(LoginStep::START_CLIENT, at(0.0));
+	timeline.begin(LoginStep::SIGN_IN, at(6.5));
+
+	const TimedStep started = timeline.step(LoginStep::START_CLIENT, at(9.0));
+	const TimedStep signing = timeline.step(LoginStep::SIGN_IN, at(9.0));
+
+	CHECK(started.state == StepState::DONE);
+	CHECK(started.seconds == 6.5f);
+	CHECK(signing.state == StepState::RUNNING);
+	CHECK(signing.seconds == 2.5f);
+	CHECK(timeline.step(LoginStep::START_GAME, at(9.0)).state == StepState::WAITING);
+	CHECK(timeline.total_seconds(at(9.0)) == 9.0f);
+}
+
+TEST_CASE("signing in again after a retry keeps counting from the first try")
+{
+	LoginTimeline timeline(at(0.0), true);
+	timeline.begin(LoginStep::SIGN_IN, at(1.0));
+	timeline.begin(LoginStep::SIGN_IN, at(4.0));
+
+	CHECK(timeline.step(LoginStep::SIGN_IN, at(5.0)).seconds == 4.0f);
+}
+
+TEST_CASE("a finished login stops every clock and marks how its last step ended")
+{
+	LoginTimeline timeline(at(0.0), true);
+	timeline.begin(LoginStep::START_CLIENT, at(0.0));
+	timeline.begin(LoginStep::SIGN_IN, at(2.0));
+	timeline.finish(StepState::FAILED, at(3.0));
+
+	const TimedStep signing = timeline.step(LoginStep::SIGN_IN, at(60.0));
+
+	CHECK(signing.state == StepState::FAILED);
+	CHECK(signing.seconds == 1.0f);
+	CHECK(timeline.step(LoginStep::START_CLIENT, at(60.0)).state == StepState::DONE);
+	CHECK(timeline.total_seconds(at(60.0)) == 3.0f);
+}
+
+TEST_CASE("a login that only signs in has no step for starting the game")
+{
+	CHECK(LoginTimeline(at(0.0), false).step_count() == 2);
+	CHECK(LoginTimeline(at(0.0), true).step_count() == 3);
+}
+
+TEST_CASE("a step reads as finished once it is done")
+{
+	CHECK(step_label(LoginStep::SIGN_IN, StepState::RUNNING) == "Signing in");
+	CHECK(step_label(LoginStep::SIGN_IN, StepState::DONE) == "Signed in");
+	CHECK(step_label(LoginStep::START_GAME, StepState::LEFT_TO_USER) == "Game not started");
 }

@@ -20,6 +20,7 @@ add_library (pulsar_portable OBJECT
 
   "login/client_watch.cpp"
   "login/login_attempt.cpp"
+  "login/login_timeline.cpp"
   "login/riot_client.cpp"
 
   "render/renderer.cpp"

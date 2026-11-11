@@ -84,3 +84,15 @@ TEST_CASE("relative times use the largest whole unit")
 	CHECK(relative_time(0, 3 * 86400, buffer) == "3 days ago");
 	CHECK(relative_time(0, 365 * 86400, buffer) == "1 year ago");
 }
+
+TEST_CASE("elapsed time reads in seconds, then in minutes and seconds")
+{
+	char buffer[16];
+
+	CHECK(elapsed_time(0.0f, ElapsedStyle::WHOLE_SECONDS, buffer) == "0s");
+	CHECK(elapsed_time(8.9f, ElapsedStyle::WHOLE_SECONDS, buffer) == "8s");
+	CHECK(elapsed_time(6.75f, ElapsedStyle::TENTHS_OF_A_SECOND, buffer) == "6.7s");
+	CHECK(elapsed_time(59.99f, ElapsedStyle::TENTHS_OF_A_SECOND, buffer) == "59.9s");
+	CHECK(elapsed_time(65.2f, ElapsedStyle::TENTHS_OF_A_SECOND, buffer) == "1m 05s");
+	CHECK(elapsed_time(-3.0f, ElapsedStyle::WHOLE_SECONDS, buffer) == "0s");
+}

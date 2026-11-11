@@ -154,7 +154,7 @@ template <typename Pattern>
 
 	BSTR name = nullptr;
 	if (SUCCEEDED(t_element->get_CachedName(&name)) && name != nullptr) {
-		button.named = SysStringLen(name) > 0;
+		button.name.assign(name, SysStringLen(name));
 		SysFreeString(name);
 	}
 

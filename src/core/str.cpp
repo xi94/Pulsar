@@ -193,3 +193,14 @@ constexpr TimeUnit K_TIME_UNITS[]{
 
 	return "just now";
 }
+
+[[nodiscard]] auto elapsed_time(float t_seconds, ElapsedStyle t_style, char (&t_buffer)[16]) -> std::string_view
+{
+	const i64 tenths  = static_cast<i64>(std::max(t_seconds, 0.0f) * 10.0f);
+	const i64 seconds = tenths / 10;
+
+	if (seconds >= 60) return format_into(t_buffer, "{}m {:02}s", seconds / 60, seconds % 60);
+	if (t_style == ElapsedStyle::WHOLE_SECONDS) return format_into(t_buffer, "{}s", seconds);
+
+	return format_into(t_buffer, "{}.{}s", seconds, tenths % 10);
+}

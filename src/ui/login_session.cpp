@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <ctime>
-#include <span>
 #include <string>
 #include <utility>
 
@@ -331,6 +330,11 @@ auto LoginSession::stage() const -> LoginStage
 	return m_queued ? LoginStage::IDLE : m_login.stage();
 }
 
+auto LoginSession::timeline() const -> LoginTimeline
+{
+	return m_queued ? LoginTimeline(WatchClock::now(), m_settings->launch_game_after_login) : m_login.timeline();
+}
+
 auto LoginSession::step() const -> u32
 {
 	return m_queued ? 0 : stage_step(m_login.stage());
@@ -339,21 +343,6 @@ auto LoginSession::step() const -> u32
 auto LoginSession::step_count() const -> u32
 {
 	return m_launches_game ? 4 : 3;
-}
-
-// The progress counted in steps, so a bar split into one part per step fills each part during its own step.
-auto LoginSession::step_progress() const -> float
-{
-	constexpr LoginStage STEPS[]{LoginStage::WAITING_FOR_PROCESS, LoginStage::CONNECTING, LoginStage::AUTHENTICATING, LoginStage::LAUNCHING};
-
-	float filled = 0.0f;
-
-	for (const LoginStage step : std::span{STEPS}.first(step_count())) {
-		const StageSpan span = *stage_span(step);
-		filled += std::clamp((m_progress - span.start) / (span.end - span.start), 0.0f, 1.0f);
-	}
-
-	return filled / static_cast<float>(step_count());
 }
 
 auto LoginSession::asks_for_permission() const -> bool

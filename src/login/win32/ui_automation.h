@@ -33,11 +33,11 @@ class UiElement {
 };
 
 struct UiButton {
-	UiElement element;
-	RECT      bounds{};
-	bool      named     = false;
-	bool      invokable = false;
-	bool      enabled   = false;
+	UiElement    element;
+	RECT         bounds{};
+	std::wstring name;
+	bool         invokable = false;
+	bool         enabled   = false;
 };
 
 class UiAutomation {

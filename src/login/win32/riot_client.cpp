@@ -41,10 +41,11 @@ constexpr std::wstring_view K_RIOT_UNINSTALL_PREFIX       = L"Riot Game ";
 
 constexpr const char* K_AUTOMATION_FAILED_MESSAGE = "Couldn't start Windows UI Automation - try again.";
 
-constexpr const wchar_t* K_USERNAME_FIELD_NAME      = L"USERNAME";
-constexpr const wchar_t* K_PASSWORD_FIELD_NAME      = L"PASSWORD";
-constexpr const wchar_t* K_PLAY_BUTTON_NAME         = L"Play";
-constexpr const wchar_t* K_LOGIN_ERROR_TOOLTIP_NAME = L"Login error";
+constexpr const wchar_t*    K_USERNAME_FIELD_NAME      = L"USERNAME";
+constexpr const wchar_t*    K_PASSWORD_FIELD_NAME      = L"PASSWORD";
+constexpr const wchar_t*    K_PLAY_BUTTON_NAME         = L"Play";
+constexpr std::wstring_view K_UPDATE_BUTTON_NAME_START = L"Update";
+constexpr const wchar_t*    K_LOGIN_ERROR_TOOLTIP_NAME = L"Login error";
 
 constexpr const wchar_t* K_CLIENT_PROCESS_NAMES[]{
 	L"Riot Client.exe",
@@ -120,7 +121,7 @@ class WideSecret {
 
 [[nodiscard]] auto form_buttons_of(std::span<const UiButton> t_buttons) -> std::vector<FormButton>
 {
-	const auto to_form_button = [](const UiButton& t_button) { return FormButton{.bounds = element_bounds_of(t_button.bounds), .named = t_button.named, .invokable = t_button.invokable, .enabled = t_button.enabled}; };
+	const auto to_form_button = [](const UiButton& t_button) { return FormButton{.bounds = element_bounds_of(t_button.bounds), .named = !t_button.name.empty(), .invokable = t_button.invokable, .enabled = t_button.enabled}; };
 
 	return t_buttons | std::views::transform(to_form_button) | std::ranges::to<std::vector>();
 }
@@ -462,6 +463,13 @@ struct LoginFields {
 	if (!tooltip.is_valid()) return std::nullopt;
 
 	return to_utf8(t_automation.text_inside(tooltip, K_LOGIN_ERROR_TOOLTIP_NAME));
+}
+
+[[nodiscard]] auto is_update_button(const UiButton& t_button) -> bool
+{
+	const std::wstring_view name = t_button.name;
+
+	return t_button.invokable && name.size() >= K_UPDATE_BUTTON_NAME_START.size() && CompareStringOrdinal(name.data(), static_cast<int>(K_UPDATE_BUTTON_NAME_START.size()), K_UPDATE_BUTTON_NAME_START.data(), static_cast<int>(K_UPDATE_BUTTON_NAME_START.size()), TRUE) == CSTR_EQUAL;
 }
 
 [[nodiscard]] auto launched_game_process_ids() -> std::vector<u32>
@@ -965,6 +973,10 @@ auto RiotClient::look() -> ClientView
 	const UiElement play = automation.find_descendant(window, K_PLAY_BUTTON_NAME, UIA_ButtonControlTypeId);
 	view.play_shown      = play.is_valid();
 	view.play_enabled    = play.is_enabled();
+
+	if (!view.play_shown) {
+		view.update_shown = std::ranges::any_of(automation.find_buttons(window), is_update_button);
+	}
 
 	return view;
 }

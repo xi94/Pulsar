@@ -75,13 +75,30 @@ enum class TrayLoginState : u8 {
 	FAILED,
 };
 
+enum class TrayStepState : u8 {
+	WAITING,
+	RUNNING,
+	DONE,
+	FAILED,
+	LEFT_TO_USER,
+};
+
+constexpr u32 K_TRAY_MAX_LOGIN_STEPS = 3;
+
+struct TrayLoginStep {
+	char          label[32]{};
+	TrayStepState state   = TrayStepState::WAITING;
+	float         seconds = 0.0f;
+};
+
 struct TrayLogin {
 	TrayLoginState state = TrayLoginState::RUNNING;
 	char           account[64]{};
-	char           status[160]{};
-	u32            step       = 0;
-	u32            step_count = 0;
-	float          progress   = 0.0f;
+	char           game[32]{};
+	char           message[160]{};
+	TrayLoginStep  steps[K_TRAY_MAX_LOGIN_STEPS]{};
+	u32            step_count    = 0;
+	float          total_seconds = 0.0f;
 };
 
 struct TrayMenu {

@@ -40,6 +40,7 @@ constexpr const char* K_UNRESPONSIVE_CLIENT_MESSAGE = "The Riot Client stopped r
 constexpr const char* K_ALREADY_SIGNED_IN_MESSAGE   = "The Riot Client is signed in to another account. Sign out there first.";
 constexpr const char* K_NO_RESPONSE_MESSAGE         = "The Riot Client didn't respond to the sign-in. Try again.";
 constexpr const char* K_PRESS_PLAY_MESSAGE          = "Logged in. Press Play in the Riot Client.";
+constexpr const char* K_UPDATE_NEEDED_MESSAGE       = "Logged in. An update is available in the Riot Client.";
 constexpr const char* K_GAME_NOT_STARTED_MESSAGE    = "Logged in, but the game didn't start. Check the Riot Client.";
 constexpr const char* K_USER_OPENED_CLIENT_MESSAGE  = "You opened the Riot Client, so Pulsar stopped logging in.";
 
@@ -133,8 +134,56 @@ auto show_progress(LoginWork* t_work, LoginStage t_stage) -> void
 	t_work->riot_client.show_progress(t_work->message[0] != '\0' ? format_into(progress, "{}: {}", label, t_work->message) : label);
 }
 
+[[nodiscard]] auto step_of(LoginStage t_stage) -> std::optional<LoginStep>
+{
+	switch (t_stage) {
+		using enum LoginStage;
+
+		case WAITING_FOR_PROCESS:
+		case CONNECTING: {
+			return LoginStep::START_CLIENT;
+		}
+
+		case AUTHENTICATING: {
+			return LoginStep::SIGN_IN;
+		}
+
+		case LAUNCHING: {
+			return LoginStep::START_GAME;
+		}
+
+		case IDLE:
+		case SUCCESS:
+		case FAILED:
+		case CANCELLED: {
+			break;
+		}
+	}
+
+	return std::nullopt;
+}
+
+[[nodiscard]] auto outcome_of_last_step(const LoginWork* t_work, LoginStage t_final_stage) -> StepState
+{
+	if (t_final_stage != LoginStage::SUCCESS) return StepState::FAILED;
+
+	return t_work->message[0] == '\0' ? StepState::DONE : StepState::LEFT_TO_USER;
+}
+
+auto record_on_timeline(LoginWork* t_work, LoginStage t_stage) -> void
+{
+	const std::lock_guard lock(t_work->timeline_lock);
+
+	if (const std::optional<LoginStep> step = step_of(t_stage)) {
+		t_work->timeline.begin(*step, WatchClock::now());
+	} else if (LoginAttempt::is_terminal(t_stage)) {
+		t_work->timeline.finish(outcome_of_last_step(t_work, t_stage), WatchClock::now());
+	}
+}
+
 auto set_stage(LoginWork* t_work, LoginStage t_stage) -> void
 {
+	record_on_timeline(t_work, t_stage);
 	debug_log::write(K_LOG_CATEGORY, "stage -> %s%s", stage_name(t_stage), t_work->message[0] != '\0' ? " (with a message)" : "");
 	show_progress(t_work, t_stage);
 	t_work->stage.store(t_stage, std::memory_order_release);
@@ -454,6 +503,13 @@ auto press_play(LoginWork* t_work) -> void
 				break;
 			}
 
+			case UPDATE_NEEDED: {
+				debug_log::write(K_LOG_CATEGORY, "the game needs an update before it can be played - leaving that to the user");
+				copy_to(K_UPDATE_NEEDED_MESSAGE, t_work->message);
+				set_stage(t_work, LoginStage::SUCCESS);
+				return;
+			}
+
 			case NOT_FOUND: {
 				debug_log::write(K_LOG_CATEGORY, "Play never became ready - leaving the game for the user to start");
 				copy_to(K_PRESS_PLAY_MESSAGE, t_work->message);
@@ -582,6 +638,7 @@ auto LoginAttempt::start(std::string_view t_username, std::string_view t_passwor
 	copy_to(t_launch_product, work->launch_product);
 	work->remembered_client_path = std::string{t_client_path};
 	work->options                = t_options;
+	work->timeline               = LoginTimeline(WatchClock::now(), t_options.launch_game);
 	work->stage.store(LoginStage::WAITING_FOR_PROCESS, std::memory_order_relaxed);
 
 	m_work   = work;
@@ -608,6 +665,15 @@ auto LoginAttempt::stage() const -> LoginStage
 auto LoginAttempt::terminal_message() const -> std::string_view
 {
 	return m_work != nullptr ? std::string_view{m_work->message} : std::string_view{};
+}
+
+auto LoginAttempt::timeline() const -> LoginTimeline
+{
+	if (m_work == nullptr) return {};
+
+	const std::lock_guard lock(m_work->timeline_lock);
+
+	return m_work->timeline;
 }
 
 auto LoginAttempt::found_client_path() const -> std::string

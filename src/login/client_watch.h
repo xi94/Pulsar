@@ -16,6 +16,7 @@ struct ClientView {
 	std::optional<std::string> login_error;
 	bool                       play_shown   = false;
 	bool                       play_enabled = false;
+	bool                       update_shown = false;
 };
 
 struct ElementBounds {
@@ -57,6 +58,7 @@ enum class PlayStep : u8 {
 	PRESS,
 	PRESSED,
 	NOT_FOUND,
+	UPDATE_NEEDED,
 	LOGIN_ERROR,
 };
 
@@ -97,6 +99,7 @@ class PlayWatch {
 
 	WatchClock::time_point                m_started;
 	std::optional<WatchClock::time_point> m_ready_since;
+	std::optional<WatchClock::time_point> m_update_shown_since;
 	std::optional<WatchClock::time_point> m_last_press;
 	u32                                   m_presses = 0;
 };

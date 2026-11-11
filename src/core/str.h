@@ -53,3 +53,10 @@ template <usize Capacity, typename... Args>
 [[nodiscard]] auto find_ignoring_case(std::string_view t_text, std::string_view t_query) -> usize;
 [[nodiscard]] auto trimmed(std::string_view t_text) -> std::string_view;
 [[nodiscard]] auto relative_time(i64 t_then, i64 t_now, char (&t_buffer)[32]) -> std::string_view;
+
+enum class ElapsedStyle : u8 {
+	WHOLE_SECONDS,
+	TENTHS_OF_A_SECOND,
+};
+
+[[nodiscard]] auto elapsed_time(float t_seconds, ElapsedStyle t_style, char (&t_buffer)[16]) -> std::string_view;

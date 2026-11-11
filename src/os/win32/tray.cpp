@@ -24,6 +24,7 @@
 #include "core/app_identity.h"
 #include "core/enum_array.h"
 #include "core/debug_log.h"
+#include "core/str.h"
 #include "os/win32/win32.h"
 #include "stb/stb_image.h"
 
@@ -144,41 +145,52 @@ constexpr float K_EDGE_SHADOW_HEIGHT    = 14.0f;
 constexpr float K_EDGE_SHADOW_ALPHA     = 0.35f;
 constexpr float K_EDGE_SHADOW_TRAVEL    = 24.0f;
 
-constexpr float K_TOAST_MARGIN          = 12.0f;
-constexpr float K_TOAST_PADDING         = 11.0f;
-constexpr float K_TOAST_PILL_WIDTH      = 224.0f;
-constexpr float K_TOAST_PILL_HEIGHT     = 38.0f;
-constexpr float K_TOAST_CARD_WIDTH      = 262.0f;
-constexpr float K_TOAST_LINE_CENTER     = 15.5f;
-constexpr float K_TOAST_BAR_TOP         = 27.0f;
-constexpr float K_TOAST_BAR_HEIGHT      = 3.0f;
-constexpr float K_TOAST_TRACK_ALPHA     = 0.1f;
-constexpr float K_TOAST_LOGO_SIZE       = 15.0f;
-constexpr float K_TOAST_ICON_GAP        = 8.0f;
-constexpr float K_TOAST_GLYPH_SIZE      = 14.0f;
-constexpr float K_TOAST_COUNT_WIDTH     = 26.0f;
-constexpr float K_TOAST_HEADER_HEIGHT   = 18.0f;
-constexpr float K_TOAST_MESSAGE_GAP     = 3.0f;
-constexpr float K_TOAST_MESSAGE_MAX     = 48.0f;
-constexpr float K_TOAST_BUTTON_GAP      = 10.0f;
-constexpr float K_TOAST_BUTTON_HEIGHT   = 24.0f;
-constexpr float K_TOAST_BUTTON_PADDING  = 10.0f;
-constexpr float K_TOAST_BUTTON_SPACING  = 6.0f;
-constexpr float K_TOAST_BUTTON_RADIUS   = 6.0f;
-constexpr float K_TOAST_TEXT_SIZE       = 12.0f;
-constexpr float K_TOAST_COUNT_SIZE      = 11.0f;
-constexpr float K_TOAST_MESSAGE_SIZE    = 11.5f;
-constexpr float K_TOAST_GHOST_ALPHA     = 0.08f;
-constexpr float K_TOAST_GHOST_HOVER     = 0.07f;
-constexpr float K_TOAST_ERROR_EDGE      = 0.6f;
-constexpr float K_TOAST_SLIDE           = 14.0f;
-constexpr float K_TOAST_IN_SECONDS      = 0.22f;
-constexpr float K_TOAST_GROW_SECONDS    = 0.22f;
-constexpr float K_TOAST_DONE_SECONDS    = 0.25f;
-constexpr float K_TOAST_BAR_EASE_RATE   = 9.0f;
-constexpr float K_TOAST_SUCCESS_SECONDS = 2.0f;
-constexpr float K_TOAST_ERROR_SECONDS   = 5.0f;
-constexpr float K_TOAST_FADE_SHARE      = 0.45f;
+constexpr float K_TOAST_MARGIN             = 12.0f;
+constexpr float K_TOAST_PADDING            = 11.0f;
+constexpr float K_TOAST_WIDTH              = 262.0f;
+constexpr float K_TOAST_LOGO_SIZE          = 15.0f;
+constexpr float K_TOAST_ICON_GAP           = 8.0f;
+constexpr float K_TOAST_GLYPH_SIZE         = 14.0f;
+constexpr float K_TOAST_HEADER_HEIGHT      = 18.0f;
+constexpr float K_TOAST_GAME_GAP           = 5.0f;
+constexpr float K_TOAST_SEPARATOR_GAP      = 6.0f;
+constexpr float K_TOAST_STEPS_GAP          = 12.0f;
+constexpr float K_TOAST_STEP_HEIGHT        = 22.0f;
+constexpr float K_TOAST_STEP_GLYPH_SIZE    = 13.0f;
+constexpr float K_TOAST_BADGE_RADIUS_SHARE = 0.43f;
+constexpr float K_TOAST_BADGE_STROKE_SHARE = 0.28f;
+constexpr float K_TOAST_RING_RADIUS_SHARE  = 0.375f;
+constexpr float K_TOAST_RING_STROKE        = 1.4f;
+constexpr float K_TOAST_RING_TRACK_ALPHA   = 0.22f;
+constexpr float K_TOAST_RING_ARC_TURNS     = 0.28f;
+constexpr float K_TOAST_RING_TURN_SECONDS  = 1.1f;
+constexpr float K_TOAST_WAITING_RING_ALPHA = 0.7f;
+constexpr float K_TOAST_ROW_BLEED          = 5.0f;
+constexpr float K_TOAST_ROW_RADIUS         = 6.0f;
+constexpr float K_TOAST_ROW_TINT_ALPHA     = 0.08f;
+constexpr float K_TOAST_RAIL_WIDTH         = 1.0f;
+constexpr float K_TOAST_RAIL_GAP           = 2.0f;
+constexpr float K_TOAST_RAIL_ALPHA         = 0.6f;
+constexpr float K_TOAST_TIME_WIDTH         = 52.0f;
+constexpr float K_TOAST_MESSAGE_GAP        = 5.0f;
+constexpr float K_TOAST_MESSAGE_MAX        = 48.0f;
+constexpr float K_TOAST_BUTTON_GAP         = 10.0f;
+constexpr float K_TOAST_BUTTON_HEIGHT      = 24.0f;
+constexpr float K_TOAST_BUTTON_PADDING     = 10.0f;
+constexpr float K_TOAST_BUTTON_SPACING     = 6.0f;
+constexpr float K_TOAST_BUTTON_RADIUS      = 6.0f;
+constexpr float K_TOAST_TEXT_SIZE          = 12.0f;
+constexpr float K_TOAST_COUNT_SIZE         = 11.0f;
+constexpr float K_TOAST_MESSAGE_SIZE       = 11.5f;
+constexpr float K_TOAST_GHOST_ALPHA        = 0.08f;
+constexpr float K_TOAST_GHOST_HOVER        = 0.07f;
+constexpr float K_TOAST_ERROR_EDGE         = 0.6f;
+constexpr float K_TOAST_SLIDE              = 14.0f;
+constexpr float K_TOAST_IN_SECONDS         = 0.22f;
+constexpr float K_TOAST_GROW_SECONDS       = 0.22f;
+constexpr float K_TOAST_DONE_SECONDS       = 0.25f;
+constexpr float K_TOAST_SUCCESS_SECONDS    = 2.0f;
+constexpr float K_TOAST_ERROR_SECONDS      = 5.0f;
 
 enum class ToastHit : u8 {
 	RETRY,
@@ -360,33 +372,50 @@ struct LoginToast {
 	Canvas                                canvas;
 	ComPtr<ID2D1Bitmap>                   logo;
 	os::TrayLogin                         login{};
-	std::wstring                          status;
+	os::TrayLoginState                    outcome = os::TrayLoginState::RUNNING;
 	std::wstring                          account;
+	std::wstring                          game;
+	std::wstring                          step_labels[os::K_TRAY_MAX_LOGIN_STEPS];
+	std::wstring                          message;
 	RECT                                  work{};
 	float                                 scale          = 1.0f;
 	bool                                  active         = false;
 	bool                                  leaving        = false;
 	bool                                  hovered        = false;
 	bool                                  tracking_leave = false;
+	bool                                  offers_retry   = false;
 	std::optional<ToastHit>               hot;
-	float                                 appear         = 0.0f;
-	float                                 card           = 0.0f;
-	float                                 done           = 0.0f;
-	float                                 bar            = 0.0f;
-	float                                 linger         = 0.0f;
-	float                                 message_height = 0.0f;
-	float                                 card_height    = 0.0f;
-	float                                 retry_width    = 0.0f;
-	float                                 open_width     = 0.0f;
+	float                                 appear               = 0.0f;
+	float                                 details              = 0.0f;
+	float                                 finished             = 0.0f;
+	float                                 spin                 = 0.0f;
+	float                                 linger               = 0.0f;
+	float                                 message_height       = 0.0f;
+	float                                 retry_width          = 0.0f;
+	float                                 open_width           = 0.0f;
+	float                                 seconds_since_update = 0.0f;
 	EnumArray<ToastHit, float>            hover{};
+	std::chrono::steady_clock::time_point updated_at;
 	std::chrono::steady_clock::time_point last_tick;
 };
 
-struct ToastCard {
+struct ToastLayout {
 	D2D1_RECT_F header;
+	float       steps_top;
 	D2D1_RECT_F message;
 	D2D1_RECT_F retry;
 	D2D1_RECT_F open;
+};
+
+enum class BadgeSymbol : u8 {
+	CHECK,
+	EXCLAMATION,
+};
+
+struct StepStyle {
+	Color mark;
+	Color label;
+	Color time;
 };
 
 struct PasswordField {
@@ -479,33 +508,87 @@ struct Painter {
 	return (ab > 0.0f && bc > 0.0f && ca > 0.0f) || (ab < 0.0f && bc < 0.0f && ca < 0.0f);
 }
 
-// The toast's shape inside its window, which keeps room around it for the shadow. It grows from the pill into the card with its bottom right corner, the one nearest the tray, held still.
+[[nodiscard]] auto toast_steps_height(const LoginToast& t_toast) -> float
+{
+	return K_TOAST_PADDING * 2.0f + K_TOAST_HEADER_HEIGHT + K_TOAST_STEPS_GAP + static_cast<float>(t_toast.login.step_count) * K_TOAST_STEP_HEIGHT;
+}
+
+[[nodiscard]] auto toast_message_block_height(const LoginToast& t_toast) -> float
+{
+	return t_toast.message.empty() ? 0.0f : K_TOAST_MESSAGE_GAP + t_toast.message_height;
+}
+
+[[nodiscard]] auto toast_details_height(const LoginToast& t_toast) -> float
+{
+	const float buttons = t_toast.offers_retry ? K_TOAST_BUTTON_GAP + K_TOAST_BUTTON_HEIGHT : 0.0f;
+
+	return toast_message_block_height(t_toast) + buttons;
+}
+
 [[nodiscard]] auto toast_shape(const LoginToast& t_toast, float t_window_width, float t_window_height) -> D2D1_RECT_F
 {
-	const float grow   = smoothed(t_toast.card);
-	const float width  = lerp(K_TOAST_PILL_WIDTH, K_TOAST_CARD_WIDTH, grow);
-	const float height = lerp(K_TOAST_PILL_HEIGHT, t_toast.card_height, grow);
+	const float height = toast_steps_height(t_toast) + toast_details_height(t_toast) * smoothed(t_toast.details);
 	const float right  = t_window_width - K_SHADOW_MARGIN;
 	const float bottom = t_window_height - K_SHADOW_MARGIN;
 
-	return D2D1::RectF(right - width, bottom - height, right, bottom);
+	return D2D1::RectF(right - K_TOAST_WIDTH, bottom - height, right, bottom);
 }
 
-[[nodiscard]] auto toast_card(const LoginToast& t_toast, const D2D1_RECT_F& t_shape) -> ToastCard
+[[nodiscard]] auto toast_layout(const LoginToast& t_toast, const D2D1_RECT_F& t_shape) -> ToastLayout
 {
-	const float left      = t_shape.left + K_TOAST_PADDING;
-	const float text_left = left + K_TOAST_LOGO_SIZE + K_TOAST_ICON_GAP;
-	const float top       = t_shape.top + K_TOAST_PADDING;
-	const float message   = top + K_TOAST_HEADER_HEIGHT + K_TOAST_MESSAGE_GAP;
-	const float buttons   = message + t_toast.message_height + K_TOAST_BUTTON_GAP;
-	const float open_left = text_left + t_toast.retry_width + K_TOAST_BUTTON_SPACING;
+	const float left         = t_shape.left + K_TOAST_PADDING;
+	const float right        = t_shape.right - K_TOAST_PADDING;
+	const float text_left    = left + K_TOAST_LOGO_SIZE + K_TOAST_ICON_GAP;
+	const float top          = t_shape.top + K_TOAST_PADDING;
+	const float steps_top    = top + K_TOAST_HEADER_HEIGHT + K_TOAST_STEPS_GAP;
+	const float steps_bottom = steps_top + static_cast<float>(t_toast.login.step_count) * K_TOAST_STEP_HEIGHT;
+	const float message      = steps_bottom + K_TOAST_MESSAGE_GAP;
+	const float buttons      = steps_bottom + toast_message_block_height(t_toast) + K_TOAST_BUTTON_GAP;
+	const float open_left    = text_left + t_toast.retry_width + K_TOAST_BUTTON_SPACING;
 
-	return ToastCard{
-		.header  = D2D1::RectF(left, top, t_shape.right - K_TOAST_PADDING, top + K_TOAST_HEADER_HEIGHT),
-		.message = D2D1::RectF(text_left, message, t_shape.right - K_TOAST_PADDING, message + t_toast.message_height),
-		.retry   = D2D1::RectF(text_left, buttons, text_left + t_toast.retry_width, buttons + K_TOAST_BUTTON_HEIGHT),
-		.open    = D2D1::RectF(open_left, buttons, open_left + t_toast.open_width, buttons + K_TOAST_BUTTON_HEIGHT),
+	return ToastLayout{
+		.header    = D2D1::RectF(left, top, right, top + K_TOAST_HEADER_HEIGHT),
+		.steps_top = steps_top,
+		.message   = D2D1::RectF(text_left, message, right, message + t_toast.message_height),
+		.retry     = D2D1::RectF(text_left, buttons, text_left + t_toast.retry_width, buttons + K_TOAST_BUTTON_HEIGHT),
+		.open      = D2D1::RectF(open_left, buttons, open_left + t_toast.open_width, buttons + K_TOAST_BUTTON_HEIGHT),
 	};
+}
+
+[[nodiscard]] auto step_style(os::TrayStepState t_state, const os::TrayColors& t_colors) -> StepStyle
+{
+	switch (t_state) {
+		using enum os::TrayStepState;
+
+		case WAITING: {
+			return StepStyle{.mark = t_colors.text_disabled, .label = t_colors.text_disabled, .time = t_colors.text_disabled};
+		}
+
+		case RUNNING: {
+			return StepStyle{.mark = t_colors.accent, .label = t_colors.text, .time = t_colors.accent};
+		}
+
+		case DONE: {
+			return StepStyle{.mark = t_colors.success, .label = t_colors.text_dim, .time = t_colors.text_disabled};
+		}
+
+		case FAILED: {
+			return StepStyle{.mark = t_colors.error, .label = t_colors.text, .time = t_colors.text_disabled};
+		}
+
+		case LEFT_TO_USER: {
+			return StepStyle{.mark = t_colors.accent, .label = t_colors.text, .time = t_colors.text_disabled};
+		}
+	}
+
+	return StepStyle{};
+}
+
+[[nodiscard]] auto elapsed_label(float t_seconds, bool t_still_counting) -> std::wstring
+{
+	char buffer[16];
+
+	return os::win32::to_wide(elapsed_time(t_seconds, t_still_counting ? ElapsedStyle::WHOLE_SECONDS : ElapsedStyle::TENTHS_OF_A_SECOND, buffer));
 }
 
 [[nodiscard]] auto is_selectable(const Row& t_row) -> bool
@@ -1409,16 +1492,198 @@ auto paint_menu(ID2D1RenderTarget* t_target, const Painter& t_painter, const Pan
 	}
 }
 
+[[nodiscard]] auto middle_of(const D2D1_RECT_F& t_box) -> D2D1_POINT_2F
+{
+	return D2D1::Point2F((t_box.left + t_box.right) * 0.5f, (t_box.top + t_box.bottom) * 0.5f);
+}
+
+[[nodiscard]] auto needs_attention(os::TrayStepState t_state) -> bool
+{
+	return t_state == os::TrayStepState::RUNNING || t_state == os::TrayStepState::FAILED || t_state == os::TrayStepState::LEFT_TO_USER;
+}
+
+auto draw_step_ring(ID2D1RenderTarget* t_target, const D2D1_RECT_F& t_box, ID2D1Brush* t_brush) -> void
+{
+	const float radius = (t_box.right - t_box.left) * K_TOAST_RING_RADIUS_SHARE;
+
+	t_target->DrawEllipse(D2D1::Ellipse(middle_of(t_box), radius, radius), t_brush, K_TOAST_RING_STROKE);
+}
+
+auto draw_progress_ring(ID2D1RenderTarget* t_target, const Painter& t_painter, const D2D1_RECT_F& t_box, float t_turns, Color t_color, const auto& t_paint) -> void
+{
+	const D2D1_POINT_2F center      = middle_of(t_box);
+	const float         radius      = (t_box.right - t_box.left) * K_TOAST_RING_RADIUS_SHARE;
+	const float         full_turn   = 2.0f * std::numbers::pi_v<float>;
+	const float         arc_start   = t_turns * full_turn;
+	const float         arc_end     = arc_start + K_TOAST_RING_ARC_TURNS * full_turn;
+	const auto          point_at    = [&](float t_angle) { return D2D1::Point2F(center.x + radius * std::cos(t_angle), center.y + radius * std::sin(t_angle)); };
+	const D2D1_SIZE_F   ring_radius = D2D1::SizeF(radius, radius);
+
+	draw_step_ring(t_target, t_box, t_paint(t_color, K_TOAST_RING_TRACK_ALPHA));
+
+	ComPtr<ID2D1PathGeometry> arc;
+	ComPtr<ID2D1GeometrySink> sink;
+	if (FAILED(t_painter.factory->CreatePathGeometry(&arc)) || FAILED(arc->Open(&sink))) return;
+
+	sink->BeginFigure(point_at(arc_start), D2D1_FIGURE_BEGIN_HOLLOW);
+	sink->AddArc(D2D1::ArcSegment(point_at(arc_end), ring_radius, 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+	sink->EndFigure(D2D1_FIGURE_END_OPEN);
+
+	if (SUCCEEDED(sink->Close())) {
+		t_target->DrawGeometry(arc.Get(), t_paint(t_color), K_TOAST_RING_STROKE, t_painter.stroke);
+	}
+}
+
+auto draw_badge(ID2D1RenderTarget* t_target, const Painter& t_painter, const D2D1_RECT_F& t_box, BadgeSymbol t_symbol, Color t_fill, float t_opacity, const auto& t_paint) -> void
+{
+	const D2D1_POINT_2F center   = middle_of(t_box);
+	const float         radius   = (t_box.right - t_box.left) * K_TOAST_BADGE_RADIUS_SHARE;
+	const float         stroke   = radius * K_TOAST_BADGE_STROKE_SHARE;
+	const auto          point_at = [&](float t_x, float t_y) { return D2D1::Point2F(center.x + t_x * radius, center.y + t_y * radius); };
+
+	t_target->FillEllipse(D2D1::Ellipse(center, radius, radius), t_paint(t_fill, t_opacity));
+
+	ID2D1Brush* ink = t_paint(t_painter.colors.background, t_opacity);
+
+	if (t_symbol == BadgeSymbol::EXCLAMATION) {
+		t_target->DrawLine(point_at(0.0f, -0.46f), point_at(0.0f, 0.08f), ink, stroke, t_painter.stroke);
+		t_target->FillEllipse(D2D1::Ellipse(point_at(0.0f, 0.48f), stroke * 0.55f, stroke * 0.55f), ink);
+		return;
+	}
+
+	ComPtr<ID2D1PathGeometry> tick;
+	ComPtr<ID2D1GeometrySink> sink;
+	if (FAILED(t_painter.factory->CreatePathGeometry(&tick)) || FAILED(tick->Open(&sink))) return;
+
+	sink->BeginFigure(point_at(-0.44f, 0.04f), D2D1_FIGURE_BEGIN_HOLLOW);
+	sink->AddLine(point_at(-0.12f, 0.36f));
+	sink->AddLine(point_at(0.46f, -0.28f));
+	sink->EndFigure(D2D1_FIGURE_END_OPEN);
+
+	if (SUCCEEDED(sink->Close())) {
+		t_target->DrawGeometry(tick.Get(), ink, stroke, t_painter.stroke);
+	}
+}
+
+auto paint_toast_header(ID2D1RenderTarget* t_target, const Painter& t_painter, const LoginToast& t_toast, const D2D1_RECT_F& t_header, const auto& t_paint) -> void
+{
+	const os::TrayColors& colors        = t_painter.colors;
+	const TextFormats&    formats       = *t_painter.formats;
+	const bool            still_running = t_toast.login.state == os::TrayLoginState::RUNNING;
+	const bool            failed        = t_toast.outcome == os::TrayLoginState::FAILED;
+	const float           middle        = (t_header.top + t_header.bottom) * 0.5f;
+	const float           text_left     = t_header.left + K_TOAST_LOGO_SIZE + K_TOAST_ICON_GAP;
+	const float           total_right   = t_header.right - t_toast.finished * (K_TOAST_GLYPH_SIZE + K_TOAST_ICON_GAP);
+	const float           total_left    = total_right - K_TOAST_TIME_WIDTH;
+	const float           total_seconds = t_toast.login.total_seconds + (still_running ? t_toast.seconds_since_update : 0.0f);
+	const float           account_width = std::min(text_width(t_painter.writer, formats.toast_title.Get(), t_toast.account), total_left - text_left);
+
+	if (t_toast.logo) {
+		draw_bitmap(t_target, t_toast.logo.Get(), t_header.left, middle, t_painter.scale);
+	}
+
+	draw_label(t_target, formats.toast_title.Get(), t_toast.account, text_left, total_left, t_header, t_paint(colors.text));
+	draw_label(t_target, formats.toast_text.Get(), t_toast.game, text_left + account_width + K_TOAST_GAME_GAP, total_left, t_header, t_paint(colors.text_dim));
+	draw_label(t_target, formats.toast_count.Get(), elapsed_label(total_seconds, still_running), total_left, total_right, t_header, t_paint(colors.text_disabled));
+
+	if (t_toast.finished > 0.0f) {
+		const D2D1_RECT_F outcome = centered_box(t_header.right - K_TOAST_GLYPH_SIZE, middle, K_TOAST_GLYPH_SIZE, t_painter.scale);
+		draw_badge(t_target, t_painter, outcome, failed ? BadgeSymbol::EXCLAMATION : BadgeSymbol::CHECK, failed ? colors.error : colors.success, t_toast.finished, t_paint);
+	}
+}
+
+auto paint_toast_separator(ID2D1RenderTarget* t_target, const Painter& t_painter, const D2D1_RECT_F& t_header, const auto& t_paint) -> void
+{
+	const float       top = snapped(t_header.bottom + K_TOAST_SEPARATOR_GAP, t_painter.scale);
+	const D2D1_RECT_F line{t_header.left, top, t_header.right, top + 1.0f / t_painter.scale};
+
+	t_target->FillRectangle(line, t_paint(t_painter.colors.separator));
+}
+
+auto paint_step_mark(ID2D1RenderTarget* t_target, const Painter& t_painter, const LoginToast& t_toast, os::TrayStepState t_state, const D2D1_RECT_F& t_mark, const auto& t_paint) -> void
+{
+	const StepStyle style = step_style(t_state, t_painter.colors);
+
+	if (t_state == os::TrayStepState::WAITING) {
+		draw_step_ring(t_target, t_mark, t_paint(style.mark, K_TOAST_WAITING_RING_ALPHA));
+	} else if (t_state == os::TrayStepState::RUNNING) {
+		draw_progress_ring(t_target, t_painter, t_mark, t_toast.spin, style.mark, t_paint);
+	} else {
+		const BadgeSymbol symbol = t_state == os::TrayStepState::DONE ? BadgeSymbol::CHECK : BadgeSymbol::EXCLAMATION;
+		draw_badge(t_target, t_painter, t_mark, symbol, style.mark, 1.0f, t_paint);
+	}
+}
+
+auto paint_toast_step(ID2D1RenderTarget* t_target, const Painter& t_painter, const LoginToast& t_toast, u32 t_index, const D2D1_RECT_F& t_row, const auto& t_paint) -> void
+{
+	const os::TrayLoginStep& step          = t_toast.login.steps[t_index];
+	const StepStyle          style         = step_style(step.state, t_painter.colors);
+	const TextFormats&       formats       = *t_painter.formats;
+	const bool               waiting       = step.state == os::TrayStepState::WAITING;
+	const bool               still_running = step.state == os::TrayStepState::RUNNING;
+	const bool               is_last_step  = t_index + 1 == t_toast.login.step_count;
+	const float              middle        = (t_row.top + t_row.bottom) * 0.5f;
+	const float              text_left     = t_row.left + K_TOAST_LOGO_SIZE + K_TOAST_ICON_GAP;
+	const float              time_left     = t_row.right - K_TOAST_TIME_WIDTH;
+	const D2D1_RECT_F        mark          = centered_box(t_row.left + (K_TOAST_LOGO_SIZE - K_TOAST_STEP_GLYPH_SIZE) * 0.5f, middle, K_TOAST_STEP_GLYPH_SIZE, t_painter.scale);
+
+	if (needs_attention(step.state)) {
+		const D2D1_ROUNDED_RECT tint{D2D1::RectF(t_row.left - K_TOAST_ROW_BLEED, t_row.top, t_row.right + K_TOAST_ROW_BLEED, t_row.bottom), K_TOAST_ROW_RADIUS, K_TOAST_ROW_RADIUS};
+		t_target->FillRoundedRectangle(tint, t_paint(style.mark, K_TOAST_ROW_TINT_ALPHA));
+	}
+
+	if (!is_last_step) {
+		const float       rail_middle = (mark.left + mark.right) * 0.5f;
+		const float       next_mark   = mark.top + K_TOAST_STEP_HEIGHT;
+		const D2D1_RECT_F rail        = D2D1::RectF(rail_middle - K_TOAST_RAIL_WIDTH * 0.5f, mark.bottom + K_TOAST_RAIL_GAP, rail_middle + K_TOAST_RAIL_WIDTH * 0.5f, next_mark - K_TOAST_RAIL_GAP);
+
+		t_target->FillRectangle(rail, t_paint(t_painter.colors.text_disabled, K_TOAST_RAIL_ALPHA));
+	}
+
+	paint_step_mark(t_target, t_painter, t_toast, step.state, mark, t_paint);
+	draw_label(t_target, formats.toast_text.Get(), t_toast.step_labels[t_index], text_left, time_left, t_row, t_paint(style.label));
+
+	if (!waiting) {
+		const float seconds = step.seconds + (still_running ? t_toast.seconds_since_update : 0.0f);
+		draw_label(t_target, formats.toast_count.Get(), elapsed_label(seconds, still_running), time_left, t_row.right, t_row, t_paint(style.time));
+	}
+}
+
+auto paint_toast_details(ID2D1RenderTarget* t_target, const Painter& t_painter, const LoginToast& t_toast, const ToastLayout& t_layout, const auto& t_paint) -> void
+{
+	const os::TrayColors& colors  = t_painter.colors;
+	const TextFormats&    formats = *t_painter.formats;
+	const float           shown   = smoothed(t_toast.details);
+
+	if (!t_toast.message.empty()) {
+		t_target->DrawText(t_toast.message.c_str(), static_cast<UINT32>(t_toast.message.size()), formats.message.Get(), t_layout.message, t_paint(colors.text_dim, shown), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+	}
+
+	if (!t_toast.offers_retry) return;
+
+	const D2D1_ROUNDED_RECT retry{t_layout.retry, K_TOAST_BUTTON_RADIUS, K_TOAST_BUTTON_RADIUS};
+	const D2D1_ROUNDED_RECT open{t_layout.open, K_TOAST_BUTTON_RADIUS, K_TOAST_BUTTON_RADIUS};
+
+	const float        retry_lift = K_LOGIN_LIFT * t_toast.hover[ToastHit::RETRY] * shown;
+	const float        open_fill  = (K_TOAST_GHOST_ALPHA + K_TOAST_GHOST_HOVER * t_toast.hover[ToastHit::OPEN]) * shown;
+	const std::wstring open_label = std::wstring{L"Open "} + os::win32::K_APP_NAME_WIDE;
+
+	t_target->FillRoundedRectangle(retry, t_paint(colors.accent, shown));
+	t_target->FillRoundedRectangle(retry, t_paint(Color{255, 255, 255, 255}, retry_lift));
+	draw_label(t_target, formats.button.Get(), K_RETRY_LABEL, t_layout.retry.left, t_layout.retry.right, t_layout.retry, t_paint(colors.accent_ink, shown));
+
+	t_target->FillRoundedRectangle(open, t_paint(colors.text, open_fill));
+	draw_label(t_target, formats.button.Get(), open_label, t_layout.open.left, t_layout.open.right, t_layout.open, t_paint(colors.text, shown));
+}
+
 auto paint_toast(ID2D1RenderTarget* t_target, const Painter& t_painter, const LoginToast& t_toast) -> void
 {
 	const os::TrayColors& colors     = t_painter.colors;
-	const TextFormats&    formats    = *t_painter.formats;
-	const float           scale      = t_painter.scale;
 	const D2D1_SIZE_F     size       = t_target->GetSize();
 	const D2D1_RECT_F     shape      = toast_shape(t_toast, size.width, size.height);
-	const float           grow       = smoothed(t_toast.card);
-	const float           pill_alpha = std::clamp(1.0f - grow / K_TOAST_FADE_SHARE, 0.0f, 1.0f);
-	const float           card_alpha = std::clamp((grow - (1.0f - K_TOAST_FADE_SHARE)) / K_TOAST_FADE_SHARE, 0.0f, 1.0f);
+	const ToastLayout     layout     = toast_layout(t_toast, shape);
+	const bool            failed     = t_toast.outcome == os::TrayLoginState::FAILED;
+	const float           error_edge = failed ? t_toast.finished * K_TOAST_ERROR_EDGE : 0.0f;
 
 	ComPtr<ID2D1SolidColorBrush> brush;
 	if (FAILED(t_target->CreateSolidColorBrush(to_d2d(colors.text), &brush))) return;
@@ -1430,77 +1695,22 @@ auto paint_toast(ID2D1RenderTarget* t_target, const Painter& t_painter, const Lo
 
 	t_target->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
 	draw_soft_shadow(t_target, brush.Get(), shape);
-	paint_body(t_target, brush.Get(), colors, shape, mix(colors.border, colors.error, grow * K_TOAST_ERROR_EDGE), scale);
-
-	const float left      = shape.left + K_TOAST_PADDING;
-	const float right     = shape.right - K_TOAST_PADDING;
-	const float text_left = left + K_TOAST_LOGO_SIZE + K_TOAST_ICON_GAP;
+	paint_body(t_target, brush.Get(), colors, shape, mix(colors.border, colors.error, error_edge), t_painter.scale);
 
 	t_target->PushAxisAlignedClip(shape, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
 
-	if (pill_alpha > 0.0f) {
-		const D2D1_RECT_F line{left, shape.top + K_TOAST_LINE_CENTER - K_TOAST_HEADER_HEIGHT * 0.5f, right, shape.top + K_TOAST_LINE_CENTER + K_TOAST_HEADER_HEIGHT * 0.5f};
-		const bool        succeeded = t_toast.login.state == os::TrayLoginState::SUCCEEDED;
-		const float       middle    = (line.top + line.bottom) * 0.5f;
+	paint_toast_header(t_target, t_painter, t_toast, layout.header, paint);
+	paint_toast_separator(t_target, t_painter, layout.header, paint);
 
-		if (t_toast.logo) {
-			draw_bitmap(t_target, t_toast.logo.Get(), left, middle, scale, pill_alpha);
-		}
+	for (const u32 index : std::views::iota(0u, t_toast.login.step_count)) {
+		const float       top = layout.steps_top + static_cast<float>(index) * K_TOAST_STEP_HEIGHT;
+		const D2D1_RECT_F row = D2D1::RectF(layout.header.left, top, layout.header.right, top + K_TOAST_STEP_HEIGHT);
 
-		const std::wstring status = succeeded ? L"Logged in as " + t_toast.account : t_toast.status;
-		draw_label(t_target, formats.toast_text.Get(), status, text_left, right - K_TOAST_COUNT_WIDTH, line, paint(colors.text, pill_alpha));
-
-		if (t_toast.login.step > 0 && t_toast.done < 1.0f) {
-			const std::wstring count       = std::to_wstring(t_toast.login.step) + L"/" + std::to_wstring(t_toast.login.step_count);
-			const float        count_alpha = pill_alpha * (1.0f - t_toast.done);
-			draw_label(t_target, formats.toast_count.Get(), count, right - K_TOAST_COUNT_WIDTH, right, line, paint(colors.text_disabled, count_alpha));
-		}
-
-		if (t_toast.done > 0.0f) {
-			const D2D1_RECT_F check = centered_box(right - K_TOAST_GLYPH_SIZE, middle, K_TOAST_GLYPH_SIZE, scale);
-			draw_glyph(t_target, t_painter, Glyph::CHECK_CIRCLE, check, paint(colors.success, pill_alpha * t_toast.done));
-		}
-
-		const float             top    = snapped(shape.top + K_TOAST_BAR_TOP, scale);
-		const float             radius = K_TOAST_BAR_HEIGHT * 0.5f;
-		const D2D1_ROUNDED_RECT track{D2D1::RectF(left, top, right, top + K_TOAST_BAR_HEIGHT), radius, radius};
-
-		t_target->FillRoundedRectangle(track, paint(colors.text, K_TOAST_TRACK_ALPHA * pill_alpha));
-
-		if (t_toast.bar > 0.0f) {
-			const float             reach = std::max((right - left) * std::clamp(t_toast.bar, 0.0f, 1.0f), K_TOAST_BAR_HEIGHT);
-			const D2D1_ROUNDED_RECT filled{D2D1::RectF(left, top, left + reach, top + K_TOAST_BAR_HEIGHT), radius, radius};
-			t_target->FillRoundedRectangle(filled, paint(mix(colors.accent, colors.success, t_toast.done), pill_alpha));
-		}
+		paint_toast_step(t_target, t_painter, t_toast, index, row, paint);
 	}
 
-	if (card_alpha > 0.0f) {
-		const ToastCard card   = toast_card(t_toast, shape);
-		const float     middle = (card.header.top + card.header.bottom) * 0.5f;
-
-		if (t_toast.logo) {
-			draw_bitmap(t_target, t_toast.logo.Get(), card.header.left, middle, scale, card_alpha);
-		}
-
-		const D2D1_RECT_F alert = centered_box(card.header.right - K_TOAST_GLYPH_SIZE, middle, K_TOAST_GLYPH_SIZE, scale);
-		draw_glyph(t_target, t_painter, Glyph::ALERT_CIRCLE, alert, paint(colors.error, card_alpha));
-		draw_label(t_target, formats.toast_title.Get(), L"Couldn't log in to " + t_toast.account, text_left, alert.left - K_TOAST_ICON_GAP, card.header, paint(colors.text, card_alpha));
-
-		t_target->DrawText(t_toast.status.c_str(), static_cast<UINT32>(t_toast.status.size()), formats.message.Get(), card.message, paint(colors.text_dim, card_alpha), D2D1_DRAW_TEXT_OPTIONS_CLIP);
-
-		const D2D1_ROUNDED_RECT retry{card.retry, K_TOAST_BUTTON_RADIUS, K_TOAST_BUTTON_RADIUS};
-		const D2D1_ROUNDED_RECT open{card.open, K_TOAST_BUTTON_RADIUS, K_TOAST_BUTTON_RADIUS};
-
-		const float        retry_lift = K_LOGIN_LIFT * t_toast.hover[ToastHit::RETRY] * card_alpha;
-		const float        open_fill  = (K_TOAST_GHOST_ALPHA + K_TOAST_GHOST_HOVER * t_toast.hover[ToastHit::OPEN]) * card_alpha;
-		const std::wstring open_label = std::wstring{L"Open "} + os::win32::K_APP_NAME_WIDE;
-
-		t_target->FillRoundedRectangle(retry, paint(colors.accent, card_alpha));
-		t_target->FillRoundedRectangle(retry, paint(Color{255, 255, 255, 255}, retry_lift));
-		draw_label(t_target, formats.button.Get(), K_RETRY_LABEL, card.retry.left, card.retry.right, card.retry, paint(colors.accent_ink, card_alpha));
-
-		t_target->FillRoundedRectangle(open, paint(colors.text, open_fill));
-		draw_label(t_target, formats.button.Get(), open_label, card.open.left, card.open.right, card.open, paint(colors.text, card_alpha));
+	if (t_toast.details > 0.0f) {
+		paint_toast_details(t_target, t_painter, t_toast, layout, paint);
 	}
 
 	t_target->PopAxisAlignedClip();
@@ -1660,6 +1870,7 @@ struct Tray::Native {
 	auto animate() -> void;
 
 	[[nodiscard]] auto ensure_toast() -> bool;
+	auto show_login_outcome(const TrayLogin& t_login) -> void;
 	auto show_login(const TrayLogin& t_login) -> void;
 	auto hide_login() -> void;
 	[[nodiscard]] auto toast_size() const -> SIZE;
@@ -3101,16 +3312,19 @@ auto Tray::Native::show_login(const TrayLogin& t_login) -> void
 {
 	if (!ensure_toast()) return;
 
-	const bool starting = !toast.active;
-	const bool changed  = starting || t_login.state != toast.login.state;
+	const bool starting     = !toast.active;
+	const bool has_finished = t_login.state != TrayLoginState::RUNNING;
+	const bool just_ended   = has_finished && (starting || t_login.state != toast.login.state);
 
-	toast.login   = t_login;
-	toast.status  = win32::to_wide(t_login.status);
-	toast.account = win32::to_wide(t_login.account);
-	toast.leaving = false;
+	toast.login                = t_login;
+	toast.account              = win32::to_wide(t_login.account);
+	toast.game                 = win32::to_wide(t_login.game);
+	toast.updated_at           = Clock::now();
+	toast.seconds_since_update = 0.0f;
+	toast.leaving              = false;
 
-	if (toast.status.ends_with(L"...")) {
-		toast.status.replace(toast.status.size() - 3, 3, 1, K_ELLIPSIS);
+	for (const u32 index : std::views::iota(0u, t_login.step_count)) {
+		toast.step_labels[index] = win32::to_wide(t_login.steps[index].label);
 	}
 
 	if (starting) {
@@ -3123,37 +3337,48 @@ auto Tray::Native::show_login(const TrayLogin& t_login) -> void
 			toast.logo.Reset();
 		}
 
-		toast.scale     = new_scale;
-		toast.work      = info.rcWork;
-		toast.appear    = 0.0f;
-		toast.card      = t_login.state == TrayLoginState::FAILED ? 1.0f : 0.0f;
-		toast.done      = t_login.state == TrayLoginState::SUCCEEDED ? 1.0f : 0.0f;
-		toast.bar       = t_login.progress;
-		toast.hovered   = false;
-		toast.hot       = std::nullopt;
-		toast.hover     = {};
-		toast.active    = true;
-		toast.last_tick = Clock::now();
+		toast.scale          = new_scale;
+		toast.work           = info.rcWork;
+		toast.outcome        = TrayLoginState::RUNNING;
+		toast.message        = {};
+		toast.message_height = 0.0f;
+		toast.offers_retry   = false;
+		toast.appear         = 0.0f;
+		toast.spin           = 0.0f;
+		toast.hovered        = false;
+		toast.hot            = std::nullopt;
+		toast.hover          = {};
+		toast.active         = true;
+		toast.last_tick      = Clock::now();
 	}
 
-	if (t_login.state == TrayLoginState::FAILED) {
-		const float        width      = K_TOAST_CARD_WIDTH - K_TOAST_PADDING * 2.0f - K_TOAST_LOGO_SIZE - K_TOAST_ICON_GAP;
-		const std::wstring open_label = std::wstring{L"Open "} + win32::K_APP_NAME_WIDE;
-		toast.message_height          = std::min(text_height(writer.Get(), formats.message.Get(), toast.status, width), K_TOAST_MESSAGE_MAX);
-		toast.retry_width             = text_width(writer.Get(), formats.button.Get(), K_RETRY_LABEL) + K_TOAST_BUTTON_PADDING * 2.0f;
-		toast.open_width              = text_width(writer.Get(), formats.button.Get(), open_label) + K_TOAST_BUTTON_PADDING * 2.0f;
-		toast.card_height             = K_TOAST_PADDING * 2.0f + K_TOAST_HEADER_HEIGHT + K_TOAST_MESSAGE_GAP + toast.message_height + K_TOAST_BUTTON_GAP + K_TOAST_BUTTON_HEIGHT;
-	}
-
-	if (changed) {
-		toast.linger = t_login.state == TrayLoginState::SUCCEEDED ? K_TOAST_SUCCESS_SECONDS : K_TOAST_ERROR_SECONDS;
+	if (just_ended) {
+		show_login_outcome(t_login);
 	}
 
 	if (starting) {
+		toast.details  = has_finished && toast_details_height(toast) > 0.0f ? 1.0f : 0.0f;
+		toast.finished = has_finished ? 1.0f : 0.0f;
+
 		render_toast();
 		ShowWindow(toast.window, SW_SHOWNOACTIVATE);
 		SetTimer(toast.window, K_TOAST_TIMER, K_TOAST_TICK_MS, nullptr);
 	}
+}
+
+auto Tray::Native::show_login_outcome(const TrayLogin& t_login) -> void
+{
+	const float        message_width = K_TOAST_WIDTH - K_TOAST_PADDING * 2.0f - K_TOAST_LOGO_SIZE - K_TOAST_ICON_GAP;
+	const std::wstring open_label    = std::wstring{L"Open "} + win32::K_APP_NAME_WIDE;
+	const bool         failed        = t_login.state == TrayLoginState::FAILED;
+
+	toast.outcome        = t_login.state;
+	toast.message        = win32::to_wide(t_login.message);
+	toast.message_height = toast.message.empty() ? 0.0f : std::min(text_height(writer.Get(), formats.message.Get(), toast.message, message_width), K_TOAST_MESSAGE_MAX);
+	toast.offers_retry   = failed;
+	toast.retry_width    = text_width(writer.Get(), formats.button.Get(), K_RETRY_LABEL) + K_TOAST_BUTTON_PADDING * 2.0f;
+	toast.open_width     = text_width(writer.Get(), formats.button.Get(), open_label) + K_TOAST_BUTTON_PADDING * 2.0f;
+	toast.linger         = failed || !toast.message.empty() ? K_TOAST_ERROR_SECONDS : K_TOAST_SUCCESS_SECONDS;
 }
 
 auto Tray::Native::hide_login() -> void
@@ -3165,9 +3390,8 @@ auto Tray::Native::hide_login() -> void
 
 auto Tray::Native::toast_size() const -> SIZE
 {
-	const bool  card   = toast.card > 0.0f || toast.login.state == TrayLoginState::FAILED;
-	const float width  = (card ? K_TOAST_CARD_WIDTH : K_TOAST_PILL_WIDTH) + K_SHADOW_MARGIN * 2.0f;
-	const float height = (card ? std::max(K_TOAST_PILL_HEIGHT, toast.card_height) : K_TOAST_PILL_HEIGHT) + K_SHADOW_MARGIN * 2.0f;
+	const float width  = K_TOAST_WIDTH + K_SHADOW_MARGIN * 2.0f;
+	const float height = toast_steps_height(toast) + toast_details_height(toast) + K_SHADOW_MARGIN * 2.0f;
 
 	return SIZE{static_cast<LONG>(std::ceil(width * toast.scale)), static_cast<LONG>(std::ceil(height * toast.scale))};
 }
@@ -3181,11 +3405,11 @@ auto Tray::Native::toast_hit(LPARAM t_lparam) const -> std::optional<ToastHit>
 
 	if (!contains(shape, x, y)) return std::nullopt;
 	if (toast.login.state != TrayLoginState::FAILED) return ToastHit::BODY;
-	if (toast.card < 1.0f) return std::nullopt;
+	if (toast.details < 1.0f) return std::nullopt;
 
-	const ToastCard card = toast_card(toast, shape);
-	if (contains(card.retry, x, y)) return ToastHit::RETRY;
-	if (contains(card.open, x, y)) return ToastHit::OPEN;
+	const ToastLayout layout = toast_layout(toast, shape);
+	if (contains(layout.retry, x, y)) return ToastHit::RETRY;
+	if (contains(layout.open, x, y)) return ToastHit::OPEN;
 
 	return std::nullopt;
 }
@@ -3220,15 +3444,18 @@ auto Tray::Native::render_toast() -> void
 
 auto Tray::Native::step_toast() -> void
 {
-	const Clock::time_point now     = Clock::now();
-	const float             seconds = std::min(std::chrono::duration<float>(now - toast.last_tick).count(), 0.05f);
-	const TrayLoginState    state   = toast.login.state;
-	const float             blend   = 1.0f - std::exp(-K_TOAST_BAR_EASE_RATE * seconds);
-	const float             hover   = 1.0f - std::exp(-K_HOVER_EASE_RATE * seconds);
+	const Clock::time_point now           = Clock::now();
+	const float             seconds       = std::min(std::chrono::duration<float>(now - toast.last_tick).count(), 0.05f);
+	const bool              has_finished  = toast.login.state != TrayLoginState::RUNNING;
+	const bool              shows_details = has_finished && toast_details_height(toast) > 0.0f;
+	const float             hover         = 1.0f - std::exp(-K_HOVER_EASE_RATE * seconds);
+	const float             turns         = toast.spin + seconds / K_TOAST_RING_TURN_SECONDS;
 
-	toast.last_tick = now;
+	toast.last_tick            = now;
+	toast.spin                 = turns - std::floor(turns);
+	toast.seconds_since_update = std::chrono::duration<float>(now - toast.updated_at).count();
 
-	if (state != TrayLoginState::RUNNING && !toast.hovered && !toast.leaving) {
+	if (has_finished && !toast.hovered && !toast.leaving) {
 		toast.linger -= seconds;
 
 		if (toast.linger <= 0.0f) {
@@ -3236,10 +3463,9 @@ auto Tray::Native::step_toast() -> void
 		}
 	}
 
-	toast.appear = approached(toast.appear, toast.leaving ? 0.0f : 1.0f, seconds / K_TOAST_IN_SECONDS);
-	toast.card   = approached(toast.card, state == TrayLoginState::FAILED ? 1.0f : 0.0f, seconds / K_TOAST_GROW_SECONDS);
-	toast.done   = approached(toast.done, state == TrayLoginState::SUCCEEDED ? 1.0f : 0.0f, seconds / K_TOAST_DONE_SECONDS);
-	toast.bar += ((state == TrayLoginState::SUCCEEDED ? 1.0f : toast.login.progress) - toast.bar) * blend;
+	toast.appear   = approached(toast.appear, toast.leaving ? 0.0f : 1.0f, seconds / K_TOAST_IN_SECONDS);
+	toast.details  = approached(toast.details, shows_details ? 1.0f : 0.0f, seconds / K_TOAST_GROW_SECONDS);
+	toast.finished = approached(toast.finished, has_finished ? 1.0f : 0.0f, seconds / K_TOAST_DONE_SECONDS);
 
 	for (const ToastHit hit : each<ToastHit>()) {
 		toast.hover[hit] += ((toast.hot == hit ? 1.0f : 0.0f) - toast.hover[hit]) * hover;

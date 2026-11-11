@@ -54,6 +54,59 @@ constexpr os::AppMenuItem K_APP_MENU_ITEMS[]{
 };
 
 static_assert(os::K_TRAY_MAX_GAMES >= K_MAX_GAMES);
+static_assert(os::K_TRAY_MAX_LOGIN_STEPS >= K_ENUM_COUNT<LoginStep>);
+
+[[nodiscard]] auto tray_step_state(StepState t_state) -> os::TrayStepState
+{
+	switch (t_state) {
+		using enum StepState;
+
+		case WAITING: {
+			return os::TrayStepState::WAITING;
+		}
+
+		case RUNNING: {
+			return os::TrayStepState::RUNNING;
+		}
+
+		case DONE: {
+			return os::TrayStepState::DONE;
+		}
+
+		case FAILED: {
+			return os::TrayStepState::FAILED;
+		}
+
+		case LEFT_TO_USER: {
+			return os::TrayStepState::LEFT_TO_USER;
+		}
+	}
+
+	return os::TrayStepState::WAITING;
+}
+
+auto copy_timed_steps(const LoginTimeline& t_timeline, os::TrayLogin* t_login) -> bool
+{
+	const WatchClock::time_point now          = WatchClock::now();
+	bool                         left_to_user = false;
+
+	t_login->step_count    = t_timeline.step_count();
+	t_login->total_seconds = t_timeline.total_seconds(now);
+
+	for (const LoginStep step : each<LoginStep>()) {
+		if (enum_index(step) >= t_login->step_count) break;
+
+		const TimedStep    timed = t_timeline.step(step, now);
+		os::TrayLoginStep& shown = t_login->steps[enum_index(step)];
+
+		copy_to(step_label(step, timed.state), shown.label);
+		shown.state   = tray_step_state(timed.state);
+		shown.seconds = timed.seconds;
+		left_to_user  = left_to_user || timed.state == StepState::LEFT_TO_USER;
+	}
+
+	return left_to_user;
+}
 
 auto log_startup_phase(const char* t_phase) -> void
 {
@@ -617,20 +670,21 @@ auto App::update_login_toast() -> void
 		return;
 	}
 
-	os::TrayLogin login{
-		.state      = os::TrayLoginState::RUNNING,
-		.step       = m_login_session.step(),
-		.step_count = m_login_session.step_count(),
-		.progress   = m_login_session.step_progress(),
-	};
+	os::TrayLogin login{.state = os::TrayLoginState::RUNNING};
 
 	if (!running) {
 		login.state   = m_login_session.stage() == LoginStage::SUCCESS ? os::TrayLoginState::SUCCEEDED : os::TrayLoginState::FAILED;
 		m_login_toast = false;
 	}
 
+	const bool left_to_user = copy_timed_steps(m_login_session.timeline(), &login);
+
+	if (login.state == os::TrayLoginState::FAILED || left_to_user) {
+		copy_to(m_login_session.m_status, login.message);
+	}
+
 	copy_to(account->display_name(), login.account);
-	copy_to(m_login_session.m_status, login.status);
+	copy_to(m_library.games[m_login_session.m_shown_game].short_title, login.game);
 	m_tray.show_login(login);
 }
 

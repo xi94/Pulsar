@@ -26,9 +26,9 @@ class LoginSession {
 	[[nodiscard]] auto is_finished() const -> bool;
 	[[nodiscard]] auto shows(u32 t_game, AccountRef t_account) const -> bool;
 	[[nodiscard]] auto stage() const -> LoginStage;
+	[[nodiscard]] auto timeline() const -> LoginTimeline;
 	[[nodiscard]] auto step() const -> u32;
 	[[nodiscard]] auto step_count() const -> u32;
-	[[nodiscard]] auto step_progress() const -> float;
 	[[nodiscard]] auto asks_for_permission() const -> bool;
 
 	char                      m_status[160]{};
@@ -39,6 +39,7 @@ class LoginSession {
 	float                     m_seconds          = 0.0f;
 	float                     m_finished_seconds = 0.0f;
 	std::optional<AccountRef> m_shown_account;
+	u32                       m_shown_game = 0;
 
   private:
 	struct PendingLogin {
@@ -59,7 +60,6 @@ class LoginSession {
 	std::optional<PendingLogin> m_queued;
 	std::optional<AccountRef>   m_login_account;
 	u32                         m_login_game    = 0;
-	u32                         m_shown_game    = 0;
 	bool                        m_launches_game = true;
 
 	LoginStage m_progress_stage = LoginStage::IDLE;
