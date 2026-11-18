@@ -5,6 +5,7 @@ add_library (pulsar_portable OBJECT
   "setup_app.cpp"
 
   "core/animation.cpp"
+  "core/caret.cpp"
   "core/crypto.cpp"
   "core/debug_log.cpp"
   "core/file.cpp"
@@ -12,6 +13,7 @@ add_library (pulsar_portable OBJECT
   "core/profiler.cpp"
   "core/storage.cpp"
   "core/str.cpp"
+  "core/text_editor.cpp"
   "core/updater.cpp"
 
   "gfx/assets.cpp"
@@ -113,7 +115,7 @@ if (WIN32)
   find_package(Threads REQUIRED)
   target_link_libraries(pulsar_platform PUBLIC pulsar_portable "${SODIUM_LIB_DIR}/libsodium.lib" Threads::Threads)
   target_link_libraries(pulsar_platform PUBLIC shell32 dwmapi UIAutomationCore ole32 oleaut32 dbghelp comctl32 winhttp d3d11 dxgi d3dcompiler opengl32
-                                               version d2d1 dwrite shcore)
+                                               version d2d1 dwrite shcore winmm)
 
   add_executable (Pulsar
     "main.cpp"

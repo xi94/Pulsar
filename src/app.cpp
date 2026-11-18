@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <print>
 #include <ranges>
 #include <tuple>
@@ -736,6 +737,7 @@ auto App::fill_tray_menu(os::TrayMenu* t_menu) -> void
 			item->favorite = account.favorite;
 			item->game     = game;
 			item->row      = row;
+			item->id       = (u64{listed[row].game} << std::numeric_limits<u32>::digits) | listed[row].index;
 		}
 
 		t_menu->account_count += entry->account_count;
@@ -919,6 +921,26 @@ auto App::handle_tray_event() -> void
 				m_library.remove_account(*account);
 				m_login_session.follow_removal(*account);
 				finish_tray_account_change();
+			}
+
+			break;
+		}
+
+		case COPY_USERNAME: {
+			if (m_locked) break;
+
+			if (const auto account = m_library.visible_account(event.game, event.row)) {
+				os::set_clipboard_text(m_library.account(*account)->username);
+			}
+
+			break;
+		}
+
+		case COPY_PASSWORD: {
+			if (m_locked) break;
+
+			if (const auto account = m_library.visible_account(event.game, event.row)) {
+				copy_password(m_library.account(*account)->password);
 			}
 
 			break;

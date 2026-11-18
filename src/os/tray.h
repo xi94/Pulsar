@@ -22,6 +22,8 @@ enum class TrayEventType : u8 {
 	MOVE_ACCOUNT,
 	SAVE_ACCOUNT,
 	REMOVE_ACCOUNT,
+	COPY_USERNAME,
+	COPY_PASSWORD,
 };
 
 // An account is named by its game and its row among that game's accounts. A move also names the row it lands on.
@@ -53,6 +55,7 @@ struct TrayAccount {
 	bool favorite;
 	u32  game;
 	u32  row;
+	u64  id;
 };
 
 struct TrayAccountForm {
