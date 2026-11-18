@@ -128,11 +128,22 @@ auto forget_all_for_crash() -> void
 	return nullptr;
 }
 
+auto minimize_off_screen(HWND t_window) -> void
+{
+	WINDOWPLACEMENT placement{.length = sizeof(placement)};
+	GetWindowPlacement(t_window, &placement);
+	placement.flags |= WPF_SETMINPOSITION;
+	placement.ptMinPosition = K_OFF_SCREEN_MINIMIZED_AT;
+	placement.showCmd       = SW_SHOWMINNOACTIVE;
+	SetWindowPlacement(t_window, &placement);
+}
+
 auto restore_window(HWND t_window, LONG_PTR t_original_ex_style, Restore t_restore, ITaskbarList* t_taskbar) -> void
 {
 	if (!IsWindow(t_window)) return;
 
-	const bool visible = IsWindowVisible(t_window) != FALSE;
+	const bool visible   = IsWindowVisible(t_window) != FALSE;
+	const bool minimized = IsIconic(t_window) != FALSE;
 
 	SetWindowPos(t_window, HWND_NOTOPMOST, 0, 0, 0, 0, K_KEEP_PLACE);
 	SetWindowLongPtrW(t_window, GWL_EXSTYLE, ((t_original_ex_style | WS_EX_LAYERED) & ~WS_EX_TOPMOST) | (GetWindowLongPtrW(t_window, GWL_EXSTYLE) & WS_EX_TOPMOST));
@@ -141,19 +152,16 @@ auto restore_window(HWND t_window, LONG_PTR t_original_ex_style, Restore t_resto
 		t_taskbar->AddTab(t_window);
 	}
 
-	if (t_restore == Restore::MINIMIZED && visible && !IsIconic(t_window)) {
-		WINDOWPLACEMENT placement{.length = sizeof(placement)};
-		GetWindowPlacement(t_window, &placement);
-		placement.flags |= WPF_SETMINPOSITION;
-		placement.ptMinPosition = K_OFF_SCREEN_MINIMIZED_AT;
-		placement.showCmd       = SW_SHOWMINNOACTIVE;
-		SetWindowPlacement(t_window, &placement);
+	const bool stays_minimized = t_restore == Restore::MINIMIZED || (t_restore == Restore::STYLE_ONLY && minimized);
+
+	if (visible && stays_minimized) {
+		minimize_off_screen(t_window);
 	} else if (t_restore == Restore::SHOWN && !visible) {
 		ShowWindow(t_window, SW_SHOWNA);
 		if (t_taskbar != nullptr) {
 			t_taskbar->AddTab(t_window);
 		}
-	} else if (t_restore == Restore::SHOWN && IsIconic(t_window)) {
+	} else if (t_restore == Restore::SHOWN && minimized) {
 		ShowWindow(t_window, SW_SHOWNOACTIVATE);
 	}
 
@@ -186,6 +194,10 @@ auto restore_window_without_pulsar(HWND t_window, LONG_PTR t_original_ex_style) 
 	if (visible) {
 		ShowWindow(t_window, SW_HIDE);
 		ShowWindow(t_window, SW_SHOWNA);
+	}
+
+	if (visible && IsIconic(t_window)) {
+		minimize_off_screen(t_window);
 	}
 }
 }
