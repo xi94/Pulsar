@@ -518,7 +518,7 @@ enum class FormField : u8 {
 };
 
 constexpr EnumArray<FormField, std::wstring_view> K_FORM_LABELS{{L"Username", L"Password", L"Note"}};
-constexpr EnumArray<FormField, std::wstring_view> K_FORM_PLACEHOLDERS{{L"Riot username", L"", L"Main, smurf\u2026"}};
+constexpr EnumArray<FormField, std::wstring_view> K_FORM_PLACEHOLDERS{{L"Riot username", L"", L""}};
 constexpr EnumArray<FormField, usize>             K_FORM_CAPACITIES{{sizeof(os::TrayAccountForm::username), sizeof(os::TrayAccountForm::password), sizeof(os::TrayAccountForm::note)}};
 constexpr std::wstring_view                       K_OPTIONAL_SUFFIX = L" (optional)";
 

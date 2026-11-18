@@ -16,7 +16,7 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "CompanyName", PULSAR_APP_NAME
-            VALUE "FileDescription", "Pulsar Account Manager"
+            VALUE "FileDescription", PULSAR_APP_NAME
             VALUE "FileVersion", PULSAR_VERSION_STRING
             VALUE "InternalName", PULSAR_APP_NAME
             VALUE "OriginalFilename", PULSAR_EXE_NAME
