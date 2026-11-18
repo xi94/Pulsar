@@ -23,6 +23,7 @@
 
 #include "core/app_identity.h"
 #include "core/enum_array.h"
+#include "core/regions.h"
 #include "core/debug_log.h"
 #include "core/str.h"
 #include "os/win32/win32.h"
@@ -40,12 +41,10 @@ constexpr UINT     K_ADD_ICON_RETRY_INTERVAL_MS = 1000;
 constexpr u32      K_MAX_ADD_ICON_ATTEMPTS      = 10;
 
 constexpr UINT_PTR K_ANIMATION_TIMER   = 1;
-constexpr UINT_PTR K_AIM_TIMER         = 2;
 constexpr UINT_PTR K_WATCH_TIMER       = 3;
 constexpr UINT_PTR K_TOAST_TIMER       = 4;
 constexpr UINT_PTR K_CARET_TIMER       = 5;
 constexpr UINT     K_ANIMATION_TICK_MS = 10;
-constexpr UINT     K_AIM_DELAY_MS      = 250;
 constexpr UINT     K_WATCH_INTERVAL_MS = 50;
 constexpr UINT     K_TOAST_TICK_MS     = 15;
 
@@ -82,10 +81,7 @@ constexpr float K_LOGIN_RADIUS     = 6.0f;
 constexpr float K_LOGIN_SLIDE      = 6.0f;
 constexpr float K_LOGIN_LIFT       = 0.14f;
 constexpr float K_GAMES_MIN_WIDTH  = 220.0f;
-constexpr float K_ACCOUNTS_WIDTH   = 190.0f;
 constexpr float K_MAX_WIDTH        = 360.0f;
-constexpr float K_ACCOUNTS_GAP     = 2.0f;
-constexpr float K_AIM_SLOP         = 12.0f;
 constexpr float K_HOVER_ALPHA      = 0.16f;
 constexpr float K_QUIT_REST_RED    = 0.65f;
 constexpr float K_CHIP_ALPHA       = 0.09f;
@@ -93,11 +89,62 @@ constexpr float K_BODY_SIZE        = 13.0f;
 constexpr float K_CAPTION_SIZE     = 12.0f;
 constexpr float K_CHIP_TEXT_SIZE   = 11.0f;
 constexpr float K_MENU_IN_SECONDS  = 0.1f;
-constexpr float K_GROW_SECONDS     = 0.2f;
-constexpr float K_SHRINK_SECONDS   = 0.12f;
-constexpr float K_GROW_FROM_SCALE  = 0.55f;
-constexpr float K_GROW_FADE_SHARE  = 0.6f;
-constexpr float K_GROW_SPRING      = 1.2f;
+
+constexpr float K_SIDE_WIDTH            = 330.0f;
+constexpr float K_SIDE_PADDING          = 14.0f;
+constexpr float K_SIDE_HEADER_HEIGHT    = 52.0f;
+constexpr float K_SIDE_OPEN_SECONDS     = 0.3f;
+constexpr float K_SIDE_CLOSE_SECONDS    = 0.2f;
+constexpr float K_SELECTED_GAME_ALPHA   = 0.12f;
+constexpr float K_ACCOUNT_ROW_HEIGHT    = 44.0f;
+constexpr float K_ACCOUNT_LINE_GAP      = 2.0f;
+constexpr float K_ACCOUNT_TEXT_INSET    = 16.0f;
+constexpr float K_NAME_LINE_HEIGHT      = 18.0f;
+constexpr float K_DETAIL_LINE_HEIGHT    = 16.0f;
+constexpr float K_ACCOUNT_HOVER_ALPHA   = 0.06f;
+constexpr float K_GRIP_DOT_RADIUS       = 1.0f;
+constexpr float K_GRIP_DOT_SPACING      = 4.0f;
+constexpr float K_GRIP_INSET            = 4.0f;
+constexpr float K_ROW_BUTTON_SIZE       = 24.0f;
+constexpr float K_ROW_BUTTON_GLYPH_SIZE = 14.0f;
+constexpr float K_ROW_BUTTON_GAP        = 4.0f;
+constexpr float K_ROW_BUTTON_HOVER      = 0.08f;
+constexpr float K_DETAIL_DOT_SIZE       = 3.0f;
+constexpr float K_DETAIL_DOT_GAP        = 6.0f;
+constexpr float K_DRAG_THRESHOLD        = 4.0f;
+constexpr float K_INSERT_LINE_HEIGHT    = 2.0f;
+constexpr float K_DRAGGED_ROW_ALPHA     = 0.35f;
+
+constexpr float K_FORM_HEADER_HEIGHT    = 44.0f;
+constexpr float K_FORM_BACK_SIZE        = 26.0f;
+constexpr float K_FORM_LABEL_HEIGHT     = 18.0f;
+constexpr float K_FORM_FIELD_HEIGHT     = 32.0f;
+constexpr float K_FORM_FIELD_RADIUS     = 7.0f;
+constexpr float K_FORM_FIELD_PADDING    = 10.0f;
+constexpr float K_FORM_FIELD_FILL       = 0.04f;
+constexpr float K_FORM_COLUMN_GAP       = 10.0f;
+constexpr float K_FORM_ROW_GAP          = 10.0f;
+constexpr float K_FORM_REVEAL_SIZE      = 24.0f;
+constexpr float K_FORM_CHIP_HEIGHT      = 26.0f;
+constexpr float K_FORM_CHIP_PADDING     = 8.0f;
+constexpr float K_FORM_CHIP_ICON_SIZE   = 16.0f;
+constexpr float K_FORM_CHIP_ICON_GAP    = 5.0f;
+constexpr float K_FORM_CHIP_GAP         = 5.0f;
+constexpr float K_FORM_CHIP_RADIUS      = 7.0f;
+constexpr float K_FORM_CHIP_TINT        = 0.12f;
+constexpr float K_FORM_CHIP_FADED_ICON  = 0.45f;
+constexpr float K_FORM_CHIP_BORDER_TINT = 0.55f;
+constexpr float K_FORM_GHOST_ALPHA      = 0.08f;
+constexpr float K_FORM_GHOST_HOVER      = 0.07f;
+constexpr float K_FORM_BUTTON_HEIGHT    = 30.0f;
+constexpr float K_FORM_BUTTON_PADDING   = 14.0f;
+constexpr float K_FORM_BUTTON_GAP       = 8.0f;
+constexpr float K_FORM_BUTTON_RADIUS    = 8.0f;
+constexpr float K_REMOVE_HOVER_ALPHA    = 0.12f;
+constexpr float K_REGION_ROW_HEIGHT     = 26.0f;
+constexpr usize K_REGION_ROWS_SHOWN     = 7;
+constexpr float K_REGION_LIST_WIDTH     = 220.0f;
+constexpr float K_REGION_LIST_GAP       = 4.0f;
 
 constexpr float K_UPDATE_SIZE       = 22.0f;
 constexpr float K_UPDATE_RADIUS     = 6.0f;
@@ -126,8 +173,12 @@ constexpr float   K_SHAKE_SECONDS       = 0.4f;
 constexpr float   K_SHAKE_DISTANCE      = 6.0f;
 constexpr float   K_SHAKE_TURNS         = 3.0f;
 constexpr wchar_t K_BULLET              = 0x2022;
+constexpr wchar_t K_DELETE_CHARACTER    = 0x7F;
 
-constexpr u32   K_MAX_SHOWN_ROWS        = 10;
+constexpr float K_CHEVRON_LEFT_DEGREES = 180.0f;
+constexpr float K_CHEVRON_DOWN_DEGREES = 90.0f;
+constexpr float K_CHEVRON_UP_DEGREES   = 270.0f;
+
 constexpr float K_SCROLL_GUTTER         = 6.0f;
 constexpr float K_SCROLLBAR_INSET       = 2.0f;
 constexpr float K_SCROLLBAR_THIN        = 2.0f;
@@ -145,52 +196,53 @@ constexpr float K_EDGE_SHADOW_HEIGHT    = 14.0f;
 constexpr float K_EDGE_SHADOW_ALPHA     = 0.35f;
 constexpr float K_EDGE_SHADOW_TRAVEL    = 24.0f;
 
-constexpr float K_TOAST_MARGIN             = 12.0f;
-constexpr float K_TOAST_PADDING            = 11.0f;
-constexpr float K_TOAST_WIDTH              = 262.0f;
-constexpr float K_TOAST_LOGO_SIZE          = 15.0f;
-constexpr float K_TOAST_ICON_GAP           = 8.0f;
-constexpr float K_TOAST_GLYPH_SIZE         = 14.0f;
-constexpr float K_TOAST_HEADER_HEIGHT      = 18.0f;
-constexpr float K_TOAST_GAME_GAP           = 5.0f;
-constexpr float K_TOAST_SEPARATOR_GAP      = 6.0f;
-constexpr float K_TOAST_STEPS_GAP          = 12.0f;
-constexpr float K_TOAST_STEP_HEIGHT        = 22.0f;
-constexpr float K_TOAST_STEP_GLYPH_SIZE    = 13.0f;
-constexpr float K_TOAST_BADGE_RADIUS_SHARE = 0.43f;
-constexpr float K_TOAST_BADGE_STROKE_SHARE = 0.28f;
-constexpr float K_TOAST_RING_RADIUS_SHARE  = 0.375f;
-constexpr float K_TOAST_RING_STROKE        = 1.4f;
-constexpr float K_TOAST_RING_TRACK_ALPHA   = 0.22f;
-constexpr float K_TOAST_RING_ARC_TURNS     = 0.28f;
-constexpr float K_TOAST_RING_TURN_SECONDS  = 1.1f;
-constexpr float K_TOAST_WAITING_RING_ALPHA = 0.7f;
-constexpr float K_TOAST_ROW_BLEED          = 5.0f;
-constexpr float K_TOAST_ROW_RADIUS         = 6.0f;
-constexpr float K_TOAST_ROW_TINT_ALPHA     = 0.08f;
-constexpr float K_TOAST_RAIL_WIDTH         = 1.0f;
-constexpr float K_TOAST_RAIL_GAP           = 2.0f;
-constexpr float K_TOAST_RAIL_ALPHA         = 0.6f;
-constexpr float K_TOAST_TIME_WIDTH         = 52.0f;
-constexpr float K_TOAST_MESSAGE_GAP        = 5.0f;
-constexpr float K_TOAST_MESSAGE_MAX        = 48.0f;
-constexpr float K_TOAST_BUTTON_GAP         = 10.0f;
-constexpr float K_TOAST_BUTTON_HEIGHT      = 24.0f;
-constexpr float K_TOAST_BUTTON_PADDING     = 10.0f;
-constexpr float K_TOAST_BUTTON_SPACING     = 6.0f;
-constexpr float K_TOAST_BUTTON_RADIUS      = 6.0f;
-constexpr float K_TOAST_TEXT_SIZE          = 12.0f;
-constexpr float K_TOAST_COUNT_SIZE         = 11.0f;
-constexpr float K_TOAST_MESSAGE_SIZE       = 11.5f;
-constexpr float K_TOAST_GHOST_ALPHA        = 0.08f;
-constexpr float K_TOAST_GHOST_HOVER        = 0.07f;
-constexpr float K_TOAST_ERROR_EDGE         = 0.6f;
-constexpr float K_TOAST_SLIDE              = 14.0f;
-constexpr float K_TOAST_IN_SECONDS         = 0.22f;
-constexpr float K_TOAST_GROW_SECONDS       = 0.22f;
-constexpr float K_TOAST_DONE_SECONDS       = 0.25f;
-constexpr float K_TOAST_SUCCESS_SECONDS    = 2.0f;
-constexpr float K_TOAST_ERROR_SECONDS      = 5.0f;
+constexpr float K_TOAST_MARGIN              = 12.0f;
+constexpr float K_TOAST_PADDING_LEFT        = 10.0f;
+constexpr float K_TOAST_PADDING_RIGHT       = 14.0f;
+constexpr float K_TOAST_PADDING_Y           = 9.0f;
+constexpr float K_TOAST_LINE_HEIGHT         = 20.0f;
+constexpr float K_TOAST_PILL_HEIGHT         = K_TOAST_PADDING_Y * 2.0f + K_TOAST_LINE_HEIGHT;
+constexpr float K_TOAST_MAX_WIDTH           = 360.0f;
+constexpr float K_TOAST_GROWN_RADIUS        = 13.0f;
+constexpr float K_TOAST_ICON_SIZE           = 18.0f;
+constexpr float K_TOAST_ICON_RADIUS         = 5.0f;
+constexpr float K_TOAST_GAP                 = 8.0f;
+constexpr float K_TOAST_TEXT_INSET          = K_TOAST_PADDING_LEFT + K_TOAST_ICON_SIZE + K_TOAST_GAP;
+constexpr float K_TOAST_DIVIDER_WIDTH       = 1.0f;
+constexpr float K_TOAST_DIVIDER_HEIGHT      = 14.0f;
+constexpr float K_TOAST_MARK_SIZE           = 13.0f;
+constexpr float K_TOAST_TIME_GAP            = 6.0f;
+constexpr float K_TOAST_TIME_MIN_WIDTH      = 26.0f;
+constexpr usize K_TOAST_NAME_MAX_CHARACTERS = 14;
+constexpr float K_TOAST_DOT_SIZE            = 5.0f;
+constexpr float K_TOAST_BADGE_RADIUS_SHARE  = 0.43f;
+constexpr float K_TOAST_BADGE_STROKE_SHARE  = 0.28f;
+constexpr float K_TOAST_RING_RADIUS_SHARE   = 0.375f;
+constexpr float K_TOAST_RING_STROKE         = 1.4f;
+constexpr float K_TOAST_RING_TRACK_ALPHA    = 0.22f;
+constexpr float K_TOAST_RING_ARC_TURNS      = 0.28f;
+constexpr float K_TOAST_RING_TURN_SECONDS   = 1.1f;
+constexpr float K_TOAST_MESSAGE_GAP         = 8.0f;
+constexpr float K_TOAST_MESSAGE_MAX         = 48.0f;
+constexpr float K_TOAST_BUTTON_GAP          = 8.0f;
+constexpr float K_TOAST_BUTTON_HEIGHT       = 24.0f;
+constexpr float K_TOAST_BUTTON_PADDING      = 11.0f;
+constexpr float K_TOAST_BUTTON_SPACING      = 6.0f;
+constexpr float K_TOAST_BUTTON_RADIUS       = 7.0f;
+constexpr float K_TOAST_TEXT_SIZE           = 12.5f;
+constexpr float K_TOAST_COUNT_SIZE          = 11.5f;
+constexpr float K_TOAST_MESSAGE_SIZE        = 12.0f;
+constexpr float K_TOAST_GHOST_ALPHA         = 0.08f;
+constexpr float K_TOAST_GHOST_HOVER         = 0.07f;
+constexpr float K_TOAST_ERROR_EDGE          = 0.6f;
+constexpr float K_TOAST_SLIDE               = 14.0f;
+constexpr float K_TOAST_IN_SECONDS          = 0.22f;
+constexpr float K_TOAST_GROW_SECONDS        = 0.22f;
+constexpr float K_TOAST_DONE_SECONDS        = 0.25f;
+constexpr float K_TOAST_WIDTH_EASE_RATE     = 14.0f;
+constexpr float K_TOAST_RAISE_SECONDS       = 0.5f;
+constexpr float K_TOAST_SUCCESS_SECONDS     = 2.0f;
+constexpr float K_TOAST_ERROR_SECONDS       = 5.0f;
 
 enum class ToastHit : u8 {
 	RETRY,
@@ -205,6 +257,17 @@ constexpr const wchar_t* K_RETRY_LABEL    = L"Retry";
 constexpr const wchar_t* K_UPDATE_LABEL   = L"Update";
 constexpr const wchar_t* K_UPDATING_LABEL = L"Updating";
 
+constexpr std::wstring_view K_NEW_ACCOUNT_TITLE    = L"New account";
+constexpr std::wstring_view K_ESCAPE_HINT          = L"Esc to cancel";
+constexpr std::wstring_view K_REGION_LABEL         = L"Region";
+constexpr std::wstring_view K_SHOW_IN_LABEL        = L"Show in";
+constexpr std::wstring_view K_SAVE_LABEL           = L"Save";
+constexpr std::wstring_view K_CANCEL_LABEL         = L"Cancel";
+constexpr std::wstring_view K_REMOVE_LABEL         = L"Remove";
+constexpr std::wstring_view K_CONFIRM_REMOVE_LABEL = L"Confirm remove";
+constexpr std::wstring_view K_ADD_ACCOUNT_LABEL    = L"Add account";
+constexpr std::wstring_view K_NO_ACCOUNTS_LABEL    = L"No accounts yet";
+
 constexpr std::wstring_view K_PASSWORD_PLACEHOLDER = L"Master password";
 constexpr std::wstring_view K_WRONG_PASSWORD_LABEL = L"Wrong password";
 
@@ -215,6 +278,7 @@ enum class RowKind : u8 {
 	GAME,
 	ACCOUNT,
 	ACTION,
+	ADD_ACCOUNT,
 	NOTE,
 	PASSWORD,
 	SEPARATOR,
@@ -230,17 +294,24 @@ enum class Glyph : u8 {
 	ALERT_CIRCLE,
 	REFRESH,
 	DOWNLOAD,
+	ADD,
+	EDIT,
+	EYE,
+	EYE_OFF,
 };
 
 struct Row {
 	RowKind            kind = RowKind::NOTE;
 	std::wstring       label;
 	std::wstring       detail;
+	std::wstring       note;
+	std::wstring       when;
 	Glyph              glyph = Glyph::NONE;
 	std::optional<u32> item;
 	std::optional<u32> icon;
 	os::TrayEventType  action       = os::TrayEventType::NONE;
 	bool               destructive  = false;
+	bool               favorite     = false;
 	float              label_x      = 0.0f;
 	float              detail_width = 0.0f;
 	float              top          = 0.0f;
@@ -251,6 +322,7 @@ struct Row {
 struct TextFormats {
 	ComPtr<IDWriteTextFormat> body;
 	ComPtr<IDWriteTextFormat> strong;
+	ComPtr<IDWriteTextFormat> caption;
 	ComPtr<IDWriteTextFormat> count;
 	ComPtr<IDWriteTextFormat> chip;
 	ComPtr<IDWriteTextFormat> button;
@@ -280,34 +352,41 @@ struct Scroll {
 	bool                 was_held   = false;
 };
 
-struct Panel {
-	std::vector<Row>   rows;
-	D2D1_RECT_F        frame{};
-	float              width          = 0.0f;
-	float              height         = 0.0f;
-	float              content_height = 0.0f;
-	float              gutter         = 0.0f;
-	Scroll             scroll;
-	std::optional<u32> hot;
-	bool               login_hot = false;
+enum class RowPart : u8 {
+	BODY,
+	STAR,
+	EDIT,
+	LOGIN,
 };
 
-auto cap_rows(Panel* t_panel) -> void
-{
-	const float most = K_PANEL_PADDING * 2.0f + K_ROW_HEIGHT * static_cast<float>(K_MAX_SHOWN_ROWS);
-	t_panel->scroll  = Scroll{};
-	t_panel->gutter  = 0.0f;
-
-	if (t_panel->content_height <= most) return;
-
-	t_panel->height = most;
-	t_panel->gutter = K_SCROLL_GUTTER;
-	t_panel->width  = std::ceil(t_panel->width + K_SCROLL_GUTTER);
-}
+struct Panel {
+	std::vector<Row>       rows;
+	D2D1_RECT_F            frame{};
+	float                  width          = 0.0f;
+	float                  height         = 0.0f;
+	float                  content_height = 0.0f;
+	float                  gutter         = 0.0f;
+	Scroll                 scroll;
+	std::optional<u32>     hot;
+	std::optional<RowPart> hot_part;
+	std::optional<usize>   footer;
+	std::optional<u32>     selected;
+	float                  chevron_degrees = 0.0f;
+};
 
 [[nodiscard]] auto max_scroll(const Panel& t_panel) -> float
 {
 	return t_panel.content_height - t_panel.height;
+}
+
+auto fit_rows(Panel* t_panel, float t_height) -> void
+{
+	const float most = std::max(0.0f, t_panel->content_height - t_height);
+
+	t_panel->height        = t_height;
+	t_panel->gutter        = most > 0.0f ? K_SCROLL_GUTTER : 0.0f;
+	t_panel->scroll.target = std::clamp(t_panel->scroll.target, 0.0f, most);
+	t_panel->scroll.offset = std::clamp(t_panel->scroll.offset, 0.0f, most);
 }
 
 [[nodiscard]] auto track_rect(const Panel& t_panel) -> D2D1_RECT_F
@@ -360,6 +439,83 @@ struct MenuImages {
 	ComPtr<ID2D1Bitmap> game_icons[os::K_TRAY_MAX_GAMES];
 };
 
+enum class SideView : u8 {
+	ACCOUNTS,
+	FORM,
+};
+
+enum class FormField : u8 {
+	USERNAME,
+	PASSWORD,
+	NOTE,
+	COUNT,
+};
+
+constexpr EnumArray<FormField, std::wstring_view> K_FORM_LABELS{{L"Username", L"Password", L"Note"}};
+constexpr EnumArray<FormField, std::wstring_view> K_FORM_PLACEHOLDERS{{L"Riot username", L"", L"Main, smurf\u2026"}};
+constexpr EnumArray<FormField, usize>             K_FORM_CAPACITIES{{sizeof(os::TrayAccountForm::username), sizeof(os::TrayAccountForm::password), sizeof(os::TrayAccountForm::note)}};
+constexpr std::wstring_view                       K_OPTIONAL_SUFFIX = L" (optional)";
+
+struct AccountFormState {
+	bool                               editing = false;
+	u32                                game    = 0;
+	u32                                row     = 0;
+	EnumArray<FormField, std::wstring> text;
+	FormField                          focus          = FormField::USERNAME;
+	bool                               password_shown = false;
+	usize                              region         = 0;
+	u16                                visible_games  = 0;
+	bool                               show_required  = false;
+	bool                               remove_armed   = false;
+	bool                               regions_open   = false;
+	usize                              regions_top    = 0;
+};
+
+enum class FormTarget : u8 {
+	BACK,
+	FIELD,
+	REVEAL,
+	REGION,
+	REGION_OPTION,
+	GAME,
+	REMOVE,
+	CANCEL,
+	SAVE,
+};
+
+struct FormHit {
+	FormTarget target;
+	FormField  field = FormField::USERNAME;
+	usize      index = 0;
+
+	auto operator==(const FormHit&) const -> bool = default;
+};
+
+struct FormLayout {
+	D2D1_RECT_F                       back{};
+	D2D1_RECT_F                       header{};
+	EnumArray<FormField, D2D1_RECT_F> labels{};
+	EnumArray<FormField, D2D1_RECT_F> fields{};
+	D2D1_RECT_F                       reveal{};
+	D2D1_RECT_F                       region_label{};
+	D2D1_RECT_F                       region{};
+	D2D1_RECT_F                       regions{};
+	D2D1_RECT_F                       games_label{};
+	std::vector<D2D1_RECT_F>          games;
+	D2D1_RECT_F                       remove{};
+	D2D1_RECT_F                       cancel{};
+	D2D1_RECT_F                       save{};
+	float                             needed_height = 0.0f;
+};
+
+struct RowDrag {
+	std::optional<u32> pressed;
+	float              press_y   = 0.0f;
+	float              pointer_y = 0.0f;
+	bool               lifted    = false;
+	u32                insert    = 0;
+};
+
 struct UpdateBadge {
 	os::TrayUpdate state = os::TrayUpdate::NONE;
 	float          spin  = 0.0f;
@@ -367,42 +523,47 @@ struct UpdateBadge {
 	float          shown = 1.0f;
 };
 
+struct ToastMeasures {
+	float name           = 0.0f;
+	float label          = 0.0f;
+	float time           = K_TOAST_TIME_MIN_WIDTH;
+	float message        = 0.0f;
+	float message_height = 0.0f;
+	float message_line   = 0.0f;
+	float retry          = 0.0f;
+	float open           = 0.0f;
+};
+
 struct LoginToast {
 	HWND                                  window = nullptr;
 	Canvas                                canvas;
-	ComPtr<ID2D1Bitmap>                   logo;
+	ComPtr<ID2D1Bitmap>                   game_icon;
 	os::TrayLogin                         login{};
-	os::TrayLoginState                    outcome = os::TrayLoginState::RUNNING;
 	std::wstring                          account;
-	std::wstring                          game;
-	std::wstring                          step_labels[os::K_TRAY_MAX_LOGIN_STEPS];
+	std::wstring                          step_label;
 	std::wstring                          message;
+	ToastMeasures                         measures;
 	RECT                                  work{};
 	float                                 scale          = 1.0f;
 	bool                                  active         = false;
 	bool                                  leaving        = false;
 	bool                                  hovered        = false;
 	bool                                  tracking_leave = false;
-	bool                                  offers_retry   = false;
 	std::optional<ToastHit>               hot;
 	float                                 appear               = 0.0f;
 	float                                 details              = 0.0f;
 	float                                 finished             = 0.0f;
 	float                                 spin                 = 0.0f;
+	float                                 width                = 0.0f;
 	float                                 linger               = 0.0f;
-	float                                 message_height       = 0.0f;
-	float                                 retry_width          = 0.0f;
-	float                                 open_width           = 0.0f;
 	float                                 seconds_since_update = 0.0f;
+	float                                 seconds_since_raised = 0.0f;
 	EnumArray<ToastHit, float>            hover{};
 	std::chrono::steady_clock::time_point updated_at;
 	std::chrono::steady_clock::time_point last_tick;
 };
 
-struct ToastLayout {
-	D2D1_RECT_F header;
-	float       steps_top;
-	D2D1_RECT_F message;
+struct ToastButtons {
 	D2D1_RECT_F retry;
 	D2D1_RECT_F open;
 };
@@ -410,12 +571,6 @@ struct ToastLayout {
 enum class BadgeSymbol : u8 {
 	CHECK,
 	EXCLAMATION,
-};
-
-struct StepStyle {
-	Color mark;
-	Color label;
-	Color time;
 };
 
 struct PasswordField {
@@ -471,13 +626,6 @@ struct Painter {
 	return amount * amount * (3.0f - 2.0f * amount);
 }
 
-[[nodiscard]] auto sprung(float t_amount) -> float
-{
-	const float rest = std::clamp(t_amount, 0.0f, 1.0f) - 1.0f;
-
-	return 1.0f + (K_GROW_SPRING + 1.0f) * rest * rest * rest + K_GROW_SPRING * rest * rest;
-}
-
 [[nodiscard]] auto approached(float t_value, float t_target, float t_step) -> float
 {
 	return t_value < t_target ? std::min(t_value + t_step, t_target) : std::max(t_value - t_step, t_target);
@@ -497,93 +645,6 @@ struct Painter {
 	return static_cast<float>(dpi_x) / K_REFERENCE_DPI;
 }
 
-[[nodiscard]] auto inside_triangle(D2D1_POINT_2F t_point, D2D1_POINT_2F t_a, D2D1_POINT_2F t_b, D2D1_POINT_2F t_c) -> bool
-{
-	const auto side = [&](D2D1_POINT_2F t_from, D2D1_POINT_2F t_to) { return (t_to.x - t_from.x) * (t_point.y - t_from.y) - (t_to.y - t_from.y) * (t_point.x - t_from.x); };
-
-	const float ab = side(t_a, t_b);
-	const float bc = side(t_b, t_c);
-	const float ca = side(t_c, t_a);
-
-	return (ab > 0.0f && bc > 0.0f && ca > 0.0f) || (ab < 0.0f && bc < 0.0f && ca < 0.0f);
-}
-
-[[nodiscard]] auto toast_steps_height(const LoginToast& t_toast) -> float
-{
-	return K_TOAST_PADDING * 2.0f + K_TOAST_HEADER_HEIGHT + K_TOAST_STEPS_GAP + static_cast<float>(t_toast.login.step_count) * K_TOAST_STEP_HEIGHT;
-}
-
-[[nodiscard]] auto toast_message_block_height(const LoginToast& t_toast) -> float
-{
-	return t_toast.message.empty() ? 0.0f : K_TOAST_MESSAGE_GAP + t_toast.message_height;
-}
-
-[[nodiscard]] auto toast_details_height(const LoginToast& t_toast) -> float
-{
-	const float buttons = t_toast.offers_retry ? K_TOAST_BUTTON_GAP + K_TOAST_BUTTON_HEIGHT : 0.0f;
-
-	return toast_message_block_height(t_toast) + buttons;
-}
-
-[[nodiscard]] auto toast_shape(const LoginToast& t_toast, float t_window_width, float t_window_height) -> D2D1_RECT_F
-{
-	const float height = toast_steps_height(t_toast) + toast_details_height(t_toast) * smoothed(t_toast.details);
-	const float right  = t_window_width - K_SHADOW_MARGIN;
-	const float bottom = t_window_height - K_SHADOW_MARGIN;
-
-	return D2D1::RectF(right - K_TOAST_WIDTH, bottom - height, right, bottom);
-}
-
-[[nodiscard]] auto toast_layout(const LoginToast& t_toast, const D2D1_RECT_F& t_shape) -> ToastLayout
-{
-	const float left         = t_shape.left + K_TOAST_PADDING;
-	const float right        = t_shape.right - K_TOAST_PADDING;
-	const float text_left    = left + K_TOAST_LOGO_SIZE + K_TOAST_ICON_GAP;
-	const float top          = t_shape.top + K_TOAST_PADDING;
-	const float steps_top    = top + K_TOAST_HEADER_HEIGHT + K_TOAST_STEPS_GAP;
-	const float steps_bottom = steps_top + static_cast<float>(t_toast.login.step_count) * K_TOAST_STEP_HEIGHT;
-	const float message      = steps_bottom + K_TOAST_MESSAGE_GAP;
-	const float buttons      = steps_bottom + toast_message_block_height(t_toast) + K_TOAST_BUTTON_GAP;
-	const float open_left    = text_left + t_toast.retry_width + K_TOAST_BUTTON_SPACING;
-
-	return ToastLayout{
-		.header    = D2D1::RectF(left, top, right, top + K_TOAST_HEADER_HEIGHT),
-		.steps_top = steps_top,
-		.message   = D2D1::RectF(text_left, message, right, message + t_toast.message_height),
-		.retry     = D2D1::RectF(text_left, buttons, text_left + t_toast.retry_width, buttons + K_TOAST_BUTTON_HEIGHT),
-		.open      = D2D1::RectF(open_left, buttons, open_left + t_toast.open_width, buttons + K_TOAST_BUTTON_HEIGHT),
-	};
-}
-
-[[nodiscard]] auto step_style(os::TrayStepState t_state, const os::TrayColors& t_colors) -> StepStyle
-{
-	switch (t_state) {
-		using enum os::TrayStepState;
-
-		case WAITING: {
-			return StepStyle{.mark = t_colors.text_disabled, .label = t_colors.text_disabled, .time = t_colors.text_disabled};
-		}
-
-		case RUNNING: {
-			return StepStyle{.mark = t_colors.accent, .label = t_colors.text, .time = t_colors.accent};
-		}
-
-		case DONE: {
-			return StepStyle{.mark = t_colors.success, .label = t_colors.text_dim, .time = t_colors.text_disabled};
-		}
-
-		case FAILED: {
-			return StepStyle{.mark = t_colors.error, .label = t_colors.text, .time = t_colors.text_disabled};
-		}
-
-		case LEFT_TO_USER: {
-			return StepStyle{.mark = t_colors.accent, .label = t_colors.text, .time = t_colors.text_disabled};
-		}
-	}
-
-	return StepStyle{};
-}
-
 [[nodiscard]] auto elapsed_label(float t_seconds, bool t_still_counting) -> std::wstring
 {
 	char buffer[16];
@@ -591,17 +652,130 @@ struct Painter {
 	return os::win32::to_wide(elapsed_time(t_seconds, t_still_counting ? ElapsedStyle::WHOLE_SECONDS : ElapsedStyle::TENTHS_OF_A_SECOND, buffer));
 }
 
-[[nodiscard]] auto is_selectable(const Row& t_row) -> bool
+[[nodiscard]] auto shown_step(const os::TrayLogin& t_login) -> const os::TrayLoginStep&
 {
-	return t_row.kind == RowKind::GAME || t_row.kind == RowKind::ACCOUNT || t_row.kind == RowKind::ACTION;
+	for (const os::TrayLoginStep& step : std::span{t_login.steps}.first(t_login.step_count) | std::views::reverse) {
+		if (step.state != os::TrayStepState::WAITING) return step;
+	}
+
+	return t_login.steps[0];
 }
 
-[[nodiscard]] auto login_rect(const Row& t_row, float t_panel_width, float t_login_width, float t_scale) -> D2D1_RECT_F
+[[nodiscard]] auto shortened_name(std::wstring t_name) -> std::wstring
 {
-	const float right = t_panel_width - K_PANEL_PADDING - (K_ROW_HEIGHT - K_LOGIN_HEIGHT) * 0.5f;
-	const float top   = snapped(t_row.top + (t_row.height - K_LOGIN_HEIGHT) * 0.5f, t_scale);
+	if (t_name.size() <= K_TOAST_NAME_MAX_CHARACTERS) return t_name;
 
-	return D2D1::RectF(right - t_login_width, top, right, top + K_LOGIN_HEIGHT);
+	t_name.resize(K_TOAST_NAME_MAX_CHARACTERS - 1);
+	t_name.push_back(K_ELLIPSIS);
+
+	return t_name;
+}
+
+[[nodiscard]] auto is_running(const LoginToast& t_toast) -> bool
+{
+	return t_toast.login.state == os::TrayLoginState::RUNNING;
+}
+
+[[nodiscard]] auto offers_retry(const LoginToast& t_toast) -> bool
+{
+	return t_toast.login.state == os::TrayLoginState::FAILED;
+}
+
+[[nodiscard]] auto toast_time_label(const LoginToast& t_toast) -> std::wstring
+{
+	if (!is_running(t_toast)) return elapsed_label(t_toast.login.total_seconds, false);
+
+	return elapsed_label(shown_step(t_toast.login).seconds + t_toast.seconds_since_update, true);
+}
+
+[[nodiscard]] auto toast_line_width(const ToastMeasures& t_measures) -> float
+{
+	const float name    = t_measures.name + K_TOAST_GAP;
+	const float divider = K_TOAST_DIVIDER_WIDTH + K_TOAST_GAP;
+	const float mark    = K_TOAST_MARK_SIZE + K_TOAST_GAP;
+	const float label   = t_measures.label + K_TOAST_TIME_GAP;
+
+	return K_TOAST_TEXT_INSET + name + divider + mark + label + t_measures.time + K_TOAST_PADDING_RIGHT;
+}
+
+[[nodiscard]] auto toast_details_height(const LoginToast& t_toast) -> float
+{
+	const float message = t_toast.message.empty() ? 0.0f : K_TOAST_MESSAGE_GAP + t_toast.measures.message_height;
+	const float buttons = offers_retry(t_toast) ? K_TOAST_BUTTON_GAP + K_TOAST_BUTTON_HEIGHT : 0.0f;
+
+	return message + buttons;
+}
+
+[[nodiscard]] auto toast_target_width(const LoginToast& t_toast) -> float
+{
+	const ToastMeasures& measures = t_toast.measures;
+	const float          line     = toast_line_width(measures);
+	if (t_toast.message.empty()) return std::min(line, K_TOAST_MAX_WIDTH);
+
+	const float message = K_TOAST_TEXT_INSET + measures.message + K_TOAST_PADDING_RIGHT;
+	const float buttons = offers_retry(t_toast) ? K_TOAST_TEXT_INSET + measures.retry + K_TOAST_BUTTON_SPACING + measures.open + K_TOAST_PADDING_RIGHT : 0.0f;
+
+	return std::min(std::max({line, message, buttons}), K_TOAST_MAX_WIDTH);
+}
+
+[[nodiscard]] auto toast_shape(const LoginToast& t_toast, float t_window_width, float t_window_height) -> D2D1_RECT_F
+{
+	const float height = K_TOAST_PILL_HEIGHT + toast_details_height(t_toast) * smoothed(t_toast.details);
+	const float right  = t_window_width - K_SHADOW_MARGIN;
+	const float bottom = t_window_height - K_SHADOW_MARGIN;
+
+	return D2D1::RectF(right - t_toast.width, bottom - height, right, bottom);
+}
+
+[[nodiscard]] auto toast_radius(const LoginToast& t_toast) -> float
+{
+	return std::lerp(K_TOAST_PILL_HEIGHT * 0.5f, K_TOAST_GROWN_RADIUS, smoothed(t_toast.details));
+}
+
+[[nodiscard]] auto toast_message_top(const D2D1_RECT_F& t_shape) -> float
+{
+	return t_shape.top + K_TOAST_PADDING_Y + K_TOAST_LINE_HEIGHT + K_TOAST_MESSAGE_GAP;
+}
+
+[[nodiscard]] auto toast_buttons(const LoginToast& t_toast, const D2D1_RECT_F& t_shape) -> ToastButtons
+{
+	const ToastMeasures& measures  = t_toast.measures;
+	const float          left      = t_shape.left + K_TOAST_TEXT_INSET;
+	const float          top       = toast_message_top(t_shape) + measures.message_height + K_TOAST_BUTTON_GAP;
+	const float          open_left = left + measures.retry + K_TOAST_BUTTON_SPACING;
+
+	return ToastButtons{
+		.retry = D2D1::RectF(left, top, left + measures.retry, top + K_TOAST_BUTTON_HEIGHT),
+		.open  = D2D1::RectF(open_left, top, open_left + measures.open, top + K_TOAST_BUTTON_HEIGHT),
+	};
+}
+
+[[nodiscard]] auto is_selectable(const Row& t_row) -> bool
+{
+	return t_row.kind == RowKind::GAME || t_row.kind == RowKind::ACCOUNT || t_row.kind == RowKind::ACTION || t_row.kind == RowKind::ADD_ACCOUNT;
+}
+
+[[nodiscard]] auto utf8_length(std::wstring_view t_text) -> usize
+{
+	const int length = WideCharToMultiByte(CP_UTF8, 0, t_text.data(), static_cast<int>(t_text.size()), nullptr, 0, nullptr, nullptr);
+
+	return static_cast<usize>(std::max(length, 0));
+}
+
+template <usize SIZE>
+auto store_utf8(std::wstring_view t_text, char (&t_out)[SIZE]) -> void
+{
+	const int written = WideCharToMultiByte(CP_UTF8, 0, t_text.data(), static_cast<int>(t_text.size()), t_out, static_cast<int>(SIZE - 1), nullptr, nullptr);
+
+	t_out[std::max(written, 0)] = '\0';
+}
+
+auto load_utf8(std::string_view t_text, std::wstring* t_out) -> void
+{
+	const int length = MultiByteToWideChar(CP_UTF8, 0, t_text.data(), static_cast<int>(t_text.size()), nullptr, 0);
+	t_out->resize(static_cast<usize>(std::max(length, 0)));
+
+	MultiByteToWideChar(CP_UTF8, 0, t_text.data(), static_cast<int>(t_text.size()), t_out->data(), length);
 }
 
 [[nodiscard]] auto badge_width(const Painter& t_painter, os::TrayUpdate t_state) -> float
@@ -1040,10 +1214,97 @@ auto draw_glyph(ID2D1RenderTarget* t_target, const Painter& t_painter, Glyph t_g
 			break;
 		}
 
+		case ADD: {
+			trace([&](ID2D1GeometrySink* t_sink) {
+				t_sink->BeginFigure(at(12.0f, 5.0f), D2D1_FIGURE_BEGIN_HOLLOW);
+				t_sink->AddLine(at(12.0f, 19.0f));
+				t_sink->EndFigure(D2D1_FIGURE_END_OPEN);
+				t_sink->BeginFigure(at(5.0f, 12.0f), D2D1_FIGURE_BEGIN_HOLLOW);
+				t_sink->AddLine(at(19.0f, 12.0f));
+				t_sink->EndFigure(D2D1_FIGURE_END_OPEN);
+			});
+			break;
+		}
+
+		case EDIT: {
+			const D2D1_SIZE_F tip = D2D1::SizeF(2.828f * unit, 2.828f * unit);
+
+			trace([&](ID2D1GeometrySink* t_sink) {
+				t_sink->BeginFigure(at(4.0f, 20.0f), D2D1_FIGURE_BEGIN_HOLLOW);
+				t_sink->AddLine(at(8.0f, 20.0f));
+				t_sink->AddLine(at(18.5f, 9.5f));
+				t_sink->AddArc(D2D1::ArcSegment(at(14.5f, 5.5f), tip, 0.0f, D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE, D2D1_ARC_SIZE_LARGE));
+				t_sink->AddLine(at(4.0f, 16.0f));
+				t_sink->AddLine(at(4.0f, 20.0f));
+				t_sink->EndFigure(D2D1_FIGURE_END_OPEN);
+				t_sink->BeginFigure(at(13.5f, 6.5f), D2D1_FIGURE_BEGIN_HOLLOW);
+				t_sink->AddLine(at(17.5f, 10.5f));
+				t_sink->EndFigure(D2D1_FIGURE_END_OPEN);
+			});
+			break;
+		}
+
+		case EYE:
+		case EYE_OFF: {
+			const D2D1_SIZE_F lid = D2D1::SizeF(10.6f * unit, 10.6f * unit);
+
+			t_target->DrawEllipse(D2D1::Ellipse(at(12.0f, 12.0f), 2.0f * unit, 2.0f * unit), t_brush, stroke, t_painter.stroke);
+			trace([&](ID2D1GeometrySink* t_sink) {
+				t_sink->BeginFigure(at(3.0f, 12.0f), D2D1_FIGURE_BEGIN_HOLLOW);
+				t_sink->AddArc(D2D1::ArcSegment(at(21.0f, 12.0f), lid, 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+				t_sink->AddArc(D2D1::ArcSegment(at(3.0f, 12.0f), lid, 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+				t_sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+			});
+
+			if (t_glyph == EYE_OFF) {
+				t_target->DrawLine(at(3.0f, 3.0f), at(21.0f, 21.0f), t_brush, stroke, t_painter.stroke);
+			}
+
+			break;
+		}
+
 		case NONE: {
 			break;
 		}
 	}
+}
+
+auto draw_star(ID2D1RenderTarget* t_target, const Painter& t_painter, const D2D1_RECT_F& t_box, bool t_filled, ID2D1Brush* t_brush) -> void
+{
+	constexpr D2D1_POINT_2F K_STAR_POINTS[]{{12.0f, 17.75f}, {5.828f, 20.995f}, {7.007f, 14.122f}, {2.007f, 9.255f}, {8.907f, 8.255f}, {11.993f, 2.002f}, {15.079f, 8.255f}, {21.979f, 9.255f}, {16.979f, 14.122f}, {18.158f, 20.995f}};
+
+	const float unit = (t_box.right - t_box.left) / 24.0f;
+	const auto  at   = [&](D2D1_POINT_2F t_point) { return D2D1::Point2F(t_box.left + t_point.x * unit, t_box.top + t_point.y * unit); };
+
+	ComPtr<ID2D1PathGeometry> star;
+	ComPtr<ID2D1GeometrySink> sink;
+	if (FAILED(t_painter.factory->CreatePathGeometry(&star)) || FAILED(star->Open(&sink))) return;
+
+	sink->BeginFigure(at(K_STAR_POINTS[0]), t_filled ? D2D1_FIGURE_BEGIN_FILLED : D2D1_FIGURE_BEGIN_HOLLOW);
+	for (const D2D1_POINT_2F point : std::span{K_STAR_POINTS}.subspan(1)) {
+		sink->AddLine(at(point));
+	}
+	sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+
+	if (FAILED(sink->Close())) return;
+
+	if (t_filled) {
+		t_target->FillGeometry(star.Get(), t_brush);
+	}
+
+	t_target->DrawGeometry(star.Get(), t_brush, 2.0f * unit, t_painter.stroke);
+}
+
+auto draw_turned_glyph(ID2D1RenderTarget* t_target, const Painter& t_painter, Glyph t_glyph, const D2D1_RECT_F& t_box, float t_degrees, ID2D1Brush* t_brush) -> void
+{
+	const D2D1_POINT_2F center = D2D1::Point2F((t_box.left + t_box.right) * 0.5f, (t_box.top + t_box.bottom) * 0.5f);
+
+	D2D1::Matrix3x2F upright;
+	t_target->GetTransform(&upright);
+
+	t_target->SetTransform(D2D1::Matrix3x2F::Rotation(t_degrees, center) * upright);
+	draw_glyph(t_target, t_painter, t_glyph, t_box, t_brush);
+	t_target->SetTransform(upright);
 }
 
 [[nodiscard]] auto centered_box(float t_left, float t_middle, float t_size, float t_scale) -> D2D1_RECT_F
@@ -1070,7 +1331,7 @@ auto draw_bitmap(ID2D1RenderTarget* t_target, ID2D1Bitmap* t_bitmap, float t_lef
 	t_target->DrawBitmap(t_bitmap, destination, t_opacity, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
 }
 
-auto draw_soft_shadow(ID2D1RenderTarget* t_target, ID2D1SolidColorBrush* t_brush, const D2D1_RECT_F& t_shape) -> void
+auto draw_soft_shadow(ID2D1RenderTarget* t_target, ID2D1SolidColorBrush* t_brush, const D2D1_RECT_F& t_shape, float t_radius) -> void
 {
 	const float step        = (K_SHADOW_MARGIN - K_SHADOW_DROP) / static_cast<float>(K_SHADOW_LAYERS);
 	const float layer_alpha = K_SHADOW_ALPHA / static_cast<float>(K_SHADOW_LAYERS);
@@ -1078,7 +1339,7 @@ auto draw_soft_shadow(ID2D1RenderTarget* t_target, ID2D1SolidColorBrush* t_brush
 
 	for (u32 layer = K_SHADOW_LAYERS; layer > 0; layer -= 1) {
 		const float             spread = static_cast<float>(layer) * step;
-		const float             radius = K_SURFACE_RADIUS + spread;
+		const float             radius = t_radius + spread;
 		const D2D1_RECT_F       area   = D2D1::RectF(t_shape.left - spread, t_shape.top - spread + K_SHADOW_DROP, t_shape.right + spread, t_shape.bottom + spread + K_SHADOW_DROP);
 		const D2D1_ROUNDED_RECT shadow{area, radius, radius};
 
@@ -1086,11 +1347,11 @@ auto draw_soft_shadow(ID2D1RenderTarget* t_target, ID2D1SolidColorBrush* t_brush
 	}
 }
 
-auto paint_body(ID2D1RenderTarget* t_target, ID2D1SolidColorBrush* t_brush, const os::TrayColors& t_colors, const D2D1_RECT_F& t_shape, Color t_edge, float t_scale) -> void
+auto paint_body(ID2D1RenderTarget* t_target, ID2D1SolidColorBrush* t_brush, const os::TrayColors& t_colors, const D2D1_RECT_F& t_shape, float t_radius, Color t_edge, float t_scale) -> void
 {
 	const float             half = 0.5f / t_scale;
-	const D2D1_ROUNDED_RECT body{t_shape, K_SURFACE_RADIUS, K_SURFACE_RADIUS};
-	const D2D1_ROUNDED_RECT edge{D2D1::RectF(t_shape.left + half, t_shape.top + half, t_shape.right - half, t_shape.bottom - half), K_SURFACE_RADIUS, K_SURFACE_RADIUS};
+	const D2D1_ROUNDED_RECT body{t_shape, t_radius, t_radius};
+	const D2D1_ROUNDED_RECT edge{D2D1::RectF(t_shape.left + half, t_shape.top + half, t_shape.right - half, t_shape.bottom - half), t_radius, t_radius};
 
 	t_brush->SetColor(to_d2d(t_colors.background));
 	t_target->FillRoundedRectangle(body, t_brush);
@@ -1300,43 +1561,221 @@ auto paint_password_field(ID2D1RenderTarget* t_target, const Painter& t_painter,
 	draw_glyph(t_target, t_painter, Glyph::CHEVRON, centered_box(center.x - K_CHEVRON_SIZE * 0.5f, middle, K_CHEVRON_SIZE, scale), paint(colors.accent_ink));
 }
 
-auto paint_panel(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1SolidColorBrush* t_brush, const Panel& t_panel, const MenuImages& t_images, const UpdateBadge* t_badge, const D2D1::Matrix3x2F& t_base) -> void
+struct AccountRowParts {
+	D2D1_RECT_F star;
+	D2D1_RECT_F edit;
+	D2D1_RECT_F login;
+	float       chip_left;
+	float       chip_right;
+	float       text_right;
+};
+
+[[nodiscard]] auto account_row_parts(const Row& t_row, float t_row_right, float t_login_width, float t_scale) -> AccountRowParts
+{
+	const float       middle     = t_row.top + t_row.height * 0.5f;
+	const float       login_top  = snapped(middle - K_LOGIN_HEIGHT * 0.5f, t_scale);
+	const D2D1_RECT_F login      = D2D1::RectF(t_row_right - t_login_width, login_top, t_row_right, login_top + K_LOGIN_HEIGHT);
+	const D2D1_RECT_F edit       = centered_box(login.left - K_ROW_BUTTON_GAP - K_ROW_BUTTON_SIZE, middle, K_ROW_BUTTON_SIZE, t_scale);
+	const D2D1_RECT_F star       = centered_box(edit.left - K_ROW_BUTTON_GAP - K_ROW_BUTTON_SIZE, middle, K_ROW_BUTTON_SIZE, t_scale);
+	const float       chip_right = star.left - K_CHIP_GAP;
+	const float       chip_left  = chip_right - t_row.detail_width;
+	const float       text_right = (t_row.detail.empty() ? star.left : chip_left) - K_CHIP_GAP;
+
+	return AccountRowParts{.star = star, .edit = edit, .login = login, .chip_left = chip_left, .chip_right = chip_right, .text_right = text_right};
+}
+
+[[nodiscard]] auto account_part_at(const AccountRowParts& t_parts, float t_x, float t_y) -> RowPart
+{
+	if (contains(t_parts.star, t_x, t_y)) return RowPart::STAR;
+	if (contains(t_parts.edit, t_x, t_y)) return RowPart::EDIT;
+	if (contains(t_parts.login, t_x, t_y)) return RowPart::LOGIN;
+
+	return RowPart::BODY;
+}
+
+[[nodiscard]] auto row_box(const Panel& t_panel, const Row& t_row) -> D2D1_RECT_F
+{
+	const float width = t_panel.frame.right - t_panel.frame.left;
+
+	return D2D1::RectF(K_PANEL_PADDING, t_row.top, width - K_PANEL_PADDING - t_panel.gutter, t_row.top + t_row.height);
+}
+
+auto paint_row_button(ID2D1RenderTarget* t_target, const D2D1_RECT_F& t_box, bool t_lit, float t_hover, const auto& t_paint, const os::TrayColors& t_colors) -> void
+{
+	if (!t_lit) return;
+
+	const D2D1_POINT_2F center = D2D1::Point2F((t_box.left + t_box.right) * 0.5f, (t_box.top + t_box.bottom) * 0.5f);
+	const float         radius = (t_box.right - t_box.left) * 0.5f;
+
+	t_target->FillEllipse(D2D1::Ellipse(center, radius, radius), t_paint(t_colors.text, K_ROW_BUTTON_HOVER * t_hover));
+}
+
+auto paint_grip(ID2D1RenderTarget* t_target, float t_left, float t_middle, ID2D1Brush* t_brush) -> void
+{
+	for (const float column : {0.0f, K_GRIP_DOT_SPACING}) {
+		for (const float row : {-K_GRIP_DOT_SPACING, 0.0f, K_GRIP_DOT_SPACING}) {
+			const D2D1_POINT_2F dot = D2D1::Point2F(t_left + column, t_middle + row);
+			t_target->FillEllipse(D2D1::Ellipse(dot, K_GRIP_DOT_RADIUS, K_GRIP_DOT_RADIUS), t_brush);
+		}
+	}
+}
+
+auto paint_account_details(ID2D1RenderTarget* t_target, const Painter& t_painter, const Row& t_row, const D2D1_RECT_F& t_line, const auto& t_paint) -> void
+{
+	const os::TrayColors& colors  = t_painter.colors;
+	IDWriteTextFormat*    caption = t_painter.formats->caption.Get();
+	const float           room    = t_line.right - t_line.left;
+
+	if (t_row.note.empty()) {
+		draw_label(t_target, caption, t_row.when, t_line.left, t_line.right, t_line, t_paint(colors.text_disabled));
+		return;
+	}
+
+	const float when_width = t_row.when.empty() ? 0.0f : text_width(t_painter.writer, caption, t_row.when) + K_DETAIL_DOT_GAP * 2.0f + K_DETAIL_DOT_SIZE;
+	const float note_width = std::min(text_width(t_painter.writer, caption, t_row.note), std::max(0.0f, room - when_width));
+
+	draw_label(t_target, caption, t_row.note, t_line.left, t_line.left + note_width, t_line, t_paint(colors.text_dim));
+
+	if (t_row.when.empty()) return;
+
+	const float         dot_x   = t_line.left + note_width + K_DETAIL_DOT_GAP;
+	const float         radius  = K_DETAIL_DOT_SIZE * 0.5f;
+	const D2D1_POINT_2F dot     = D2D1::Point2F(dot_x + radius, (t_line.top + t_line.bottom) * 0.5f);
+	const float         when_at = dot_x + K_DETAIL_DOT_SIZE + K_DETAIL_DOT_GAP;
+
+	t_target->FillEllipse(D2D1::Ellipse(dot, radius, radius), t_paint(colors.text_disabled));
+	draw_label(t_target, caption, t_row.when, when_at, t_line.right, t_line, t_paint(colors.text_disabled));
+}
+
+auto paint_account_row(ID2D1RenderTarget* t_target, const Painter& t_painter, const Row& t_row, const D2D1_RECT_F& t_box, std::optional<RowPart> t_hot_part, const auto& t_paint) -> void
+{
+	const os::TrayColors& colors      = t_painter.colors;
+	const TextFormats&    formats     = *t_painter.formats;
+	const float           scale       = t_painter.scale;
+	const float           hover       = t_row.hover;
+	const float           middle      = (t_box.top + t_box.bottom) * 0.5f;
+	const AccountRowParts parts       = account_row_parts(t_row, t_box.right - K_ROW_INSET, t_painter.login_width, scale);
+	const float           text_left   = t_box.left + K_ACCOUNT_TEXT_INSET;
+	const bool            has_details = !t_row.note.empty() || !t_row.when.empty();
+	const float           block       = has_details ? K_NAME_LINE_HEIGHT + K_ACCOUNT_LINE_GAP + K_DETAIL_LINE_HEIGHT : K_NAME_LINE_HEIGHT;
+	const float           name_top    = middle - block * 0.5f;
+	const D2D1_RECT_F     name_line   = D2D1::RectF(text_left, name_top, parts.text_right, name_top + K_NAME_LINE_HEIGHT);
+	const float           detail_top  = name_line.bottom + K_ACCOUNT_LINE_GAP;
+	const D2D1_RECT_F     detail_line = D2D1::RectF(text_left, detail_top, parts.text_right, detail_top + K_DETAIL_LINE_HEIGHT);
+	const D2D1_RECT_F     star_glyph  = centered_box(parts.star.left + (K_ROW_BUTTON_SIZE - K_ROW_BUTTON_GLYPH_SIZE) * 0.5f, middle, K_ROW_BUTTON_GLYPH_SIZE, scale);
+	const D2D1_RECT_F     edit_glyph  = centered_box(parts.edit.left + (K_ROW_BUTTON_SIZE - K_ROW_BUTTON_GLYPH_SIZE) * 0.5f, middle, K_ROW_BUTTON_GLYPH_SIZE, scale);
+	const bool            star_lit    = t_hot_part == RowPart::STAR;
+	const bool            edit_lit    = t_hot_part == RowPart::EDIT;
+	const bool            login_lit   = t_hot_part == RowPart::LOGIN;
+
+	if (hover > 0.0f) {
+		const D2D1_ROUNDED_RECT pill{D2D1::RectF(t_box.left, t_box.top + 1.0f, t_box.right, t_box.bottom - 1.0f), K_ROW_RADIUS, K_ROW_RADIUS};
+		t_target->FillRoundedRectangle(pill, t_paint(colors.text, K_ACCOUNT_HOVER_ALPHA * hover));
+		paint_grip(t_target, t_box.left + K_GRIP_INSET, middle, t_paint(colors.text_disabled, hover));
+	}
+
+	draw_label(t_target, formats.strong.Get(), t_row.label, name_line.left, name_line.right, name_line, t_paint(colors.text));
+
+	if (has_details) {
+		paint_account_details(t_target, t_painter, t_row, detail_line, t_paint);
+	}
+
+	if (!t_row.detail.empty()) {
+		const float             top = snapped(middle - K_CHIP_HEIGHT * 0.5f, scale);
+		const D2D1_ROUNDED_RECT chip{D2D1::RectF(parts.chip_left, top, parts.chip_right, top + K_CHIP_HEIGHT), K_CHIP_HEIGHT * 0.5f, K_CHIP_HEIGHT * 0.5f};
+
+		t_target->FillRoundedRectangle(chip, t_paint(colors.text, K_CHIP_ALPHA));
+		draw_label(t_target, formats.chip.Get(), t_row.detail, chip.rect.left, chip.rect.right, chip.rect, t_paint(colors.text_dim));
+	}
+
+	paint_row_button(t_target, parts.star, star_lit, hover, t_paint, colors);
+
+	if (t_row.favorite) {
+		draw_star(t_target, t_painter, star_glyph, true, t_paint(colors.accent));
+	} else if (hover > 0.0f) {
+		draw_star(t_target, t_painter, star_glyph, false, t_paint(star_lit ? colors.text : colors.text_disabled, hover));
+	}
+
+	if (hover <= 0.0f) return;
+
+	paint_row_button(t_target, parts.edit, edit_lit, hover, t_paint, colors);
+	draw_glyph(t_target, t_painter, Glyph::EDIT, edit_glyph, t_paint(edit_lit ? colors.text : colors.text_dim, hover));
+
+	const float             slide = (1.0f - hover) * K_LOGIN_SLIDE;
+	const D2D1_ROUNDED_RECT pill{D2D1::RectF(parts.login.left + slide, parts.login.top, parts.login.right + slide, parts.login.bottom), K_LOGIN_RADIUS, K_LOGIN_RADIUS};
+
+	t_target->FillRoundedRectangle(pill, t_paint(colors.accent, hover));
+
+	if (login_lit) {
+		t_target->FillRoundedRectangle(pill, t_paint(Color{255, 255, 255, 255}, K_LOGIN_LIFT * hover));
+	}
+
+	draw_label(t_target, formats.button.Get(), K_LOGIN_LABEL, pill.rect.left, pill.rect.right, pill.rect, t_paint(colors.accent_ink, hover));
+}
+
+[[nodiscard]] auto insertion_y(const Panel& t_panel, const RowDrag& t_drag) -> float
+{
+	u32   slot   = 0;
+	float bottom = K_PANEL_PADDING;
+
+	for (const u32 index : std::views::iota(0u, static_cast<u32>(t_panel.rows.size()))) {
+		if (index == t_drag.pressed) continue;
+
+		const Row& row = t_panel.rows[index];
+		if (slot == t_drag.insert) return row.top;
+
+		slot += 1;
+		bottom = row.top + row.height;
+	}
+
+	return bottom;
+}
+
+auto paint_insertion_line(ID2D1RenderTarget* t_target, const Painter& t_painter, const Panel& t_panel, const RowDrag& t_drag, const auto& t_paint) -> void
+{
+	const float       line_y = insertion_y(t_panel, t_drag);
+	const D2D1_RECT_F box    = row_box(t_panel, t_panel.rows[*t_drag.pressed]);
+	const D2D1_RECT_F line   = D2D1::RectF(box.left + K_ROW_INSET, line_y - K_INSERT_LINE_HEIGHT * 0.5f, box.right - K_ROW_INSET, line_y + K_INSERT_LINE_HEIGHT * 0.5f);
+
+	t_target->FillRectangle(line, t_paint(t_painter.colors.accent));
+}
+
+auto paint_panel(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1SolidColorBrush* t_brush, const Panel& t_panel, const MenuImages& t_images, const UpdateBadge* t_badge, const RowDrag* t_drag, const D2D1::Matrix3x2F& t_base) -> void
 {
 	const os::TrayColors& colors  = t_painter.colors;
 	const TextFormats&    formats = *t_painter.formats;
 	const float           scale   = t_painter.scale;
 	const float           width   = t_panel.frame.right - t_panel.frame.left;
+	const bool            lifting = t_drag != nullptr && t_drag->lifted && t_drag->pressed;
 
 	const auto paint = [&](Color t_color, float t_opacity = 1.0f) {
 		t_brush->SetColor(to_d2d(t_color, t_opacity));
 		return t_brush;
 	};
 
-	t_target->SetTransform(t_base);
-	draw_soft_shadow(t_target, t_brush, t_panel.frame);
-	paint_body(t_target, t_brush, colors, t_panel.frame, colors.border, scale);
-
 	const bool        scrolls = t_panel.gutter > 0.0f;
 	const D2D1_RECT_F rows_window{t_panel.frame.left, t_panel.frame.top + K_PANEL_PADDING, t_panel.frame.right, t_panel.frame.bottom - K_PANEL_PADDING};
-	if (scrolls) {
-		t_target->PushAxisAlignedClip(rows_window, D2D1_ANTIALIAS_MODE_ALIASED);
-	}
+
+	t_target->SetTransform(t_base);
+	t_target->PushAxisAlignedClip(scrolls ? rows_window : t_panel.frame, D2D1_ANTIALIAS_MODE_ALIASED);
 
 	const D2D1::Matrix3x2F rows_origin = D2D1::Matrix3x2F::Translation(t_panel.frame.left, t_panel.frame.top - t_panel.scroll.offset);
 	t_target->SetTransform(rows_origin * t_base);
 
 	for (const usize index : std::views::iota(usize{0}, t_panel.rows.size())) {
-		const Row&        row = t_panel.rows[index];
-		const D2D1_RECT_F box{K_PANEL_PADDING, row.top, width - K_PANEL_PADDING - t_panel.gutter, row.top + row.height};
+		const Row&        row    = t_panel.rows[index];
+		const D2D1_RECT_F box    = row_box(t_panel, row);
 		const float       left   = box.left + K_ROW_INSET;
 		const float       right  = box.right - K_ROW_INSET;
 		const float       middle = (box.top + box.bottom) * 0.5f;
 		const Color       ink    = mix(colors.text_dim, colors.text, row.hover);
+		const bool        chosen = t_panel.selected == index;
 
-		if (row.hover > 0.0f && is_selectable(row) && row.kind != RowKind::ACCOUNT) {
+		if ((row.hover > 0.0f || chosen) && is_selectable(row) && row.kind != RowKind::ACCOUNT) {
 			const D2D1_ROUNDED_RECT pill{D2D1::RectF(box.left, box.top + 1.0f, box.right, box.bottom - 1.0f), K_ROW_RADIUS, K_ROW_RADIUS};
 			const Color             tint = row.destructive ? colors.error : colors.accent;
-			t_target->FillRoundedRectangle(pill, paint(tint, K_HOVER_ALPHA * row.hover));
+			const float             fill = std::max(K_HOVER_ALPHA * row.hover, chosen ? K_SELECTED_GAME_ALPHA : 0.0f);
+			t_target->FillRoundedRectangle(pill, paint(tint, fill));
 		}
 
 		switch (row.kind) {
@@ -1368,56 +1807,27 @@ auto paint_panel(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1Sol
 					t_target->FillRoundedRectangle(D2D1_ROUNDED_RECT{blank, K_ICON_RADIUS, K_ICON_RADIUS}, paint(colors.text_disabled, 0.4f));
 				}
 
-				const float label_end = (row.detail.empty() ? chevron : count) - K_ICON_GAP;
+				const float label_end     = (row.detail.empty() ? chevron : count) - K_ICON_GAP;
+				const Color chevron_color = chosen ? colors.accent : ink;
 
 				draw_label(t_target, formats.body.Get(), row.label, row.label_x, label_end, box, paint(colors.text));
 				draw_label(t_target, formats.count.Get(), row.detail, count, chevron - K_COUNT_GAP, box, paint(colors.text_disabled));
-				draw_glyph(t_target, t_painter, Glyph::CHEVRON, centered_box(chevron, middle, K_CHEVRON_SIZE, scale), paint(ink));
+				draw_turned_glyph(t_target, t_painter, Glyph::CHEVRON, centered_box(chevron, middle, K_CHEVRON_SIZE, scale), t_panel.chevron_degrees, paint(chevron_color));
 				break;
 			}
 
 			case ACCOUNT: {
-				const D2D1_RECT_F login      = login_rect(row, width - t_panel.gutter, t_painter.login_width, scale);
-				const float       chip_right = login.left - K_CHIP_GAP;
-				const float       chip_left  = chip_right - row.detail_width;
-				const bool        followed   = index + 1 < t_panel.rows.size() && t_panel.rows[index + 1].kind == RowKind::ACCOUNT;
+				const std::optional<RowPart> hot_part = t_panel.hot == index ? t_panel.hot_part : std::nullopt;
+				const float                  opacity  = lifting && index == *t_drag->pressed ? K_DRAGGED_ROW_ALPHA : 1.0f;
+				const auto                   faded    = [&](Color t_color, float t_opacity = 1.0f) { return paint(t_color, t_opacity * opacity); };
 
-				if (followed) {
-					const float       y = snapped(box.bottom - 0.5f, scale);
-					const D2D1_RECT_F line{left, y, right, y + 1.0f / scale};
-					t_target->FillRectangle(line, paint(colors.separator));
-				}
-
-				if (!row.detail.empty()) {
-					const float             top = snapped(middle - K_CHIP_HEIGHT * 0.5f, scale);
-					const D2D1_ROUNDED_RECT chip{D2D1::RectF(chip_left, top, chip_right, top + K_CHIP_HEIGHT), K_CHIP_HEIGHT * 0.5f, K_CHIP_HEIGHT * 0.5f};
-
-					t_target->FillRoundedRectangle(chip, paint(colors.text, K_CHIP_ALPHA));
-					draw_label(t_target, formats.chip.Get(), row.detail, chip_left, chip_right, chip.rect, paint(colors.text_dim));
-				}
-
-				const float label_end = (row.detail.empty() ? login.left : chip_left) - K_CHIP_GAP;
-				draw_label(t_target, formats.body.Get(), row.label, row.label_x, label_end, box, paint(colors.text));
-
-				if (row.hover > 0.0f) {
-					const float             slide = (1.0f - row.hover) * K_LOGIN_SLIDE;
-					const D2D1_ROUNDED_RECT pill{D2D1::RectF(login.left + slide, login.top, login.right + slide, login.bottom), K_LOGIN_RADIUS, K_LOGIN_RADIUS};
-					const bool              lit = t_panel.login_hot && index == t_panel.hot;
-
-					t_target->FillRoundedRectangle(pill, paint(colors.accent, row.hover));
-
-					if (lit) {
-						t_target->FillRoundedRectangle(pill, paint(Color{255, 255, 255, 255}, K_LOGIN_LIFT * row.hover));
-					}
-
-					draw_label(t_target, formats.button.Get(), K_LOGIN_LABEL, pill.rect.left, pill.rect.right, pill.rect, paint(colors.accent_ink, row.hover));
-				}
-
+				paint_account_row(t_target, t_painter, row, box, hot_part, faded);
 				break;
 			}
 
 			// Quit is red from the start and turns fully red under the pointer, so it never reads like the harmless actions above it.
-			case ACTION: {
+			case ACTION:
+			case ADD_ACCOUNT: {
 				const D2D1_RECT_F glyph = centered_box(left + (K_ICON_SIZE - K_GLYPH_SIZE) * 0.5f, middle, K_GLYPH_SIZE, scale);
 				const Color       rest  = mix(colors.text_dim, colors.error, K_QUIT_REST_RED);
 				const Color       icon  = row.destructive ? mix(rest, colors.error, row.hover) : ink;
@@ -1452,9 +1862,14 @@ auto paint_panel(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1Sol
 		}
 	}
 
+	if (lifting) {
+		paint_insertion_line(t_target, t_painter, t_panel, *t_drag, paint);
+	}
+
+	t_target->SetTransform(t_base);
+	t_target->PopAxisAlignedClip();
+
 	if (scrolls) {
-		t_target->SetTransform(t_base);
-		t_target->PopAxisAlignedClip();
 		t_target->SetTransform(D2D1::Matrix3x2F::Translation(t_panel.frame.left, t_panel.frame.top) * t_base);
 		paint_edge_shadows(t_target, t_painter, t_panel);
 		paint_scrollbar(t_target, t_painter, t_brush, t_panel);
@@ -1463,50 +1878,300 @@ auto paint_panel(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1Sol
 	t_target->SetTransform(t_base);
 }
 
-auto paint_menu(ID2D1RenderTarget* t_target, const Painter& t_painter, const Panel& t_games, const Panel* t_accounts, const MenuImages& t_images, const UpdateBadge& t_badge, float t_reveal, D2D1_POINT_2F t_grow_from, ID2D1Layer* t_layer) -> void
+auto paint_side_header(ID2D1RenderTarget* t_target, const Painter& t_painter, const D2D1_RECT_F& t_header, ID2D1Bitmap* t_icon, std::wstring_view t_title, std::wstring_view t_subtitle, const auto& t_paint) -> void
+{
+	const os::TrayColors& colors    = t_painter.colors;
+	const TextFormats&    formats   = *t_painter.formats;
+	const float           left      = t_header.left + K_SIDE_PADDING;
+	const float           right     = t_header.right - K_SIDE_PADDING;
+	const float           middle    = (t_header.top + t_header.bottom) * 0.5f;
+	const float           text_left = left + K_ICON_SIZE + K_ICON_GAP;
+	const D2D1_RECT_F     title     = D2D1::RectF(text_left, middle - K_NAME_LINE_HEIGHT, right, middle);
+	const D2D1_RECT_F     subtitle  = D2D1::RectF(text_left, middle, right, middle + K_DETAIL_LINE_HEIGHT);
+
+	if (t_icon != nullptr) {
+		draw_bitmap(t_target, t_icon, left, middle, t_painter.scale);
+	}
+
+	draw_label(t_target, formats.strong.Get(), t_title, title.left, title.right, title, t_paint(colors.text));
+	draw_label(t_target, formats.caption.Get(), t_subtitle, subtitle.left, subtitle.right, subtitle, t_paint(colors.text_disabled));
+}
+
+struct FormView {
+	const AccountFormState&       state;
+	const FormLayout&             layout;
+	std::optional<FormHit>        hot;
+	std::span<const os::TrayGame> games;
+	std::span<const std::wstring> game_labels;
+	const MenuImages&             images;
+	bool                          caret;
+};
+
+[[nodiscard]] auto region_text(usize t_region) -> std::wstring
+{
+	const RegionOption& option = K_REGION_OPTIONS[t_region];
+
+	return os::win32::to_wide(option.code.empty() ? option.label : option.code);
+}
+
+[[nodiscard]] auto is_hot(const FormView& t_view, FormTarget t_target) -> bool
+{
+	return t_view.hot && t_view.hot->target == t_target;
+}
+
+auto paint_form_label(ID2D1RenderTarget* t_target, const Painter& t_painter, const D2D1_RECT_F& t_box, std::wstring_view t_label, bool t_optional, Color t_color, const auto& t_paint) -> void
+{
+	IDWriteTextFormat* caption = t_painter.formats->caption.Get();
+
+	draw_label(t_target, caption, t_label, t_box.left, t_box.right, t_box, t_paint(t_color));
+
+	if (t_optional) {
+		const float suffix_left = t_box.left + text_width(t_painter.writer, caption, t_label);
+		draw_label(t_target, caption, K_OPTIONAL_SUFFIX, suffix_left, t_box.right, t_box, t_paint(t_painter.colors.text_disabled));
+	}
+}
+
+auto paint_form_box(ID2D1RenderTarget* t_target, const Painter& t_painter, const D2D1_RECT_F& t_box, Color t_fill, float t_fill_alpha, Color t_border, const auto& t_paint) -> void
+{
+	const float             half = 0.5f / t_painter.scale;
+	const D2D1_ROUNDED_RECT fill{t_box, K_FORM_FIELD_RADIUS, K_FORM_FIELD_RADIUS};
+	const D2D1_ROUNDED_RECT edge{D2D1::RectF(t_box.left + half, t_box.top + half, t_box.right - half, t_box.bottom - half), K_FORM_FIELD_RADIUS, K_FORM_FIELD_RADIUS};
+
+	t_target->FillRoundedRectangle(fill, t_paint(t_fill, t_fill_alpha));
+	t_target->DrawRoundedRectangle(edge, t_paint(t_border), 1.0f / t_painter.scale);
+}
+
+auto paint_form_text(ID2D1RenderTarget* t_target, const Painter& t_painter, const FormView& t_view, FormField t_field, const auto& t_paint) -> void
+{
+	const os::TrayColors& colors   = t_painter.colors;
+	IDWriteTextFormat*    body     = t_painter.formats->body.Get();
+	const D2D1_RECT_F     box      = t_view.layout.fields[t_field];
+	const std::wstring&   typed    = t_view.state.text[t_field];
+	const bool            focused  = t_view.state.focus == t_field;
+	const bool            masked   = t_field == FormField::PASSWORD && !t_view.state.password_shown;
+	const bool            missing  = t_view.state.show_required && t_field != FormField::NOTE && typed.empty();
+	const bool            hovered  = is_hot(t_view, FormTarget::FIELD) && t_view.hot->field == t_field;
+	const float           right    = t_field == FormField::PASSWORD ? t_view.layout.reveal.left : box.right - K_FORM_FIELD_PADDING;
+	const float           left     = box.left + K_FORM_FIELD_PADDING;
+	const std::wstring    shown    = masked ? std::wstring(typed.size(), K_BULLET) : typed;
+	const float           width    = text_width(t_painter.writer, body, shown);
+	const float           start    = std::min(left, right - width);
+	const Color           resting  = hovered ? colors.border : colors.separator;
+	const Color           focus_to = focused ? colors.accent : resting;
+
+	paint_form_box(t_target, t_painter, box, colors.text, K_FORM_FIELD_FILL, missing ? colors.error : focus_to, t_paint);
+	t_target->PushAxisAlignedClip(D2D1::RectF(left, box.top, right, box.bottom), D2D1_ANTIALIAS_MODE_ALIASED);
+
+	if (shown.empty()) {
+		draw_label(t_target, body, K_FORM_PLACEHOLDERS[t_field], left, right, box, t_paint(colors.text_disabled));
+	} else {
+		draw_label(t_target, body, shown, start, start + width + 1.0f, box, t_paint(colors.text));
+	}
+
+	t_target->PopAxisAlignedClip();
+
+	if (focused && t_view.caret) {
+		const float       caret_x = snapped(std::min(start + width, right) + 1.0f, t_painter.scale);
+		const float       middle  = (box.top + box.bottom) * 0.5f;
+		const D2D1_RECT_F caret   = D2D1::RectF(caret_x, middle - K_CARET_HEIGHT * 0.5f, caret_x + K_CARET_WIDTH, middle + K_CARET_HEIGHT * 0.5f);
+		t_target->FillRectangle(caret, t_paint(colors.accent));
+	}
+}
+
+auto paint_form_button(ID2D1RenderTarget* t_target, const Painter& t_painter, const D2D1_RECT_F& t_box, std::wstring_view t_label, Color t_fill, float t_fill_alpha, Color t_ink, const auto& t_paint) -> void
+{
+	const D2D1_ROUNDED_RECT button{t_box, K_FORM_BUTTON_RADIUS, K_FORM_BUTTON_RADIUS};
+
+	t_target->FillRoundedRectangle(button, t_paint(t_fill, t_fill_alpha));
+	draw_label(t_target, t_painter.formats->button.Get(), t_label, t_box.left, t_box.right, t_box, t_paint(t_ink));
+}
+
+auto paint_region_list(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1SolidColorBrush* t_brush, const FormView& t_view, const auto& t_paint) -> void
+{
+	const os::TrayColors& colors = t_painter.colors;
+	const D2D1_RECT_F     list   = t_view.layout.regions;
+	const usize           last   = std::min(K_REGION_COUNT, t_view.state.regions_top + K_REGION_ROWS_SHOWN);
+
+	draw_soft_shadow(t_target, t_brush, list, K_FORM_FIELD_RADIUS);
+	paint_body(t_target, t_brush, colors, list, K_FORM_FIELD_RADIUS, colors.border, t_painter.scale);
+
+	for (const usize option : std::views::iota(t_view.state.regions_top, last)) {
+		const float       top     = list.top + K_PANEL_PADDING + static_cast<float>(option - t_view.state.regions_top) * K_REGION_ROW_HEIGHT;
+		const D2D1_RECT_F row     = D2D1::RectF(list.left + K_PANEL_PADDING, top, list.right - K_PANEL_PADDING, top + K_REGION_ROW_HEIGHT);
+		const bool        chosen  = option == t_view.state.region;
+		const bool        hovered = is_hot(t_view, FormTarget::REGION_OPTION) && t_view.hot->index == option;
+
+		if (chosen || hovered) {
+			const D2D1_ROUNDED_RECT pill{row, K_ROW_RADIUS, K_ROW_RADIUS};
+			t_target->FillRoundedRectangle(pill, t_paint(colors.accent, chosen ? K_SELECTED_GAME_ALPHA : K_HOVER_ALPHA));
+		}
+
+		draw_label(t_target, t_painter.formats->body.Get(), os::win32::to_wide(K_REGION_OPTIONS[option].label), row.left + K_ROW_INSET, row.right - K_ROW_INSET, row, t_paint(colors.text));
+	}
+}
+
+auto paint_form(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1SolidColorBrush* t_brush, const FormView& t_view, const auto& t_paint) -> void
+{
+	const os::TrayColors&   colors  = t_painter.colors;
+	const TextFormats&      formats = *t_painter.formats;
+	const FormLayout&       layout  = t_view.layout;
+	const AccountFormState& state   = t_view.state;
+	const float             scale   = t_painter.scale;
+	const D2D1_RECT_F       back    = centered_box(layout.back.left + (K_FORM_BACK_SIZE - K_CHEVRON_SIZE) * 0.5f, (layout.back.top + layout.back.bottom) * 0.5f, K_CHEVRON_SIZE, scale);
+	const std::wstring_view title   = state.editing ? std::wstring_view{state.text[FormField::USERNAME]} : std::wstring_view{K_NEW_ACCOUNT_TITLE};
+
+	paint_row_button(t_target, layout.back, is_hot(t_view, FormTarget::BACK), 1.0f, t_paint, colors);
+	draw_turned_glyph(t_target, t_painter, Glyph::CHEVRON, back, K_CHEVRON_LEFT_DEGREES, t_paint(colors.text_dim));
+	draw_label(t_target, formats.strong.Get(), title, layout.header.left, layout.header.right, layout.header, t_paint(colors.text));
+	draw_label(t_target, formats.count.Get(), K_ESCAPE_HINT, layout.header.left, layout.header.right, layout.header, t_paint(colors.text_disabled));
+
+	for (const FormField field : each<FormField>()) {
+		const bool missing = state.show_required && field != FormField::NOTE && state.text[field].empty();
+		paint_form_label(t_target, t_painter, layout.labels[field], K_FORM_LABELS[field], field == FormField::NOTE, missing ? colors.error : colors.text_dim, t_paint);
+		paint_form_text(t_target, t_painter, t_view, field, t_paint);
+	}
+
+	const D2D1_RECT_F reveal = centered_box(layout.reveal.left + (K_FORM_REVEAL_SIZE - K_ROW_BUTTON_GLYPH_SIZE) * 0.5f, (layout.reveal.top + layout.reveal.bottom) * 0.5f, K_ROW_BUTTON_GLYPH_SIZE, scale);
+	draw_glyph(t_target, t_painter, state.password_shown ? Glyph::EYE_OFF : Glyph::EYE, reveal, t_paint(is_hot(t_view, FormTarget::REVEAL) ? colors.text : colors.text_dim));
+
+	const bool        region_lit   = state.regions_open || is_hot(t_view, FormTarget::REGION);
+	const Color       region_ink   = state.region == 0 ? colors.text_disabled : colors.text;
+	const D2D1_RECT_F region_value = D2D1::RectF(layout.region.left + K_FORM_FIELD_PADDING, layout.region.top, layout.region.right - K_FORM_FIELD_PADDING - K_CHEVRON_SIZE, layout.region.bottom);
+	const D2D1_RECT_F region_arrow = centered_box(layout.region.right - K_FORM_FIELD_PADDING - K_CHEVRON_SIZE, (layout.region.top + layout.region.bottom) * 0.5f, K_CHEVRON_SIZE, scale);
+
+	paint_form_label(t_target, t_painter, layout.region_label, K_REGION_LABEL, true, colors.text_dim, t_paint);
+	paint_form_box(t_target, t_painter, layout.region, colors.text, K_FORM_FIELD_FILL, state.regions_open ? colors.accent : (region_lit ? colors.border : colors.separator), t_paint);
+	draw_label(t_target, formats.body.Get(), region_text(state.region), region_value.left, region_value.right, region_value, t_paint(region_ink));
+	draw_turned_glyph(t_target, t_painter, Glyph::CHEVRON, region_arrow, state.regions_open ? K_CHEVRON_UP_DEGREES : K_CHEVRON_DOWN_DEGREES, t_paint(region_lit ? colors.text : colors.text_dim));
+
+	paint_form_label(t_target, t_painter, layout.games_label, K_SHOW_IN_LABEL, false, colors.text_dim, t_paint);
+
+	for (const usize index : std::views::iota(usize{0}, std::min(layout.games.size(), t_view.games.size()))) {
+		const os::TrayGame& game     = t_view.games[index];
+		const D2D1_RECT_F   chip     = layout.games[index];
+		const bool          selected = (state.visible_games & (1u << game.game)) != 0;
+		const bool          hovered  = is_hot(t_view, FormTarget::GAME) && t_view.hot->index == index;
+		const Color         border   = selected ? colors.accent : (hovered ? colors.border : colors.separator);
+		const float         middle   = (chip.top + chip.bottom) * 0.5f;
+		const float         text_x   = chip.left + K_FORM_CHIP_PADDING + K_FORM_CHIP_ICON_SIZE + K_FORM_CHIP_ICON_GAP;
+
+		const Color fill      = selected ? colors.accent : colors.text;
+		const float fill_tint = selected ? K_FORM_CHIP_TINT : K_FORM_FIELD_FILL;
+		const Color edge      = selected ? mix(colors.separator, border, K_FORM_CHIP_BORDER_TINT) : border;
+
+		paint_form_box(t_target, t_painter, chip, fill, fill_tint, edge, t_paint);
+
+		if (game.game < os::K_TRAY_MAX_GAMES && t_view.images.game_icons[game.game]) {
+			draw_bitmap(t_target, t_view.images.game_icons[game.game].Get(), chip.left + K_FORM_CHIP_PADDING, middle, scale, selected ? 1.0f : K_FORM_CHIP_FADED_ICON);
+		}
+
+		draw_label(t_target, formats.caption.Get(), t_view.game_labels[index], text_x, chip.right, chip, t_paint(selected || hovered ? colors.text : colors.text_dim));
+	}
+
+	if (state.editing) {
+		const bool              lit    = is_hot(t_view, FormTarget::REMOVE);
+		const float             fill   = state.remove_armed || lit ? K_REMOVE_HOVER_ALPHA : 0.0f;
+		const std::wstring_view remove = state.remove_armed ? K_CONFIRM_REMOVE_LABEL : K_REMOVE_LABEL;
+		paint_form_button(t_target, t_painter, layout.remove, remove, colors.error, fill, colors.error, t_paint);
+	}
+
+	const float cancel_fill = K_FORM_GHOST_ALPHA + (is_hot(t_view, FormTarget::CANCEL) ? K_FORM_GHOST_HOVER : 0.0f);
+	paint_form_button(t_target, t_painter, layout.cancel, K_CANCEL_LABEL, colors.text, cancel_fill, colors.text, t_paint);
+	paint_form_button(t_target, t_painter, layout.save, K_SAVE_LABEL, colors.accent, 1.0f, colors.accent_ink, t_paint);
+
+	if (is_hot(t_view, FormTarget::SAVE)) {
+		const D2D1_ROUNDED_RECT lift{layout.save, K_FORM_BUTTON_RADIUS, K_FORM_BUTTON_RADIUS};
+		t_target->FillRoundedRectangle(lift, t_paint(Color{255, 255, 255, 255}, K_LOGIN_LIFT));
+	}
+
+	if (state.regions_open) {
+		paint_region_list(t_target, t_painter, t_brush, t_view, t_paint);
+	}
+}
+
+struct MenuScene {
+	const Panel&       games;
+	const Panel&       side;
+	const MenuImages&  images;
+	const UpdateBadge& badge;
+	D2D1_RECT_F        side_area;
+	float              slide;
+	bool               side_left;
+	SideView           view;
+	ID2D1Bitmap*       side_icon;
+	std::wstring_view  side_title;
+	std::wstring_view  side_subtitle;
+	const RowDrag&     drag;
+	const FormView&    form;
+};
+
+[[nodiscard]] auto shown_side(const MenuScene& t_scene) -> std::optional<D2D1_RECT_F>
+{
+	const float       width = K_SIDE_WIDTH * smoothed(t_scene.slide);
+	const D2D1_RECT_F area  = t_scene.side_area;
+	if (width < K_SETTLED) return std::nullopt;
+
+	return t_scene.side_left ? D2D1::RectF(area.right - width, area.top, area.right, area.bottom) : D2D1::RectF(area.left, area.top, area.left + width, area.bottom);
+}
+
+auto paint_menu_body(ID2D1RenderTarget* t_target, const Painter& t_painter, ID2D1SolidColorBrush* t_brush, const MenuScene& t_scene, std::optional<D2D1_RECT_F> t_side) -> void
+{
+	const D2D1_RECT_F games = t_scene.games.frame;
+	const D2D1_RECT_F whole = t_side ? D2D1::RectF(std::min(games.left, t_side->left), games.top, std::max(games.right, t_side->right), games.bottom) : games;
+
+	draw_soft_shadow(t_target, t_brush, whole, K_SURFACE_RADIUS);
+	paint_body(t_target, t_brush, t_painter.colors, whole, K_SURFACE_RADIUS, t_painter.colors.border, t_painter.scale);
+
+	if (!t_side) return;
+
+	const float       seam = snapped(t_scene.side_left ? games.left : games.right, t_painter.scale);
+	const D2D1_RECT_F line = D2D1::RectF(seam, games.top + 1.0f, seam + 1.0f / t_painter.scale, games.bottom - 1.0f);
+
+	t_brush->SetColor(to_d2d(t_painter.colors.separator));
+	t_target->FillRectangle(line, t_brush);
+}
+
+auto paint_menu(ID2D1RenderTarget* t_target, const Painter& t_painter, const MenuScene& t_scene) -> void
 {
 	ComPtr<ID2D1SolidColorBrush> brush;
 	if (FAILED(t_target->CreateSolidColorBrush(to_d2d(t_painter.colors.text), &brush))) return;
 
+	const auto paint = [&](Color t_color, float t_opacity = 1.0f) {
+		brush->SetColor(to_d2d(t_color, t_opacity));
+		return brush.Get();
+	};
+
+	const std::optional<D2D1_RECT_F> side = shown_side(t_scene);
+
 	t_target->SetTransform(D2D1::Matrix3x2F::Identity());
 	t_target->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
-	paint_panel(t_target, t_painter, brush.Get(), t_games, t_images, &t_badge, D2D1::Matrix3x2F::Identity());
+	paint_menu_body(t_target, t_painter, brush.Get(), t_scene, side);
+	paint_panel(t_target, t_painter, brush.Get(), t_scene.games, t_scene.images, &t_scene.badge, nullptr, D2D1::Matrix3x2F::Identity());
 
-	if (t_accounts != nullptr && t_reveal > 0.0f) {
-		const float            size    = lerp(K_GROW_FROM_SCALE, 1.0f, sprung(t_reveal));
-		const float            opacity = std::clamp(t_reveal / K_GROW_FADE_SHARE, 0.0f, 1.0f);
-		const D2D1::Matrix3x2F grow    = D2D1::Matrix3x2F::Scale(size, size, t_grow_from);
-		const bool             fading  = opacity < 1.0f && t_layer != nullptr;
+	if (!side) return;
 
-		if (fading) {
-			t_target->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), nullptr, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1::IdentityMatrix(), opacity), t_layer);
-		}
+	const float            hidden = K_SIDE_WIDTH - (side->right - side->left);
+	const D2D1::Matrix3x2F slide  = D2D1::Matrix3x2F::Translation(t_scene.side_left ? hidden : -hidden, 0.0f);
+	const D2D1_RECT_F      area   = t_scene.side_area;
+	const D2D1_RECT_F      header = D2D1::RectF(area.left, area.top, area.right, area.top + K_SIDE_HEADER_HEIGHT);
 
-		paint_panel(t_target, t_painter, brush.Get(), *t_accounts, t_images, nullptr, grow);
+	t_target->PushAxisAlignedClip(*side, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+	t_target->SetTransform(slide);
 
-		if (fading) {
-			t_target->PopLayer();
-		}
-
-		t_target->SetTransform(D2D1::Matrix3x2F::Identity());
+	if (t_scene.view == SideView::ACCOUNTS) {
+		paint_side_header(t_target, t_painter, header, t_scene.side_icon, t_scene.side_title, t_scene.side_subtitle, paint);
+		paint_panel(t_target, t_painter, brush.Get(), t_scene.side, t_scene.images, nullptr, &t_scene.drag, slide);
+	} else {
+		paint_form(t_target, t_painter, brush.Get(), t_scene.form, paint);
 	}
+
+	t_target->SetTransform(D2D1::Matrix3x2F::Identity());
+	t_target->PopAxisAlignedClip();
 }
 
 [[nodiscard]] auto middle_of(const D2D1_RECT_F& t_box) -> D2D1_POINT_2F
 {
 	return D2D1::Point2F((t_box.left + t_box.right) * 0.5f, (t_box.top + t_box.bottom) * 0.5f);
-}
-
-[[nodiscard]] auto needs_attention(os::TrayStepState t_state) -> bool
-{
-	return t_state == os::TrayStepState::RUNNING || t_state == os::TrayStepState::FAILED || t_state == os::TrayStepState::LEFT_TO_USER;
-}
-
-auto draw_step_ring(ID2D1RenderTarget* t_target, const D2D1_RECT_F& t_box, ID2D1Brush* t_brush) -> void
-{
-	const float radius = (t_box.right - t_box.left) * K_TOAST_RING_RADIUS_SHARE;
-
-	t_target->DrawEllipse(D2D1::Ellipse(middle_of(t_box), radius, radius), t_brush, K_TOAST_RING_STROKE);
 }
 
 auto draw_progress_ring(ID2D1RenderTarget* t_target, const Painter& t_painter, const D2D1_RECT_F& t_box, float t_turns, Color t_color, const auto& t_paint) -> void
@@ -1519,7 +2184,7 @@ auto draw_progress_ring(ID2D1RenderTarget* t_target, const Painter& t_painter, c
 	const auto          point_at    = [&](float t_angle) { return D2D1::Point2F(center.x + radius * std::cos(t_angle), center.y + radius * std::sin(t_angle)); };
 	const D2D1_SIZE_F   ring_radius = D2D1::SizeF(radius, radius);
 
-	draw_step_ring(t_target, t_box, t_paint(t_color, K_TOAST_RING_TRACK_ALPHA));
+	t_target->DrawEllipse(D2D1::Ellipse(center, radius, radius), t_paint(t_color, K_TOAST_RING_TRACK_ALPHA), K_TOAST_RING_STROKE);
 
 	ComPtr<ID2D1PathGeometry> arc;
 	ComPtr<ID2D1GeometrySink> sink;
@@ -1534,16 +2199,16 @@ auto draw_progress_ring(ID2D1RenderTarget* t_target, const Painter& t_painter, c
 	}
 }
 
-auto draw_badge(ID2D1RenderTarget* t_target, const Painter& t_painter, const D2D1_RECT_F& t_box, BadgeSymbol t_symbol, Color t_fill, float t_opacity, const auto& t_paint) -> void
+auto draw_badge(ID2D1RenderTarget* t_target, const Painter& t_painter, const D2D1_RECT_F& t_box, BadgeSymbol t_symbol, Color t_fill, const auto& t_paint) -> void
 {
 	const D2D1_POINT_2F center   = middle_of(t_box);
 	const float         radius   = (t_box.right - t_box.left) * K_TOAST_BADGE_RADIUS_SHARE;
 	const float         stroke   = radius * K_TOAST_BADGE_STROKE_SHARE;
 	const auto          point_at = [&](float t_x, float t_y) { return D2D1::Point2F(center.x + t_x * radius, center.y + t_y * radius); };
 
-	t_target->FillEllipse(D2D1::Ellipse(center, radius, radius), t_paint(t_fill, t_opacity));
+	t_target->FillEllipse(D2D1::Ellipse(center, radius, radius), t_paint(t_fill));
 
-	ID2D1Brush* ink = t_paint(t_painter.colors.background, t_opacity);
+	ID2D1Brush* ink = t_paint(t_painter.colors.background);
 
 	if (t_symbol == BadgeSymbol::EXCLAMATION) {
 		t_target->DrawLine(point_at(0.0f, -0.46f), point_at(0.0f, 0.08f), ink, stroke, t_painter.stroke);
@@ -1565,104 +2230,86 @@ auto draw_badge(ID2D1RenderTarget* t_target, const Painter& t_painter, const D2D
 	}
 }
 
-auto paint_toast_header(ID2D1RenderTarget* t_target, const Painter& t_painter, const LoginToast& t_toast, const D2D1_RECT_F& t_header, const auto& t_paint) -> void
+auto paint_toast_mark(ID2D1RenderTarget* t_target, const Painter& t_painter, const LoginToast& t_toast, const D2D1_RECT_F& t_box, const auto& t_paint) -> void
 {
-	const os::TrayColors& colors        = t_painter.colors;
-	const TextFormats&    formats       = *t_painter.formats;
-	const bool            still_running = t_toast.login.state == os::TrayLoginState::RUNNING;
-	const bool            failed        = t_toast.outcome == os::TrayLoginState::FAILED;
-	const float           middle        = (t_header.top + t_header.bottom) * 0.5f;
-	const float           text_left     = t_header.left + K_TOAST_LOGO_SIZE + K_TOAST_ICON_GAP;
-	const float           total_right   = t_header.right - t_toast.finished * (K_TOAST_GLYPH_SIZE + K_TOAST_ICON_GAP);
-	const float           total_left    = total_right - K_TOAST_TIME_WIDTH;
-	const float           total_seconds = t_toast.login.total_seconds + (still_running ? t_toast.seconds_since_update : 0.0f);
-	const float           account_width = std::min(text_width(t_painter.writer, formats.toast_title.Get(), t_toast.account), total_left - text_left);
+	const os::TrayColors& colors = t_painter.colors;
 
-	if (t_toast.logo) {
-		draw_bitmap(t_target, t_toast.logo.Get(), t_header.left, middle, t_painter.scale);
-	}
+	switch (shown_step(t_toast.login).state) {
+		using enum os::TrayStepState;
 
-	draw_label(t_target, formats.toast_title.Get(), t_toast.account, text_left, total_left, t_header, t_paint(colors.text));
-	draw_label(t_target, formats.toast_text.Get(), t_toast.game, text_left + account_width + K_TOAST_GAME_GAP, total_left, t_header, t_paint(colors.text_dim));
-	draw_label(t_target, formats.toast_count.Get(), elapsed_label(total_seconds, still_running), total_left, total_right, t_header, t_paint(colors.text_disabled));
+		case WAITING:
+		case RUNNING: {
+			draw_progress_ring(t_target, t_painter, t_box, t_toast.spin, colors.accent, t_paint);
+			break;
+		}
 
-	if (t_toast.finished > 0.0f) {
-		const D2D1_RECT_F outcome = centered_box(t_header.right - K_TOAST_GLYPH_SIZE, middle, K_TOAST_GLYPH_SIZE, t_painter.scale);
-		draw_badge(t_target, t_painter, outcome, failed ? BadgeSymbol::EXCLAMATION : BadgeSymbol::CHECK, failed ? colors.error : colors.success, t_toast.finished, t_paint);
+		case DONE: {
+			draw_badge(t_target, t_painter, t_box, BadgeSymbol::CHECK, colors.success, t_paint);
+			break;
+		}
+
+		case FAILED: {
+			draw_badge(t_target, t_painter, t_box, BadgeSymbol::EXCLAMATION, colors.error, t_paint);
+			break;
+		}
+
+		case LEFT_TO_USER: {
+			draw_badge(t_target, t_painter, t_box, BadgeSymbol::EXCLAMATION, colors.accent, t_paint);
+			break;
+		}
 	}
 }
 
-auto paint_toast_separator(ID2D1RenderTarget* t_target, const Painter& t_painter, const D2D1_RECT_F& t_header, const auto& t_paint) -> void
+auto paint_toast_line(ID2D1RenderTarget* t_target, const Painter& t_painter, const LoginToast& t_toast, const D2D1_RECT_F& t_shape, const auto& t_paint) -> void
 {
-	const float       top = snapped(t_header.bottom + K_TOAST_SEPARATOR_GAP, t_painter.scale);
-	const D2D1_RECT_F line{t_header.left, top, t_header.right, top + 1.0f / t_painter.scale};
+	const os::TrayColors& colors       = t_painter.colors;
+	const TextFormats&    formats      = *t_painter.formats;
+	const ToastMeasures&  measures     = t_toast.measures;
+	const float           top          = t_shape.top + K_TOAST_PADDING_Y;
+	const float           middle       = top + K_TOAST_LINE_HEIGHT * 0.5f;
+	const D2D1_RECT_F     line         = D2D1::RectF(t_shape.left, top, t_shape.right, top + K_TOAST_LINE_HEIGHT);
+	const float           name_left    = t_shape.left + K_TOAST_TEXT_INSET;
+	const float           divider_left = name_left + measures.name + K_TOAST_GAP;
+	const float           mark_left    = divider_left + K_TOAST_DIVIDER_WIDTH + K_TOAST_GAP;
+	const float           label_left   = mark_left + K_TOAST_MARK_SIZE + K_TOAST_GAP;
+	const float           time_right   = t_shape.right - K_TOAST_PADDING_RIGHT;
+	const float           time_left    = time_right - measures.time;
+	const float           divider_top  = middle - K_TOAST_DIVIDER_HEIGHT * 0.5f;
+	const D2D1_RECT_F     divider      = D2D1::RectF(divider_left, divider_top, divider_left + K_TOAST_DIVIDER_WIDTH, divider_top + K_TOAST_DIVIDER_HEIGHT);
+	const D2D1_RECT_F     mark         = centered_box(mark_left, middle, K_TOAST_MARK_SIZE, t_painter.scale);
+	const Color           time_color   = is_running(t_toast) ? colors.accent : colors.text_disabled;
 
-	t_target->FillRectangle(line, t_paint(t_painter.colors.separator));
+	if (t_toast.game_icon) {
+		draw_bitmap(t_target, t_toast.game_icon.Get(), t_shape.left + K_TOAST_PADDING_LEFT, middle, t_painter.scale);
+	}
+
+	draw_label(t_target, formats.toast_title.Get(), t_toast.account, name_left, divider_left, line, t_paint(colors.text));
+	t_target->FillRectangle(divider, t_paint(colors.border));
+	paint_toast_mark(t_target, t_painter, t_toast, mark, t_paint);
+	draw_label(t_target, formats.toast_text.Get(), t_toast.step_label, label_left, time_left - K_TOAST_TIME_GAP, line, t_paint(colors.text_dim));
+	draw_label(t_target, formats.toast_count.Get(), toast_time_label(t_toast), time_left, time_right, line, t_paint(time_color));
 }
 
-auto paint_step_mark(ID2D1RenderTarget* t_target, const Painter& t_painter, const LoginToast& t_toast, os::TrayStepState t_state, const D2D1_RECT_F& t_mark, const auto& t_paint) -> void
+auto paint_toast_details(ID2D1RenderTarget* t_target, const Painter& t_painter, const LoginToast& t_toast, const D2D1_RECT_F& t_shape, const auto& t_paint) -> void
 {
-	const StepStyle style = step_style(t_state, t_painter.colors);
+	const os::TrayColors& colors      = t_painter.colors;
+	const TextFormats&    formats     = *t_painter.formats;
+	const ToastMeasures&  measures    = t_toast.measures;
+	const float           shown       = smoothed(t_toast.details);
+	const float           message_top = toast_message_top(t_shape);
+	const D2D1_RECT_F     message     = D2D1::RectF(t_shape.left + K_TOAST_TEXT_INSET, message_top, t_shape.right - K_TOAST_PADDING_RIGHT, message_top + measures.message_height);
+	const D2D1_POINT_2F   dot_center  = D2D1::Point2F(t_shape.left + K_TOAST_PADDING_LEFT + K_TOAST_ICON_SIZE * 0.5f, message_top + measures.message_line * 0.5f);
+	const float           dot_radius  = K_TOAST_DOT_SIZE * 0.5f;
+	const Color           dot_color   = offers_retry(t_toast) ? colors.error : colors.accent;
 
-	if (t_state == os::TrayStepState::WAITING) {
-		draw_step_ring(t_target, t_mark, t_paint(style.mark, K_TOAST_WAITING_RING_ALPHA));
-	} else if (t_state == os::TrayStepState::RUNNING) {
-		draw_progress_ring(t_target, t_painter, t_mark, t_toast.spin, style.mark, t_paint);
-	} else {
-		const BadgeSymbol symbol = t_state == os::TrayStepState::DONE ? BadgeSymbol::CHECK : BadgeSymbol::EXCLAMATION;
-		draw_badge(t_target, t_painter, t_mark, symbol, style.mark, 1.0f, t_paint);
-	}
-}
+	t_target->FillEllipse(D2D1::Ellipse(dot_center, dot_radius, dot_radius), t_paint(dot_color, shown));
+	t_target->DrawText(t_toast.message.c_str(), static_cast<UINT32>(t_toast.message.size()), formats.message.Get(), message, t_paint(colors.text_dim, shown), D2D1_DRAW_TEXT_OPTIONS_CLIP);
 
-auto paint_toast_step(ID2D1RenderTarget* t_target, const Painter& t_painter, const LoginToast& t_toast, u32 t_index, const D2D1_RECT_F& t_row, const auto& t_paint) -> void
-{
-	const os::TrayLoginStep& step          = t_toast.login.steps[t_index];
-	const StepStyle          style         = step_style(step.state, t_painter.colors);
-	const TextFormats&       formats       = *t_painter.formats;
-	const bool               waiting       = step.state == os::TrayStepState::WAITING;
-	const bool               still_running = step.state == os::TrayStepState::RUNNING;
-	const bool               is_last_step  = t_index + 1 == t_toast.login.step_count;
-	const float              middle        = (t_row.top + t_row.bottom) * 0.5f;
-	const float              text_left     = t_row.left + K_TOAST_LOGO_SIZE + K_TOAST_ICON_GAP;
-	const float              time_left     = t_row.right - K_TOAST_TIME_WIDTH;
-	const D2D1_RECT_F        mark          = centered_box(t_row.left + (K_TOAST_LOGO_SIZE - K_TOAST_STEP_GLYPH_SIZE) * 0.5f, middle, K_TOAST_STEP_GLYPH_SIZE, t_painter.scale);
+	if (!offers_retry(t_toast)) return;
 
-	if (needs_attention(step.state)) {
-		const D2D1_ROUNDED_RECT tint{D2D1::RectF(t_row.left - K_TOAST_ROW_BLEED, t_row.top, t_row.right + K_TOAST_ROW_BLEED, t_row.bottom), K_TOAST_ROW_RADIUS, K_TOAST_ROW_RADIUS};
-		t_target->FillRoundedRectangle(tint, t_paint(style.mark, K_TOAST_ROW_TINT_ALPHA));
-	}
-
-	if (!is_last_step) {
-		const float       rail_middle = (mark.left + mark.right) * 0.5f;
-		const float       next_mark   = mark.top + K_TOAST_STEP_HEIGHT;
-		const D2D1_RECT_F rail        = D2D1::RectF(rail_middle - K_TOAST_RAIL_WIDTH * 0.5f, mark.bottom + K_TOAST_RAIL_GAP, rail_middle + K_TOAST_RAIL_WIDTH * 0.5f, next_mark - K_TOAST_RAIL_GAP);
-
-		t_target->FillRectangle(rail, t_paint(t_painter.colors.text_disabled, K_TOAST_RAIL_ALPHA));
-	}
-
-	paint_step_mark(t_target, t_painter, t_toast, step.state, mark, t_paint);
-	draw_label(t_target, formats.toast_text.Get(), t_toast.step_labels[t_index], text_left, time_left, t_row, t_paint(style.label));
-
-	if (!waiting) {
-		const float seconds = step.seconds + (still_running ? t_toast.seconds_since_update : 0.0f);
-		draw_label(t_target, formats.toast_count.Get(), elapsed_label(seconds, still_running), time_left, t_row.right, t_row, t_paint(style.time));
-	}
-}
-
-auto paint_toast_details(ID2D1RenderTarget* t_target, const Painter& t_painter, const LoginToast& t_toast, const ToastLayout& t_layout, const auto& t_paint) -> void
-{
-	const os::TrayColors& colors  = t_painter.colors;
-	const TextFormats&    formats = *t_painter.formats;
-	const float           shown   = smoothed(t_toast.details);
-
-	if (!t_toast.message.empty()) {
-		t_target->DrawText(t_toast.message.c_str(), static_cast<UINT32>(t_toast.message.size()), formats.message.Get(), t_layout.message, t_paint(colors.text_dim, shown), D2D1_DRAW_TEXT_OPTIONS_CLIP);
-	}
-
-	if (!t_toast.offers_retry) return;
-
-	const D2D1_ROUNDED_RECT retry{t_layout.retry, K_TOAST_BUTTON_RADIUS, K_TOAST_BUTTON_RADIUS};
-	const D2D1_ROUNDED_RECT open{t_layout.open, K_TOAST_BUTTON_RADIUS, K_TOAST_BUTTON_RADIUS};
+	const ToastButtons      buttons = toast_buttons(t_toast, t_shape);
+	const D2D1_ROUNDED_RECT retry{buttons.retry, K_TOAST_BUTTON_RADIUS, K_TOAST_BUTTON_RADIUS};
+	const D2D1_ROUNDED_RECT open{buttons.open, K_TOAST_BUTTON_RADIUS, K_TOAST_BUTTON_RADIUS};
 
 	const float        retry_lift = K_LOGIN_LIFT * t_toast.hover[ToastHit::RETRY] * shown;
 	const float        open_fill  = (K_TOAST_GHOST_ALPHA + K_TOAST_GHOST_HOVER * t_toast.hover[ToastHit::OPEN]) * shown;
@@ -1670,10 +2317,10 @@ auto paint_toast_details(ID2D1RenderTarget* t_target, const Painter& t_painter, 
 
 	t_target->FillRoundedRectangle(retry, t_paint(colors.accent, shown));
 	t_target->FillRoundedRectangle(retry, t_paint(Color{255, 255, 255, 255}, retry_lift));
-	draw_label(t_target, formats.button.Get(), K_RETRY_LABEL, t_layout.retry.left, t_layout.retry.right, t_layout.retry, t_paint(colors.accent_ink, shown));
+	draw_label(t_target, formats.button.Get(), K_RETRY_LABEL, buttons.retry.left, buttons.retry.right, buttons.retry, t_paint(colors.accent_ink, shown));
 
 	t_target->FillRoundedRectangle(open, t_paint(colors.text, open_fill));
-	draw_label(t_target, formats.button.Get(), open_label, t_layout.open.left, t_layout.open.right, t_layout.open, t_paint(colors.text, shown));
+	draw_label(t_target, formats.button.Get(), open_label, buttons.open.left, buttons.open.right, buttons.open, t_paint(colors.text, shown));
 }
 
 auto paint_toast(ID2D1RenderTarget* t_target, const Painter& t_painter, const LoginToast& t_toast) -> void
@@ -1681,9 +2328,8 @@ auto paint_toast(ID2D1RenderTarget* t_target, const Painter& t_painter, const Lo
 	const os::TrayColors& colors     = t_painter.colors;
 	const D2D1_SIZE_F     size       = t_target->GetSize();
 	const D2D1_RECT_F     shape      = toast_shape(t_toast, size.width, size.height);
-	const ToastLayout     layout     = toast_layout(t_toast, shape);
-	const bool            failed     = t_toast.outcome == os::TrayLoginState::FAILED;
-	const float           error_edge = failed ? t_toast.finished * K_TOAST_ERROR_EDGE : 0.0f;
+	const float           radius     = toast_radius(t_toast);
+	const float           error_edge = offers_retry(t_toast) ? t_toast.finished * K_TOAST_ERROR_EDGE : 0.0f;
 
 	ComPtr<ID2D1SolidColorBrush> brush;
 	if (FAILED(t_target->CreateSolidColorBrush(to_d2d(colors.text), &brush))) return;
@@ -1694,23 +2340,14 @@ auto paint_toast(ID2D1RenderTarget* t_target, const Painter& t_painter, const Lo
 	};
 
 	t_target->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
-	draw_soft_shadow(t_target, brush.Get(), shape);
-	paint_body(t_target, brush.Get(), colors, shape, mix(colors.border, colors.error, error_edge), t_painter.scale);
+	draw_soft_shadow(t_target, brush.Get(), shape, radius);
+	paint_body(t_target, brush.Get(), colors, shape, radius, mix(colors.border, colors.error, error_edge), t_painter.scale);
 
 	t_target->PushAxisAlignedClip(shape, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+	paint_toast_line(t_target, t_painter, t_toast, shape, paint);
 
-	paint_toast_header(t_target, t_painter, t_toast, layout.header, paint);
-	paint_toast_separator(t_target, t_painter, layout.header, paint);
-
-	for (const u32 index : std::views::iota(0u, t_toast.login.step_count)) {
-		const float       top = layout.steps_top + static_cast<float>(index) * K_TOAST_STEP_HEIGHT;
-		const D2D1_RECT_F row = D2D1::RectF(layout.header.left, top, layout.header.right, top + K_TOAST_STEP_HEIGHT);
-
-		paint_toast_step(t_target, t_painter, t_toast, index, row, paint);
-	}
-
-	if (t_toast.details > 0.0f) {
-		paint_toast_details(t_target, t_painter, t_toast, layout, paint);
+	if (t_toast.details > 0.0f && !t_toast.message.empty()) {
+		paint_toast_details(t_target, t_painter, t_toast, shape, paint);
 	}
 
 	t_target->PopAxisAlignedClip();
@@ -1764,27 +2401,36 @@ struct Tray::Native {
 
 	HWND               menu_window = nullptr;
 	Canvas             menu_canvas;
-	ComPtr<ID2D1Layer> menu_layer;
 	MenuImages         images;
 	Panel              games;
-	Panel              accounts;
+	Panel              side;
 	bool               open             = false;
 	bool               activated        = false;
 	bool               tracking_leave   = false;
-	bool               accounts_left    = false;
-	bool               accounts_focused = false;
+	bool               side_left        = false;
+	bool               side_focused     = false;
 	float              scale            = 1.0f;
 	float              appear           = 0.0f;
-	float              reveal           = 0.0f;
+	float              slide            = 0.0f;
+	float              games_min_height = 0.0f;
 	RECT               work{};
 	RECT               games_screen{};
 	POINT              menu_origin{};
 	SIZE               menu_size{};
-	std::optional<u32> open_row;
-	std::optional<u32> shown_row;
+	D2D1_RECT_F        side_area{};
+	SideView           side_view = SideView::ACCOUNTS;
+	std::optional<u32> open_game;
+	std::optional<u32> shown_game;
 	D2D1_POINT_2F      last_pointer{};
 	bool               animating = false;
 	Clock::time_point  last_tick;
+
+	RowDrag                                         drag;
+	AccountFormState                                form;
+	std::optional<FormHit>                          form_hot;
+	TrayAccountForm                                 saved_form{};
+	std::vector<std::wstring>                       game_labels;
+	std::function<void(u32, u32, TrayAccountForm*)> fill_form;
 
 	TrayUpdate  update = TrayUpdate::NONE;
 	UpdateBadge badge;
@@ -1820,33 +2466,57 @@ struct Tray::Native {
 	auto show_menu_at(POINT t_anchor) -> void;
 	auto close_menu() -> void;
 	auto choose(const Row& t_row) -> void;
+	auto reload_menu() -> void;
 	auto build_games(Panel* t_panel) -> void;
-	auto build_accounts(Panel* t_panel, u32 t_game) -> void;
-	auto lay_out(Panel* t_panel, float t_min_width, bool t_icon_column) -> void;
+	auto build_game_labels() -> void;
+	auto lay_out_games() -> void;
+	auto build_side(u32 t_game_row) -> void;
+	[[nodiscard]] auto form_layout(const D2D1_RECT_F& t_area) const -> FormLayout;
 	[[nodiscard]] auto pixel_size(const Panel& t_panel) const -> SIZE;
-	[[nodiscard]] auto accounts_screen_rect(u32 t_row, SIZE t_size) const -> RECT;
 	[[nodiscard]] auto to_menu_space(const RECT& t_screen) const -> D2D1_RECT_F;
-	auto open_accounts(u32 t_row) -> void;
-	auto close_accounts() -> void;
-	auto enter_accounts() -> void;
-	auto back_to_games() -> void;
-	auto point_at_game(std::optional<u32> t_row) -> void;
-	[[nodiscard]] auto aims_at_accounts(D2D1_POINT_2F t_point) const -> bool;
+	auto toggle_game(u32 t_row) -> void;
+	auto open_side(u32 t_row, SideView t_view) -> void;
+	auto close_side() -> void;
+	auto enter_side() -> void;
+	[[nodiscard]] auto side_is_ready() const -> bool;
+	[[nodiscard]] auto first_game_row() const -> std::optional<u32>;
 	[[nodiscard]] auto row_at(const Panel& t_panel, float t_y) const -> std::optional<u32>;
 	[[nodiscard]] auto panel_at(D2D1_POINT_2F t_point) -> Panel*;
+	[[nodiscard]] auto side_row_right() const -> float;
+	[[nodiscard]] auto side_part_at(u32 t_row, float t_x, float t_content_y) const -> RowPart;
 	[[nodiscard]] auto menu_point(LPARAM t_lparam) const -> D2D1_POINT_2F;
 	[[nodiscard]] auto cursor_point() const -> D2D1_POINT_2F;
-	[[nodiscard]] auto grow_from() const -> D2D1_POINT_2F;
+
+	auto open_add_form() -> void;
+	auto open_edit_form(u32 t_side_row) -> void;
+	auto start_form() -> void;
+	auto wipe_form() -> void;
+	auto close_form() -> void;
+	auto submit_form() -> void;
+	auto remove_from_form() -> void;
+	auto toggle_form_game(usize t_index) -> void;
+	auto type_into_form(std::wstring_view t_text) -> void;
+	auto paste_into_form() -> void;
+	auto erase_from_form(bool t_whole_field) -> void;
+	auto form_key(WPARAM t_key) -> void;
+	[[nodiscard]] auto form_hit(D2D1_POINT_2F t_point) const -> std::optional<FormHit>;
+	auto click_form(D2D1_POINT_2F t_point) -> void;
+	auto scroll_regions(float t_notches) -> void;
+	auto toggle_favorite(u32 t_side_row) -> void;
 
 	auto render_menu() -> void;
+	[[nodiscard]] auto wants_hand() const -> bool;
 	auto on_pointer(LPARAM t_lparam) -> void;
-	auto point_at_account(D2D1_POINT_2F t_point) -> void;
+	auto point_at_side(std::optional<D2D1_POINT_2F> t_point) -> void;
 	auto on_leave() -> void;
 	auto on_press(LPARAM t_lparam) -> void;
+	[[nodiscard]] auto drag_slots() const -> std::pair<u32, u32>;
+	auto drag_row(float t_content_y) -> void;
+	auto finish_drag() -> void;
 	auto on_click(LPARAM t_lparam) -> void;
-	[[nodiscard]] auto over_login(const Row& t_row, float t_x, float t_y) const -> bool;
+	auto click_side_row(u32 t_row, float t_x, float t_content_y) -> void;
 	[[nodiscard]] auto over_scrollbar(D2D1_POINT_2F t_point) const -> bool;
-	auto scroll_accounts(float t_delta) -> void;
+	auto scroll_side(float t_delta) -> void;
 	auto drag_thumb(float t_y) -> void;
 	[[nodiscard]] auto update_box() const -> D2D1_RECT_F;
 	[[nodiscard]] auto over_update(float t_x, float t_y) const -> bool;
@@ -1870,7 +2540,9 @@ struct Tray::Native {
 	auto animate() -> void;
 
 	[[nodiscard]] auto ensure_toast() -> bool;
-	auto show_login_outcome(const TrayLogin& t_login) -> void;
+	auto begin_toast() -> void;
+	auto measure_toast_text() -> void;
+	auto raise_toast() -> void;
 	auto show_login(const TrayLogin& t_login) -> void;
 	auto hide_login() -> void;
 	[[nodiscard]] auto toast_size() const -> SIZE;
@@ -1898,9 +2570,10 @@ Tray::~Tray()
 		DestroyIcon(native->locked_icon);
 	}
 
-	native->menu_layer.Reset();
+	native->wipe_form();
+	SecureZeroMemory(&native->saved_form, sizeof(native->saved_form));
 	native->images = MenuImages{};
-	native->toast.logo.Reset();
+	native->toast.game_icon.Reset();
 	release_canvas(&native->menu_canvas);
 	release_canvas(&native->toast.canvas);
 
@@ -1951,6 +2624,24 @@ auto Tray::create(std::string_view t_tooltip) -> bool
 auto Tray::on_menu_open(std::function<void(TrayMenu*)> t_fill_menu) -> void
 {
 	m_native->fill_menu = std::move(t_fill_menu);
+}
+
+auto Tray::on_account_edit(std::function<void(u32 t_game, u32 t_row, TrayAccountForm*)> t_fill_form) -> void
+{
+	m_native->fill_form = std::move(t_fill_form);
+}
+
+auto Tray::take_account_form(TrayAccountForm* t_form) -> void
+{
+	Native* native = m_native.get();
+
+	*t_form = native->saved_form;
+	SecureZeroMemory(&native->saved_form, sizeof(native->saved_form));
+}
+
+auto Tray::reload_menu() -> void
+{
+	m_native->reload_menu();
 }
 
 auto Tray::set_locked(bool t_locked) -> void
@@ -2048,7 +2739,6 @@ auto Tray::set_logo(std::span<const u8> t_png) -> void
 {
 	m_native->logo_source = t_png;
 	m_native->images.logo.Reset();
-	m_native->toast.logo.Reset();
 }
 
 auto Tray::Native::shown_icon() const -> HICON
@@ -2096,6 +2786,7 @@ auto Tray::Native::ensure_popup() -> bool
 	const wchar_t* family = menu_font_family(writer.Get());
 	formats.body          = make_format(writer.Get(), family, K_BODY_SIZE, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_ALIGNMENT_LEADING);
 	formats.strong        = make_format(writer.Get(), family, K_BODY_SIZE, DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_TEXT_ALIGNMENT_LEADING);
+	formats.caption       = make_format(writer.Get(), family, K_CAPTION_SIZE, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_ALIGNMENT_LEADING);
 	formats.count         = make_format(writer.Get(), family, K_CAPTION_SIZE, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_ALIGNMENT_TRAILING);
 	formats.chip          = make_format(writer.Get(), family, K_CHIP_TEXT_SIZE, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_ALIGNMENT_CENTER);
 	formats.button        = make_format(writer.Get(), family, K_CAPTION_SIZE, DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_TEXT_ALIGNMENT_CENTER);
@@ -2196,7 +2887,13 @@ auto Tray::Native::build_games(Panel* t_panel) -> void
 		});
 	}
 
+	t_panel->footer = rows->size();
 	rows->push_back(Row{.kind = RowKind::SEPARATOR});
+
+	if (!menu.locked && menu.game_count > 0) {
+		rows->push_back(Row{.kind = RowKind::ADD_ACCOUNT, .label = std::wstring{K_ADD_ACCOUNT_LABEL}, .glyph = Glyph::ADD});
+	}
+
 	rows->push_back(Row{
 		.kind   = RowKind::ACTION,
 		.label  = std::wstring{L"Open "} + win32::K_APP_NAME_WIDE,
@@ -2211,40 +2908,24 @@ auto Tray::Native::build_games(Panel* t_panel) -> void
 	rows->push_back(Row{.kind = RowKind::ACTION, .label = L"Quit", .glyph = Glyph::POWER, .action = TrayEventType::EXIT, .destructive = true});
 }
 
-auto Tray::Native::build_accounts(Panel* t_panel, u32 t_game) -> void
+auto Tray::Native::build_game_labels() -> void
 {
-	t_panel->rows.clear();
-	t_panel->hot.reset();
-	t_panel->login_hot = false;
+	game_labels.clear();
 
-	const TrayGame& game = menu.games[t_game];
-
-	for (u32 i = 0; i < game.account_count && game.first_account + i < menu.account_count; i += 1) {
-		const u32          index   = game.first_account + i;
-		const TrayAccount& account = menu.accounts[index];
-
-		t_panel->rows.push_back(Row{
-			.kind   = RowKind::ACCOUNT,
-			.label  = win32::to_wide(account.label),
-			.detail = win32::to_wide(account.region),
-			.item   = index,
-		});
-	}
-
-	if (t_panel->rows.empty()) {
-		t_panel->rows.push_back(Row{.kind = RowKind::NOTE, .label = L"No accounts"});
+	for (const TrayGame& game : std::span{menu.games, menu.game_count}) {
+		game_labels.push_back(win32::to_wide(game.short_title));
 	}
 }
 
-auto Tray::Native::lay_out(Panel* t_panel, float t_min_width, bool t_icon_column) -> void
+auto Tray::Native::lay_out_games() -> void
 {
 	float y      = K_PANEL_PADDING;
 	float widest = 0.0f;
 
-	for (Row& row : t_panel->rows) {
+	for (Row& row : games.rows) {
 		row.top     = y;
 		row.height  = row.kind == RowKind::SEPARATOR ? K_SEPARATOR_HEIGHT : (row.kind == RowKind::PASSWORD ? K_FIELD_ROW_HEIGHT : K_ROW_HEIGHT);
-		row.label_x = K_PANEL_PADDING + K_ROW_INSET + (t_icon_column ? K_ICON_SIZE + K_ICON_GAP : 0.0f);
+		row.label_x = K_PANEL_PADDING + K_ROW_INSET + K_ICON_SIZE + K_ICON_GAP;
 		y += row.height;
 
 		if (row.kind == RowKind::PASSWORD) {
@@ -2258,9 +2939,6 @@ auto Tray::Native::lay_out(Panel* t_panel, float t_min_width, bool t_icon_column
 		if (row.kind == RowKind::GAME) {
 			row.detail_width = text_width(writer.Get(), formats.count.Get(), row.detail);
 			need += K_ICON_GAP + row.detail_width + K_COUNT_GAP + K_CHEVRON_SIZE;
-		} else if (row.kind == RowKind::ACCOUNT) {
-			row.detail_width = row.detail.empty() ? 0.0f : text_width(writer.Get(), formats.chip.Get(), row.detail) + K_CHIP_PADDING * 2.0f;
-			need += K_CHIP_GAP + row.detail_width + K_CHIP_GAP + login_width;
 		} else if (row.kind == RowKind::BRAND) {
 			need += K_ICON_GAP + std::max(update_width, updating_width);
 		}
@@ -2268,25 +2946,134 @@ auto Tray::Native::lay_out(Panel* t_panel, float t_min_width, bool t_icon_column
 		widest = std::max(widest, need);
 	}
 
-	t_panel->content_height = y + K_PANEL_PADDING;
-	t_panel->height         = t_panel->content_height;
-	t_panel->width          = std::ceil(std::clamp(widest, t_min_width, K_MAX_WIDTH));
+	const float content = y + K_PANEL_PADDING;
+	const float stretch = std::max(0.0f, games_min_height - content);
+
+	if (stretch > 0.0f && games.footer) {
+		for (Row& row : std::span{games.rows}.subspan(*games.footer)) {
+			row.top += stretch;
+		}
+	}
+
+	games.content_height = content + stretch;
+	games.height         = games.content_height;
+	games.width          = std::ceil(std::clamp(widest, K_GAMES_MIN_WIDTH, K_MAX_WIDTH));
+}
+
+auto Tray::Native::build_side(u32 t_game_row) -> void
+{
+	side.rows.clear();
+	side.hot.reset();
+	side.hot_part.reset();
+
+	const TrayGame& game = menu.games[*games.rows[t_game_row].item];
+
+	for (const u32 index : std::views::iota(game.first_account, std::min(game.first_account + game.account_count, menu.account_count))) {
+		const TrayAccount& account = menu.accounts[index];
+
+		side.rows.push_back(Row{
+			.kind     = RowKind::ACCOUNT,
+			.label    = win32::to_wide(account.username),
+			.detail   = win32::to_wide(account.region),
+			.note     = win32::to_wide(account.note),
+			.when     = win32::to_wide(account.last_used),
+			.item     = index,
+			.favorite = account.favorite,
+		});
+	}
+
+	if (side.rows.empty()) {
+		side.rows.push_back(Row{.kind = RowKind::NOTE, .label = std::wstring{K_NO_ACCOUNTS_LABEL}});
+	}
+
+	float y = K_PANEL_PADDING;
+
+	for (Row& row : side.rows) {
+		row.top          = y;
+		row.height       = row.kind == RowKind::ACCOUNT ? K_ACCOUNT_ROW_HEIGHT : K_ROW_HEIGHT;
+		row.label_x      = K_PANEL_PADDING + K_ROW_INSET;
+		row.detail_width = row.detail.empty() ? 0.0f : text_width(writer.Get(), formats.chip.Get(), row.detail) + K_CHIP_PADDING * 2.0f;
+		y += row.height;
+	}
+
+	side.content_height = y + K_PANEL_PADDING;
+	side.frame          = D2D1::RectF(side_area.left, side_area.top + K_SIDE_HEADER_HEIGHT, side_area.right, side_area.bottom);
+	fit_rows(&side, side.frame.bottom - side.frame.top);
+}
+
+auto Tray::Native::form_layout(const D2D1_RECT_F& t_area) const -> FormLayout
+{
+	FormLayout  layout;
+	const float left   = t_area.left + K_SIDE_PADDING;
+	const float right  = t_area.right - K_SIDE_PADDING;
+	const float column = (right - left - K_FORM_COLUMN_GAP) * 0.5f;
+	const float second = left + column + K_FORM_COLUMN_GAP;
+	const float middle = t_area.top + K_FORM_HEADER_HEIGHT * 0.5f;
+
+	const auto place = [column](float t_left, float t_top, D2D1_RECT_F* t_label, D2D1_RECT_F* t_field) {
+		*t_label = D2D1::RectF(t_left, t_top, t_left + column, t_top + K_FORM_LABEL_HEIGHT);
+		*t_field = D2D1::RectF(t_left, t_label->bottom, t_left + column, t_label->bottom + K_FORM_FIELD_HEIGHT);
+	};
+
+	layout.back   = D2D1::RectF(left, middle - K_FORM_BACK_SIZE * 0.5f, left + K_FORM_BACK_SIZE, middle + K_FORM_BACK_SIZE * 0.5f);
+	layout.header = D2D1::RectF(layout.back.right + K_ICON_GAP, t_area.top, right, t_area.top + K_FORM_HEADER_HEIGHT);
+
+	const float first_row = t_area.top + K_FORM_HEADER_HEIGHT;
+	place(left, first_row, &layout.labels[FormField::USERNAME], &layout.fields[FormField::USERNAME]);
+	place(second, first_row, &layout.labels[FormField::PASSWORD], &layout.fields[FormField::PASSWORD]);
+
+	const float second_row = layout.fields[FormField::USERNAME].bottom + K_FORM_ROW_GAP;
+	place(left, second_row, &layout.labels[FormField::NOTE], &layout.fields[FormField::NOTE]);
+	place(second, second_row, &layout.region_label, &layout.region);
+
+	const D2D1_RECT_F& password    = layout.fields[FormField::PASSWORD];
+	const float        reveal_edge = (K_FORM_FIELD_HEIGHT - K_FORM_REVEAL_SIZE) * 0.5f;
+	layout.reveal                  = D2D1::RectF(password.right - reveal_edge - K_FORM_REVEAL_SIZE, password.top + reveal_edge, password.right - reveal_edge, password.bottom - reveal_edge);
+
+	float chips_top    = layout.region.bottom + K_FORM_ROW_GAP + K_FORM_LABEL_HEIGHT;
+	float chip_left    = left;
+	layout.games_label = D2D1::RectF(left, chips_top - K_FORM_LABEL_HEIGHT, right, chips_top);
+
+	for (const std::wstring& label : game_labels) {
+		const float width = K_FORM_CHIP_PADDING * 2.0f + K_FORM_CHIP_ICON_SIZE + K_FORM_CHIP_ICON_GAP + text_width(writer.Get(), formats.caption.Get(), label);
+
+		if (chip_left > left && chip_left + width > right) {
+			chip_left = left;
+			chips_top += K_FORM_CHIP_HEIGHT + K_FORM_CHIP_GAP;
+		}
+
+		layout.games.push_back(D2D1::RectF(chip_left, chips_top, chip_left + width, chips_top + K_FORM_CHIP_HEIGHT));
+		chip_left += width + K_FORM_CHIP_GAP;
+	}
+
+	const float chips_bottom = chips_top + K_FORM_CHIP_HEIGHT;
+	layout.needed_height     = chips_bottom + K_FORM_ROW_GAP + K_FORM_BUTTON_HEIGHT + K_SIDE_PADDING - t_area.top;
+
+	const auto  button_width = [this](std::wstring_view t_label) { return text_width(writer.Get(), formats.button.Get(), t_label) + K_FORM_BUTTON_PADDING * 2.0f; };
+	const float bottom       = t_area.bottom - K_SIDE_PADDING;
+	const float top          = bottom - K_FORM_BUTTON_HEIGHT;
+	const float save_left    = right - button_width(K_SAVE_LABEL);
+	const float cancel_left  = save_left - K_FORM_BUTTON_GAP - button_width(K_CANCEL_LABEL);
+	const float remove_width = std::max(button_width(K_REMOVE_LABEL), button_width(K_CONFIRM_REMOVE_LABEL));
+
+	layout.save   = D2D1::RectF(save_left, top, right, bottom);
+	layout.cancel = D2D1::RectF(cancel_left, top, save_left - K_FORM_BUTTON_GAP, bottom);
+	layout.remove = D2D1::RectF(left, top, left + remove_width, bottom);
+
+	const float list_height = K_PANEL_PADDING * 2.0f + K_REGION_ROW_HEIGHT * static_cast<float>(K_REGION_ROWS_SHOWN);
+	const float below       = layout.region.bottom + K_REGION_LIST_GAP;
+	const float above       = layout.region.top - K_REGION_LIST_GAP - list_height;
+	const bool  fits_below  = below + list_height <= t_area.bottom;
+	const float list_top    = fits_below ? below : std::max(above, t_area.top + K_PANEL_PADDING);
+	const float list_right  = layout.region.right;
+	layout.regions          = D2D1::RectF(list_right - K_REGION_LIST_WIDTH, list_top, list_right, list_top + list_height);
+
+	return layout;
 }
 
 auto Tray::Native::pixel_size(const Panel& t_panel) const -> SIZE
 {
 	return SIZE{static_cast<LONG>(std::ceil(t_panel.width * scale)), static_cast<LONG>(std::ceil(t_panel.height * scale))};
-}
-
-// A game's accounts sit just clear of the games, with their first row level with the game. The shadows fill the gap between the panels, which keeps the pointer on the menu's window as it crosses.
-auto Tray::Native::accounts_screen_rect(u32 t_row, SIZE t_size) const -> RECT
-{
-	const auto gap    = static_cast<LONG>(std::lround(K_ACCOUNTS_GAP * scale));
-	const LONG x      = accounts_left ? games_screen.left - gap - t_size.cx : games_screen.right + gap;
-	const LONG wanted = games_screen.top + static_cast<LONG>(std::lround((games.rows[t_row].top - K_PANEL_PADDING) * scale));
-	const LONG y      = std::clamp(wanted, work.top, std::max(work.top, work.bottom - t_size.cy));
-
-	return RECT{x, y, x + t_size.cx, y + t_size.cy};
 }
 
 auto Tray::Native::to_menu_space(const RECT& t_screen) const -> D2D1_RECT_F
@@ -2299,7 +3086,6 @@ auto Tray::Native::to_menu_space(const RECT& t_screen) const -> D2D1_RECT_F
 	return D2D1::RectF(left, top, right, bottom);
 }
 
-// The menu is one window holding the games and room for any game's accounts beside them, which open on the side with space for them.
 auto Tray::Native::show_menu_at(POINT t_anchor) -> void
 {
 	if (!ensure_popup()) return;
@@ -2324,37 +3110,23 @@ auto Tray::Native::show_menu_at(POINT t_anchor) -> void
 		images = MenuImages{};
 	}
 
+	build_game_labels();
 	build_games(&games);
-	lay_out(&games, K_GAMES_MIN_WIDTH, true);
+
+	const bool can_manage_accounts = !menu.locked && menu.game_count > 0;
+	games_min_height               = can_manage_accounts ? form_layout(D2D1::RectF(0.0f, 0.0f, K_SIDE_WIDTH, 0.0f)).needed_height : 0.0f;
+	lay_out_games();
 
 	SIZE games_size = pixel_size(games);
 	CalculatePopupWindowPosition(&t_anchor, &games_size, TPM_LEFTALIGN | TPM_BOTTOMALIGN | TPM_WORKAREA, nullptr, &games_screen);
 
-	Panel sizing;
-	LONG  widest = 0;
-	SIZE  sizes[K_TRAY_MAX_GAMES]{};
+	const auto side_width  = static_cast<LONG>(std::lround(K_SIDE_WIDTH * scale));
+	side_left              = games_screen.right + side_width > work.right;
+	const LONG side_start  = side_left ? games_screen.left - side_width : games_screen.right;
+	const RECT side_screen = RECT{side_start, games_screen.top, side_start + side_width, games_screen.bottom};
 
-	for (const Row& game : games.rows) {
-		if (game.kind != RowKind::GAME || !game.item || *game.item >= K_TRAY_MAX_GAMES) continue;
-
-		build_accounts(&sizing, *game.item);
-		lay_out(&sizing, K_ACCOUNTS_WIDTH, false);
-		cap_rows(&sizing);
-		sizes[*game.item] = pixel_size(sizing);
-		widest            = std::max(widest, sizes[*game.item].cx);
-	}
-
-	accounts_left = games_screen.right + static_cast<LONG>(std::lround(K_ACCOUNTS_GAP * scale)) + widest > work.right;
-
-	RECT bounds = games_screen;
-
-	for (const u32 row : std::views::iota(0u, games.rows.size())) {
-		const Row& game = games.rows[row];
-		if (game.kind != RowKind::GAME || !game.item || *game.item >= K_TRAY_MAX_GAMES) continue;
-
-		const RECT place = accounts_screen_rect(row, sizes[*game.item]);
-		UnionRect(&bounds, &bounds, &place);
-	}
+	RECT bounds;
+	UnionRect(&bounds, &games_screen, &side_screen);
 
 	const auto margin = static_cast<LONG>(std::ceil(K_SHADOW_MARGIN * scale));
 	InflateRect(&bounds, margin, margin);
@@ -2363,18 +3135,24 @@ auto Tray::Native::show_menu_at(POINT t_anchor) -> void
 	badge      = UpdateBadge{.state = update};
 	update_hot = false;
 
-	menu_origin = POINT{bounds.left, bounds.top};
-	menu_size   = SIZE{bounds.right - bounds.left, bounds.bottom - bounds.top};
-	games.frame = to_menu_space(games_screen);
+	menu_origin           = POINT{bounds.left, bounds.top};
+	menu_size             = SIZE{bounds.right - bounds.left, bounds.bottom - bounds.top};
+	games.frame           = to_menu_space(games_screen);
+	side_area             = to_menu_space(side_screen);
+	games.chevron_degrees = side_left ? K_CHEVRON_LEFT_DEGREES : 0.0f;
 	games.hot.reset();
-	open             = true;
-	activated        = false;
-	tracking_leave   = false;
-	accounts_focused = false;
-	open_row.reset();
-	shown_row.reset();
+	games.selected.reset();
+	open           = true;
+	activated      = false;
+	tracking_leave = false;
+	side_focused   = false;
+	side_view      = SideView::ACCOUNTS;
+	slide          = 0.0f;
+	drag           = RowDrag{};
+	open_game.reset();
+	shown_game.reset();
+	form_hot.reset();
 	appear      = 0.0f;
-	reveal      = 0.0f;
 	caret_epoch = Clock::now();
 
 	render_menu();
@@ -2384,17 +3162,50 @@ auto Tray::Native::show_menu_at(POINT t_anchor) -> void
 	start_animation();
 }
 
+auto Tray::Native::reload_menu() -> void
+{
+	if (!open) return;
+
+	const D2D1_RECT_F frame = games.frame;
+
+	menu        = TrayMenu{};
+	menu.locked = locked;
+	if (fill_menu) {
+		fill_menu(&menu);
+	}
+
+	build_game_labels();
+	build_games(&games);
+	lay_out_games();
+	games.frame = frame;
+	drag        = RowDrag{};
+
+	const bool still_a_game = open_game && *open_game < games.rows.size() && games.rows[*open_game].kind == RowKind::GAME;
+
+	if (still_a_game && side_view == SideView::ACCOUNTS) {
+		build_side(*open_game);
+	} else if (!still_a_game) {
+		close_side();
+	}
+
+	start_animation();
+}
+
 auto Tray::Native::close_menu() -> void
 {
 	if (!open) return;
 
 	open      = false;
 	animating = false;
-	open_row.reset();
-	shown_row.reset();
-	accounts_focused = false;
+	open_game.reset();
+	shown_game.reset();
+	side_focused = false;
+	slide        = 0.0f;
+	drag         = RowDrag{};
 	games.hot.reset();
-	accounts.hot.reset();
+	games.selected.reset();
+	side.hot.reset();
+	wipe_form();
 	wrong_password = false;
 	shake_seconds  = 0.0f;
 
@@ -2403,7 +3214,6 @@ auto Tray::Native::close_menu() -> void
 	}
 
 	KillTimer(menu_window, K_ANIMATION_TIMER);
-	KillTimer(menu_window, K_AIM_TIMER);
 	KillTimer(menu_window, K_WATCH_TIMER);
 	KillTimer(menu_window, K_CARET_TIMER);
 	ShowWindow(menu_window, SW_HIDE);
@@ -2424,86 +3234,394 @@ auto Tray::Native::choose(const Row& t_row) -> void
 	pending_event = event;
 }
 
-auto Tray::Native::open_accounts(u32 t_row) -> void
+auto Tray::Native::toggle_game(u32 t_row) -> void
 {
-	open_row         = t_row;
-	shown_row        = t_row;
-	accounts_focused = false;
-	reveal           = 0.0f;
-
-	build_accounts(&accounts, *games.rows[t_row].item);
-	lay_out(&accounts, K_ACCOUNTS_WIDTH, false);
-	cap_rows(&accounts);
-	const RECT accounts_screen = accounts_screen_rect(t_row, pixel_size(accounts));
-	accounts.frame             = to_menu_space(accounts_screen);
-
-	start_animation();
-}
-
-auto Tray::Native::close_accounts() -> void
-{
-	if (!open_row) return;
-
-	open_row.reset();
-	accounts_focused = false;
-	accounts.hot.reset();
-	accounts.login_hot = false;
-	start_animation();
-}
-
-auto Tray::Native::enter_accounts() -> void
-{
-	if (!games.hot || games.rows[*games.hot].kind != RowKind::GAME) return;
-
-	if (open_row != games.hot) {
-		open_accounts(*games.hot);
+	if (open_game == t_row && side_view == SideView::ACCOUNTS) {
+		close_side();
+		return;
 	}
 
-	accounts_focused = true;
-	accounts.hot.reset();
-	step_hot(&accounts, 1);
+	open_side(t_row, SideView::ACCOUNTS);
 }
 
-auto Tray::Native::back_to_games() -> void
+auto Tray::Native::open_side(u32 t_row, SideView t_view) -> void
 {
-	const std::optional<u32> row = open_row;
+	if (open_game != t_row) {
+		side.scroll = Scroll{};
+	}
 
-	close_accounts();
-	games.hot = row;
+	open_game      = t_row;
+	shown_game     = t_row;
+	games.selected = t_row;
+	side_view      = t_view;
+	drag           = RowDrag{};
+	form_hot.reset();
+
+	build_side(t_row);
 	start_animation();
 }
 
-auto Tray::Native::point_at_game(std::optional<u32> t_row) -> void
+auto Tray::Native::close_side() -> void
 {
-	accounts_focused = false;
+	open_game.reset();
+	games.selected.reset();
+	side_focused = false;
+	side_view    = SideView::ACCOUNTS;
+	drag         = RowDrag{};
+	side.hot.reset();
+	side.hot_part.reset();
+	form_hot.reset();
+	wipe_form();
+	start_animation();
+}
 
-	if (t_row && games.rows[*t_row].kind == RowKind::GAME) {
-		if (t_row != open_row) {
-			open_accounts(*t_row);
+auto Tray::Native::first_game_row() const -> std::optional<u32>
+{
+	for (const u32 row : std::views::iota(0u, static_cast<u32>(games.rows.size()))) {
+		if (games.rows[row].kind == RowKind::GAME) return row;
+	}
+
+	return std::nullopt;
+}
+
+auto Tray::Native::open_add_form() -> void
+{
+	const std::optional<u32> row = open_game ? open_game : first_game_row();
+	if (!row) return;
+
+	start_form();
+	form.game          = menu.games[*games.rows[*row].item].game;
+	form.visible_games = static_cast<u16>(1u << form.game);
+
+	open_side(*row, SideView::FORM);
+}
+
+auto Tray::Native::open_edit_form(u32 t_side_row) -> void
+{
+	const Row& row = side.rows[t_side_row];
+	if (!row.item || !fill_form) return;
+
+	const TrayAccount& account = menu.accounts[*row.item];
+	TrayAccountForm    filled{};
+	fill_form(account.game, account.row, &filled);
+
+	if (filled.editing) {
+		start_form();
+		form.editing       = true;
+		form.game          = filled.game;
+		form.row           = filled.row;
+		form.region        = region_index(filled.region);
+		form.visible_games = filled.visible_games;
+		load_utf8(filled.username, &form.text[FormField::USERNAME]);
+		load_utf8(filled.password, &form.text[FormField::PASSWORD]);
+		load_utf8(filled.note, &form.text[FormField::NOTE]);
+
+		side_view = SideView::FORM;
+		side.hot.reset();
+	}
+
+	SecureZeroMemory(&filled, sizeof(filled));
+	start_animation();
+}
+
+auto Tray::Native::start_form() -> void
+{
+	wipe_form();
+
+	for (const FormField field : each<FormField>()) {
+		form.text[field].reserve(K_FORM_CAPACITIES[field]);
+	}
+
+	form_hot.reset();
+	caret_epoch = Clock::now();
+}
+
+auto Tray::Native::wipe_form() -> void
+{
+	for (std::wstring& text : form.text) {
+		SecureZeroMemory(text.data(), text.capacity() * sizeof(wchar_t));
+		text.clear();
+	}
+
+	form = AccountFormState{};
+}
+
+auto Tray::Native::close_form() -> void
+{
+	wipe_form();
+	form_hot.reset();
+	side_view = SideView::ACCOUNTS;
+
+	if (open_game) {
+		build_side(*open_game);
+	}
+
+	start_animation();
+}
+
+auto Tray::Native::submit_form() -> void
+{
+	const bool missing_username = form.text[FormField::USERNAME].empty();
+	const bool missing_password = form.text[FormField::PASSWORD].empty();
+
+	if (missing_username || missing_password) {
+		form.show_required = true;
+		form.focus         = missing_username ? FormField::USERNAME : FormField::PASSWORD;
+		start_animation();
+		return;
+	}
+
+	SecureZeroMemory(&saved_form, sizeof(saved_form));
+	saved_form = TrayAccountForm{.editing = form.editing, .game = form.game, .row = form.row, .visible_games = form.visible_games};
+	store_utf8(form.text[FormField::USERNAME], saved_form.username);
+	store_utf8(form.text[FormField::PASSWORD], saved_form.password);
+	store_utf8(form.text[FormField::NOTE], saved_form.note);
+	copy_to(K_REGION_OPTIONS[form.region].code, saved_form.region);
+
+	pending_event = TrayEvent{.type = TrayEventType::SAVE_ACCOUNT};
+	close_form();
+}
+
+auto Tray::Native::remove_from_form() -> void
+{
+	if (!form.remove_armed) {
+		form.remove_armed = true;
+		start_animation();
+		return;
+	}
+
+	pending_event = TrayEvent{.type = TrayEventType::REMOVE_ACCOUNT, .game = form.game, .row = form.row};
+	close_form();
+}
+
+auto Tray::Native::toggle_favorite(u32 t_side_row) -> void
+{
+	Row& row = side.rows[t_side_row];
+	if (!row.item) return;
+
+	const TrayAccount& account = menu.accounts[*row.item];
+	row.favorite               = !row.favorite;
+	pending_event              = TrayEvent{.type = TrayEventType::TOGGLE_FAVORITE, .game = account.game, .row = account.row};
+	start_animation();
+}
+
+auto Tray::Native::toggle_form_game(usize t_index) -> void
+{
+	if (t_index >= menu.game_count) return;
+
+	const auto bit    = static_cast<u16>(1u << menu.games[t_index].game);
+	const bool chosen = (form.visible_games & bit) != 0;
+
+	if (chosen && form.visible_games == bit) return;
+
+	form.visible_games = static_cast<u16>(form.visible_games ^ bit);
+}
+
+auto Tray::Native::type_into_form(std::wstring_view t_text) -> void
+{
+	std::wstring& field = form.text[form.focus];
+	const usize   room  = K_FORM_CAPACITIES[form.focus] - 1;
+
+	for (const wchar_t character : t_text) {
+		if (character < L' ' || character == K_DELETE_CHARACTER) continue;
+
+		field.push_back(character);
+
+		if (utf8_length(field) > room) {
+			field.pop_back();
+			break;
+		}
+	}
+
+	caret_epoch = Clock::now();
+	start_animation();
+}
+
+auto Tray::Native::paste_into_form() -> void
+{
+	if (!OpenClipboard(menu_window)) return;
+
+	if (const HANDLE data = GetClipboardData(CF_UNICODETEXT); data != nullptr) {
+		if (const auto* text = static_cast<const wchar_t*>(GlobalLock(data)); text != nullptr) {
+			type_into_form(std::wstring_view{text});
+			GlobalUnlock(data);
+		}
+	}
+
+	CloseClipboard();
+}
+
+auto Tray::Native::erase_from_form(bool t_whole_field) -> void
+{
+	std::wstring& field = form.text[form.focus];
+
+	if (t_whole_field) {
+		SecureZeroMemory(field.data(), field.capacity() * sizeof(wchar_t));
+		field.clear();
+	} else if (!field.empty()) {
+		field.back() = L'\0';
+		field.pop_back();
+	}
+
+	caret_epoch = Clock::now();
+	start_animation();
+}
+
+auto Tray::Native::form_key(WPARAM t_key) -> void
+{
+	const bool control = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+	const bool shift   = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+
+	switch (t_key) {
+		case VK_ESCAPE: {
+			if (form.regions_open) {
+				form.regions_open = false;
+				start_animation();
+			} else {
+				close_form();
+			}
+
+			break;
 		}
 
-		games.hot = t_row;
-	} else {
-		close_accounts();
-		games.hot = t_row && is_selectable(games.rows[*t_row]) ? t_row : std::nullopt;
+		case VK_TAB: {
+			form.focus  = stepped(form.focus, shift ? -1 : 1);
+			caret_epoch = Clock::now();
+			start_animation();
+			break;
+		}
+
+		case VK_RETURN: {
+			submit_form();
+			break;
+		}
+
+		case VK_BACK: {
+			erase_from_form(control);
+			break;
+		}
+
+		case 'V': {
+			if (control) {
+				paste_into_form();
+			}
+
+			break;
+		}
+
+		default: {
+			break;
+		}
+	}
+}
+
+auto Tray::Native::form_hit(D2D1_POINT_2F t_point) const -> std::optional<FormHit>
+{
+	const FormLayout layout = form_layout(side_area);
+	const float      x      = t_point.x;
+	const float      y      = t_point.y;
+
+	if (form.regions_open && contains(layout.regions, x, y)) {
+		const float row    = (y - layout.regions.top - K_PANEL_PADDING) / K_REGION_ROW_HEIGHT;
+		const usize option = form.regions_top + static_cast<usize>(std::max(row, 0.0f));
+		if (option < K_REGION_COUNT) return FormHit{.target = FormTarget::REGION_OPTION, .index = option};
+
+		return std::nullopt;
+	}
+
+	if (contains(layout.back, x, y)) return FormHit{.target = FormTarget::BACK};
+	if (contains(layout.reveal, x, y)) return FormHit{.target = FormTarget::REVEAL};
+	if (contains(layout.region, x, y)) return FormHit{.target = FormTarget::REGION};
+	if (form.editing && contains(layout.remove, x, y)) return FormHit{.target = FormTarget::REMOVE};
+	if (contains(layout.cancel, x, y)) return FormHit{.target = FormTarget::CANCEL};
+	if (contains(layout.save, x, y)) return FormHit{.target = FormTarget::SAVE};
+
+	for (const FormField field : each<FormField>()) {
+		if (contains(layout.fields[field], x, y)) return FormHit{.target = FormTarget::FIELD, .field = field};
+	}
+
+	for (const usize index : std::views::iota(usize{0}, layout.games.size())) {
+		if (contains(layout.games[index], x, y)) return FormHit{.target = FormTarget::GAME, .index = index};
+	}
+
+	return std::nullopt;
+}
+
+auto Tray::Native::click_form(D2D1_POINT_2F t_point) -> void
+{
+	const std::optional<FormHit> hit = form_hit(t_point);
+
+	if (form.regions_open && (!hit || hit->target != FormTarget::REGION_OPTION)) {
+		form.regions_open = false;
+		start_animation();
+		return;
+	}
+
+	if (!hit) return;
+
+	switch (hit->target) {
+		case FormTarget::BACK:
+		case FormTarget::CANCEL: {
+			close_form();
+			return;
+		}
+
+		case FormTarget::FIELD: {
+			form.focus  = hit->field;
+			caret_epoch = Clock::now();
+			break;
+		}
+
+		case FormTarget::REVEAL: {
+			form.password_shown = !form.password_shown;
+			break;
+		}
+
+		case FormTarget::REGION: {
+			const usize above = K_REGION_ROWS_SHOWN / 2;
+			form.regions_top  = std::min(form.region > above ? form.region - above : 0, K_REGION_COUNT - K_REGION_ROWS_SHOWN);
+			form.regions_open = true;
+			break;
+		}
+
+		case FormTarget::REGION_OPTION: {
+			form.region       = hit->index;
+			form.regions_open = false;
+			break;
+		}
+
+		case FormTarget::GAME: {
+			toggle_form_game(hit->index);
+			break;
+		}
+
+		case FormTarget::REMOVE: {
+			remove_from_form();
+			return;
+		}
+
+		case FormTarget::SAVE: {
+			submit_form();
+			return;
+		}
 	}
 
 	start_animation();
 }
 
-// While the pointer heads from a game toward its accounts it may cut across other games, which shouldn't steal the open list from under it.
-auto Tray::Native::aims_at_accounts(D2D1_POINT_2F t_point) const -> bool
+auto Tray::Native::scroll_regions(float t_notches) -> void
 {
-	if (!open_row) return false;
+	const usize last_top = K_REGION_COUNT - K_REGION_ROWS_SHOWN;
+	const bool  upward   = t_notches > 0.0f;
 
-	const float edge = accounts_left ? accounts.frame.right : accounts.frame.left;
-
-	return inside_triangle(t_point, last_pointer, D2D1::Point2F(edge, accounts.frame.top - K_AIM_SLOP), D2D1::Point2F(edge, accounts.frame.bottom + K_AIM_SLOP));
+	form.regions_top = upward ? form.regions_top - std::min(form.regions_top, usize{1}) : std::min(form.regions_top + 1, last_top);
+	form_hot         = form_hit(last_pointer);
+	start_animation();
 }
 
 auto Tray::Native::row_at(const Panel& t_panel, float t_y) const -> std::optional<u32>
 {
-	for (const u32 i : std::views::iota(0u, t_panel.rows.size())) {
+	for (const u32 i : std::views::iota(0u, static_cast<u32>(t_panel.rows.size()))) {
 		const Row& row = t_panel.rows[i];
 		if (t_y >= row.top && t_y < row.top + row.height) return i;
 	}
@@ -2511,12 +3629,29 @@ auto Tray::Native::row_at(const Panel& t_panel, float t_y) const -> std::optiona
 	return std::nullopt;
 }
 
+auto Tray::Native::side_is_ready() const -> bool
+{
+	return open_game.has_value() && slide >= 1.0f;
+}
+
 auto Tray::Native::panel_at(D2D1_POINT_2F t_point) -> Panel*
 {
-	if (open_row && reveal > K_GROW_FADE_SHARE && contains(accounts.frame, t_point.x, t_point.y)) return &accounts;
+	if (side_is_ready() && side_view == SideView::ACCOUNTS && contains(side.frame, t_point.x, t_point.y)) return &side;
 	if (contains(games.frame, t_point.x, t_point.y)) return &games;
 
 	return nullptr;
+}
+
+auto Tray::Native::side_row_right() const -> float
+{
+	return side.frame.right - side.frame.left - K_PANEL_PADDING - side.gutter - K_ROW_INSET;
+}
+
+auto Tray::Native::side_part_at(u32 t_row, float t_x, float t_content_y) const -> RowPart
+{
+	const AccountRowParts parts = account_row_parts(side.rows[t_row], side_row_right(), login_width, scale);
+
+	return account_part_at(parts, t_x, t_content_y);
 }
 
 auto Tray::Native::menu_point(LPARAM t_lparam) const -> D2D1_POINT_2F
@@ -2531,18 +3666,6 @@ auto Tray::Native::cursor_point() const -> D2D1_POINT_2F
 	ScreenToClient(menu_window, &cursor);
 
 	return D2D1::Point2F(static_cast<float>(cursor.x) / scale, static_cast<float>(cursor.y) / scale);
-}
-
-auto Tray::Native::grow_from() const -> D2D1_POINT_2F
-{
-	if (!shown_row || *shown_row >= games.rows.size()) return D2D1::Point2F();
-
-	const Row&  row     = games.rows[*shown_row];
-	const float middle  = games.frame.top + row.top + row.height * 0.5f;
-	const float icon_x  = games.frame.left + K_PANEL_PADDING + K_ROW_INSET + K_ICON_SIZE * 0.5f;
-	const float arrow_x = games.frame.right - K_PANEL_PADDING - K_ROW_INSET - K_CHEVRON_SIZE * 0.5f;
-
-	return D2D1::Point2F(accounts_left ? icon_x : arrow_x, middle);
 }
 
 auto Tray::Native::render_menu() -> void
@@ -2561,21 +3684,61 @@ auto Tray::Native::render_menu() -> void
 		images.game_icons[*row.icon] = make_bitmap(target, game_icon_sources[*row.icon], K_ICON_SIZE, K_ICON_RADIUS, scale);
 	}
 
-	if (!menu_layer) {
-		target->CreateLayer(&menu_layer);
+	std::wstring side_title;
+	std::wstring side_subtitle;
+	ID2D1Bitmap* side_icon = nullptr;
+
+	if (shown_game) {
+		const TrayGame& game = menu.games[*games.rows[*shown_game].item];
+		side_title           = win32::to_wide(game.title);
+		side_subtitle        = game.account_count == 1 ? std::wstring{L"1 account"} : std::to_wstring(game.account_count) + L" accounts";
+		side_icon            = game.game < K_TRAY_MAX_GAMES ? images.game_icons[game.game].Get() : nullptr;
 	}
 
+	const FormLayout layout = side_view == SideView::FORM ? form_layout(side_area) : FormLayout{};
+	const FormView   form_view{
+		.state       = form,
+		.layout      = layout,
+		.hot         = form_hot,
+		.games       = std::span{menu.games, menu.game_count},
+		.game_labels = game_labels,
+		.images      = images,
+		.caret       = caret_shown(),
+	};
+	const MenuScene scene{
+		.games         = games,
+		.side          = side,
+		.images        = images,
+		.badge         = badge,
+		.side_area     = side_area,
+		.slide         = slide,
+		.side_left     = side_left,
+		.view          = side_view,
+		.side_icon     = side_icon,
+		.side_title    = side_title,
+		.side_subtitle = side_subtitle,
+		.drag          = drag,
+		.form          = form_view,
+	};
+
 	target->BeginDraw();
-	paint_menu(target, painter(scale), games, shown_row ? &accounts : nullptr, images, badge, reveal, grow_from(), menu_layer.Get());
+	paint_menu(target, painter(scale), scene);
 
 	if (target->EndDraw() == D2DERR_RECREATE_TARGET) {
 		menu_canvas.target.Reset();
-		menu_layer.Reset();
 		images = MenuImages{};
 		return;
 	}
 
 	present_canvas(menu_canvas, menu_window, menu_origin, eased_out(appear));
+}
+
+auto Tray::Native::wants_hand() const -> bool
+{
+	const bool row_button = side.hot_part && side.hot_part != RowPart::BODY;
+	const bool form_place = side_view == SideView::FORM && form_hot && form_hot->target != FormTarget::FIELD;
+
+	return update_hot || row_button || form_place;
 }
 
 auto Tray::Native::on_pointer(LPARAM t_lparam) -> void
@@ -2586,93 +3749,73 @@ auto Tray::Native::on_pointer(LPARAM t_lparam) -> void
 	}
 
 	const D2D1_POINT_2F point = menu_point(t_lparam);
-	if (accounts.scroll.grab) {
-		drag_thumb(point.y - accounts.frame.top);
+	last_pointer              = point;
+
+	if (side.scroll.grab) {
+		drag_thumb(point.y - side.frame.top);
+		return;
+	}
+
+	if (drag.pressed) {
+		drag_row(point.y - side.frame.top + side.scroll.offset);
 		return;
 	}
 
 	const Panel* panel = panel_at(point);
-	const bool   over  = panel == &games && over_update(point.x - games.frame.left, point.y - games.frame.top);
-
-	if (over != update_hot) {
-		update_hot = over;
-		set_hand_cursor(over);
-	}
-
-	if (panel == &accounts) {
-		KillTimer(menu_window, K_AIM_TIMER);
-		point_at_account(point);
-
-		accounts_focused = false;
-		games.hot        = open_row;
-		last_pointer     = point;
-		start_animation();
-		return;
-	}
-
-	if (accounts.login_hot) {
-		accounts.login_hot = false;
-		set_hand_cursor(false);
-	}
-
-	accounts.scroll.over_bar   = false;
-	accounts.scroll.over_thumb = false;
-
-	if (!accounts_focused) {
-		accounts.hot.reset();
-	}
+	update_hot         = panel == &games && over_update(point.x - games.frame.left, point.y - games.frame.top);
 
 	if (panel == &games) {
-		const std::optional<u32> row    = row_at(games, point.y - games.frame.top);
-		const bool               aiming = row != open_row && aims_at_accounts(point);
-		last_pointer                    = point;
-
-		if (aiming) {
-			SetTimer(menu_window, K_AIM_TIMER, K_AIM_DELAY_MS, nullptr);
-			start_animation();
-			return;
-		}
-
-		KillTimer(menu_window, K_AIM_TIMER);
-		point_at_game(row);
-		return;
+		const std::optional<u32> row = row_at(games, point.y - games.frame.top);
+		games.hot                    = row && is_selectable(games.rows[*row]) ? row : std::nullopt;
+		side_focused                 = false;
+	} else if (!side_focused) {
+		games.hot.reset();
 	}
 
-	games.hot    = open_row;
-	last_pointer = point;
+	point_at_side(panel == &side ? std::optional{point} : std::nullopt);
+	form_hot = side_view == SideView::FORM && side_is_ready() ? form_hit(point) : std::nullopt;
+
+	set_hand_cursor(wants_hand());
 	start_animation();
 }
 
-auto Tray::Native::point_at_account(D2D1_POINT_2F t_point) -> void
+auto Tray::Native::point_at_side(std::optional<D2D1_POINT_2F> t_point) -> void
 {
-	const bool               bar       = over_scrollbar(t_point);
-	const float              x         = t_point.x - accounts.frame.left;
-	const float              y         = t_point.y - accounts.frame.top;
-	const std::optional<u32> row       = bar ? std::nullopt : row_at(accounts, y + accounts.scroll.offset);
-	const bool               login_hot = row && over_login(accounts.rows[*row], x, y + accounts.scroll.offset);
-	const D2D1_RECT_F        thumb     = bar ? thumb_rect(accounts) : D2D1_RECT_F{};
+	side.scroll.over_bar   = false;
+	side.scroll.over_thumb = false;
 
-	if (login_hot != accounts.login_hot) {
-		set_hand_cursor(login_hot);
+	if (!t_point) {
+		if (!side_focused) {
+			side.hot.reset();
+		}
+
+		side.hot_part.reset();
+		return;
 	}
 
-	accounts.hot               = row && is_selectable(accounts.rows[*row]) ? row : std::nullopt;
-	accounts.login_hot         = login_hot;
-	accounts.scroll.over_bar   = bar;
-	accounts.scroll.over_thumb = bar && y >= thumb.top && y < thumb.bottom;
+	const bool               bar   = over_scrollbar(*t_point);
+	const float              x     = t_point->x - side.frame.left;
+	const float              y     = t_point->y - side.frame.top + side.scroll.offset;
+	const std::optional<u32> row   = bar ? std::nullopt : row_at(side, y);
+	const D2D1_RECT_F        thumb = bar ? thumb_rect(side) : D2D1_RECT_F{};
+	const bool               lit   = row && is_selectable(side.rows[*row]);
+
+	side.hot               = lit ? row : std::nullopt;
+	side.hot_part          = lit ? std::optional{side_part_at(*row, x, y)} : std::nullopt;
+	side.scroll.over_bar   = bar;
+	side.scroll.over_thumb = bar && t_point->y - side.frame.top >= thumb.top && t_point->y - side.frame.top < thumb.bottom;
+	side_focused           = false;
 }
 
 auto Tray::Native::on_leave() -> void
 {
-	tracking_leave             = false;
-	accounts.login_hot         = false;
-	accounts.scroll.over_bar   = false;
-	accounts.scroll.over_thumb = false;
-	update_hot                 = false;
-	games.hot                  = open_row;
+	tracking_leave = false;
+	update_hot     = false;
+	form_hot.reset();
+	point_at_side(std::nullopt);
 
-	if (!accounts_focused) {
-		accounts.hot.reset();
+	if (!side_focused) {
+		games.hot.reset();
 	}
 
 	start_animation();
@@ -2681,21 +3824,86 @@ auto Tray::Native::on_leave() -> void
 auto Tray::Native::on_press(LPARAM t_lparam) -> void
 {
 	const D2D1_POINT_2F point = menu_point(t_lparam);
-	if (panel_at(point) != &accounts || !over_scrollbar(point)) return;
+	if (panel_at(point) != &side) return;
 
-	const D2D1_RECT_F thumb = thumb_rect(accounts);
-	const float       y     = point.y - accounts.frame.top;
-	const bool        held  = y >= thumb.top && y < thumb.bottom;
+	if (over_scrollbar(point)) {
+		const D2D1_RECT_F thumb = thumb_rect(side);
+		const float       y     = point.y - side.frame.top;
+		const bool        held  = y >= thumb.top && y < thumb.bottom;
 
-	accounts.scroll.grab = held ? y - thumb.top : (thumb.bottom - thumb.top) * 0.5f;
+		side.scroll.grab = held ? y - thumb.top : (thumb.bottom - thumb.top) * 0.5f;
+		SetCapture(menu_window);
+		drag_thumb(y);
+		return;
+	}
+
+	const float              x   = point.x - side.frame.left;
+	const float              y   = point.y - side.frame.top + side.scroll.offset;
+	const std::optional<u32> row = row_at(side, y);
+	if (!row || side.rows[*row].kind != RowKind::ACCOUNT || side_part_at(*row, x, y) != RowPart::BODY) return;
+
+	drag = RowDrag{.pressed = row, .press_y = y, .pointer_y = y, .insert = *row};
 	SetCapture(menu_window);
-	drag_thumb(y);
+}
+
+auto Tray::Native::drag_slots() const -> std::pair<u32, u32>
+{
+	const auto favorites = static_cast<u32>(std::ranges::count_if(side.rows, &Row::favorite));
+	const auto count     = static_cast<u32>(side.rows.size());
+
+	if (side.rows[*drag.pressed].favorite) return {0, favorites - 1};
+
+	return {favorites, count - 1};
+}
+
+auto Tray::Native::drag_row(float t_content_y) -> void
+{
+	drag.pointer_y = t_content_y;
+
+	if (!drag.lifted && std::abs(drag.pointer_y - drag.press_y) < K_DRAG_THRESHOLD) return;
+
+	drag.lifted = true;
+	side.hot.reset();
+	side.hot_part.reset();
+
+	u32 slot = 0;
+	for (const u32 index : std::views::iota(0u, static_cast<u32>(side.rows.size()))) {
+		const Row& row = side.rows[index];
+		if (index == drag.pressed || row.top + row.height * 0.5f > t_content_y) continue;
+
+		slot += 1;
+	}
+
+	const auto [first, last] = drag_slots();
+	drag.insert              = std::clamp(slot, first, last);
+	start_animation();
+}
+
+auto Tray::Native::finish_drag() -> void
+{
+	const RowDrag finished = drag;
+	drag                   = RowDrag{};
+	ReleaseCapture();
+
+	const Row& moved = side.rows[*finished.pressed];
+	if (finished.lifted && finished.insert != *finished.pressed && moved.item) {
+		const TrayAccount& account = menu.accounts[*moved.item];
+		pending_event              = TrayEvent{.type = TrayEventType::MOVE_ACCOUNT, .game = account.game, .row = account.row, .to_row = finished.insert};
+	}
+
+	start_animation();
 }
 
 auto Tray::Native::on_click(LPARAM t_lparam) -> void
 {
 	const D2D1_POINT_2F point = menu_point(t_lparam);
-	Panel*              panel = panel_at(point);
+
+	if (side_view == SideView::FORM && side_is_ready() && contains(side_area, point.x, point.y)) {
+		click_form(point);
+		return;
+	}
+
+	Panel* panel = panel_at(point);
 	if (panel == nullptr) return;
 
 	const float              x   = point.x - panel->frame.left;
@@ -2703,49 +3911,75 @@ auto Tray::Native::on_click(LPARAM t_lparam) -> void
 	const std::optional<u32> row = row_at(*panel, y);
 	if (!row) return;
 
-	const Row& clicked = panel->rows[*row];
+	if (panel == &side) {
+		click_side_row(*row, x, y);
+		return;
+	}
 
-	if (panel == &games && clicked.kind == RowKind::BRAND && over_update(x, y)) {
+	const Row& clicked = games.rows[*row];
+
+	if (clicked.kind == RowKind::BRAND && over_update(x, y)) {
 		press_update();
 	} else if (clicked.kind == RowKind::PASSWORD && over_password_submit(clicked, x, y)) {
 		submit_password();
 	} else if (clicked.kind == RowKind::GAME) {
-		KillTimer(menu_window, K_AIM_TIMER);
-		point_at_game(row);
-	} else if (clicked.kind == RowKind::ACTION || (clicked.kind == RowKind::ACCOUNT && over_login(clicked, x, y))) {
+		toggle_game(*row);
+	} else if (clicked.kind == RowKind::ADD_ACCOUNT) {
+		open_add_form();
+	} else if (clicked.kind == RowKind::ACTION) {
 		choose(clicked);
 	}
 }
 
-auto Tray::Native::over_login(const Row& t_row, float t_x, float t_y) const -> bool
+auto Tray::Native::click_side_row(u32 t_row, float t_x, float t_content_y) -> void
 {
-	if (t_row.kind != RowKind::ACCOUNT) return false;
+	const Row& row = side.rows[t_row];
+	if (row.kind != RowKind::ACCOUNT) return;
 
-	return contains(login_rect(t_row, accounts.frame.right - accounts.frame.left - accounts.gutter, login_width, scale), t_x, t_y);
+	switch (side_part_at(t_row, t_x, t_content_y)) {
+		case RowPart::STAR: {
+			toggle_favorite(t_row);
+			break;
+		}
+
+		case RowPart::EDIT: {
+			open_edit_form(t_row);
+			break;
+		}
+
+		case RowPart::LOGIN: {
+			choose(row);
+			break;
+		}
+
+		case RowPart::BODY: {
+			break;
+		}
+	}
 }
 
 auto Tray::Native::over_scrollbar(D2D1_POINT_2F t_point) const -> bool
 {
-	return accounts.gutter > 0.0f && t_point.x >= accounts.frame.right - K_PANEL_PADDING - accounts.gutter;
+	return side.gutter > 0.0f && t_point.x >= side.frame.right - K_PANEL_PADDING - side.gutter;
 }
 
-auto Tray::Native::scroll_accounts(float t_delta) -> void
+auto Tray::Native::scroll_side(float t_delta) -> void
 {
-	if (accounts.gutter <= 0.0f || accounts.scroll.grab || panel_at(cursor_point()) != &accounts) return;
+	if (side.gutter <= 0.0f || side.scroll.grab || panel_at(cursor_point()) != &side) return;
 
-	accounts.scroll.target = std::clamp(accounts.scroll.target + t_delta, 0.0f, max_scroll(accounts));
-	accounts.scroll.awake  = K_SCROLL_AWAKE_SECONDS;
+	side.scroll.target = std::clamp(side.scroll.target + t_delta, 0.0f, max_scroll(side));
+	side.scroll.awake  = K_SCROLL_AWAKE_SECONDS;
 	start_animation();
 }
 
 auto Tray::Native::drag_thumb(float t_y) -> void
 {
-	const D2D1_RECT_F thumb  = thumb_rect(accounts);
-	const float       travel = accounts.height - K_PANEL_PADDING * 2.0f - (thumb.bottom - thumb.top);
-	const float       top    = t_y - *accounts.scroll.grab - K_PANEL_PADDING;
+	const D2D1_RECT_F thumb  = thumb_rect(side);
+	const float       travel = side.height - K_PANEL_PADDING * 2.0f - (thumb.bottom - thumb.top);
+	const float       top    = t_y - *side.scroll.grab - K_PANEL_PADDING;
 
-	accounts.scroll.offset = std::clamp(top / travel * max_scroll(accounts), 0.0f, max_scroll(accounts));
-	accounts.scroll.target = accounts.scroll.offset;
+	side.scroll.offset = std::clamp(top / travel * max_scroll(side), 0.0f, max_scroll(side));
+	side.scroll.target = side.scroll.offset;
 	start_animation();
 }
 
@@ -2795,12 +4029,17 @@ auto Tray::Native::on_key(WPARAM t_key) -> void
 {
 	if (shows_password_field() && edit_password(t_key)) return;
 
-	Panel* panel = accounts_focused ? &accounts : &games;
+	if (side_view == SideView::FORM && open_game) {
+		form_key(t_key);
+		return;
+	}
+
+	Panel* panel = side_focused ? &side : &games;
 
 	switch (t_key) {
 		case VK_ESCAPE: {
-			if (accounts_focused) {
-				back_to_games();
+			if (open_game) {
+				close_side();
 			} else {
 				close_menu();
 			}
@@ -2808,17 +4047,16 @@ auto Tray::Native::on_key(WPARAM t_key) -> void
 			break;
 		}
 
-		case VK_LEFT: {
-			if (accounts_focused) {
-				back_to_games();
-			}
-
-			break;
-		}
-
+		case VK_LEFT:
 		case VK_RIGHT: {
-			if (!accounts_focused) {
-				enter_accounts();
+			const bool toward_side = (t_key == VK_LEFT) == side_left;
+
+			if (toward_side && !side_focused) {
+				enter_side();
+			} else if (!toward_side && side_focused) {
+				side_focused = false;
+				side.hot.reset();
+				start_animation();
 			}
 
 			break;
@@ -2827,11 +4065,6 @@ auto Tray::Native::on_key(WPARAM t_key) -> void
 		case VK_UP:
 		case VK_DOWN: {
 			step_hot(panel, t_key == VK_DOWN ? 1 : -1);
-
-			if (!accounts_focused && open_row && games.hot != open_row) {
-				close_accounts();
-			}
-
 			break;
 		}
 
@@ -2842,7 +4075,9 @@ auto Tray::Native::on_key(WPARAM t_key) -> void
 			const Row& row = panel->rows[*panel->hot];
 
 			if (row.kind == RowKind::GAME) {
-				enter_accounts();
+				enter_side();
+			} else if (row.kind == RowKind::ADD_ACCOUNT) {
+				open_add_form();
 			} else if (is_selectable(row)) {
 				choose(row);
 			}
@@ -2854,6 +4089,19 @@ auto Tray::Native::on_key(WPARAM t_key) -> void
 			break;
 		}
 	}
+}
+
+auto Tray::Native::enter_side() -> void
+{
+	if (!games.hot || games.rows[*games.hot].kind != RowKind::GAME) return;
+
+	if (open_game != games.hot || side_view != SideView::ACCOUNTS) {
+		open_side(*games.hot, SideView::ACCOUNTS);
+	}
+
+	side_focused = true;
+	side.hot.reset();
+	step_hot(&side, 1);
 }
 
 auto Tray::Native::step_hot(Panel* t_panel, i32 t_step) -> void
@@ -2889,7 +4137,7 @@ auto Tray::Native::step_hot(Panel* t_panel, i32 t_step) -> void
 // The menu normally closes when it loses focus. If Windows didn't let it take focus when it opened, a click anywhere else closes it instead.
 auto Tray::Native::watch() -> void
 {
-	if (GetForegroundWindow() == menu_window || accounts.scroll.grab) return;
+	if (GetForegroundWindow() == menu_window || side.scroll.grab || drag.pressed) return;
 
 	if (activated) {
 		close_menu();
@@ -2926,45 +4174,35 @@ auto Tray::Native::animate() -> void
 	const Clock::time_point now     = Clock::now();
 	const float             seconds = std::min(std::chrono::duration<float>(now - last_tick).count(), 0.05f);
 	const float             blend   = 1.0f - std::exp(-K_HOVER_EASE_RATE * seconds);
-	const bool              growing = open_row.has_value();
+	const bool              showing = open_game.has_value();
+	const float             target  = showing ? 1.0f : 0.0f;
 	bool                    moving  = false;
 
 	last_tick = now;
 	appear    = approached(appear, 1.0f, seconds / K_MENU_IN_SECONDS);
-	reveal    = approached(reveal, growing ? 1.0f : 0.0f, seconds / (growing ? K_GROW_SECONDS : K_SHRINK_SECONDS));
-	moving    = appear < 1.0f || reveal != (growing ? 1.0f : 0.0f);
+	slide     = approached(slide, target, seconds / (showing ? K_SIDE_OPEN_SECONDS : K_SIDE_CLOSE_SECONDS));
+	moving    = appear < 1.0f || slide != target;
 	moving    = step_badge(seconds, blend) || moving;
 
-	if (!growing && reveal <= 0.0f) {
-		shown_row.reset();
+	if (!showing && slide <= 0.0f) {
+		shown_game.reset();
 	}
 
-	const float scrolled = accounts.scroll.offset;
-	moving               = step_scroll(&accounts.scroll, seconds) || moving;
+	moving = step_scroll(&side.scroll, seconds) || moving;
 
-	// Rows sliding under a resting pointer light up as they pass it.
-	if (accounts.scroll.offset != scrolled && tracking_leave && !accounts_focused && panel_at(last_pointer) == &accounts) {
-		point_at_account(last_pointer);
-	}
+	const auto ease = [&](Panel* t_panel) {
+		for (const u32 i : std::views::iota(0u, static_cast<u32>(t_panel->rows.size()))) {
+			Row&        row     = t_panel->rows[i];
+			const float lit     = i == t_panel->hot && is_selectable(row) ? 1.0f : 0.0f;
+			const bool  settled = std::abs(lit - row.hover) < K_SETTLED;
 
-	const auto ease = [&](Panel* t_panel, std::optional<u32> t_lit_row) {
-		for (const u32 i : std::views::iota(0u, t_panel->rows.size())) {
-			Row&        row    = t_panel->rows[i];
-			const bool  lit    = (i == t_panel->hot || i == t_lit_row) && is_selectable(row);
-			const float target = lit ? 1.0f : 0.0f;
-
-			row.hover += (target - row.hover) * blend;
-
-			if (std::abs(target - row.hover) < K_SETTLED) {
-				row.hover = target;
-			} else {
-				moving = true;
-			}
+			row.hover = settled ? lit : row.hover + (lit - row.hover) * blend;
+			moving    = moving || !settled;
 		}
 	};
 
-	ease(&games, open_row);
-	ease(&accounts, std::nullopt);
+	ease(&games);
+	ease(&side);
 
 	spin_seconds += unlocking ? seconds : 0.0f;
 	shake_seconds = std::max(0.0f, shake_seconds - seconds);
@@ -2977,7 +4215,7 @@ auto Tray::Native::animate() -> void
 		KillTimer(menu_window, K_ANIMATION_TIMER);
 	}
 
-	if (shows_password_field()) {
+	if (shows_password_field() || side_view == SideView::FORM) {
 		SetTimer(menu_window, K_CARET_TIMER, static_cast<UINT>(K_CARET_BLINK_SECONDS * 1000.0f), nullptr);
 	}
 }
@@ -2989,7 +4227,8 @@ auto Tray::Native::shows_password_field() const -> bool
 
 auto Tray::Native::caret_shown() const -> bool
 {
-	if (!shows_password_field() || unlocking) return false;
+	const bool typing = shows_password_field() ? !unlocking : open && side_view == SideView::FORM;
+	if (!typing) return false;
 
 	const float since_typing = std::chrono::duration<float>(Clock::now() - caret_epoch).count();
 
@@ -3056,9 +4295,13 @@ auto Tray::Native::edit_password(WPARAM t_key) -> bool
 
 auto Tray::Native::on_char(wchar_t t_character) -> void
 {
-	if (!shows_password_field()) return;
+	const std::wstring_view typed{&t_character, 1};
 
-	type_into_password(std::wstring_view{&t_character, 1});
+	if (shows_password_field()) {
+		type_into_password(typed);
+	} else if (side_view == SideView::FORM && open_game) {
+		type_into_form(typed);
+	}
 }
 
 auto Tray::Native::type_into_password(std::wstring_view t_text) -> void
@@ -3068,7 +4311,7 @@ auto Tray::Native::type_into_password(std::wstring_view t_text) -> void
 	u32 typed = 0;
 
 	for (const wchar_t character : t_text) {
-		if (character < L' ' || character == 0x7F || password_length == K_TRAY_PASSWORD_LENGTH) continue;
+		if (character < L' ' || character == K_DELETE_CHARACTER || password_length == K_TRAY_PASSWORD_LENGTH) continue;
 
 		password[password_length] = character;
 		password_length += 1;
@@ -3226,8 +4469,10 @@ auto Tray::Native::handle_menu_message(UINT t_message, WPARAM t_wparam, LPARAM t
 		}
 
 		case WM_LBUTTONUP: {
-			if (accounts.scroll.grab) {
+			if (side.scroll.grab) {
 				ReleaseCapture();
+			} else if (drag.pressed) {
+				finish_drag();
 			} else {
 				on_click(t_lparam);
 			}
@@ -3236,19 +4481,26 @@ auto Tray::Native::handle_menu_message(UINT t_message, WPARAM t_wparam, LPARAM t
 		}
 
 		case WM_CAPTURECHANGED: {
-			accounts.scroll.grab.reset();
+			side.scroll.grab.reset();
+			drag = RowDrag{};
 			start_animation();
 			return 0;
 		}
 
 		case WM_MOUSEWHEEL: {
 			const float notches = static_cast<float>(GET_WHEEL_DELTA_WPARAM(t_wparam)) / static_cast<float>(WHEEL_DELTA);
-			scroll_accounts(-notches * K_PIXELS_PER_NOTCH);
+
+			if (form.regions_open) {
+				scroll_regions(notches);
+			} else {
+				scroll_side(-notches * K_PIXELS_PER_NOTCH);
+			}
+
 			return 0;
 		}
 
 		case WM_SETCURSOR: {
-			if (accounts.login_hot || update_hot) {
+			if (wants_hand()) {
 				set_hand_cursor(true);
 				return TRUE;
 			}
@@ -3273,13 +4525,6 @@ auto Tray::Native::handle_menu_message(UINT t_message, WPARAM t_wparam, LPARAM t
 				render_menu();
 			} else if (t_wparam == K_WATCH_TIMER) {
 				watch();
-			} else if (t_wparam == K_AIM_TIMER) {
-				KillTimer(menu_window, K_AIM_TIMER);
-
-				const D2D1_POINT_2F point = cursor_point();
-				if (panel_at(point) == &games) {
-					point_at_game(row_at(games, point.y - games.frame.top));
-				}
 			}
 
 			return 0;
@@ -3316,69 +4561,84 @@ auto Tray::Native::show_login(const TrayLogin& t_login) -> void
 	const bool has_finished = t_login.state != TrayLoginState::RUNNING;
 	const bool just_ended   = has_finished && (starting || t_login.state != toast.login.state);
 
+	if (starting) {
+		begin_toast();
+	}
+
+	if (starting || t_login.game != toast.login.game) {
+		toast.game_icon.Reset();
+	}
+
+	std::wstring account    = shortened_name(win32::to_wide(t_login.account));
+	std::wstring step_label = win32::to_wide(shown_step(t_login).label);
+	std::wstring message    = win32::to_wide(t_login.message);
+	const bool   new_text   = account != toast.account || step_label != toast.step_label || message != toast.message;
+
 	toast.login                = t_login;
-	toast.account              = win32::to_wide(t_login.account);
-	toast.game                 = win32::to_wide(t_login.game);
+	toast.account              = std::move(account);
+	toast.step_label           = std::move(step_label);
+	toast.message              = std::move(message);
 	toast.updated_at           = Clock::now();
 	toast.seconds_since_update = 0.0f;
 	toast.leaving              = false;
 
-	for (const u32 index : std::views::iota(0u, t_login.step_count)) {
-		toast.step_labels[index] = win32::to_wide(t_login.steps[index].label);
-	}
-
-	if (starting) {
-		const HMONITOR monitor = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
-		MONITORINFO    info{.cbSize = sizeof(MONITORINFO)};
-		GetMonitorInfoW(monitor, &info);
-
-		const float new_scale = monitor_scale(monitor);
-		if (new_scale != toast.scale) {
-			toast.logo.Reset();
-		}
-
-		toast.scale          = new_scale;
-		toast.work           = info.rcWork;
-		toast.outcome        = TrayLoginState::RUNNING;
-		toast.message        = {};
-		toast.message_height = 0.0f;
-		toast.offers_retry   = false;
-		toast.appear         = 0.0f;
-		toast.spin           = 0.0f;
-		toast.hovered        = false;
-		toast.hot            = std::nullopt;
-		toast.hover          = {};
-		toast.active         = true;
-		toast.last_tick      = Clock::now();
+	if (starting || new_text) {
+		measure_toast_text();
 	}
 
 	if (just_ended) {
-		show_login_outcome(t_login);
+		toast.linger = offers_retry(toast) || !toast.message.empty() ? K_TOAST_ERROR_SECONDS : K_TOAST_SUCCESS_SECONDS;
 	}
 
 	if (starting) {
-		toast.details  = has_finished && toast_details_height(toast) > 0.0f ? 1.0f : 0.0f;
+		toast.details  = has_finished && !toast.message.empty() ? 1.0f : 0.0f;
 		toast.finished = has_finished ? 1.0f : 0.0f;
+		toast.width    = toast_target_width(toast);
 
 		render_toast();
 		ShowWindow(toast.window, SW_SHOWNOACTIVATE);
+		raise_toast();
 		SetTimer(toast.window, K_TOAST_TIMER, K_TOAST_TICK_MS, nullptr);
 	}
 }
 
-auto Tray::Native::show_login_outcome(const TrayLogin& t_login) -> void
+auto Tray::Native::begin_toast() -> void
 {
-	const float        message_width = K_TOAST_WIDTH - K_TOAST_PADDING * 2.0f - K_TOAST_LOGO_SIZE - K_TOAST_ICON_GAP;
-	const std::wstring open_label    = std::wstring{L"Open "} + win32::K_APP_NAME_WIDE;
-	const bool         failed        = t_login.state == TrayLoginState::FAILED;
+	const HMONITOR monitor = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+	MONITORINFO    info{.cbSize = sizeof(MONITORINFO)};
+	GetMonitorInfoW(monitor, &info);
 
-	toast.outcome        = t_login.state;
-	toast.message        = win32::to_wide(t_login.message);
-	toast.message_height = toast.message.empty() ? 0.0f : std::min(text_height(writer.Get(), formats.message.Get(), toast.message, message_width), K_TOAST_MESSAGE_MAX);
-	toast.offers_retry   = failed;
-	toast.retry_width    = text_width(writer.Get(), formats.button.Get(), K_RETRY_LABEL) + K_TOAST_BUTTON_PADDING * 2.0f;
-	toast.open_width     = text_width(writer.Get(), formats.button.Get(), open_label) + K_TOAST_BUTTON_PADDING * 2.0f;
-	toast.linger         = failed || !toast.message.empty() ? K_TOAST_ERROR_SECONDS : K_TOAST_SUCCESS_SECONDS;
+	toast.scale     = monitor_scale(monitor);
+	toast.work      = info.rcWork;
+	toast.appear    = 0.0f;
+	toast.spin      = 0.0f;
+	toast.hovered   = false;
+	toast.hot       = std::nullopt;
+	toast.hover     = {};
+	toast.active    = true;
+	toast.last_tick = Clock::now();
+}
+
+auto Tray::Native::measure_toast_text() -> void
+{
+	const std::wstring open_label = std::wstring{L"Open "} + win32::K_APP_NAME_WIDE;
+	ToastMeasures&     measures   = toast.measures;
+
+	measures.name         = text_width(writer.Get(), formats.toast_title.Get(), toast.account);
+	measures.label        = text_width(writer.Get(), formats.toast_text.Get(), toast.step_label);
+	measures.message      = text_width(writer.Get(), formats.message.Get(), toast.message);
+	measures.message_line = text_height(writer.Get(), formats.message.Get(), L" ", K_TOAST_MAX_WIDTH);
+	measures.retry        = text_width(writer.Get(), formats.button.Get(), K_RETRY_LABEL) + K_TOAST_BUTTON_PADDING * 2.0f;
+	measures.open         = text_width(writer.Get(), formats.button.Get(), open_label) + K_TOAST_BUTTON_PADDING * 2.0f;
+
+	const float message_room = toast_target_width(toast) - K_TOAST_TEXT_INSET - K_TOAST_PADDING_RIGHT;
+	measures.message_height  = toast.message.empty() ? 0.0f : std::min(text_height(writer.Get(), formats.message.Get(), toast.message, message_room), K_TOAST_MESSAGE_MAX);
+}
+
+auto Tray::Native::raise_toast() -> void
+{
+	SetWindowPos(toast.window, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+	toast.seconds_since_raised = 0.0f;
 }
 
 auto Tray::Native::hide_login() -> void
@@ -3390,8 +4650,8 @@ auto Tray::Native::hide_login() -> void
 
 auto Tray::Native::toast_size() const -> SIZE
 {
-	const float width  = K_TOAST_WIDTH + K_SHADOW_MARGIN * 2.0f;
-	const float height = toast_steps_height(toast) + toast_details_height(toast) + K_SHADOW_MARGIN * 2.0f;
+	const float width  = K_TOAST_MAX_WIDTH + K_SHADOW_MARGIN * 2.0f;
+	const float height = K_TOAST_PILL_HEIGHT + toast_details_height(toast) + K_SHADOW_MARGIN * 2.0f;
 
 	return SIZE{static_cast<LONG>(std::ceil(width * toast.scale)), static_cast<LONG>(std::ceil(height * toast.scale))};
 }
@@ -3404,12 +4664,12 @@ auto Tray::Native::toast_hit(LPARAM t_lparam) const -> std::optional<ToastHit>
 	const D2D1_RECT_F shape = toast_shape(toast, width, static_cast<float>(toast.canvas.size.cy) / toast.scale);
 
 	if (!contains(shape, x, y)) return std::nullopt;
-	if (toast.login.state != TrayLoginState::FAILED) return ToastHit::BODY;
+	if (!offers_retry(toast)) return ToastHit::BODY;
 	if (toast.details < 1.0f) return std::nullopt;
 
-	const ToastLayout layout = toast_layout(toast, shape);
-	if (contains(layout.retry, x, y)) return ToastHit::RETRY;
-	if (contains(layout.open, x, y)) return ToastHit::OPEN;
+	const ToastButtons buttons = toast_buttons(toast, shape);
+	if (contains(buttons.retry, x, y)) return ToastHit::RETRY;
+	if (contains(buttons.open, x, y)) return ToastHit::OPEN;
 
 	return std::nullopt;
 }
@@ -3421,8 +4681,8 @@ auto Tray::Native::render_toast() -> void
 
 	ID2D1DCRenderTarget* target = toast.canvas.target.Get();
 
-	if (!toast.logo) {
-		toast.logo = make_bitmap(target, logo_source, K_TOAST_LOGO_SIZE, 0.0f, toast.scale);
+	if (!toast.game_icon && toast.login.game < K_TRAY_MAX_GAMES) {
+		toast.game_icon = make_bitmap(target, game_icon_sources[toast.login.game], K_TOAST_ICON_SIZE, K_TOAST_ICON_RADIUS, toast.scale);
 	}
 
 	const float shown = eased_out(toast.appear);
@@ -3435,7 +4695,7 @@ auto Tray::Native::render_toast() -> void
 
 	if (target->EndDraw() == D2DERR_RECREATE_TARGET) {
 		toast.canvas.target.Reset();
-		toast.logo.Reset();
+		toast.game_icon.Reset();
 		return;
 	}
 
@@ -3446,14 +4706,22 @@ auto Tray::Native::step_toast() -> void
 {
 	const Clock::time_point now           = Clock::now();
 	const float             seconds       = std::min(std::chrono::duration<float>(now - toast.last_tick).count(), 0.05f);
-	const bool              has_finished  = toast.login.state != TrayLoginState::RUNNING;
-	const bool              shows_details = has_finished && toast_details_height(toast) > 0.0f;
+	const bool              has_finished  = !is_running(toast);
+	const bool              shows_details = has_finished && !toast.message.empty();
 	const float             hover         = 1.0f - std::exp(-K_HOVER_EASE_RATE * seconds);
+	const float             widen         = 1.0f - std::exp(-K_TOAST_WIDTH_EASE_RATE * seconds);
 	const float             turns         = toast.spin + seconds / K_TOAST_RING_TURN_SECONDS;
 
 	toast.last_tick            = now;
 	toast.spin                 = turns - std::floor(turns);
 	toast.seconds_since_update = std::chrono::duration<float>(now - toast.updated_at).count();
+	toast.measures.time        = std::max(text_width(writer.Get(), formats.toast_count.Get(), toast_time_label(toast)), K_TOAST_TIME_MIN_WIDTH);
+	toast.width += (toast_target_width(toast) - toast.width) * widen;
+	toast.seconds_since_raised += seconds;
+
+	if (toast.seconds_since_raised >= K_TOAST_RAISE_SECONDS) {
+		raise_toast();
+	}
 
 	if (has_finished && !toast.hovered && !toast.leaving) {
 		toast.linger -= seconds;

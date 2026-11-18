@@ -4,7 +4,7 @@ namespace {
 struct StepLabels {
 	std::string_view underway;
 	std::string_view done;
-	std::string_view left_to_user;
+	std::string_view not_done;
 };
 
 constexpr EnumArray<LoginStep, StepLabels> K_STEP_LABELS{{
@@ -79,7 +79,7 @@ auto step_label(LoginStep t_step, StepState t_state) -> std::string_view
 	const StepLabels& labels = K_STEP_LABELS[t_step];
 
 	if (t_state == StepState::DONE) return labels.done;
-	if (t_state == StepState::LEFT_TO_USER) return labels.left_to_user;
+	if (t_state == StepState::LEFT_TO_USER || t_state == StepState::FAILED) return labels.not_done;
 
 	return labels.underway;
 }

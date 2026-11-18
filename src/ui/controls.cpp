@@ -706,17 +706,8 @@ auto controls::draw_account_details(DrawList* t_draw_list, const Font& t_font, V
 {
 	const std::string_view note = t_account.note;
 
-	char             relative[32];
-	char             last_used[48];
-	std::string_view when;
-
-	if (t_account.last_used != 0) {
-		when = relative_time(t_account.last_used, std::time(nullptr), relative);
-
-		if (note.empty()) {
-			when = format_into(last_used, "Last used {}", when);
-		}
-	}
+	char                   last_used[48];
+	const std::string_view when = last_used_label(t_account, std::time(nullptr), last_used);
 
 	if (note.empty()) {
 		draw_text_truncated(t_draw_list, t_font, t_baseline, when, t_max_width, faded(g_theme.text_faint, t_alpha));

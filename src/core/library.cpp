@@ -70,6 +70,27 @@ auto Library::add_account(u32 t_game, const Account& t_account) -> std::optional
 	return AccountRef{t_game, game->account_count - 1};
 }
 
+auto Library::save_account(std::optional<AccountRef> t_editing, u32 t_game, const AccountDetails& t_details) -> std::optional<AccountRef>
+{
+	if (t_editing) {
+		Account* account = this->account(*t_editing);
+		account->assign(t_details.username, t_details.note, t_details.password);
+		copy_to(t_details.region, account->region);
+		account->visible_game_mask = t_details.visible_games;
+
+		return t_editing;
+	}
+
+	Account account{.visible_game_mask = t_details.visible_games};
+	account.assign(t_details.username, t_details.note, t_details.password);
+	copy_to(t_details.region, account.region);
+
+	const std::optional<AccountRef> added = add_account(t_game, account);
+	sodium_memzero(&account, sizeof(account));
+
+	return added;
+}
+
 auto Library::insert_account(AccountRef t_where, const Account& t_account) -> std::optional<AccountRef>
 {
 	Game* game = &games[t_where.game];
@@ -240,6 +261,18 @@ auto Library::visible_account(u32 t_game, u32 t_row) const -> std::optional<Acco
 	if (t_row >= visible.count) return std::nullopt;
 
 	return visible.refs[t_row];
+}
+
+auto last_used_label(const Account& t_account, i64 t_now, char (&t_buffer)[48]) -> std::string_view
+{
+	if (t_account.last_used == 0) return {};
+
+	char                   relative[32];
+	const std::string_view when = relative_time(t_account.last_used, t_now, relative);
+
+	if (t_account.note[0] != '\0') return format_into(t_buffer, "{}", when);
+
+	return format_into(t_buffer, "Last used {}", when);
 }
 
 auto sort_for_removal(std::span<AccountRef> t_refs) -> void

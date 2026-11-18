@@ -100,6 +100,9 @@ class App {
 	auto open_picked_menu(const Command& t_command) -> void;
 	auto open_text_menu(const Command& t_command) -> void;
 	auto fill_tray_menu(os::TrayMenu* t_menu) -> void;
+	auto fill_tray_account_form(u32 t_game, u32 t_row, os::TrayAccountForm* t_form) -> void;
+	auto save_tray_account() -> void;
+	auto finish_tray_account_change() -> void;
 	auto update_login_toast() -> void;
 
 	auto announce_update_stage() -> void;

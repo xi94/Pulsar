@@ -183,6 +183,15 @@ auto Tray::take_unlock_password(std::span<char>) -> std::string_view
 
 auto Tray::show_unlock_failure() -> void {}
 
+auto Tray::on_account_edit(std::function<void(u32 t_game, u32 t_row, TrayAccountForm*)>) -> void {}
+
+auto Tray::take_account_form(TrayAccountForm* t_form) -> void
+{
+	*t_form = TrayAccountForm{};
+}
+
+auto Tray::reload_menu() -> void {}
+
 auto Tray::Native::rebuild_menu() -> void
 {
 	[menu removeAllItems];
@@ -204,7 +213,7 @@ auto Tray::Native::rebuild_menu() -> void
 			const u32 account = game.first_account + i;
 			if (account >= contents.account_count) break;
 
-			add_item(accounts, macos::to_ns_string(contents.accounts[account].label), K_FIRST_ACCOUNT_TAG + account);
+			add_item(accounts, macos::to_ns_string(contents.accounts[account].username), K_FIRST_ACCOUNT_TAG + account);
 		}
 
 		if (game.account_count == 0) {

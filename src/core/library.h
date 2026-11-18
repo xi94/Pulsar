@@ -67,9 +67,18 @@ struct VisibleAccounts {
 };
 
 // Orders accounts to be removed from the last place in each game to the first. Removing one then never moves those still to go, and inserting them back in the opposite order puts each where it was.
+[[nodiscard]] auto last_used_label(const Account& t_account, i64 t_now, char (&t_buffer)[48]) -> std::string_view;
 auto sort_for_removal(std::span<AccountRef> t_refs) -> void;
 auto shift_after_insert(std::optional<AccountRef>* t_ref, AccountRef t_inserted) -> void;
 auto shift_after_removal(std::optional<AccountRef>* t_ref, AccountRef t_removed) -> void;
+
+struct AccountDetails {
+	std::string_view username;
+	std::string_view password;
+	std::string_view note;
+	std::string_view region;
+	u16              visible_games = 0;
+};
 
 struct Library {
 	Game        games[K_MAX_GAMES];
@@ -79,6 +88,7 @@ struct Library {
 
 	[[nodiscard]] auto add_account(u32 t_game, const Account& t_account) -> std::optional<AccountRef>;
 	[[nodiscard]] auto insert_account(AccountRef t_where, const Account& t_account) -> std::optional<AccountRef>;
+	[[nodiscard]] auto save_account(std::optional<AccountRef> t_editing, u32 t_game, const AccountDetails& t_details) -> std::optional<AccountRef>;
 	auto remove_account(AccountRef t_ref) -> void;
 	// Takes the rows out, keeping their order, and puts them back together starting at t_insert among the rows that are left.
 	auto move_visible_accounts(u32 t_game, std::span<const u32> t_rows, u32 t_insert) -> void;

@@ -1,6 +1,7 @@
 #include <memory>
 #include <ranges>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -140,4 +141,48 @@ TEST_CASE("deleting several accounts and putting them back in reverse restores t
 	for (const u32 i : std::views::iota(0u, 6u)) {
 		CHECK(library->games[0].accounts[i].username[0] == static_cast<char>('a' + i));
 	}
+}
+
+TEST_CASE("saving a new account adds it with every detail")
+{
+	const auto library = library_with(1);
+
+	const AccountDetails            details{.username = "haku", .password = "secret", .note = "Main", .region = "EUW", .visible_games = 1};
+	const std::optional<AccountRef> saved = library->save_account(std::nullopt, 0, details);
+
+	REQUIRE(saved.has_value());
+	const Account& account = *library->account(*saved);
+	CHECK(std::string_view{account.username} == "haku");
+	CHECK(std::string_view{account.password} == "secret");
+	CHECK(std::string_view{account.note} == "Main");
+	CHECK(std::string_view{account.region} == "EUW");
+	CHECK(order_of(*library) == "ahaku");
+}
+
+TEST_CASE("saving over an account changes it in place")
+{
+	const auto       library = library_with(2);
+	const AccountRef first   = library->visible_accounts(0).refs[0];
+
+	const AccountDetails            details{.username = "renamed", .password = "new", .note = "", .region = "", .visible_games = 1};
+	const std::optional<AccountRef> saved = library->save_account(first, 0, details);
+
+	REQUIRE(saved.has_value());
+	CHECK(*saved == first);
+	CHECK(order_of(*library) == "renamedb");
+	CHECK(std::string_view{library->account(first)->password} == "new");
+}
+
+TEST_CASE("an account never used has no last used label, and a note drops the prefix")
+{
+	char    buffer[48];
+	Account account{};
+
+	CHECK(last_used_label(account, 1000, buffer).empty());
+
+	account.last_used = 1000;
+	CHECK(last_used_label(account, 1000 + 2 * 60 * 60, buffer) == "Last used 2 hours ago");
+
+	account.assign("haku", "Main", "secret");
+	CHECK(last_used_label(account, 1000 + 2 * 60 * 60, buffer) == "2 hours ago");
 }

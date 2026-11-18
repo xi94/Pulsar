@@ -317,4 +317,5 @@ TEST_CASE("a step reads as finished once it is done")
 	CHECK(step_label(LoginStep::SIGN_IN, StepState::RUNNING) == "Signing in");
 	CHECK(step_label(LoginStep::SIGN_IN, StepState::DONE) == "Signed in");
 	CHECK(step_label(LoginStep::START_GAME, StepState::LEFT_TO_USER) == "Game not started");
+	CHECK(step_label(LoginStep::SIGN_IN, StepState::FAILED) == "Not signed in");
 }

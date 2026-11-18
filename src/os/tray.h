@@ -18,13 +18,18 @@ enum class TrayEventType : u8 {
 	RETRY_LOGIN,
 	SHOW_UPDATES,
 	UNLOCK,
+	TOGGLE_FAVORITE,
+	MOVE_ACCOUNT,
+	SAVE_ACCOUNT,
+	REMOVE_ACCOUNT,
 };
 
-// A quick login names its account by its game and its row among that game's accounts. Other events carry no account.
+// An account is named by its game and its row among that game's accounts. A move also names the row it lands on.
 struct TrayEvent {
-	TrayEventType type = TrayEventType::NONE;
-	u32           game = 0;
-	u32           row  = 0;
+	TrayEventType type   = TrayEventType::NONE;
+	u32           game   = 0;
+	u32           row    = 0;
+	u32           to_row = 0;
 };
 
 constexpr u32 K_TRAY_MAX_GAMES       = 16;
@@ -34,16 +39,31 @@ constexpr u32 K_TRAY_PASSWORD_BYTES  = K_TRAY_PASSWORD_LENGTH * 4;
 
 struct TrayGame {
 	char title[64];
+	char short_title[16];
 	u32  game;
 	u32  first_account;
 	u32  account_count;
 };
 
 struct TrayAccount {
-	char label[64];
+	char username[64];
+	char note[32];
 	char region[8];
+	char last_used[48];
+	bool favorite;
 	u32  game;
 	u32  row;
+};
+
+struct TrayAccountForm {
+	bool editing = false;
+	u32  game    = 0;
+	u32  row     = 0;
+	char username[64]{};
+	char password[128]{};
+	char note[32]{};
+	char region[8]{};
+	u16  visible_games = 0;
 };
 
 struct TrayColors {
@@ -94,7 +114,7 @@ struct TrayLoginStep {
 struct TrayLogin {
 	TrayLoginState state = TrayLoginState::RUNNING;
 	char           account[64]{};
-	char           game[32]{};
+	u32            game = 0;
 	char           message[160]{};
 	TrayLoginStep  steps[K_TRAY_MAX_LOGIN_STEPS]{};
 	u32            step_count    = 0;
@@ -123,6 +143,7 @@ class Tray {
 	auto create(std::string_view t_tooltip) -> bool;
 
 	auto on_menu_open(std::function<void(TrayMenu*)> t_fill_menu) -> void;
+	auto on_account_edit(std::function<void(u32 t_game, u32 t_row, TrayAccountForm*)> t_fill_form) -> void;
 	auto set_game_icon(u32 t_game, std::span<const u8> t_png) -> void;
 	auto set_logo(std::span<const u8> t_png) -> void;
 	auto set_colors(const TrayColors& t_colors) -> void;
@@ -139,6 +160,9 @@ class Tray {
 	// The master password typed into the tray menu, as UTF-8 in t_out. The tray forgets its own copy as it hands it over.
 	[[nodiscard]] auto take_unlock_password(std::span<char> t_out) -> std::string_view;
 	auto show_unlock_failure() -> void;
+
+	auto take_account_form(TrayAccountForm* t_form) -> void;
+	auto reload_menu() -> void;
 
   private:
 	struct Native;

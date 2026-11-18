@@ -518,23 +518,10 @@ auto AccountForm::save(Library* t_library, u32 t_game) -> std::expected<AccountR
 		return std::unexpected(SaveProblem::MISSING_FIELDS);
 	}
 
-	if (m_account) {
-		Account* account = t_library->account(*m_account);
-		account->assign(username, note, password);
-		copy_to(std::string_view{m_region}, account->region);
-		account->visible_game_mask = m_visible_mask;
+	const AccountDetails            details{.username = username, .password = password, .note = note, .region = m_region, .visible_games = m_visible_mask};
+	const std::optional<AccountRef> saved = t_library->save_account(m_account, t_game, details);
 
-		return *m_account;
-	}
+	if (!saved) return std::unexpected(SaveProblem::NO_ROOM);
 
-	Account account{.visible_game_mask = m_visible_mask};
-	account.assign(username, note, password);
-	copy_to(std::string_view{m_region}, account.region);
-
-	const std::optional<AccountRef> added = t_library->add_account(t_game, account);
-	sodium_memzero(&account, sizeof(account));
-
-	if (!added) return std::unexpected(SaveProblem::NO_ROOM);
-
-	return *added;
+	return *saved;
 }

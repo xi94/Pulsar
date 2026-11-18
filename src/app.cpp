@@ -381,6 +381,7 @@ auto App::add_games() -> void
 
 	m_tray.set_logo(Assets::encoded_bytes(Asset::ICON_LOGO));
 	m_tray.on_menu_open([this](os::TrayMenu* t_menu) { fill_tray_menu(t_menu); });
+	m_tray.on_account_edit([this](u32 t_game, u32 t_row, os::TrayAccountForm* t_form) { fill_tray_account_form(t_game, t_row, t_form); });
 }
 
 auto App::stack_widgets() -> void
@@ -684,7 +685,7 @@ auto App::update_login_toast() -> void
 	}
 
 	copy_to(account->display_name(), login.account);
-	copy_to(m_library.games[m_login_session.m_shown_game].short_title, login.game);
+	login.game = m_login_session.m_shown_game;
 	m_tray.show_login(login);
 }
 
@@ -706,6 +707,8 @@ auto App::fill_tray_menu(os::TrayMenu* t_menu) -> void
 
 	t_menu->can_lock = m_settings.master_password_enabled;
 
+	const i64 now = std::time(nullptr);
+
 	for (const u8 game : m_carousel.order()) {
 		if (t_menu->game_count == os::K_TRAY_MAX_GAMES) break;
 
@@ -717,6 +720,7 @@ auto App::fill_tray_menu(os::TrayMenu* t_menu) -> void
 		t_menu->game_count += 1;
 
 		copy_to(m_library.games[game].title, entry->title);
+		copy_to(m_library.games[game].short_title, entry->short_title);
 		entry->game          = game;
 		entry->first_account = t_menu->account_count;
 		entry->account_count = static_cast<u32>(listed.size());
@@ -725,14 +729,68 @@ auto App::fill_tray_menu(os::TrayMenu* t_menu) -> void
 			const Account&   account = *m_library.account(listed[row]);
 			os::TrayAccount* item    = &t_menu->accounts[entry->first_account + row];
 
-			copy_to(account.display_name(), item->label);
+			copy_to(std::string_view{account.username}, item->username);
+			copy_to(std::string_view{account.note}, item->note);
 			copy_to(std::string_view{account.region}, item->region);
-			item->game = game;
-			item->row  = row;
+			std::ignore    = last_used_label(account, now, item->last_used);
+			item->favorite = account.favorite;
+			item->game     = game;
+			item->row      = row;
 		}
 
 		t_menu->account_count += entry->account_count;
 	}
+}
+
+auto App::fill_tray_account_form(u32 t_game, u32 t_row, os::TrayAccountForm* t_form) -> void
+{
+	const std::optional<AccountRef> ref = m_locked ? std::nullopt : m_library.visible_account(t_game, t_row);
+	if (!ref) return;
+
+	const Account& account = *m_library.account(*ref);
+
+	t_form->editing = true;
+	t_form->game    = t_game;
+	t_form->row     = t_row;
+	copy_to(std::string_view{account.username}, t_form->username);
+	copy_to(std::string_view{account.password}, t_form->password);
+	copy_to(std::string_view{account.note}, t_form->note);
+	copy_to(std::string_view{account.region}, t_form->region);
+	t_form->visible_games = account.visible_games(ref->game);
+}
+
+auto App::save_tray_account() -> void
+{
+	os::TrayAccountForm form;
+	m_tray.take_account_form(&form);
+
+	const std::optional<AccountRef> editing     = form.editing ? m_library.visible_account(form.game, form.row) : std::nullopt;
+	const bool                      still_there = !form.editing || editing.has_value();
+
+	if (!m_locked && still_there) {
+		const AccountDetails details{
+			.username      = form.username,
+			.password      = form.password,
+			.note          = form.note,
+			.region        = form.region,
+			.visible_games = form.visible_games,
+		};
+
+		const std::optional<AccountRef> saved = m_library.save_account(editing, form.game, details);
+		if (saved && !editing) {
+			m_login_session.follow_insert(*saved);
+		}
+
+		finish_tray_account_change();
+	}
+
+	sodium_memzero(&form, sizeof(form));
+}
+
+auto App::finish_tray_account_change() -> void
+{
+	m_commands.push(Command{.type = CommandType::SAVE_CHANGES});
+	m_tray.reload_menu();
 }
 
 auto App::pump_input() -> void
@@ -823,6 +881,44 @@ auto App::handle_tray_event() -> void
 			if (const auto account = m_library.visible_account(event.game, event.row)) {
 				m_account_modal.quick_login(event.game, *account);
 				lift_game_card(event.game);
+			}
+
+			break;
+		}
+
+		case TOGGLE_FAVORITE: {
+			if (m_locked) break;
+
+			if (const auto account = m_library.visible_account(event.game, event.row)) {
+				Account* starred  = m_library.account(*account);
+				starred->favorite = !starred->favorite;
+				finish_tray_account_change();
+			}
+
+			break;
+		}
+
+		case MOVE_ACCOUNT: {
+			if (m_locked) break;
+
+			const u32 moved_rows[]{event.row};
+			m_library.move_visible_accounts(event.game, moved_rows, event.to_row);
+			finish_tray_account_change();
+			break;
+		}
+
+		case SAVE_ACCOUNT: {
+			save_tray_account();
+			break;
+		}
+
+		case REMOVE_ACCOUNT: {
+			if (m_locked) break;
+
+			if (const auto account = m_library.visible_account(event.game, event.row)) {
+				m_library.remove_account(*account);
+				m_login_session.follow_removal(*account);
+				finish_tray_account_change();
 			}
 
 			break;
